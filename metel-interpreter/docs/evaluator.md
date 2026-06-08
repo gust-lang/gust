@@ -231,6 +231,69 @@ The evaluator branches on this field:
 
 ---
 
+## Benchmarking and Profiling Workflow (v0.8.2)
+
+`src/pipeline.rs` now exposes two benchmarking entry points:
+
+- `run_evaluator_fixture(...)` for the existing evaluator integration suite
+- `run_file(...)` for the full module-graph pipeline
+
+`run_evaluator_fixture(...)` matches the current evaluator integration harness. It times:
+
+- `parse`
+- `typecheck`
+- `evaluate`
+
+`run_file(...)` remains available for later module-system benchmarking and times:
+
+- `load_root`
+- `resolve`
+- `normalize`
+- `typecheck`
+- `elaborate`
+- `evaluate`
+
+The `metel-bench` helper in `src/bin/metel-bench.rs` benchmarks every evaluator integration fixture in `tests/integration/sources/evaluator/integration/` through the same single-file parse/typecheck/evaluate path the test suite uses.
+
+Typical usage:
+
+```bash
+cargo run --release --bin metel-bench
+```
+
+Useful filters:
+
+```bash
+cargo run --release --bin metel-bench -- \
+  --fixture int_01_statistics.mtl \
+  --iterations 20 \
+  --warmups 3
+```
+
+Artifacts are written under `docs/benchmarks/v0.8.2-evaluator-integration/` by default:
+
+- `summary.json` - machine-readable per-fixture timing summary
+- `summary.md` - human-readable phase breakdown plus hot functions and edges
+- `<fixture>.profile.json` - dynamic evaluator call graph with call counts and inclusive/self timings
+- `<fixture>.callgraph.dot` - Graphviz rendering of the dynamic call graph
+
+The evaluator profiler is language-level, not a Rust sampler. It records:
+
+- per-function call counts
+- inclusive time per function
+- self time per function
+- caller -> callee edge counts and inclusive time
+
+Instrumentation hooks live at the evaluator call boundary:
+
+- `push_frame` / `pop_frame` record user-defined function calls
+- `call_runtime_callable` wraps intrinsic calls so builtin hot paths also appear in the graph
+- `run_main` emits the synthetic `<entry> -> main` root edge
+
+Use this profiler to decide which Metel-level call paths dominate a program, then use external Rust profilers only on the worst fixtures if implementation-level detail is still needed.
+
+---
+
 ## Function Call Dispatch
 
 `call_function(func, args, span)` handles three cases:

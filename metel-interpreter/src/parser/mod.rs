@@ -3,7 +3,7 @@ use pest::Parser;
 use pest_derive::Parser;
 
 use crate::ast::*;
-use crate::error::{ParseErrorCode, MetelError};
+use crate::error::{MetelError, ParseErrorCode};
 
 #[derive(Parser)]
 #[grammar = "grammar.pest"]
@@ -35,12 +35,14 @@ pub fn parse(source: &str, filename: &str) -> Result<Program, MetelError> {
     parse_program(&mut pairs, filename)
 }
 
-
-
 fn parse_program(pairs: &mut Pairs<Rule>, filename: &str) -> Result<Program, MetelError> {
-    let program_pair = pairs.next().ok_or_else(|| MetelError::internal("parse_program: no program rule from pest"))?;
+    let program_pair = pairs
+        .next()
+        .ok_or_else(|| MetelError::internal("parse_program: no program rule from pest"))?;
     if program_pair.as_rule() != Rule::program {
-        return Err(MetelError::internal("parse_program: first rule is not program"));
+        return Err(MetelError::internal(
+            "parse_program: first rule is not program",
+        ));
     }
     let mut imports = Vec::new();
     let mut exports = Vec::new();
@@ -49,33 +51,55 @@ fn parse_program(pairs: &mut Pairs<Rule>, filename: &str) -> Result<Program, Met
         match pair.as_rule() {
             Rule::import_decl => imports.push(parse_import_decl(pair, filename)?),
             Rule::export_decl => exports.push(parse_export_decl(pair, filename)?),
-            Rule::decl        => decls.push(parse_decl(pair, filename)?),
+            Rule::decl => decls.push(parse_decl(pair, filename)?),
             Rule::EOI => {}
             _ => {}
         }
     }
-    Ok(Program { imports, exports, decls })
+    Ok(Program {
+        imports,
+        exports,
+        decls,
+    })
 }
 
-fn parse_import_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<ImportDecl, MetelError> {
+fn parse_import_decl(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<ImportDecl, MetelError> {
     let span = Span::of(&pair, filename);
-    let path_pair = pair.into_inner().next()
+    let path_pair = pair
+        .into_inner()
+        .next()
         .ok_or_else(|| MetelError::internal("import_decl: expected import path"))?;
-    Ok(ImportDecl { path: parse_import_path(path_pair)?, span })
+    Ok(ImportDecl {
+        path: parse_import_path(path_pair)?,
+        span,
+    })
 }
 
-fn parse_export_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<ExportDecl, MetelError> {
+fn parse_export_decl(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<ExportDecl, MetelError> {
     let span = Span::of(&pair, filename);
-    let path_pair = pair.into_inner().next()
+    let path_pair = pair
+        .into_inner()
+        .next()
         .ok_or_else(|| MetelError::internal("export_decl: expected import path"))?;
-    Ok(ExportDecl { path: parse_import_path(path_pair)?, span })
+    Ok(ExportDecl {
+        path: parse_import_path(path_pair)?,
+        span,
+    })
 }
 
 fn parse_import_path(pair: pest::iterators::Pair<Rule>) -> Result<ImportPath, MetelError> {
     let mut inner = pair.into_inner();
-    let root_pair = inner.next()
+    let root_pair = inner
+        .next()
         .ok_or_else(|| MetelError::internal("import_path: expected path root"))?;
-    let tree_pair = inner.next()
+    let tree_pair = inner
+        .next()
         .ok_or_else(|| MetelError::internal("import_path: expected import tree"))?;
     Ok(ImportPath {
         root: parse_path_root(root_pair)?,
@@ -86,7 +110,9 @@ fn parse_import_path(pair: pest::iterators::Pair<Rule>) -> Result<ImportPath, Me
 fn parse_path_root(pair: pest::iterators::Pair<Rule>) -> Result<PathRoot, MetelError> {
     match pair.as_rule() {
         Rule::path_root => {
-            let inner = pair.into_inner().next()
+            let inner = pair
+                .into_inner()
+                .next()
                 .ok_or_else(|| MetelError::internal("path_root: expected inner root"))?;
             parse_path_root(inner)
         }
@@ -95,7 +121,9 @@ fn parse_path_root(pair: pest::iterators::Pair<Rule>) -> Result<PathRoot, MetelE
         Rule::self_kw => Ok(PathRoot::Self_),
         Rule::super_kw => Ok(PathRoot::Super),
         Rule::ident => Ok(PathRoot::Name(pair.as_str().to_string())),
-        r => Err(MetelError::internal(format!("path_root: unexpected rule {r:?}"))),
+        r => Err(MetelError::internal(format!(
+            "path_root: unexpected rule {r:?}"
+        ))),
     }
 }
 
@@ -104,19 +132,25 @@ fn parse_import_tree(pair: pest::iterators::Pair<Rule>) -> Result<ImportTree, Me
         return Ok(ImportTree::Glob);
     }
     let mut inner = pair.into_inner();
-    let first = inner.next()
+    let first = inner
+        .next()
         .ok_or_else(|| MetelError::internal("import_tree: expected import item"))?;
     match first.as_rule() {
         Rule::ident => {
             let name = first.as_str().to_string();
             match inner.next() {
-                Some(second) if second.as_rule() == Rule::ident => {
-                    Ok(ImportTree::Name { name, alias: Some(second.as_str().to_string()) })
-                }
-                Some(second) if second.as_rule() == Rule::import_tree => {
-                    Ok(ImportTree::Path { name, tree: Box::new(parse_import_tree(second)?) })
-                }
-                Some(second) => Err(MetelError::internal(format!("import_tree: unexpected rule after name {:?}", second.as_rule()))),
+                Some(second) if second.as_rule() == Rule::ident => Ok(ImportTree::Name {
+                    name,
+                    alias: Some(second.as_str().to_string()),
+                }),
+                Some(second) if second.as_rule() == Rule::import_tree => Ok(ImportTree::Path {
+                    name,
+                    tree: Box::new(parse_import_tree(second)?),
+                }),
+                Some(second) => Err(MetelError::internal(format!(
+                    "import_tree: unexpected rule after name {:?}",
+                    second.as_rule()
+                ))),
                 None => Ok(ImportTree::Name { name, alias: None }),
             }
         }
@@ -131,53 +165,74 @@ fn parse_import_tree(pair: pest::iterators::Pair<Rule>) -> Result<ImportTree, Me
             }
             Ok(ImportTree::Group(trees))
         }
-        r => Err(MetelError::internal(format!("import_tree: unexpected rule {r:?}"))),
+        r => Err(MetelError::internal(format!(
+            "import_tree: unexpected rule {r:?}"
+        ))),
     }
 }
 
 fn parse_import_item(pair: pest::iterators::Pair<Rule>) -> Result<ImportTree, MetelError> {
     let mut inner = pair.into_inner();
-    let name = inner.next()
+    let name = inner
+        .next()
         .ok_or_else(|| MetelError::internal("import_item: expected name"))?
-        .as_str().to_string();
+        .as_str()
+        .to_string();
     let alias = inner.next().map(|p| p.as_str().to_string());
     Ok(ImportTree::Name { name, alias })
 }
 
 fn parse_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Decl, MetelError> {
     // `decl` has exactly one child
-    let inner = pair.into_inner().next()
+    let inner = pair
+        .into_inner()
+        .next()
         .ok_or_else(|| MetelError::internal("decl: missing inner rule"))?;
     match inner.as_rule() {
-        Rule::let_decl    => Ok(Decl::Let(parse_let_decl(inner, filename)?)),
+        Rule::let_decl => Ok(Decl::Let(parse_let_decl(inner, filename)?)),
         Rule::let_mut_decl => Ok(Decl::Mut(parse_mut_decl(inner, filename)?)),
-        Rule::fun_decl    => Ok(Decl::Fun(parse_fun_decl(inner, filename)?)),
+        Rule::fun_decl => Ok(Decl::Fun(parse_fun_decl(inner, filename)?)),
         Rule::struct_decl => Ok(Decl::Struct(parse_struct_decl(inner, filename)?)),
-        Rule::enum_decl   => Ok(Decl::Enum(parse_enum_decl(inner, filename)?)),
-        Rule::impl_block  => Ok(Decl::Impl(parse_impl_block(inner, filename)?)),
+        Rule::enum_decl => Ok(Decl::Enum(parse_enum_decl(inner, filename)?)),
+        Rule::impl_block => Ok(Decl::Impl(parse_impl_block(inner, filename)?)),
         Rule::aspect_decl => Ok(Decl::Aspect(parse_aspect_decl(inner, filename)?)),
-        Rule::stmt        => Ok(Decl::Stmt(Box::new(parse_stmt(inner, filename)?))),
+        Rule::stmt => Ok(Decl::Stmt(Box::new(parse_stmt(inner, filename)?))),
         r => Err(MetelError::internal(format!("decl: unexpected rule {r:?}"))),
     }
 }
 
-fn parse_let_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<LetDecl, MetelError> {
+fn parse_let_decl(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<LetDecl, MetelError> {
     let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner();
-    let name = inner.next()
+    let name = inner
+        .next()
         .ok_or_else(|| MetelError::internal("let_decl: expected identifier"))?
-        .as_str().to_string();
+        .as_str()
+        .to_string();
     let (type_ann, value) = parse_opt_type_then_expr(&mut inner, filename)?;
-    Ok(LetDecl { name, type_ann, value, span })
+    Ok(LetDecl {
+        name,
+        type_ann,
+        value,
+        span,
+    })
 }
 
-fn parse_mut_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<MutDecl, MetelError> {
+fn parse_mut_decl(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<MutDecl, MetelError> {
     let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner();
-    let first = inner.next()
+    let first = inner
+        .next()
         .ok_or_else(|| MetelError::internal("mut_decl: expected identifier"))?;
     let name = if first.as_rule() == Rule::mut_kw {
-        inner.next()
+        inner
+            .next()
             .ok_or_else(|| MetelError::internal("mut_decl: expected identifier after mut"))?
             .as_str()
             .to_string()
@@ -185,112 +240,151 @@ fn parse_mut_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<M
         first.as_str().to_string()
     };
     let (type_ann, value) = parse_opt_type_then_expr(&mut inner, filename)?;
-    Ok(MutDecl { name, type_ann, value, span })
+    Ok(MutDecl {
+        name,
+        type_ann,
+        value,
+        span,
+    })
 }
 
 /// Shared helper: parse `(":" type_expr)? expr` from a pair iterator.
 fn parse_opt_type_then_expr(
     inner: &mut pest::iterators::Pairs<Rule>,
-    filename: &str
+    filename: &str,
 ) -> Result<(Option<TypeExpr>, Expr), MetelError> {
-    let next = inner.next()
+    let next = inner
+        .next()
         .ok_or_else(|| MetelError::internal("expected type annotation or expression"))?;
     match next.as_rule() {
         Rule::type_expr => {
             let type_ann = Some(parse_type_expr(next, filename)?);
-            let expr_pair = inner.next()
+            let expr_pair = inner
+                .next()
                 .ok_or_else(|| MetelError::internal("expected expression after type annotation"))?;
             let value = parse_expr(expr_pair, filename)?;
             Ok((type_ann, value))
         }
         Rule::expr => Ok((None, parse_expr(next, filename)?)),
-        r => Err(MetelError::internal(format!("expected type_expr or expr, got {r:?}"))),
+        r => Err(MetelError::internal(format!(
+            "expected type_expr or expr, got {r:?}"
+        ))),
     }
 }
 
-fn parse_fun_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<FunDecl, MetelError> {
+fn parse_fun_decl(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<FunDecl, MetelError> {
     let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner();
-    let first = inner.next()
+    let first = inner
+        .next()
         .ok_or_else(|| MetelError::internal("fun_decl: expected function name"))?;
     let (visibility, name) = if first.as_rule() == Rule::pub_kw {
-        let n = inner.next()
+        let n = inner
+            .next()
             .ok_or_else(|| MetelError::internal("fun_decl: expected name after pub"))?
-            .as_str().to_string();
+            .as_str()
+            .to_string();
         (Visibility::Public, n)
     } else {
         (Visibility::Private, first.as_str().to_string())
     };
-    let mut generics     = vec![];
+    let mut generics = vec![];
     let mut where_clause = None;
-    let mut params       = vec![];
-    let mut return_type  = None;
-    let mut body         = None;
+    let mut params = vec![];
+    let mut return_type = None;
+    let mut body = None;
     for p in inner {
         match p.as_rule() {
-            Rule::generic_params => generics     = parse_generic_params(p, filename)?,
-            Rule::where_clause   => where_clause = Some(parse_where_clause(p, filename)?),
-            Rule::param_list     => params        = parse_param_list(p, filename)?,
-            Rule::type_expr      => return_type  = Some(parse_type_expr(p, filename)?),
-            Rule::block          => body          = Some(parse_block(p, filename)?),
+            Rule::generic_params => generics = parse_generic_params(p, filename)?,
+            Rule::where_clause => where_clause = Some(parse_where_clause(p, filename)?),
+            Rule::param_list => params = parse_param_list(p, filename)?,
+            Rule::type_expr => return_type = Some(parse_type_expr(p, filename)?),
+            Rule::block => body = Some(parse_block(p, filename)?),
             _ => {}
         }
     }
     Ok(FunDecl {
-        visibility, name, generics, where_clause, params, return_type,
+        visibility,
+        name,
+        generics,
+        where_clause,
+        params,
+        return_type,
         body: body.ok_or_else(|| MetelError::internal("fun_decl: missing body block"))?,
         span,
     })
 }
 
-fn parse_struct_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<StructDecl, MetelError> {
+fn parse_struct_decl(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<StructDecl, MetelError> {
     let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner();
-    let first = inner.next()
+    let first = inner
+        .next()
         .ok_or_else(|| MetelError::internal("struct_decl: expected name"))?;
     let (visibility, name) = if first.as_rule() == Rule::pub_kw {
-        let n = inner.next()
+        let n = inner
+            .next()
             .ok_or_else(|| MetelError::internal("struct_decl: expected name after pub"))?
-            .as_str().to_string();
+            .as_str()
+            .to_string();
         (Visibility::Public, n)
     } else {
         (Visibility::Private, first.as_str().to_string())
     };
-    let mut generics     = vec![];
+    let mut generics = vec![];
     let mut where_clause = None;
-    let mut fields       = vec![];
+    let mut fields = vec![];
     for p in inner {
         match p.as_rule() {
-            Rule::generic_params => generics     = parse_generic_params(p, filename)?,
-            Rule::where_clause   => where_clause = Some(parse_where_clause(p, filename)?),
-            Rule::struct_fields  => fields        = parse_struct_fields(p, filename)?,
+            Rule::generic_params => generics = parse_generic_params(p, filename)?,
+            Rule::where_clause => where_clause = Some(parse_where_clause(p, filename)?),
+            Rule::struct_fields => fields = parse_struct_fields(p, filename)?,
             _ => {}
         }
     }
-    Ok(StructDecl { visibility, name, generics, where_clause, fields, span })
+    Ok(StructDecl {
+        visibility,
+        name,
+        generics,
+        where_clause,
+        fields,
+        span,
+    })
 }
 
-fn parse_enum_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<EnumDecl, MetelError> {
+fn parse_enum_decl(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<EnumDecl, MetelError> {
     let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner();
-    let first = inner.next()
+    let first = inner
+        .next()
         .ok_or_else(|| MetelError::internal("enum_decl: expected name"))?;
     let (visibility, name) = if first.as_rule() == Rule::pub_kw {
-        let n = inner.next()
+        let n = inner
+            .next()
             .ok_or_else(|| MetelError::internal("enum_decl: expected name after pub"))?
-            .as_str().to_string();
+            .as_str()
+            .to_string();
         (Visibility::Public, n)
     } else {
         (Visibility::Private, first.as_str().to_string())
     };
-    let mut generics     = vec![];
+    let mut generics = vec![];
     let mut where_clause = None;
-    let mut variants     = vec![];
+    let mut variants = vec![];
     for p in inner {
         match p.as_rule() {
-            Rule::generic_params => generics     = parse_generic_params(p, filename)?,
-            Rule::where_clause   => where_clause = Some(parse_where_clause(p, filename)?),
-            Rule::enum_variants  => {
+            Rule::generic_params => generics = parse_generic_params(p, filename)?,
+            Rule::where_clause => where_clause = Some(parse_where_clause(p, filename)?),
+            Rule::enum_variants => {
                 for v in p.into_inner() {
                     if v.as_rule() == Rule::enum_variant {
                         variants.push(parse_enum_variant(v, filename)?);
@@ -300,10 +394,20 @@ fn parse_enum_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<
             _ => {}
         }
     }
-    Ok(EnumDecl { visibility, name, generics, where_clause, variants, span })
+    Ok(EnumDecl {
+        visibility,
+        name,
+        generics,
+        where_clause,
+        variants,
+        span,
+    })
 }
 
-fn parse_impl_block(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<ImplBlock, MetelError> {
+fn parse_impl_block(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<ImplBlock, MetelError> {
     let span = Span::of(&pair, filename);
     let inner = pair.into_inner();
     let mut aspect_name = None;
@@ -315,7 +419,9 @@ fn parse_impl_block(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result
     // Children: optionally [named_type, type_expr], or just [type_expr], then fun_decls.
     let mut collected: Vec<pest::iterators::Pair<Rule>> = inner.collect();
 
-    let fun_start = collected.iter().position(|p| p.as_rule() == Rule::fun_decl)
+    let fun_start = collected
+        .iter()
+        .position(|p| p.as_rule() == Rule::fun_decl)
         .unwrap_or(collected.len());
     let type_pairs: Vec<_> = collected.drain(..fun_start).collect();
     let fun_pairs = collected;
@@ -324,13 +430,16 @@ fn parse_impl_block(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result
         0 => return Err(MetelError::internal("impl_block: no target type found")),
         1 => {
             // `impl Type { ... }`
-            target_type = Some(parse_type_expr(type_pairs.into_iter().next().unwrap(), filename)?);
+            target_type = Some(parse_type_expr(
+                type_pairs.into_iter().next().unwrap(),
+                filename,
+            )?);
         }
         2 => {
             // `impl Aspect<T> for Type { ... }`
             let mut it = type_pairs.into_iter();
             let aspect_pair = it.next().unwrap(); // named_type rule
-            // named_type = { type_path ~ ("<" ~ type_args ~ ">")? }
+                                                  // named_type = { type_path ~ ("<" ~ type_args ~ ">")? }
             let mut inner_pairs = aspect_pair.into_inner();
             let path_pair = inner_pairs
                 .next()
@@ -348,7 +457,11 @@ fn parse_impl_block(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result
             }
             target_type = Some(parse_type_expr(it.next().unwrap(), filename)?);
         }
-        n => return Err(MetelError::internal(format!("impl_block: unexpected {n} type pairs"))),
+        n => {
+            return Err(MetelError::internal(format!(
+                "impl_block: unexpected {n} type pairs"
+            )))
+        }
     }
 
     for p in fun_pairs {
@@ -357,11 +470,19 @@ fn parse_impl_block(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result
         }
     }
 
-    Ok(ImplBlock { aspect_name, aspect_type_args, target_type: target_type.unwrap(), methods, span })
+    Ok(ImplBlock {
+        aspect_name,
+        aspect_type_args,
+        target_type: target_type.unwrap(),
+        methods,
+        span,
+    })
 }
 
-
-fn parse_param_list(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Vec<Param>, MetelError> {
+fn parse_param_list(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<Vec<Param>, MetelError> {
     let mut params = vec![];
     for p in pair.into_inner() {
         if p.as_rule() == Rule::param {
@@ -403,46 +524,74 @@ fn parse_param(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Para
     }
     // ident (":" type_expr)?
     let mut inner = pair.into_inner();
-    let name = inner.next()
+    let name = inner
+        .next()
         .ok_or_else(|| MetelError::internal("param: expected name"))?
-        .as_str().to_string();
-    let type_ann = inner.next().map(|p| parse_type_expr(p, filename)).transpose()?;
-    Ok(Param { mutable: false, receiver: None, name, type_ann, span })
+        .as_str()
+        .to_string();
+    let type_ann = inner
+        .next()
+        .map(|p| parse_type_expr(p, filename))
+        .transpose()?;
+    Ok(Param {
+        mutable: false,
+        receiver: None,
+        name,
+        type_ann,
+        span,
+    })
 }
 
-fn parse_struct_fields(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Vec<FieldDef>, MetelError> {
+fn parse_struct_fields(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<Vec<FieldDef>, MetelError> {
     let mut fields = vec![];
     for p in pair.into_inner() {
         if p.as_rule() == Rule::struct_field {
             let span = Span::of(&p, filename);
             let mut it = p.into_inner();
-            let first = it.next()
+            let first = it
+                .next()
                 .ok_or_else(|| MetelError::internal("struct_field: expected field head"))?;
             let (visibility, name_pair) = if first.as_rule() == Rule::pub_kw {
                 (
                     Visibility::Public,
-                    it.next().ok_or_else(|| MetelError::internal("struct_field: expected name after pub"))?,
+                    it.next().ok_or_else(|| {
+                        MetelError::internal("struct_field: expected name after pub")
+                    })?,
                 )
             } else {
                 (Visibility::Private, first)
             };
             let name = name_pair.as_str().to_string();
             let type_ann = parse_type_expr(
-                it.next().ok_or_else(|| MetelError::internal("struct_field: expected type"))?,
+                it.next()
+                    .ok_or_else(|| MetelError::internal("struct_field: expected type"))?,
                 filename,
             )?;
-            fields.push(FieldDef { visibility, name, type_ann, span });
+            fields.push(FieldDef {
+                visibility,
+                name,
+                type_ann,
+                span,
+            });
         }
     }
     Ok(fields)
 }
 
-fn parse_enum_variant(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<VariantDef, MetelError> {
+fn parse_enum_variant(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<VariantDef, MetelError> {
     let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner();
-    let name = inner.next()
+    let name = inner
+        .next()
         .ok_or_else(|| MetelError::internal("enum_variant: expected name"))?
-        .as_str().to_string();
+        .as_str()
+        .to_string();
     let mut fields = vec![];
     for p in inner {
         if p.as_rule() == Rule::struct_fields {
@@ -452,41 +601,56 @@ fn parse_enum_variant(pair: pest::iterators::Pair<Rule>, filename: &str) -> Resu
     Ok(VariantDef { name, fields, span })
 }
 
-fn parse_aspect_method(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<AspectMethod, MetelError> {
+fn parse_aspect_method(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<AspectMethod, MetelError> {
     let span = Span::of(&pair, filename);
-    let mut inner       = pair.into_inner();
-    let name = inner.next()
+    let mut inner = pair.into_inner();
+    let name = inner
+        .next()
         .ok_or_else(|| MetelError::internal("aspect_method: expected name"))?
-        .as_str().to_string();
-    let mut generics    = vec![];
-    let mut params      = vec![];
+        .as_str()
+        .to_string();
+    let mut generics = vec![];
+    let mut params = vec![];
     let mut return_type = None;
     let mut default_body = None;
     for p in inner {
         match p.as_rule() {
-            Rule::generic_params => generics     = parse_generic_params(p, filename)?,
-            Rule::param_list     => params       = parse_param_list(p, filename)?,
-            Rule::type_expr      => return_type  = Some(parse_type_expr(p, filename)?),
-            Rule::block          => default_body = Some(parse_block(p, filename)?),
+            Rule::generic_params => generics = parse_generic_params(p, filename)?,
+            Rule::param_list => params = parse_param_list(p, filename)?,
+            Rule::type_expr => return_type = Some(parse_type_expr(p, filename)?),
+            Rule::block => default_body = Some(parse_block(p, filename)?),
             _ => {}
         }
     }
-    Ok(AspectMethod { name, generics, params, return_type, default_body, span })
+    Ok(AspectMethod {
+        name,
+        generics,
+        params,
+        return_type,
+        default_body,
+        span,
+    })
 }
 
-
 fn parse_stmt(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Stmt, MetelError> {
-    let inner = pair.into_inner().next()
+    let inner = pair
+        .into_inner()
+        .next()
         .ok_or_else(|| MetelError::internal("stmt: missing inner rule"))?;
     match inner.as_rule() {
-        Rule::while_stmt   => Ok(Stmt::While(parse_while_stmt(inner, filename)?)),
-        Rule::for_stmt     => Ok(Stmt::For(Box::new(parse_for_stmt(inner, filename)?))),
-        Rule::for_in_stmt  => Ok(Stmt::ForIn(Box::new(parse_for_in_stmt(inner, filename)?))),
-        Rule::return_stmt  => Ok(Stmt::Return(parse_return_stmt(inner, filename)?)),
-        Rule::break_stmt   => Ok(Stmt::Break(parse_break_stmt(inner, filename)?)),
+        Rule::while_stmt => Ok(Stmt::While(parse_while_stmt(inner, filename)?)),
+        Rule::for_stmt => Ok(Stmt::For(Box::new(parse_for_stmt(inner, filename)?))),
+        Rule::for_in_stmt => Ok(Stmt::ForIn(Box::new(parse_for_in_stmt(inner, filename)?))),
+        Rule::return_stmt => Ok(Stmt::Return(parse_return_stmt(inner, filename)?)),
+        Rule::break_stmt => Ok(Stmt::Break(parse_break_stmt(inner, filename)?)),
         Rule::continue_stmt => Ok(Stmt::Continue(Span::of(&inner, filename))),
-        Rule::expr_stmt    => {
-            let expr_pair = inner.into_inner().next()
+        Rule::expr_stmt => {
+            let expr_pair = inner
+                .into_inner()
+                .next()
                 .ok_or_else(|| MetelError::internal("expr_stmt: missing expression"))?;
             Ok(Stmt::Expr(parse_expr(expr_pair, filename)?))
         }
@@ -494,37 +658,51 @@ fn parse_stmt(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Stmt,
     }
 }
 
-
-fn parse_while_stmt(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<WhileStmt, MetelError> {
+fn parse_while_stmt(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<WhileStmt, MetelError> {
     let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner();
     let condition = parse_expr(
-        inner.next().ok_or_else(|| MetelError::internal("while_stmt: expected condition"))?,
+        inner
+            .next()
+            .ok_or_else(|| MetelError::internal("while_stmt: expected condition"))?,
         filename,
     )?;
     let body = parse_block(
-        inner.next().ok_or_else(|| MetelError::internal("while_stmt: expected body"))?,
+        inner
+            .next()
+            .ok_or_else(|| MetelError::internal("while_stmt: expected body"))?,
         filename,
     )?;
-    Ok(WhileStmt { condition, body, span })
+    Ok(WhileStmt {
+        condition,
+        body,
+        span,
+    })
 }
 
-
-fn parse_for_stmt(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<ForStmt, MetelError> {
+fn parse_for_stmt(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<ForStmt, MetelError> {
     let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner();
 
     // for_init
-    let init_pair = inner.next()
+    let init_pair = inner
+        .next()
         .ok_or_else(|| MetelError::internal("for_stmt: expected init"))?;
     let init = if init_pair.as_rule() == Rule::for_init {
         match init_pair.into_inner().next() {
             Some(p) => match p.as_rule() {
-                Rule::let_decl  => Some(ForInit::Let(parse_let_decl(p, filename)?)),
+                Rule::let_decl => Some(ForInit::Let(parse_let_decl(p, filename)?)),
                 Rule::let_mut_decl => Some(ForInit::Mut(parse_mut_decl(p, filename)?)),
                 Rule::expr_stmt => {
-                    let ep = p.into_inner().next()
-                        .ok_or_else(|| MetelError::internal("for_stmt: expected expr in expr_stmt"))?;
+                    let ep = p.into_inner().next().ok_or_else(|| {
+                        MetelError::internal("for_stmt: expected expr in expr_stmt")
+                    })?;
                     Some(ForInit::Expr(parse_expr(ep, filename)?))
                 }
                 _ => None, // bare ";"
@@ -537,129 +715,185 @@ fn parse_for_stmt(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<F
 
     // condition and step are optional `expr` pairs; body is a `block`
     let mut condition = None;
-    let mut step      = None;
-    let mut body      = None;
+    let mut step = None;
+    let mut body = None;
     for p in inner {
         match p.as_rule() {
-            Rule::expr  => if condition.is_none() { condition = Some(parse_expr(p, filename)?); }
-                           else                   { step      = Some(parse_expr(p, filename)?); }
+            Rule::expr => {
+                if condition.is_none() {
+                    condition = Some(parse_expr(p, filename)?);
+                } else {
+                    step = Some(parse_expr(p, filename)?);
+                }
+            }
             Rule::block => body = Some(parse_block(p, filename)?),
             _ => {}
         }
     }
     Ok(ForStmt {
-        init, condition, step,
+        init,
+        condition,
+        step,
         body: body.ok_or_else(|| MetelError::internal("for_stmt: missing body"))?,
         span,
     })
 }
 
-
-fn parse_return_stmt(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<ReturnStmt, MetelError> {
-    let span  = Span::of(&pair, filename);
-    let value = pair.into_inner().next().map(|p| parse_expr(p, filename)).transpose()?;
+fn parse_return_stmt(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<ReturnStmt, MetelError> {
+    let span = Span::of(&pair, filename);
+    let value = pair
+        .into_inner()
+        .next()
+        .map(|p| parse_expr(p, filename))
+        .transpose()?;
     Ok(ReturnStmt { value, span })
 }
 
-
-fn parse_break_stmt(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<BreakStmt, MetelError> {
-    let span  = Span::of(&pair, filename);
-    let value = pair.into_inner().next().map(|p| parse_expr(p, filename)).transpose()?;
+fn parse_break_stmt(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<BreakStmt, MetelError> {
+    let span = Span::of(&pair, filename);
+    let value = pair
+        .into_inner()
+        .next()
+        .map(|p| parse_expr(p, filename))
+        .transpose()?;
     Ok(BreakStmt { value, span })
 }
-
 
 /// Entry point: consumes one `expr` pair.
 fn parse_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
     match pair.as_rule() {
         Rule::expr => {
-            let inner = pair.into_inner().next()
+            let inner = pair
+                .into_inner()
+                .next()
                 .ok_or_else(|| MetelError::internal("expr: missing inner rule"))?;
             parse_expr(inner, filename)
         }
         Rule::assign_expr => parse_assign_expr(pair, filename),
-        Rule::or_expr     => parse_lr_binary(pair, filename),
-        Rule::and_expr    => parse_lr_binary(pair, filename),
-        Rule::cmp_expr    => parse_lr_binary(pair, filename),
-        Rule::range_expr  => parse_lr_binary(pair, filename),
-        Rule::add_expr    => parse_lr_binary(pair, filename),
-        Rule::mul_expr    => parse_lr_binary(pair, filename),
-        Rule::cast_expr   => parse_cast_expr(pair, filename),
-        Rule::asc_expr    => parse_asc_expr(pair, filename),
-        Rule::unary_expr  => parse_unary_expr(pair, filename),
+        Rule::or_expr => parse_lr_binary(pair, filename),
+        Rule::and_expr => parse_lr_binary(pair, filename),
+        Rule::cmp_expr => parse_lr_binary(pair, filename),
+        Rule::range_expr => parse_lr_binary(pair, filename),
+        Rule::add_expr => parse_lr_binary(pair, filename),
+        Rule::mul_expr => parse_lr_binary(pair, filename),
+        Rule::cast_expr => parse_cast_expr(pair, filename),
+        Rule::asc_expr => parse_asc_expr(pair, filename),
+        Rule::unary_expr => parse_unary_expr(pair, filename),
         Rule::postfix_expr => parse_postfix_expr(pair, filename),
         Rule::primary_expr => {
-            let inner = pair.into_inner().next()
+            let inner = pair
+                .into_inner()
+                .next()
                 .ok_or_else(|| MetelError::internal("primary_expr: missing inner rule"))?;
             parse_expr(inner, filename)
         }
         // Terminals and composites reachable from primary_expr
-        Rule::int_lit | Rule::float_lit | Rule::string_lit | Rule::char_lit
-        | Rule::bool_lit | Rule::none_lit | Rule::unit_lit
-        | Rule::int_lit_suffixed | Rule::float_lit_suffixed => parse_literal_expr(pair, filename),
-        Rule::path_expr     => parse_path_expr(pair, filename),
+        Rule::int_lit
+        | Rule::float_lit
+        | Rule::string_lit
+        | Rule::char_lit
+        | Rule::bool_lit
+        | Rule::none_lit
+        | Rule::unit_lit
+        | Rule::int_lit_suffixed
+        | Rule::float_lit_suffixed => parse_literal_expr(pair, filename),
+        Rule::path_expr => parse_path_expr(pair, filename),
         Rule::tuple_or_paren => parse_tuple_or_paren(pair, filename),
-        Rule::array_lit     => parse_array_lit(pair, filename),
-        Rule::repeat_array  => parse_repeat_array(pair, filename),
-        Rule::match_expr    => Ok(Expr::Match(parse_match_expr(pair, filename)?)),
-        Rule::if_expr       => parse_if_expr(pair, filename),
-        Rule::loop_expr     => parse_loop_expr(pair, filename),
-        Rule::closure_expr  => parse_closure_expr(pair, filename),
+        Rule::array_lit => parse_array_lit(pair, filename),
+        Rule::repeat_array => parse_repeat_array(pair, filename),
+        Rule::match_expr => Ok(Expr::Match(parse_match_expr(pair, filename)?)),
+        Rule::if_expr => parse_if_expr(pair, filename),
+        Rule::loop_expr => parse_loop_expr(pair, filename),
+        Rule::closure_expr => parse_closure_expr(pair, filename),
         Rule::struct_literal => parse_struct_literal(pair, filename),
-        r => Err(MetelError::internal(format!("parse_expr: unexpected rule {r:?}"))),
+        r => Err(MetelError::internal(format!(
+            "parse_expr: unexpected rule {r:?}"
+        ))),
     }
 }
 
-fn parse_literal_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
-    use crate::ast::{IntKind, FloatKind};
+fn parse_literal_expr(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<Expr, MetelError> {
+    use crate::ast::{FloatKind, IntKind};
     let span = Span::of(&pair, filename);
     let text = pair.as_str();
     let lit = match pair.as_rule() {
-        Rule::int_lit => Literal::Int(
-            text.replace('_', "").parse().map_err(|_| MetelError::ParseError {
-                code: ParseErrorCode::P0002,
-                message: format!("integer literal '{text}' is out of range for i64"),
-                start: span.start, end: span.end, filename: filename.to_string(),
-                line: span.line, col: span.col, source_line: None,
-            })?
-        ),
-        Rule::float_lit => Literal::Float(
-            text.parse().map_err(|_| MetelError::ParseError {
-                code: ParseErrorCode::P0003,
-                message: format!("invalid float literal '{text}'"),
-                start: span.start, end: span.end, filename: filename.to_string(),
-                line: span.line, col: span.col, source_line: None,
-            })?
-        ),
+        Rule::int_lit => {
+            Literal::Int(
+                text.replace('_', "")
+                    .parse()
+                    .map_err(|_| MetelError::ParseError {
+                        code: ParseErrorCode::P0002,
+                        message: format!("integer literal '{text}' is out of range for i64"),
+                        start: span.start,
+                        end: span.end,
+                        filename: filename.to_string(),
+                        line: span.line,
+                        col: span.col,
+                        source_line: None,
+                    })?,
+            )
+        }
+        Rule::float_lit => Literal::Float(text.parse().map_err(|_| MetelError::ParseError {
+            code: ParseErrorCode::P0003,
+            message: format!("invalid float literal '{text}'"),
+            start: span.start,
+            end: span.end,
+            filename: filename.to_string(),
+            line: span.line,
+            col: span.col,
+            source_line: None,
+        })?),
         Rule::int_lit_suffixed => {
             // Split digits from suffix: find the first non-digit, non-underscore character.
-            let (suffix, digits_end) = if let Some(pos) = text.find(|c: char| !c.is_ascii_digit() && c != '_') {
-                (&text[pos..], pos)
-            } else {
-                (text, 0)
-            };
+            let (suffix, digits_end) =
+                if let Some(pos) = text.find(|c: char| !c.is_ascii_digit() && c != '_') {
+                    (&text[pos..], pos)
+                } else {
+                    (text, 0)
+                };
             let digits = text[..digits_end].replace('_', "");
             let kind = match suffix {
-                "i8"  => IntKind::I8,  "i16" => IntKind::I16,
-                "i32" => IntKind::I32, "i64" => IntKind::I64,
-                "u8"  => IntKind::U8,  "u16" => IntKind::U16,
-                "u32" => IntKind::U32, "u64" => IntKind::U64,
-                _ => return Err(MetelError::internal(format!("unknown int suffix '{suffix}'"))),
+                "i8" => IntKind::I8,
+                "i16" => IntKind::I16,
+                "i32" => IntKind::I32,
+                "i64" => IntKind::I64,
+                "u8" => IntKind::U8,
+                "u16" => IntKind::U16,
+                "u32" => IntKind::U32,
+                "u64" => IntKind::U64,
+                _ => {
+                    return Err(MetelError::internal(format!(
+                        "unknown int suffix '{suffix}'"
+                    )))
+                }
             };
             let value: i128 = digits.parse().map_err(|_| MetelError::ParseError {
                 code: ParseErrorCode::P0002,
                 message: format!("integer literal '{text}' is too large"),
-                start: span.start, end: span.end, filename: filename.to_string(),
-                line: span.line, col: span.col, source_line: None,
+                start: span.start,
+                end: span.end,
+                filename: filename.to_string(),
+                line: span.line,
+                col: span.col,
+                source_line: None,
             })?;
             let in_range = match kind {
                 // Allow abs(MIN) so that e.g. `-128i8` and `-32768i16` parse correctly;
                 // the extra value wraps to MIN via the two's-complement cast in the evaluator.
-                IntKind::I8  => value <= i8::MAX  as i128 + 1,
+                IntKind::I8 => value <= i8::MAX as i128 + 1,
                 IntKind::I16 => value <= i16::MAX as i128 + 1,
                 IntKind::I32 => value <= i32::MAX as i128 + 1,
                 IntKind::I64 => value <= i64::MAX as i128 + 1,
-                IntKind::U8  => value <= u8::MAX  as i128,
+                IntKind::U8 => value <= u8::MAX as i128,
                 IntKind::U16 => value <= u16::MAX as i128,
                 IntKind::U32 => value <= u32::MAX as i128,
                 IntKind::U64 => value <= u64::MAX as i128,
@@ -668,15 +902,21 @@ fn parse_literal_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Resu
                 return Err(MetelError::ParseError {
                     code: ParseErrorCode::P0002,
                     message: format!("literal '{text}' is out of range for {suffix}"),
-                    start: span.start, end: span.end, filename: filename.to_string(),
-                    line: span.line, col: span.col, source_line: None,
+                    start: span.start,
+                    end: span.end,
+                    filename: filename.to_string(),
+                    line: span.line,
+                    col: span.col,
+                    source_line: None,
                 });
             }
             Literal::SizedInt { value, kind }
         }
         Rule::float_lit_suffixed => {
             // Float literals: digits and '.' at the start, suffix follows.
-            let (suffix, digits_end) = if let Some(pos) = text.find(|c: char| !c.is_ascii_digit() && c != '_' && c != '.') {
+            let (suffix, digits_end) = if let Some(pos) =
+                text.find(|c: char| !c.is_ascii_digit() && c != '_' && c != '.')
+            {
                 (&text[pos..], pos)
             } else {
                 (text, 0)
@@ -685,31 +925,47 @@ fn parse_literal_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Resu
             let kind = match suffix {
                 "f32" => FloatKind::F32,
                 "f64" => FloatKind::F64,
-                _ => return Err(MetelError::internal(format!("unknown float suffix '{suffix}'"))),
+                _ => {
+                    return Err(MetelError::internal(format!(
+                        "unknown float suffix '{suffix}'"
+                    )))
+                }
             };
             let value: f64 = digits.parse().map_err(|_| MetelError::ParseError {
                 code: ParseErrorCode::P0003,
                 message: format!("invalid float literal '{text}'"),
-                start: span.start, end: span.end, filename: filename.to_string(),
-                line: span.line, col: span.col, source_line: None,
+                start: span.start,
+                end: span.end,
+                filename: filename.to_string(),
+                line: span.line,
+                col: span.col,
+                source_line: None,
             })?;
             Literal::SizedFloat { value, kind }
         }
         Rule::string_lit => return parse_string_literal_expr(text, span, filename),
-        Rule::char_lit   => {
+        Rule::char_lit => {
             let inner = &text[1..text.len() - 1];
             let ch = parse_char_inner(inner).ok_or_else(|| MetelError::ParseError {
                 code: ParseErrorCode::P0004,
                 message: format!("invalid character literal {text}"),
-                start: span.start, end: span.end, filename: filename.to_string(),
-                line: span.line, col: span.col, source_line: None,
+                start: span.start,
+                end: span.end,
+                filename: filename.to_string(),
+                line: span.line,
+                col: span.col,
+                source_line: None,
             })?;
             Literal::Char(ch)
         }
-        Rule::bool_lit   => Literal::Boolean(text == "true"),
-        Rule::none_lit   => Literal::None,
-        Rule::unit_lit   => Literal::Unit,
-        r => return Err(MetelError::internal(format!("parse_literal_expr: unexpected rule {r:?}"))),
+        Rule::bool_lit => Literal::Boolean(text == "true"),
+        Rule::none_lit => Literal::None,
+        Rule::unit_lit => Literal::Unit,
+        r => {
+            return Err(MetelError::internal(format!(
+                "parse_literal_expr: unexpected rule {r:?}"
+            )))
+        }
     };
     Ok(Expr::Literal(lit, span))
 }
@@ -728,18 +984,20 @@ fn parse_string_literal_expr(text: &str, span: Span, filename: &str) -> Result<E
     let mut text_start: Option<usize> = None;
     let mut i = 0usize;
     while i < raw.len() {
-        let c = raw[i..].chars().next()
+        let c = raw[i..]
+            .chars()
+            .next()
             .ok_or_else(|| MetelError::internal("string interpolation: invalid char boundary"))?;
         let next = i + c.len_utf8();
         if c == '\\' {
             let escaped = raw[next..].chars().next();
             let decoded = match escaped {
-                Some('n')  => '\n',
-                Some('t')  => '\t',
-                Some('r')  => '\r',
+                Some('n') => '\n',
+                Some('t') => '\t',
+                Some('r') => '\r',
                 Some('\\') => '\\',
-                Some('"')  => '"',
-                Some('$')  => '$',
+                Some('"') => '"',
+                Some('$') => '$',
                 Some(other) => {
                     text_buf.push('\\');
                     text_buf.push(other);
@@ -770,7 +1028,10 @@ fn parse_string_literal_expr(text: &str, span: Span, filename: &str) -> Result<E
             if !text_buf.is_empty() {
                 let seg_start = text_start.unwrap_or(i);
                 let seg_span = make_relative_span(&span, raw, seg_start, i);
-                parts.push(Expr::Literal(Literal::Str(std::mem::take(&mut text_buf)), seg_span));
+                parts.push(Expr::Literal(
+                    Literal::Str(std::mem::take(&mut text_buf)),
+                    seg_span,
+                ));
                 text_start = None;
             }
 
@@ -779,7 +1040,8 @@ fn parse_string_literal_expr(text: &str, span: Span, filename: &str) -> Result<E
             let expr_end = find_interpolation_end(raw, expr_start, &span)?;
             let expr_span = make_relative_span(&span, raw, expr_start, expr_end);
             let placeholder_span = make_relative_span(&span, raw, interp_start, expr_end + 1);
-            let mut expr = parse_interpolation_expr(&raw[expr_start..expr_end], &expr_span, filename)?;
+            let mut expr =
+                parse_interpolation_expr(&raw[expr_start..expr_end], &expr_span, filename)?;
             shift_expr_span(&mut expr, expr_span.start, expr_span.line, expr_span.col);
             parts.push(Expr::MethodCall {
                 receiver: Box::new(expr),
@@ -838,12 +1100,17 @@ fn parse_interpolation_expr(source: &str, span: &Span, filename: &str) -> Result
             source_line: Some(e.line().to_string()),
         }
     })?;
-    let pair = pairs.next()
+    let pair = pairs
+        .next()
         .ok_or_else(|| MetelError::internal("string interpolation: missing expr pair"))?;
     parse_expr(pair, filename)
 }
 
-fn find_interpolation_end(raw: &str, expr_start: usize, literal_span: &Span) -> Result<usize, MetelError> {
+fn find_interpolation_end(
+    raw: &str,
+    expr_start: usize,
+    literal_span: &Span,
+) -> Result<usize, MetelError> {
     let mut depth = 1usize;
     let mut in_string = false;
     let mut escaped = false;
@@ -882,22 +1149,26 @@ fn find_interpolation_end(raw: &str, expr_start: usize, literal_span: &Span) -> 
 }
 
 fn decoded_interpolation_char(raw: &str, start: usize) -> Result<(char, usize), MetelError> {
-    let c = raw[start..].chars().next()
+    let c = raw[start..]
+        .chars()
+        .next()
         .ok_or_else(|| MetelError::internal("string interpolation: invalid char boundary"))?;
     if c != '\\' {
         return Ok((c, c.len_utf8()));
     }
 
     let next_start = start + c.len_utf8();
-    let escaped = raw[next_start..].chars().next()
+    let escaped = raw[next_start..]
+        .chars()
+        .next()
         .ok_or_else(|| MetelError::internal("string interpolation: trailing backslash"))?;
     let decoded = match escaped {
-        'n'  => '\n',
-        't'  => '\t',
-        'r'  => '\r',
+        'n' => '\n',
+        't' => '\t',
+        'r' => '\r',
         '\\' => '\\',
-        '"'  => '"',
-        '$'  => '$',
+        '"' => '"',
+        '$' => '$',
         other => other,
     };
     Ok((decoded, c.len_utf8() + escaped.len_utf8()))
@@ -958,42 +1229,67 @@ fn shift_expr_span(expr: &mut Expr, base_start: usize, base_line: u32, base_col:
         Expr::ResolvedPath { span, .. } => {
             shift_span(span, base_start, base_line, base_col);
         }
-        Expr::Assign { target, value, span, .. } => {
+        Expr::Assign {
+            target,
+            value,
+            span,
+            ..
+        } => {
             shift_assign_target_span(target, base_start, base_line, base_col);
             shift_expr_span(value, base_start, base_line, base_col);
             shift_span(span, base_start, base_line, base_col);
         }
-        Expr::Call { callee, args, span, .. } => {
+        Expr::Call {
+            callee, args, span, ..
+        } => {
             shift_expr_span(callee, base_start, base_line, base_col);
-            for arg in args { shift_expr_span(arg, base_start, base_line, base_col); }
+            for arg in args {
+                shift_expr_span(arg, base_start, base_line, base_col);
+            }
             shift_span(span, base_start, base_line, base_col);
         }
-        Expr::MethodCall { receiver, args, span, .. } => {
+        Expr::MethodCall {
+            receiver,
+            args,
+            span,
+            ..
+        } => {
             shift_expr_span(receiver, base_start, base_line, base_col);
-            for arg in args { shift_expr_span(arg, base_start, base_line, base_col); }
+            for arg in args {
+                shift_expr_span(arg, base_start, base_line, base_col);
+            }
             shift_span(span, base_start, base_line, base_col);
         }
-        Expr::FieldAccess { object, span, .. }
-        | Expr::TupleAccess { object, span, .. } => {
+        Expr::FieldAccess { object, span, .. } | Expr::TupleAccess { object, span, .. } => {
             shift_expr_span(object, base_start, base_line, base_col);
             shift_span(span, base_start, base_line, base_col);
         }
-        Expr::Index { object, index, span } => {
+        Expr::Index {
+            object,
+            index,
+            span,
+        } => {
             shift_expr_span(object, base_start, base_line, base_col);
             shift_expr_span(index, base_start, base_line, base_col);
             shift_span(span, base_start, base_line, base_col);
         }
-        Expr::Cast { expr, span, .. }
-        | Expr::Ascribe { expr, span, .. } => {
+        Expr::Cast { expr, span, .. } | Expr::Ascribe { expr, span, .. } => {
             shift_expr_span(expr, base_start, base_line, base_col);
             shift_span(span, base_start, base_line, base_col);
         }
         Expr::Match(m) => {
             shift_expr_span(&mut m.scrutinee, base_start, base_line, base_col);
-            for arm in &mut m.arms { shift_match_arm_span(arm, base_start, base_line, base_col); }
+            for arm in &mut m.arms {
+                shift_match_arm_span(arm, base_start, base_line, base_col);
+            }
             shift_span(&mut m.span, base_start, base_line, base_col);
         }
-        Expr::If { condition, then_branch, else_branch, span } => {
+        Expr::If {
+            condition,
+            then_branch,
+            else_branch,
+            span,
+        } => {
             shift_expr_span(condition, base_start, base_line, base_col);
             shift_block_span(then_branch, base_start, base_line, base_col);
             if let Some(block) = else_branch {
@@ -1005,19 +1301,30 @@ fn shift_expr_span(expr: &mut Expr, base_start: usize, base_line: u32, base_col:
             shift_block_span(body, base_start, base_line, base_col);
             shift_span(span, base_start, base_line, base_col);
         }
-        Expr::Closure { params, body, span, .. } => {
-            for param in params { shift_span(&mut param.span, base_start, base_line, base_col); }
+        Expr::Closure {
+            params, body, span, ..
+        } => {
+            for param in params {
+                shift_span(&mut param.span, base_start, base_line, base_col);
+            }
             shift_block_span(body, base_start, base_line, base_col);
             shift_span(span, base_start, base_line, base_col);
         }
         Expr::StructLiteral { fields, span, .. } => {
-            for (_, expr) in fields { shift_expr_span(expr, base_start, base_line, base_col); }
+            for (_, expr) in fields {
+                shift_expr_span(expr, base_start, base_line, base_col);
+            }
             shift_span(span, base_start, base_line, base_col);
         }
     }
 }
 
-fn shift_assign_target_span(target: &mut AssignTarget, base_start: usize, base_line: u32, base_col: u32) {
+fn shift_assign_target_span(
+    target: &mut AssignTarget,
+    base_start: usize,
+    base_line: u32,
+    base_col: u32,
+) {
     match target {
         AssignTarget::Ident(_, span) => shift_span(span, base_start, base_line, base_col),
         AssignTarget::Deref { object, span } => {
@@ -1028,7 +1335,11 @@ fn shift_assign_target_span(target: &mut AssignTarget, base_start: usize, base_l
             shift_expr_span(object, base_start, base_line, base_col);
             shift_span(span, base_start, base_line, base_col);
         }
-        AssignTarget::Index { object, index, span } => {
+        AssignTarget::Index {
+            object,
+            index,
+            span,
+        } => {
             shift_expr_span(object, base_start, base_line, base_col);
             shift_expr_span(index, base_start, base_line, base_col);
             shift_span(span, base_start, base_line, base_col);
@@ -1188,7 +1499,7 @@ fn shift_pattern_span(pattern: &mut Pattern, base_start: usize, base_line: u32, 
 }
 
 fn parse_path_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
-    let span  = Span::of(&pair, filename);
+    let span = Span::of(&pair, filename);
     let parts = collect_path_components(pair)?;
     if parts.len() == 1 {
         Ok(Expr::Ident(parts.into_iter().next().unwrap(), span))
@@ -1197,9 +1508,13 @@ fn parse_path_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<
     }
 }
 
-fn parse_tuple_or_paren(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
+fn parse_tuple_or_paren(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<Expr, MetelError> {
     let span = Span::of(&pair, filename);
-    let elems: Vec<Expr> = pair.into_inner()
+    let elems: Vec<Expr> = pair
+        .into_inner()
         .filter(|p| p.as_rule() == Rule::expr)
         .map(|p| parse_expr(p, filename))
         .collect::<Result<_, _>>()?;
@@ -1212,32 +1527,43 @@ fn parse_tuple_or_paren(pair: pest::iterators::Pair<Rule>, filename: &str) -> Re
 
 fn parse_array_lit(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
     let span = Span::of(&pair, filename);
-    let elems = pair.into_inner()
+    let elems = pair
+        .into_inner()
         .filter(|p| p.as_rule() == Rule::expr)
         .map(|p| parse_expr(p, filename))
         .collect::<Result<_, _>>()?;
     Ok(Expr::Array(elems, span))
 }
 
-fn parse_repeat_array(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
+fn parse_repeat_array(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<Expr, MetelError> {
     let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner();
     let elem = parse_expr(
-        inner.next().ok_or_else(|| MetelError::internal("repeat_array: expected element expr"))?,
+        inner
+            .next()
+            .ok_or_else(|| MetelError::internal("repeat_array: expected element expr"))?,
         filename,
     )?;
-    let n_str = inner.next()
+    let n_str = inner
+        .next()
         .ok_or_else(|| MetelError::internal("repeat_array: expected count"))?
         .as_str();
-    let n: u64 = n_str.parse().map_err(|_| MetelError::internal(
-        format!("repeat_array: count '{n_str}' is not a valid u64")
-    ))?;
+    let n: u64 = n_str.parse().map_err(|_| {
+        MetelError::internal(format!("repeat_array: count '{n_str}' is not a valid u64"))
+    })?;
     Ok(Expr::RepeatArray(Box::new(elem), n, span))
 }
 
 fn wrap_expr_as_block(expr: Expr) -> Block {
     let s = expr.span().clone();
-    Block { stmts: vec![], tail: Some(Box::new(expr)), span: s }
+    Block {
+        stmts: vec![],
+        tail: Some(Box::new(expr)),
+        span: s,
+    }
 }
 
 fn parse_if_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
@@ -1245,18 +1571,26 @@ fn parse_if_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Ex
     let mut inner = pair.into_inner();
 
     let condition = parse_expr(
-        inner.next().ok_or_else(|| MetelError::internal("if_expr: expected condition"))?,
+        inner
+            .next()
+            .ok_or_else(|| MetelError::internal("if_expr: expected condition"))?,
         filename,
     )?;
 
-    let then_pair = inner.next().ok_or_else(|| MetelError::internal("if_expr: expected then body"))?;
+    let then_pair = inner
+        .next()
+        .ok_or_else(|| MetelError::internal("if_expr: expected then body"))?;
     let then_is_block = then_pair.as_rule() == Rule::block;
     let then_branch = if then_is_block {
         parse_block(then_pair, filename)?
     } else {
         let expr = parse_expr(then_pair, filename)?;
         // Braceless body that is itself an if–else creates dangling-else ambiguity.
-        if let Expr::If { else_branch: Some(_), .. } = &expr {
+        if let Expr::If {
+            else_branch: Some(_),
+            ..
+        } = &expr
+        {
             return Err(MetelError::parse(
                 ParseErrorCode::P0001,
                 "braceless if body may not contain an if–else expression; wrap the outer body in braces",
@@ -1270,7 +1604,7 @@ fn parse_if_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Ex
         None => None,
         Some(p) => {
             let else_is_block = p.as_rule() == Rule::block;
-            let else_is_if    = p.as_rule() == Rule::if_expr;
+            let else_is_if = p.as_rule() == Rule::if_expr;
             // Mixed arm styles are not allowed.
             if then_is_block && !else_is_block && !else_is_if {
                 return Err(MetelError::parse(
@@ -1299,42 +1633,57 @@ fn parse_if_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Ex
         }
     };
 
-    Ok(Expr::If { condition: Box::new(condition), then_branch, else_branch, span })
+    Ok(Expr::If {
+        condition: Box::new(condition),
+        then_branch,
+        else_branch,
+        span,
+    })
 }
 
 fn parse_loop_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
     let span = Span::of(&pair, filename);
     let body = parse_block(
-        pair.into_inner().next().ok_or_else(|| MetelError::internal("loop_expr: expected body"))?,
+        pair.into_inner()
+            .next()
+            .ok_or_else(|| MetelError::internal("loop_expr: expected body"))?,
         filename,
     )?;
     Ok(Expr::Loop { body, span })
 }
 
-fn parse_closure_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
+fn parse_closure_expr(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<Expr, MetelError> {
     let span = Span::of(&pair, filename);
-    let mut params      = vec![];
+    let mut params = vec![];
     let mut return_type = None;
-    let mut body        = None;
+    let mut body = None;
     for p in pair.into_inner() {
         match p.as_rule() {
-            Rule::param_list => params      = parse_param_list(p, filename)?,
-            Rule::type_expr  => return_type = Some(parse_type_expr(p, filename)?),
-            Rule::block      => body        = Some(parse_block(p, filename)?),
+            Rule::param_list => params = parse_param_list(p, filename)?,
+            Rule::type_expr => return_type = Some(parse_type_expr(p, filename)?),
+            Rule::block => body = Some(parse_block(p, filename)?),
             _ => {}
         }
     }
     Ok(Expr::Closure {
-        params, return_type,
+        params,
+        return_type,
         body: body.ok_or_else(|| MetelError::internal("closure: missing body block"))?,
         span,
     })
 }
 
-fn parse_struct_literal(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
+fn parse_struct_literal(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<Expr, MetelError> {
     let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner();
-    let path_pair = inner.next()
+    let path_pair = inner
+        .next()
         .ok_or_else(|| MetelError::internal("struct_literal: expected path"))?;
     let path = collect_path_components(path_pair)?;
     let mut fields = vec![];
@@ -1342,7 +1691,8 @@ fn parse_struct_literal(pair: pest::iterators::Pair<Rule>, filename: &str) -> Re
         if p.as_rule() == Rule::field_init {
             let field_span = Span::of(&p, filename);
             let mut it = p.into_inner();
-            let name_pair = it.next()
+            let name_pair = it
+                .next()
                 .ok_or_else(|| MetelError::internal("struct_literal: expected field name"))?;
             let name = name_pair.as_str().to_string();
             let value = match it.next() {
@@ -1381,10 +1731,14 @@ fn path_root_to_component(root: PathRoot) -> String {
 
 // ── Assignment ────────────────────────────────────────────────────────────────
 
-fn parse_assign_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
-    let span  = Span::of(&pair, filename);
+fn parse_assign_expr(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<Expr, MetelError> {
+    let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner();
-    let first = inner.next()
+    let first = inner
+        .next()
         .ok_or_else(|| MetelError::internal("assign_expr: expected first child"))?;
 
     // assign_expr = { unary_expr ~ assign_op ~ assign_expr | or_expr }
@@ -1395,19 +1749,26 @@ fn parse_assign_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Resul
             let lhs = parse_unary_expr(first, filename)?;
             match inner.next() {
                 Some(op_pair) if op_pair.as_rule() == Rule::assign_op => {
-                    let op     = parse_assign_op(op_pair.as_str());
-                    let rhs    = parse_expr(
-                        inner.next().ok_or_else(|| MetelError::internal("assign_expr: expected rhs"))?,
+                    let op = parse_assign_op(op_pair.as_str());
+                    let rhs = parse_expr(
+                        inner
+                            .next()
+                            .ok_or_else(|| MetelError::internal("assign_expr: expected rhs"))?,
                         filename,
                     )?;
                     let target = expr_to_assign_target(lhs)?;
-                    Ok(Expr::Assign { target, op, value: Box::new(rhs), span })
+                    Ok(Expr::Assign {
+                        target,
+                        op,
+                        value: Box::new(rhs),
+                        span,
+                    })
                 }
                 _ => Ok(lhs), // shouldn't happen with valid grammar
             }
         }
         Rule::or_expr => parse_lr_binary(first, filename),
-        _             => parse_expr(first, filename),
+        _ => parse_expr(first, filename),
     }
 }
 
@@ -1416,18 +1777,20 @@ fn parse_assign_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Resul
 /// Handles or_expr, and_expr, cmp_expr, range_expr, add_expr, mul_expr.
 /// All follow the pattern: operand (op operand)* where op is a named rule.
 fn parse_lr_binary(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
-    let span  = Span::of(&pair, filename);
+    let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner();
-    let first = inner.next()
+    let first = inner
+        .next()
         .ok_or_else(|| MetelError::internal("binary_expr: expected first operand"))?;
     let mut expr = parse_expr(first, filename)?;
 
     // Consume op/operand pairs
     while let Some(op_pair) = inner.next() {
-        let op      = parse_bin_op(&op_pair);
-        let rhs_pair = inner.next()
+        let op = parse_bin_op(&op_pair);
+        let rhs_pair = inner
+            .next()
             .ok_or_else(|| MetelError::internal("binary_expr: expected rhs operand"))?;
-        let rhs     = parse_expr(rhs_pair, filename)?;
+        let rhs = parse_expr(rhs_pair, filename)?;
         let op_span = Span::of(&op_pair, filename);
         expr = Expr::BinOp(Box::new(expr), op, Box::new(rhs), op_span);
     }
@@ -1440,22 +1803,28 @@ fn parse_lr_binary(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<
 fn parse_asc_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
     let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner();
-    let first = inner.next()
+    let first = inner
+        .next()
         .ok_or_else(|| MetelError::internal("asc_expr: expected operand"))?;
     let expr = parse_expr(first, filename)?;
     match inner.next() {
         Some(ty_pair) => {
             let ann = parse_type_expr(ty_pair, filename)?;
-            Ok(Expr::Ascribe { expr: Box::new(expr), ann, span })
+            Ok(Expr::Ascribe {
+                expr: Box::new(expr),
+                ann,
+                span,
+            })
         }
         None => Ok(expr),
     }
 }
 
 fn parse_cast_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
-    let span  = Span::of(&pair, filename);
+    let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner();
-    let first = inner.next()
+    let first = inner
+        .next()
         .ok_or_else(|| MetelError::internal("cast_expr: expected operand"))?;
     let mut expr = parse_expr(first, filename)?;
     for p in inner {
@@ -1463,7 +1832,11 @@ fn parse_cast_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<
             Rule::cast_op => {}
             Rule::type_expr => {
                 let target_type = parse_type_expr(p, filename)?;
-                expr = Expr::Cast { expr: Box::new(expr), target_type, span: span.clone() };
+                expr = Expr::Cast {
+                    expr: Box::new(expr),
+                    target_type,
+                    span: span.clone(),
+                };
             }
             _ => {}
         }
@@ -1476,18 +1849,40 @@ fn parse_cast_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<
 fn parse_unary_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
     let span = Span::of(&pair, filename);
     let text = pair.as_str();
-    let child = pair.into_inner().last()
+    let child = pair
+        .into_inner()
+        .last()
         .ok_or_else(|| MetelError::internal("unary_expr: expected operand"))?;
     if text.starts_with('!') {
-        Ok(Expr::UnaryOp(UnaryOp::Not, Box::new(parse_expr(child, filename)?), span))
+        Ok(Expr::UnaryOp(
+            UnaryOp::Not,
+            Box::new(parse_expr(child, filename)?),
+            span,
+        ))
     } else if text.starts_with("&mut") {
-        Ok(Expr::UnaryOp(UnaryOp::RefMut, Box::new(parse_expr(child, filename)?), span))
+        Ok(Expr::UnaryOp(
+            UnaryOp::RefMut,
+            Box::new(parse_expr(child, filename)?),
+            span,
+        ))
     } else if text.starts_with('&') {
-        Ok(Expr::UnaryOp(UnaryOp::Ref, Box::new(parse_expr(child, filename)?), span))
+        Ok(Expr::UnaryOp(
+            UnaryOp::Ref,
+            Box::new(parse_expr(child, filename)?),
+            span,
+        ))
     } else if text.starts_with('*') {
-        Ok(Expr::UnaryOp(UnaryOp::Deref, Box::new(parse_expr(child, filename)?), span))
+        Ok(Expr::UnaryOp(
+            UnaryOp::Deref,
+            Box::new(parse_expr(child, filename)?),
+            span,
+        ))
     } else if text.starts_with('-') {
-        Ok(Expr::UnaryOp(UnaryOp::Neg, Box::new(parse_expr(child, filename)?), span))
+        Ok(Expr::UnaryOp(
+            UnaryOp::Neg,
+            Box::new(parse_expr(child, filename)?),
+            span,
+        ))
     } else {
         parse_expr(child, filename)
     }
@@ -1495,9 +1890,13 @@ fn parse_unary_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result
 
 // ── Postfix ───────────────────────────────────────────────────────────────────
 
-fn parse_postfix_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
+fn parse_postfix_expr(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<Expr, MetelError> {
     let mut inner = pair.into_inner();
-    let primary = inner.next()
+    let primary = inner
+        .next()
         .ok_or_else(|| MetelError::internal("postfix_expr: expected primary"))?;
     let mut expr = parse_expr(primary, filename)?;
     for postfix in inner {
@@ -1508,148 +1907,243 @@ fn parse_postfix_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Resu
     Ok(expr)
 }
 
-fn parse_type_args_pair(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Vec<TypeExpr>, MetelError> {
+fn parse_type_args_pair(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<Vec<TypeExpr>, MetelError> {
     pair.into_inner()
         .filter(|p| p.as_rule() == Rule::type_expr)
         .map(|p| parse_type_expr(p, filename))
         .collect()
 }
 
-fn apply_postfix(base: Expr, pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
+fn apply_postfix(
+    base: Expr,
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<Expr, MetelError> {
     let span = Span::of(&pair, filename);
     let text = pair.as_str();
     let mut inner = pair.into_inner();
 
     if text.starts_with("::<") {
         // Turbofish free function call: children are type_args, then optional arg_list
-        let targs_pair = inner.next()
+        let targs_pair = inner
+            .next()
             .ok_or_else(|| MetelError::internal("turbofish call: expected type_args"))?;
         let type_args = parse_type_args_pair(targs_pair, filename)?;
         let args = match inner.next() {
             Some(a) if a.as_rule() == Rule::arg_list => collect_args(a.into_inner(), filename)?,
             _ => vec![],
         };
-        Ok(Expr::Call { callee: Box::new(base), type_args, args, span })
+        Ok(Expr::Call {
+            callee: Box::new(base),
+            type_args,
+            args,
+            span,
+        })
     } else if text.starts_with('(') {
         // Function call: postfix children are (arg_list?), so unwrap one level
         let args = match inner.next() {
             Some(a) if a.as_rule() == Rule::arg_list => collect_args(a.into_inner(), filename)?,
             _ => vec![],
         };
-        Ok(Expr::Call { callee: Box::new(base), type_args: vec![], args, span })
+        Ok(Expr::Call {
+            callee: Box::new(base),
+            type_args: vec![],
+            args,
+            span,
+        })
     } else if text.starts_with('[') {
         // Index
         let idx = parse_expr(
-            inner.next().ok_or_else(|| MetelError::internal("postfix index: expected index expr"))?,
+            inner
+                .next()
+                .ok_or_else(|| MetelError::internal("postfix index: expected index expr"))?,
             filename,
         )?;
-        Ok(Expr::Index { object: Box::new(base), index: Box::new(idx), span })
+        Ok(Expr::Index {
+            object: Box::new(base),
+            index: Box::new(idx),
+            span,
+        })
     } else if text == "?" {
-        Ok(Expr::PropagateError { expr: Box::new(base), span })
+        Ok(Expr::PropagateError {
+            expr: Box::new(base),
+            span,
+        })
     } else {
         // Dot postfix — first named child is decimal_int or ident
-        let first = inner.next()
+        let first = inner
+            .next()
             .ok_or_else(|| MetelError::internal("postfix dot: expected field name or index"))?;
         match first.as_rule() {
             Rule::decimal_int => {
-                let idx = first.as_str().parse::<usize>()
-                    .map_err(|_| MetelError::internal(
-                        format!("postfix dot: '{}' is not a valid tuple index", first.as_str())
-                    ))?;
-                Ok(Expr::TupleAccess { object: Box::new(base), index: idx, span })
+                let idx = first.as_str().parse::<usize>().map_err(|_| {
+                    MetelError::internal(format!(
+                        "postfix dot: '{}' is not a valid tuple index",
+                        first.as_str()
+                    ))
+                })?;
+                Ok(Expr::TupleAccess {
+                    object: Box::new(base),
+                    index: idx,
+                    span,
+                })
             }
             Rule::ident => {
                 let name = first.as_str().to_string();
                 if text.contains("::<") {
                     // Method call with turbofish: next child is type_args, then optional arg_list
-                    let targs_pair = inner.next()
-                        .ok_or_else(|| MetelError::internal("method turbofish: expected type_args"))?;
+                    let targs_pair = inner.next().ok_or_else(|| {
+                        MetelError::internal("method turbofish: expected type_args")
+                    })?;
                     let type_args = parse_type_args_pair(targs_pair, filename)?;
                     let args = match inner.next() {
-                        Some(a) if a.as_rule() == Rule::arg_list => collect_args(a.into_inner(), filename)?,
+                        Some(a) if a.as_rule() == Rule::arg_list => {
+                            collect_args(a.into_inner(), filename)?
+                        }
                         _ => vec![],
                     };
-                    Ok(Expr::MethodCall { receiver: Box::new(base), method: name, type_args, args, span })
+                    Ok(Expr::MethodCall {
+                        receiver: Box::new(base),
+                        method: name,
+                        type_args,
+                        args,
+                        span,
+                    })
                 } else if text.contains('(') {
                     // Method call without turbofish (arg_list may be absent if call has no args)
                     let args = match inner.next() {
-                        Some(a) if a.as_rule() == Rule::arg_list => collect_args(a.into_inner(), filename)?,
+                        Some(a) if a.as_rule() == Rule::arg_list => {
+                            collect_args(a.into_inner(), filename)?
+                        }
                         _ => vec![],
                     };
-                    Ok(Expr::MethodCall { receiver: Box::new(base), method: name, type_args: vec![], args, span })
+                    Ok(Expr::MethodCall {
+                        receiver: Box::new(base),
+                        method: name,
+                        type_args: vec![],
+                        args,
+                        span,
+                    })
                 } else {
-                    Ok(Expr::FieldAccess { object: Box::new(base), field: name, span })
+                    Ok(Expr::FieldAccess {
+                        object: Box::new(base),
+                        field: name,
+                        span,
+                    })
                 }
             }
-            r => Err(MetelError::internal(format!("postfix dot: unexpected child rule {r:?}"))),
+            r => Err(MetelError::internal(format!(
+                "postfix dot: unexpected child rule {r:?}"
+            ))),
         }
     }
 }
 
 fn collect_args(
     pairs: pest::iterators::Pairs<Rule>,
-    filename: &str
+    filename: &str,
 ) -> Result<Vec<Expr>, MetelError> {
-    pairs.filter(|p| p.as_rule() == Rule::expr)
-         .map(|p| parse_expr(p, filename))
-         .collect()
+    pairs
+        .filter(|p| p.as_rule() == Rule::expr)
+        .map(|p| parse_expr(p, filename))
+        .collect()
 }
 
-
-fn parse_match_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<MatchExpr, MetelError> {
+fn parse_match_expr(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<MatchExpr, MetelError> {
     let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner();
     let scrutinee = parse_expr(
-        inner.next().ok_or_else(|| MetelError::internal("match_expr: expected scrutinee"))?,
+        inner
+            .next()
+            .ok_or_else(|| MetelError::internal("match_expr: expected scrutinee"))?,
         filename,
     )?;
     let arms: Vec<MatchArm> = inner
         .filter(|p| p.as_rule() == Rule::match_arm)
         .map(|p| parse_match_arm(p, filename))
         .collect::<Result<_, _>>()?;
-    Ok(MatchExpr { scrutinee: Box::new(scrutinee), arms, span })
+    Ok(MatchExpr {
+        scrutinee: Box::new(scrutinee),
+        arms,
+        span,
+    })
 }
 
-
-fn parse_match_arm(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<MatchArm, MetelError> {
+fn parse_match_arm(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<MatchArm, MetelError> {
     let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner();
     let pattern = parse_pattern(
-        inner.next().ok_or_else(|| MetelError::internal("match_arm: expected pattern"))?,
+        inner
+            .next()
+            .ok_or_else(|| MetelError::internal("match_arm: expected pattern"))?,
         filename,
     )?;
 
     // Remaining children: optionally a guard `expr`, then body `block | expr`.
     let remaining: Vec<_> = inner.collect();
-    let (body_pair, guard_pairs) = remaining.split_last()
+    let (body_pair, guard_pairs) = remaining
+        .split_last()
         .ok_or_else(|| MetelError::internal("match_arm: expected body"))?;
 
-    let guard = guard_pairs.iter()
+    let guard = guard_pairs
+        .iter()
         .find(|p| p.as_rule() == Rule::expr)
         .map(|p| parse_expr(p.clone(), filename))
         .transpose()?;
 
     let body = match body_pair.as_rule() {
         Rule::block => parse_block(body_pair.clone(), filename)?,
-        Rule::expr  => {
+        Rule::expr => {
             let body_span = Span::of(body_pair, filename);
             let expr = parse_expr(body_pair.clone(), filename)?;
-            Block { stmts: vec![], tail: Some(Box::new(expr)), span: body_span }
+            Block {
+                stmts: vec![],
+                tail: Some(Box::new(expr)),
+                span: body_span,
+            }
         }
         Rule::return_arm => {
             let body_span = Span::of(body_pair, filename);
-            let stmt = Decl::Stmt(Box::new(Stmt::Return(parse_return_stmt(body_pair.clone(), filename)?)));
-            Block { stmts: vec![stmt], tail: None, span: body_span }
+            let stmt = Decl::Stmt(Box::new(Stmt::Return(parse_return_stmt(
+                body_pair.clone(),
+                filename,
+            )?)));
+            Block {
+                stmts: vec![stmt],
+                tail: None,
+                span: body_span,
+            }
         }
         Rule::break_arm => {
             let body_span = Span::of(body_pair, filename);
-            let stmt = Decl::Stmt(Box::new(Stmt::Break(parse_break_stmt(body_pair.clone(), filename)?)));
-            Block { stmts: vec![stmt], tail: None, span: body_span }
+            let stmt = Decl::Stmt(Box::new(Stmt::Break(parse_break_stmt(
+                body_pair.clone(),
+                filename,
+            )?)));
+            Block {
+                stmts: vec![stmt],
+                tail: None,
+                span: body_span,
+            }
         }
         _ => return Err(MetelError::internal("match_arm: unexpected body rule")),
     };
 
-    Ok(MatchArm { pattern, guard, body, span })
+    Ok(MatchArm {
+        pattern,
+        guard,
+        body,
+        span,
+    })
 }
 
 fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pattern, MetelError> {
@@ -1660,14 +2154,17 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
             if pair.as_str().trim() == "_" {
                 return Ok(Pattern::Wildcard(Span::of(&pair, filename)));
             }
-            let inner = pair.into_inner().next()
+            let inner = pair
+                .into_inner()
+                .next()
                 .ok_or_else(|| MetelError::internal("pattern: missing inner rule"))?;
             parse_pattern(inner, filename)
         }
         Rule::none_lit => Ok(Pattern::None(Span::of(&pair, filename))),
         Rule::tuple_pattern => {
-            let span = Span::of(&pair,filename);
-            let pats = pair.into_inner()
+            let span = Span::of(&pair, filename);
+            let pats = pair
+                .into_inner()
                 .filter(|p| p.as_rule() == Rule::pattern)
                 .map(|p| parse_pattern(p, filename))
                 .collect::<Result<_, _>>()?;
@@ -1675,7 +2172,8 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
         }
         Rule::enum_pattern => {
             let span = Span::of(&pair, filename);
-            let idents: Vec<String> = pair.into_inner()
+            let idents: Vec<String> = pair
+                .into_inner()
                 .filter(|p| p.as_rule() == Rule::ident)
                 .map(|p| p.as_str().to_string())
                 .collect();
@@ -1690,27 +2188,37 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
         }
         Rule::literal_pattern => {
             let span = Span::of(&pair, filename);
-            let lit_pair = pair.into_inner().next()
+            let lit_pair = pair
+                .into_inner()
+                .next()
                 .ok_or_else(|| MetelError::internal("literal_pattern: expected literal"))?;
             // Delegate to parse_literal_expr and extract the Literal.
             let lit = match parse_literal_expr(lit_pair, filename)? {
                 Expr::Literal(l, _) => l,
-                _ => return Err(MetelError::internal("literal_pattern: expected literal expr")),
+                _ => {
+                    return Err(MetelError::internal(
+                        "literal_pattern: expected literal expr",
+                    ))
+                }
             };
             Ok(Pattern::Literal(lit, span))
         }
         Rule::bind_pattern => {
             let span = Span::of(&pair, filename);
-            let name = pair.into_inner().next()
+            let name = pair
+                .into_inner()
+                .next()
                 .ok_or_else(|| MetelError::internal("bind_pattern: expected name"))?
-                .as_str().to_string();
+                .as_str()
+                .to_string();
             Ok(Pattern::Binding(name, span))
         }
         Rule::array_pattern => {
             let span = Span::of(&pair, filename);
             // array_pattern = { "[" ~ array_pat_body ~ "]" }
             // array_pat_body = { (pattern ~ ("," ~ pattern)* ~ ("," ~ rest_pat)? | rest_pat)? }
-            let body_pair = pair.into_inner()
+            let body_pair = pair
+                .into_inner()
                 .find(|p| p.as_rule() == Rule::array_pat_body)
                 .ok_or_else(|| MetelError::internal("array_pattern: missing body"))?;
             let mut elems = vec![];
@@ -1719,10 +2227,12 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
                 match child.as_rule() {
                     Rule::pattern => elems.push(parse_pattern(child, filename)?),
                     Rule::rest_pat => {
-                        let name = child.into_inner()
+                        let name = child
+                            .into_inner()
                             .find(|p| p.as_rule() == Rule::ident)
                             .ok_or_else(|| MetelError::internal("rest_pat: expected ident"))?
-                            .as_str().to_string();
+                            .as_str()
+                            .to_string();
                         rest = Some(name);
                     }
                     _ => {}
@@ -1736,22 +2246,42 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
         // which recurses into the single child. If there is no child and the
         // text is "_", we match here.
         _ if pair.as_str().trim() == "_" => Ok(Pattern::Wildcard(Span::of(&pair, filename))),
-        r => Err(MetelError::internal(format!("pattern: unexpected rule {r:?}"))),
+        r => Err(MetelError::internal(format!(
+            "pattern: unexpected rule {r:?}"
+        ))),
     }
 }
 
-
 fn parse_bin_op(pair: &pest::iterators::Pair<Rule>) -> BinOp {
     match pair.as_rule() {
-        Rule::add_op   => if pair.as_str() == "-" { BinOp::Sub } else { BinOp::Add },
-        Rule::mul_op   => match pair.as_str() { "/" => BinOp::Div, "%" => BinOp::Rem, _ => BinOp::Mul },
-        Rule::or_op    => BinOp::Or,
-        Rule::and_op   => BinOp::And,
-        Rule::range_op => if pair.as_str() == "..=" { BinOp::RangeInclusive } else { BinOp::Range },
-        Rule::cmp_op   => match pair.as_str() {
-            "==" => BinOp::Eq, "!=" => BinOp::Ne,
-            "<=" => BinOp::Le, ">=" => BinOp::Ge,
-            "<"  => BinOp::Lt, _    => BinOp::Gt,
+        Rule::add_op => {
+            if pair.as_str() == "-" {
+                BinOp::Sub
+            } else {
+                BinOp::Add
+            }
+        }
+        Rule::mul_op => match pair.as_str() {
+            "/" => BinOp::Div,
+            "%" => BinOp::Rem,
+            _ => BinOp::Mul,
+        },
+        Rule::or_op => BinOp::Or,
+        Rule::and_op => BinOp::And,
+        Rule::range_op => {
+            if pair.as_str() == "..=" {
+                BinOp::RangeInclusive
+            } else {
+                BinOp::Range
+            }
+        }
+        Rule::cmp_op => match pair.as_str() {
+            "==" => BinOp::Eq,
+            "!=" => BinOp::Ne,
+            "<=" => BinOp::Le,
+            ">=" => BinOp::Ge,
+            "<" => BinOp::Lt,
+            _ => BinOp::Gt,
         },
         _ => BinOp::Add, // fallback
     }
@@ -1759,38 +2289,60 @@ fn parse_bin_op(pair: &pest::iterators::Pair<Rule>) -> BinOp {
 
 fn parse_assign_op(s: &str) -> AssignOp {
     match s {
-        "+=" => AssignOp::AddAssign, "-=" => AssignOp::SubAssign,
-        "*=" => AssignOp::MulAssign, "/=" => AssignOp::DivAssign,
-        "%=" => AssignOp::RemAssign, _    => AssignOp::Assign,
+        "+=" => AssignOp::AddAssign,
+        "-=" => AssignOp::SubAssign,
+        "*=" => AssignOp::MulAssign,
+        "/=" => AssignOp::DivAssign,
+        "%=" => AssignOp::RemAssign,
+        _ => AssignOp::Assign,
     }
 }
 
 fn expr_to_assign_target(expr: Expr) -> Result<AssignTarget, MetelError> {
     match expr {
-        Expr::Ident(name, span) =>
-            Ok(AssignTarget::Ident(name, span)),
-        Expr::UnaryOp(UnaryOp::Deref, object, span) =>
-            Ok(AssignTarget::Deref { object, span }),
-        Expr::FieldAccess { object, field, span } =>
-            Ok(AssignTarget::FieldAccess { object, field, span }),
-        Expr::Index { object, index, span } =>
-            Ok(AssignTarget::Index { object, index, span }),
-        _ => Err(MetelError::internal("assign target must be an identifier, field access, or index expression")),
+        Expr::Ident(name, span) => Ok(AssignTarget::Ident(name, span)),
+        Expr::UnaryOp(UnaryOp::Deref, object, span) => Ok(AssignTarget::Deref { object, span }),
+        Expr::FieldAccess {
+            object,
+            field,
+            span,
+        } => Ok(AssignTarget::FieldAccess {
+            object,
+            field,
+            span,
+        }),
+        Expr::Index {
+            object,
+            index,
+            span,
+        } => Ok(AssignTarget::Index {
+            object,
+            index,
+            span,
+        }),
+        _ => Err(MetelError::internal(
+            "assign target must be an identifier, field access, or index expression",
+        )),
     }
 }
 
-
 #[allow(clippy::only_used_in_recursion)]
-fn parse_type_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<TypeExpr, MetelError> {
+fn parse_type_expr(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<TypeExpr, MetelError> {
     match pair.as_rule() {
         Rule::type_expr => {
-            let inner = pair.into_inner().next()
+            let inner = pair
+                .into_inner()
+                .next()
                 .ok_or_else(|| MetelError::internal("type_expr: missing inner rule"))?;
             parse_type_expr(inner, filename)
         }
-        Rule::unit_type  => Ok(TypeExpr::Unit),
+        Rule::unit_type => Ok(TypeExpr::Unit),
         Rule::tuple_type => {
-            let elems = pair.into_inner()
+            let elems = pair
+                .into_inner()
                 .filter(|p| p.as_rule() == Rule::type_expr)
                 .map(|p| parse_type_expr(p, filename))
                 .collect::<Result<_, _>>()?;
@@ -1798,7 +2350,8 @@ fn parse_type_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<
         }
         Rule::pointer_type => {
             let elem = parse_type_expr(
-                pair.into_inner().next()
+                pair.into_inner()
+                    .next()
                     .ok_or_else(|| MetelError::internal("pointer_type: expected pointee type"))?,
                 filename,
             )?;
@@ -1808,7 +2361,9 @@ fn parse_type_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<
             let elem = parse_type_expr(
                 pair.into_inner()
                     .find(|p| p.as_rule() == Rule::type_expr)
-                    .ok_or_else(|| MetelError::internal("mut_pointer_type: expected pointee type"))?,
+                    .ok_or_else(|| {
+                        MetelError::internal("mut_pointer_type: expected pointee type")
+                    })?,
                 filename,
             )?;
             Ok(TypeExpr::MutPointer(Box::new(elem)))
@@ -1816,32 +2371,39 @@ fn parse_type_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<
         Rule::sized_array_type => {
             let mut inner = pair.into_inner();
             let elem = parse_type_expr(
-                inner.next().ok_or_else(|| MetelError::internal("sized_array_type: expected element type"))?,
+                inner.next().ok_or_else(|| {
+                    MetelError::internal("sized_array_type: expected element type")
+                })?,
                 filename,
             )?;
-            let n_str = inner.next()
+            let n_str = inner
+                .next()
                 .ok_or_else(|| MetelError::internal("sized_array_type: expected count"))?
                 .as_str();
-            let n: u64 = n_str.parse().map_err(|_| MetelError::internal(
-                format!("sized_array_type: count '{n_str}' is not a valid u64")
-            ))?;
+            let n: u64 = n_str.parse().map_err(|_| {
+                MetelError::internal(format!(
+                    "sized_array_type: count '{n_str}' is not a valid u64"
+                ))
+            })?;
             Ok(TypeExpr::SizedArray(Box::new(elem), n))
         }
         Rule::array_type => {
             let elem = parse_type_expr(
-                pair.into_inner().next()
+                pair.into_inner()
+                    .next()
                     .ok_or_else(|| MetelError::internal("array_type: expected element type"))?,
                 filename,
             )?;
             Ok(TypeExpr::Array(Box::new(elem)))
         }
         Rule::fun_type => {
-            let mut params      = vec![];
+            let mut params = vec![];
             let mut return_type = None;
             for p in pair.into_inner() {
                 match p.as_rule() {
                     Rule::type_list => {
-                        params = p.into_inner()
+                        params = p
+                            .into_inner()
                             .filter(|q| q.as_rule() == Rule::type_expr)
                             .map(|p| parse_type_expr(p, filename))
                             .collect::<Result<_, _>>()?;
@@ -1854,13 +2416,15 @@ fn parse_type_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<
         }
         Rule::named_type => {
             let mut inner = pair.into_inner();
-            let path_pair = inner.next()
+            let path_pair = inner
+                .next()
                 .ok_or_else(|| MetelError::internal("named_type: expected name"))?;
             let name = collect_path_components(path_pair)?.join("::");
             let mut args = vec![];
             for p in inner {
                 if p.as_rule() == Rule::type_args {
-                    args = p.into_inner()
+                    args = p
+                        .into_inner()
                         .filter(|q| q.as_rule() == Rule::type_expr)
                         .map(|p| parse_type_expr(p, filename))
                         .collect::<Result<_, _>>()?;
@@ -1871,62 +2435,98 @@ fn parse_type_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<
         Rule::impl_type => {
             let span = Span::of(&pair, filename);
             let source_spell = pair.as_str().to_string();
-            let bound_pair = pair.into_inner().next()
+            let bound_pair = pair
+                .into_inner()
+                .next()
                 .ok_or_else(|| MetelError::internal("impl_type: expected bound"))?;
             let bound = parse_type_expr(bound_pair, filename)?;
-            Ok(TypeExpr::ImplAspect { bound: Box::new(bound), source_spell, span })
+            Ok(TypeExpr::ImplAspect {
+                bound: Box::new(bound),
+                source_spell,
+                span,
+            })
         }
-        r => Err(MetelError::internal(format!("type_expr: unexpected rule {r:?}"))),
+        r => Err(MetelError::internal(format!(
+            "type_expr: unexpected rule {r:?}"
+        ))),
     }
 }
 
-fn parse_for_in_stmt(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<ForInStmt, MetelError> {
+fn parse_for_in_stmt(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<ForInStmt, MetelError> {
     let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner();
-    let first = inner.next()
+    let first = inner
+        .next()
         .ok_or_else(|| MetelError::internal("for_in: expected binding"))?;
     let (mutable, binding) = if first.as_rule() == Rule::ident {
         (false, first.as_str().to_string())
     } else {
-        let name = inner.next()
+        let name = inner
+            .next()
             .ok_or_else(|| MetelError::internal("for_in: expected binding name after mut"))?
-            .as_str().to_string();
+            .as_str()
+            .to_string();
         (true, name)
     };
     let iterable = parse_expr(
-        inner.next().ok_or_else(|| MetelError::internal("for_in: expected iterable expression"))?,
+        inner
+            .next()
+            .ok_or_else(|| MetelError::internal("for_in: expected iterable expression"))?,
         filename,
     )?;
     let body = parse_block(
-        inner.next().ok_or_else(|| MetelError::internal("for_in: expected body block"))?,
+        inner
+            .next()
+            .ok_or_else(|| MetelError::internal("for_in: expected body block"))?,
         filename,
     )?;
-    Ok(ForInStmt { binding, mutable, iterable, body, span })
+    Ok(ForInStmt {
+        binding,
+        mutable,
+        iterable,
+        body,
+        span,
+    })
 }
 
 fn parse_block(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Block, MetelError> {
     let span = Span::of(&pair, filename);
     let mut stmts = vec![];
-    let mut tail  = None;
+    let mut tail = None;
     for p in pair.into_inner() {
         match p.as_rule() {
             Rule::block_item => {
-                let inner = p.into_inner().next()
+                let inner = p
+                    .into_inner()
+                    .next()
                     .ok_or_else(|| MetelError::internal("block_item: missing inner rule"))?;
                 match inner.as_rule() {
                     Rule::block_expr_stmt => {
-                        let expr_pair = inner.into_inner().next()
+                        let expr_pair = inner
+                            .into_inner()
+                            .next()
                             .ok_or_else(|| MetelError::internal("block_expr_stmt: missing expr"))?;
                         let expr = match expr_pair.as_rule() {
-                            Rule::if_expr    => parse_if_expr(expr_pair, filename)?,
+                            Rule::if_expr => parse_if_expr(expr_pair, filename)?,
                             Rule::match_expr => Expr::Match(parse_match_expr(expr_pair, filename)?),
-                            Rule::loop_expr  => parse_loop_expr(expr_pair, filename)?,
-                            r => return Err(MetelError::internal(format!("block_expr_stmt: unexpected rule {r:?}"))),
+                            Rule::loop_expr => parse_loop_expr(expr_pair, filename)?,
+                            r => {
+                                return Err(MetelError::internal(format!(
+                                    "block_expr_stmt: unexpected rule {r:?}"
+                                )))
+                            }
                         };
                         stmts.push(Decl::Stmt(Box::new(Stmt::Expr(expr))));
                     }
                     Rule::decl => stmts.push(parse_decl(inner, filename)?),
-                    r => return Err(MetelError::internal(format!("block_item: unexpected rule {r:?}"))),
+                    r => {
+                        return Err(MetelError::internal(format!(
+                            "block_item: unexpected rule {r:?}"
+                        )))
+                    }
                 }
             }
             Rule::decl => stmts.push(parse_decl(p, filename)?),
@@ -1937,22 +2537,31 @@ fn parse_block(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Bloc
     Ok(Block { stmts, tail, span })
 }
 
-fn parse_bound_list(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Vec<TypeExpr>, MetelError> {
+fn parse_bound_list(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<Vec<TypeExpr>, MetelError> {
     pair.into_inner()
         .filter(|p| p.as_rule() == Rule::type_expr)
         .map(|p| parse_type_expr(p, filename))
         .collect()
 }
 
-fn parse_where_clause(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<WhereClause, MetelError> {
+fn parse_where_clause(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<WhereClause, MetelError> {
     let mut constraints = vec![];
     for p in pair.into_inner() {
         if p.as_rule() == Rule::where_constraint {
             let mut it = p.into_inner();
-            let name = it.next()
+            let name = it
+                .next()
                 .ok_or_else(|| MetelError::internal("where_constraint: expected param name"))?
-                .as_str().to_string();
-            let bounds = it.next()
+                .as_str()
+                .to_string();
+            let bounds = it
+                .next()
                 .map(|bl| parse_bound_list(bl, filename))
                 .transpose()?
                 .unwrap_or_default();
@@ -1962,15 +2571,21 @@ fn parse_where_clause(pair: pest::iterators::Pair<Rule>, filename: &str) -> Resu
     Ok(WhereClause { constraints })
 }
 
-fn parse_generic_params(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Vec<GenericParam>, MetelError> {
+fn parse_generic_params(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<Vec<GenericParam>, MetelError> {
     let mut params = vec![];
     for p in pair.into_inner() {
         if p.as_rule() == Rule::generic_param {
             let mut it = p.into_inner();
-            let name = it.next()
+            let name = it
+                .next()
                 .ok_or_else(|| MetelError::internal("generic_param: expected name"))?
-                .as_str().to_string();
-            let bounds = it.next()
+                .as_str()
+                .to_string();
+            let bounds = it
+                .next()
                 .map(|bl| parse_bound_list(bl, filename))
                 .transpose()?
                 .unwrap_or_default();
@@ -1980,15 +2595,21 @@ fn parse_generic_params(pair: pest::iterators::Pair<Rule>, filename: &str) -> Re
     Ok(params)
 }
 
-fn parse_aspect_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<AspectDecl, MetelError> {
+fn parse_aspect_decl(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<AspectDecl, MetelError> {
     let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner();
-    let first = inner.next()
+    let first = inner
+        .next()
         .ok_or_else(|| MetelError::internal("aspect_decl: expected name"))?;
     let (visibility, name) = if first.as_rule() == Rule::pub_kw {
-        let n = inner.next()
+        let n = inner
+            .next()
             .ok_or_else(|| MetelError::internal("aspect_decl: expected name after pub"))?
-            .as_str().to_string();
+            .as_str()
+            .to_string();
         (Visibility::Public, n)
     } else {
         (Visibility::Private, first.as_str().to_string())
@@ -2000,31 +2621,41 @@ fn parse_aspect_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Resul
             Rule::generic_params => {
                 for gp in p.into_inner() {
                     if gp.as_rule() == Rule::generic_param {
-                        let pname = gp.into_inner().next().map(|i| i.as_str().to_string()).unwrap_or_default();
+                        let pname = gp
+                            .into_inner()
+                            .next()
+                            .map(|i| i.as_str().to_string())
+                            .unwrap_or_default();
                         generics.push(pname);
                     }
                 }
             }
-            Rule::aspect_method => { methods.push(parse_aspect_method(p, filename)?); }
+            Rule::aspect_method => {
+                methods.push(parse_aspect_method(p, filename)?);
+            }
             _ => {}
         }
     }
-    Ok(AspectDecl { visibility, name, generics, methods, span })
+    Ok(AspectDecl {
+        visibility,
+        name,
+        generics,
+        methods,
+        span,
+    })
 }
-
 
 fn parse_char_inner(s: &str) -> Option<char> {
     if let Some(rest) = s.strip_prefix('\\') {
         let mut chars = rest.chars();
         match chars.next()? {
-            'n'  => Some('\n'),
-            't'  => Some('\t'),
-            'r'  => Some('\r'),
+            'n' => Some('\n'),
+            't' => Some('\t'),
+            'r' => Some('\r'),
             '\\' => Some('\\'),
             '\'' => Some('\''),
-            'u'  => {
-                let hex = rest.strip_prefix("u{")?
-                    .strip_suffix('}')?;
+            'u' => {
+                let hex = rest.strip_prefix("u{")?.strip_suffix('}')?;
                 let code = u32::from_str_radix(hex, 16).ok()?;
                 char::from_u32(code)
             }
@@ -2033,7 +2664,11 @@ fn parse_char_inner(s: &str) -> Option<char> {
     } else {
         let mut chars = s.chars();
         let c = chars.next()?;
-        if chars.next().is_none() { Some(c) } else { None }
+        if chars.next().is_none() {
+            Some(c)
+        } else {
+            None
+        }
     }
 }
 
@@ -2043,14 +2678,17 @@ fn unescape(s: &str) -> String {
     while let Some(c) = chars.next() {
         if c == '\\' {
             match chars.next() {
-                Some('n')  => out.push('\n'),
-                Some('t')  => out.push('\t'),
-                Some('r')  => out.push('\r'),
+                Some('n') => out.push('\n'),
+                Some('t') => out.push('\t'),
+                Some('r') => out.push('\r'),
                 Some('\\') => out.push('\\'),
-                Some('"')  => out.push('"'),
-                Some('$')  => out.push('$'),
-                Some(c)    => { out.push('\\'); out.push(c); }
-                None       => out.push('\\'),
+                Some('"') => out.push('"'),
+                Some('$') => out.push('$'),
+                Some(c) => {
+                    out.push('\\');
+                    out.push(c);
+                }
+                None => out.push('\\'),
             }
         } else {
             out.push(c);

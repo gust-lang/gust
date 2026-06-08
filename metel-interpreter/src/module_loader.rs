@@ -28,10 +28,17 @@ pub struct ModuleGraph {
 
 pub fn load_root(path: impl AsRef<Path>) -> Result<ModuleGraph, MetelError> {
     let root = canonicalize_existing(path.as_ref())?;
-    let root_dir = root.parent().unwrap_or_else(|| Path::new(".")).to_path_buf();
+    let root_dir = root
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
     let mut loader = Loader::new(root_dir);
     loader.load_module(root.clone(), Vec::new())?;
-    Ok(ModuleGraph { root, modules: loader.modules, path_aliases: loader.path_aliases })
+    Ok(ModuleGraph {
+        root,
+        modules: loader.modules,
+        path_aliases: loader.path_aliases,
+    })
 }
 
 /// Parse a single `.mtl` file and return its `Program`.
@@ -70,7 +77,11 @@ impl Loader {
 }
 
 impl Loader {
-    fn load_module(&mut self, file_path: PathBuf, module_path: Vec<String>) -> Result<(), MetelError> {
+    fn load_module(
+        &mut self,
+        file_path: PathBuf,
+        module_path: Vec<String>,
+    ) -> Result<(), MetelError> {
         let root_dir = self.root_dir.clone();
         if let Some(cycle_start) = self.stack.iter().position(|p| p == &file_path) {
             let mut chain: Vec<String> = self.stack[cycle_start..]
@@ -108,7 +119,9 @@ impl Loader {
 
         self.stack.push(file_path.clone());
         for import in &program.imports {
-            if let Some((mod_segs, child_file)) = resolve_import_module(&file_path, &root_dir, &import.path.root, &import.path.tree)? {
+            if let Some((mod_segs, child_file)) =
+                resolve_import_module(&file_path, &root_dir, &import.path.root, &import.path.tree)?
+            {
                 let child = canonicalize_existing(&child_file)?;
                 let child_path = child_module_path(&module_path, &import.path.root, &mod_segs);
                 self.load_module(child, child_path)?;
@@ -117,8 +130,13 @@ impl Loader {
         self.stack.pop();
 
         self.visited.insert(file_path.clone());
-        self.file_to_path.insert(file_path.clone(), module_path.clone());
-        self.modules.push(LoadedModule { module_path, file_path, program });
+        self.file_to_path
+            .insert(file_path.clone(), module_path.clone());
+        self.modules.push(LoadedModule {
+            module_path,
+            file_path,
+            program,
+        });
         Ok(())
     }
 }
@@ -245,14 +263,21 @@ fn find_module_file(base_dir: &Path, segs: &[String]) -> Option<(Vec<String>, Pa
     None
 }
 
-fn validate_super_root(program: &Program, module_path: &[String], file_path: &Path) -> Result<(), MetelError> {
+fn validate_super_root(
+    program: &Program,
+    module_path: &[String],
+    file_path: &Path,
+) -> Result<(), MetelError> {
     if !module_path.is_empty() {
         return Ok(());
     }
 
     for import in &program.imports {
         if import.path.root == PathRoot::Super || import_tree_contains_super(&import.path.tree) {
-            return Err(module_error("`super::` is invalid from the root module", file_path));
+            return Err(module_error(
+                "`super::` is invalid from the root module",
+                file_path,
+            ));
         }
     }
 

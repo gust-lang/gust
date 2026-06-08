@@ -1,0 +1,348 @@
+{
+  "functions": [
+    {
+      "function": "Array::len",
+      "calls": 6,
+      "inclusive_ns": 375,
+      "self_ns": 375
+    },
+    {
+      "function": "String::to_string",
+      "calls": 1,
+      "inclusive_ns": 206,
+      "self_ns": 206
+    },
+    {
+      "function": "approx",
+      "calls": 9,
+      "inclusive_ns": 9332,
+      "self_ns": 9332
+    },
+    {
+      "function": "area",
+      "calls": 9,
+      "inclusive_ns": 30790,
+      "self_ns": 27924
+    },
+    {
+      "function": "assert",
+      "calls": 30,
+      "inclusive_ns": 1321,
+      "self_ns": 1321
+    },
+    {
+      "function": "boolean::to_string",
+      "calls": 2,
+      "inclusive_ns": 169,
+      "self_ns": 169
+    },
+    {
+      "function": "circle_area_from_str",
+      "calls": 3,
+      "inclusive_ns": 47221,
+      "self_ns": 34524
+    },
+    {
+      "function": "describe",
+      "calls": 4,
+      "inclusive_ns": 14292,
+      "self_ns": 12417
+    },
+    {
+      "function": "f64::From<i64>::from",
+      "calls": 12,
+      "inclusive_ns": 957,
+      "self_ns": 957
+    },
+    {
+      "function": "f64::to_string",
+      "calls": 2,
+      "inclusive_ns": 1297,
+      "self_ns": 1297
+    },
+    {
+      "function": "from",
+      "calls": 5,
+      "inclusive_ns": 6169,
+      "self_ns": 5982
+    },
+    {
+      "function": "i64::From<f64>::from",
+      "calls": 1,
+      "inclusive_ns": 310,
+      "self_ns": 310
+    },
+    {
+      "function": "i64::to_string",
+      "calls": 8,
+      "inclusive_ns": 882,
+      "self_ns": 882
+    },
+    {
+      "function": "len",
+      "calls": 1,
+      "inclusive_ns": 2103,
+      "self_ns": 1981
+    },
+    {
+      "function": "main",
+      "calls": 1,
+      "inclusive_ns": 316995,
+      "self_ns": 164705
+    },
+    {
+      "function": "new",
+      "calls": 2,
+      "inclusive_ns": 1314,
+      "self_ns": 1314
+    },
+    {
+      "function": "next",
+      "calls": 5,
+      "inclusive_ns": 13204,
+      "self_ns": 12679
+    },
+    {
+      "function": "parse_radius",
+      "calls": 3,
+      "inclusive_ns": 4442,
+      "self_ns": 4245
+    },
+    {
+      "function": "perimeter",
+      "calls": 2,
+      "inclusive_ns": 5418,
+      "self_ns": 4837
+    },
+    {
+      "function": "pi",
+      "calls": 8,
+      "inclusive_ns": 2555,
+      "self_ns": 2555
+    },
+    {
+      "function": "print",
+      "calls": 2,
+      "inclusive_ns": 1117,
+      "self_ns": 1117
+    },
+    {
+      "function": "println",
+      "calls": 2,
+      "inclusive_ns": 25982,
+      "self_ns": 25982
+    },
+    {
+      "function": "string_concat",
+      "calls": 12,
+      "inclusive_ns": 1612,
+      "self_ns": 1612
+    },
+    {
+      "function": "u64::From<i64>::from",
+      "calls": 3,
+      "inclusive_ns": 272,
+      "self_ns": 272
+    }
+  ],
+  "edges": [
+    {
+      "caller": null,
+      "callee": "main",
+      "calls": 1,
+      "inclusive_ns": 316995
+    },
+    {
+      "caller": "area",
+      "callee": "f64::From<i64>::from",
+      "calls": 9,
+      "inclusive_ns": 771
+    },
+    {
+      "caller": "area",
+      "callee": "pi",
+      "calls": 7,
+      "inclusive_ns": 2095
+    },
+    {
+      "caller": "circle_area_from_str",
+      "callee": "area",
+      "calls": 2,
+      "inclusive_ns": 6461
+    },
+    {
+      "caller": "circle_area_from_str",
+      "callee": "from",
+      "calls": 1,
+      "inclusive_ns": 1794
+    },
+    {
+      "caller": "circle_area_from_str",
+      "callee": "parse_radius",
+      "calls": 3,
+      "inclusive_ns": 4442
+    },
+    {
+      "caller": "describe",
+      "callee": "i64::to_string",
+      "calls": 5,
+      "inclusive_ns": 647
+    },
+    {
+      "caller": "describe",
+      "callee": "string_concat",
+      "calls": 10,
+      "inclusive_ns": 1228
+    },
+    {
+      "caller": "from",
+      "callee": "string_concat",
+      "calls": 1,
+      "inclusive_ns": 187
+    },
+    {
+      "caller": "len",
+      "callee": "Array::len",
+      "calls": 1,
+      "inclusive_ns": 122
+    },
+    {
+      "caller": "main",
+      "callee": "String::to_string",
+      "calls": 1,
+      "inclusive_ns": 206
+    },
+    {
+      "caller": "main",
+      "callee": "approx",
+      "calls": 9,
+      "inclusive_ns": 9332
+    },
+    {
+      "caller": "main",
+      "callee": "area",
+      "calls": 7,
+      "inclusive_ns": 24329
+    },
+    {
+      "caller": "main",
+      "callee": "assert",
+      "calls": 30,
+      "inclusive_ns": 1321
+    },
+    {
+      "caller": "main",
+      "callee": "boolean::to_string",
+      "calls": 2,
+      "inclusive_ns": 169
+    },
+    {
+      "caller": "main",
+      "callee": "circle_area_from_str",
+      "calls": 3,
+      "inclusive_ns": 47221
+    },
+    {
+      "caller": "main",
+      "callee": "describe",
+      "calls": 4,
+      "inclusive_ns": 14292
+    },
+    {
+      "caller": "main",
+      "callee": "f64::From<i64>::from",
+      "calls": 1,
+      "inclusive_ns": 65
+    },
+    {
+      "caller": "main",
+      "callee": "f64::to_string",
+      "calls": 2,
+      "inclusive_ns": 1297
+    },
+    {
+      "caller": "main",
+      "callee": "from",
+      "calls": 4,
+      "inclusive_ns": 4375
+    },
+    {
+      "caller": "main",
+      "callee": "i64::From<f64>::from",
+      "calls": 1,
+      "inclusive_ns": 310
+    },
+    {
+      "caller": "main",
+      "callee": "i64::to_string",
+      "calls": 3,
+      "inclusive_ns": 235
+    },
+    {
+      "caller": "main",
+      "callee": "len",
+      "calls": 1,
+      "inclusive_ns": 2103
+    },
+    {
+      "caller": "main",
+      "callee": "new",
+      "calls": 2,
+      "inclusive_ns": 1314
+    },
+    {
+      "caller": "main",
+      "callee": "next",
+      "calls": 5,
+      "inclusive_ns": 13204
+    },
+    {
+      "caller": "main",
+      "callee": "perimeter",
+      "calls": 2,
+      "inclusive_ns": 5418
+    },
+    {
+      "caller": "main",
+      "callee": "print",
+      "calls": 2,
+      "inclusive_ns": 1117
+    },
+    {
+      "caller": "main",
+      "callee": "println",
+      "calls": 2,
+      "inclusive_ns": 25982
+    },
+    {
+      "caller": "next",
+      "callee": "Array::len",
+      "calls": 5,
+      "inclusive_ns": 253
+    },
+    {
+      "caller": "next",
+      "callee": "u64::From<i64>::from",
+      "calls": 3,
+      "inclusive_ns": 272
+    },
+    {
+      "caller": "parse_radius",
+      "callee": "string_concat",
+      "calls": 1,
+      "inclusive_ns": 197
+    },
+    {
+      "caller": "perimeter",
+      "callee": "f64::From<i64>::from",
+      "calls": 2,
+      "inclusive_ns": 121
+    },
+    {
+      "caller": "perimeter",
+      "callee": "pi",
+      "calls": 1,
+      "inclusive_ns": 460
+    }
+  ]
+}

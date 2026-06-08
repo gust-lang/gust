@@ -15,7 +15,13 @@ pub struct Span {
 
 impl Span {
     pub fn new(start: usize, end: usize, filename: impl Into<String>) -> Self {
-        Self { start, end, filename: filename.into(), line: 0, col: 0 }
+        Self {
+            start,
+            end,
+            filename: filename.into(),
+            line: 0,
+            col: 0,
+        }
     }
 }
 
@@ -23,7 +29,13 @@ impl Span {
     pub fn of(pair: &pest::iterators::Pair<Rule>, filename: impl Into<String>) -> Self {
         let s = pair.as_span();
         let (line, col) = s.start_pos().line_col();
-        Span { start: s.start(), end: s.end(), filename: filename.into(), line: line as u32, col: col as u32 }
+        Span {
+            start: s.start(),
+            end: s.end(),
+            filename: filename.into(),
+            line: line as u32,
+            col: col as u32,
+        }
     }
 }
 
@@ -83,7 +95,6 @@ pub enum ImportTree {
     Path { name: String, tree: Box<ImportTree> },
 }
 
-
 // ── Declarations ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -100,97 +111,86 @@ pub enum Decl {
 
 #[derive(Debug, Clone)]
 pub struct LetDecl {
-    pub name:     String,
+    pub name: String,
     pub type_ann: Option<TypeExpr>,
-    pub value:    Expr,
-    pub span:     Span,
+    pub value: Expr,
+    pub span: Span,
 }
-
-
 
 #[derive(Debug, Clone)]
 pub struct MutDecl {
-    pub name:     String,
+    pub name: String,
     pub type_ann: Option<TypeExpr>,
-    pub value:    Expr,
-    pub span:     Span,
+    pub value: Expr,
+    pub span: Span,
 }
-
-
-
 
 #[derive(Debug, Clone)]
 pub struct FunDecl {
     #[allow(dead_code)] // read by name_resolver; not yet wired into the typechecker pipeline
-    pub visibility:  Visibility,
-    pub name:        String,
-    pub generics:    Vec<GenericParam>,
+    pub visibility: Visibility,
+    pub name: String,
+    pub generics: Vec<GenericParam>,
     pub where_clause: Option<WhereClause>,
-    pub params:      Vec<Param>,
+    pub params: Vec<Param>,
     pub return_type: Option<TypeExpr>,
-    pub body:        Block,
-    pub span:        Span,
+    pub body: Block,
+    pub span: Span,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct StructDecl {
     #[allow(dead_code)]
-    pub visibility:  Visibility,
-    pub name:        String,
-    pub generics:    Vec<GenericParam>,
+    pub visibility: Visibility,
+    pub name: String,
+    pub generics: Vec<GenericParam>,
     pub where_clause: Option<WhereClause>,
-    pub fields:      Vec<FieldDef>,
-    pub span:        Span,
+    pub fields: Vec<FieldDef>,
+    pub span: Span,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct EnumDecl {
     #[allow(dead_code)]
-    pub visibility:  Visibility,
-    pub name:        String,
-    pub generics:    Vec<GenericParam>,
+    pub visibility: Visibility,
+    pub name: String,
+    pub generics: Vec<GenericParam>,
     pub where_clause: Option<WhereClause>,
-    pub variants:    Vec<VariantDef>,
-    pub span:        Span,
+    pub variants: Vec<VariantDef>,
+    pub span: Span,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct ImplBlock {
-    pub aspect_name:      Option<String>,
+    pub aspect_name: Option<String>,
     pub aspect_type_args: Vec<TypeExpr>,
-    pub target_type:      TypeExpr,
-    pub methods:          Vec<FunDecl>,
-    pub span:             Span,
+    pub target_type: TypeExpr,
+    pub methods: Vec<FunDecl>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct AspectDecl {
     #[allow(dead_code)]
     pub visibility: Visibility,
-    pub name:       String,
-    pub generics:   Vec<String>,
-    pub methods:    Vec<AspectMethod>,
-    pub span:       Span,
+    pub name: String,
+    pub generics: Vec<String>,
+    pub methods: Vec<AspectMethod>,
+    pub span: Span,
 }
-
 
 // ── Supporting types ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 pub struct GenericParam {
-    pub name:   String,
-    pub bounds: Vec<TypeExpr>,  // empty = unconstrained
+    pub name: String,
+    pub bounds: Vec<TypeExpr>, // empty = unconstrained
 }
 
 #[derive(Debug, Clone)]
 pub struct WhereClause {
-    pub constraints: Vec<(String, Vec<TypeExpr>)>,  // (type_param_name, [bound, ...])
+    pub constraints: Vec<(String, Vec<TypeExpr>)>, // (type_param_name, [bound, ...])
 }
-
-
 
 #[derive(Debug, Clone)]
 pub enum ReceiverKind {
@@ -201,31 +201,30 @@ pub enum ReceiverKind {
 
 #[derive(Debug, Clone)]
 pub struct Param {
-    pub mutable:  bool,
+    pub mutable: bool,
     pub receiver: Option<ReceiverKind>,
-    pub name:     String,
+    pub name: String,
     pub type_ann: Option<TypeExpr>,
-    pub span:     Span,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct FieldDef {
     pub visibility: Visibility,
-    pub name:     String,
+    pub name: String,
     pub type_ann: TypeExpr,
     /// Reserved for span propagation through the type registry (v0.4.3, #133).
     #[allow(dead_code)]
-    pub span:     Span,
+    pub span: Span,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct VariantDef {
-    pub name:   String,
+    pub name: String,
     pub fields: Vec<FieldDef>,
     /// Reserved for span propagation through the type registry (v0.4.3, #133).
     #[allow(dead_code)]
-    pub span:   Span,
+    pub span: Span,
 }
 
 /// An aspect method declaration. Fields beyond `name` are reserved for
@@ -233,12 +232,12 @@ pub struct VariantDef {
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct AspectMethod {
-    pub name:         String,
-    pub generics:     Vec<GenericParam>,
-    pub params:       Vec<Param>,
-    pub return_type:  Option<TypeExpr>,
+    pub name: String,
+    pub generics: Vec<GenericParam>,
+    pub params: Vec<Param>,
+    pub return_type: Option<TypeExpr>,
     pub default_body: Option<Block>,
-    pub span:         Span,
+    pub span: Span,
 }
 
 // ── Block ─────────────────────────────────────────────────────────────────────
@@ -248,11 +247,9 @@ pub struct AspectMethod {
 #[derive(Debug, Clone)]
 pub struct Block {
     pub stmts: Vec<Decl>,
-    pub tail:  Option<Box<Expr>>,
-    pub span:  Span,
+    pub tail: Option<Box<Expr>>,
+    pub span: Span,
 }
-
-
 
 // ── Statements ────────────────────────────────────────────────────────────────
 
@@ -270,18 +267,17 @@ pub enum Stmt {
 #[derive(Debug, Clone)]
 pub struct WhileStmt {
     pub condition: Expr,
-    pub body:      Block,
-    pub span:      Span,
+    pub body: Block,
+    pub span: Span,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct ForStmt {
-    pub init:      Option<ForInit>,
+    pub init: Option<ForInit>,
     pub condition: Option<Expr>,
-    pub step:      Option<Expr>,
-    pub body:      Block,
-    pub span:      Span,
+    pub step: Option<Expr>,
+    pub body: Block,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -293,27 +289,23 @@ pub enum ForInit {
 
 #[derive(Debug, Clone)]
 pub struct ForInStmt {
-    pub binding:  String,
-    pub mutable:  bool,
+    pub binding: String,
+    pub mutable: bool,
     pub iterable: Expr,
-    pub body:     Block,
-    pub span:     Span,
+    pub body: Block,
+    pub span: Span,
 }
-
-
-
-
 
 #[derive(Debug, Clone)]
 pub struct ReturnStmt {
     pub value: Option<Expr>,
-    pub span:  Span,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct BreakStmt {
     pub value: Option<Expr>,
-    pub span:  Span,
+    pub span: Span,
 }
 
 // ── Expressions ───────────────────────────────────────────────────────────────
@@ -331,67 +323,134 @@ pub enum Expr {
     /// identity of the underlying declaration (None for keyword-root paths like `root::` or
     /// `self::`, and for glob-resolved names without an explicit binding).
     /// `original` preserves the full source spelling for diagnostics.
-    ResolvedPath { resolved: String, symbol_id: Option<SymbolId>, original: Vec<String>, span: Span },
+    ResolvedPath {
+        resolved: String,
+        symbol_id: Option<SymbolId>,
+        original: Vec<String>,
+        span: Span,
+    },
     Tuple(Vec<Expr>, Span),
     Array(Vec<Expr>, Span),
     RepeatArray(Box<Expr>, u64, Span),
     BinOp(Box<Expr>, BinOp, Box<Expr>, Span),
     UnaryOp(UnaryOp, Box<Expr>, Span),
-    Assign { target: AssignTarget, op: AssignOp, value: Box<Expr>, span: Span },
-    Call { callee: Box<Expr>, type_args: Vec<TypeExpr>, args: Vec<Expr>, span: Span },
-    MethodCall { receiver: Box<Expr>, method: String, type_args: Vec<TypeExpr>, args: Vec<Expr>, span: Span },
-    FieldAccess { object: Box<Expr>, field: String, span: Span },
-    TupleAccess { object: Box<Expr>, index: usize, span: Span },
-    Index { object: Box<Expr>, index: Box<Expr>, span: Span },
-    Cast { expr: Box<Expr>, target_type: TypeExpr, span: Span },
-    Ascribe { expr: Box<Expr>, ann: TypeExpr, span: Span },
+    Assign {
+        target: AssignTarget,
+        op: AssignOp,
+        value: Box<Expr>,
+        span: Span,
+    },
+    Call {
+        callee: Box<Expr>,
+        type_args: Vec<TypeExpr>,
+        args: Vec<Expr>,
+        span: Span,
+    },
+    MethodCall {
+        receiver: Box<Expr>,
+        method: String,
+        type_args: Vec<TypeExpr>,
+        args: Vec<Expr>,
+        span: Span,
+    },
+    FieldAccess {
+        object: Box<Expr>,
+        field: String,
+        span: Span,
+    },
+    TupleAccess {
+        object: Box<Expr>,
+        index: usize,
+        span: Span,
+    },
+    Index {
+        object: Box<Expr>,
+        index: Box<Expr>,
+        span: Span,
+    },
+    Cast {
+        expr: Box<Expr>,
+        target_type: TypeExpr,
+        span: Span,
+    },
+    Ascribe {
+        expr: Box<Expr>,
+        ann: TypeExpr,
+        span: Span,
+    },
     Match(MatchExpr),
-    If { condition: Box<Expr>, then_branch: Block, else_branch: Option<Block>, span: Span },
-    Loop { body: Block, span: Span },
-    Closure { params: Vec<Param>, return_type: Option<TypeExpr>, body: Block, span: Span },
-    StructLiteral { path: Vec<String>, fields: Vec<(String, Expr)>, span: Span },
-    PropagateError { expr: Box<Expr>, span: Span },
+    If {
+        condition: Box<Expr>,
+        then_branch: Block,
+        else_branch: Option<Block>,
+        span: Span,
+    },
+    Loop {
+        body: Block,
+        span: Span,
+    },
+    Closure {
+        params: Vec<Param>,
+        return_type: Option<TypeExpr>,
+        body: Block,
+        span: Span,
+    },
+    StructLiteral {
+        path: Vec<String>,
+        fields: Vec<(String, Expr)>,
+        span: Span,
+    },
+    PropagateError {
+        expr: Box<Expr>,
+        span: Span,
+    },
 }
 
 impl Expr {
     pub fn span(&self) -> &Span {
         match self {
-            Expr::Literal(_, s) | Expr::Ident(_, s) | Expr::Path(_, s)
+            Expr::Literal(_, s)
+            | Expr::Ident(_, s)
+            | Expr::Path(_, s)
             | Expr::ResolvedPath { span: s, .. }
-            | Expr::Tuple(_, s) | Expr::Array(_, s) | Expr::RepeatArray(_, _, s)
+            | Expr::Tuple(_, s)
+            | Expr::Array(_, s)
+            | Expr::RepeatArray(_, _, s)
             | Expr::BinOp(_, _, _, s)
             | Expr::UnaryOp(_, _, s)
-            | Expr::Assign    { span: s, .. } | Expr::Call          { span: s, .. }
-            | Expr::MethodCall { span: s, .. } | Expr::FieldAccess  { span: s, .. }
-            | Expr::TupleAccess { span: s, .. } | Expr::Index       { span: s, .. }
-            | Expr::Cast      { span: s, .. }
-            | Expr::Ascribe       { span: s, .. }
-            | Expr::If            { span: s, .. }
-            | Expr::Loop      { span: s, .. } | Expr::Closure       { span: s, .. }
-            | Expr::StructLiteral { span: s, .. } | Expr::PropagateError { span: s, .. } => s,
+            | Expr::Assign { span: s, .. }
+            | Expr::Call { span: s, .. }
+            | Expr::MethodCall { span: s, .. }
+            | Expr::FieldAccess { span: s, .. }
+            | Expr::TupleAccess { span: s, .. }
+            | Expr::Index { span: s, .. }
+            | Expr::Cast { span: s, .. }
+            | Expr::Ascribe { span: s, .. }
+            | Expr::If { span: s, .. }
+            | Expr::Loop { span: s, .. }
+            | Expr::Closure { span: s, .. }
+            | Expr::StructLiteral { span: s, .. }
+            | Expr::PropagateError { span: s, .. } => s,
             Expr::Match(m) => &m.span,
         }
     }
 }
-
-
 
 // ── Match ─────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 pub struct MatchExpr {
     pub scrutinee: Box<Expr>,
-    pub arms:      Vec<MatchArm>,
-    pub span:      Span,
+    pub arms: Vec<MatchArm>,
+    pub span: Span,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct MatchArm {
     pub pattern: Pattern,
-    pub guard:   Option<Expr>,
-    pub body:    Block,
-    pub span:    Span,
+    pub guard: Option<Expr>,
+    pub body: Block,
+    pub span: Span,
 }
 
 // ── Patterns ──────────────────────────────────────────────────────────────────
@@ -402,29 +461,57 @@ pub enum Pattern {
     None(Span),
     Literal(Literal, Span),
     Binding(String, Span),
-    EnumVariant { path: Vec<String>, fields: Vec<String>, span: Span },
+    EnumVariant {
+        path: Vec<String>,
+        fields: Vec<String>,
+        span: Span,
+    },
     Tuple(Vec<Pattern>, Span),
-    Array { elems: Vec<Pattern>, rest: Option<String>, span: Span },
+    Array {
+        elems: Vec<Pattern>,
+        rest: Option<String>,
+        span: Span,
+    },
 }
-
 
 // ── Operators ─────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinOp {
-    Add, Sub, Mul, Div, Rem,
-    Eq, Ne, Lt, Le, Gt, Ge,
-    And, Or,
-    Range, RangeInclusive,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    And,
+    Or,
+    Range,
+    RangeInclusive,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum UnaryOp { Neg, Not, Ref, RefMut, Deref }
+pub enum UnaryOp {
+    Neg,
+    Not,
+    Ref,
+    RefMut,
+    Deref,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AssignOp {
     Assign,
-    AddAssign, SubAssign, MulAssign, DivAssign, RemAssign,
+    AddAssign,
+    SubAssign,
+    MulAssign,
+    DivAssign,
+    RemAssign,
 }
 
 // ── Assignment targets ────────────────────────────────────────────────────────
@@ -432,11 +519,21 @@ pub enum AssignOp {
 #[derive(Debug, Clone)]
 pub enum AssignTarget {
     Ident(String, Span),
-    Deref { object: Box<Expr>, span: Span },
-    FieldAccess { object: Box<Expr>, field: String, span: Span },
-    Index { object: Box<Expr>, index: Box<Expr>, span: Span },
+    Deref {
+        object: Box<Expr>,
+        span: Span,
+    },
+    FieldAccess {
+        object: Box<Expr>,
+        field: String,
+        span: Span,
+    },
+    Index {
+        object: Box<Expr>,
+        index: Box<Expr>,
+        span: Span,
+    },
 }
-
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -453,20 +550,34 @@ pub enum TypeExpr {
     /// `impl Aspect` in parameter position. Lowered to a fresh anonymous type param before
     /// inference. Retained in the AST only until the lowering pass runs.
     ImplAspect {
-        bound:        Box<TypeExpr>,
+        bound: Box<TypeExpr>,
         // Reserved for aspect-related error messages (e.g. "expected `impl Display`") — not yet surfaced.
-        #[allow(dead_code)] source_spell: String,
-        #[allow(dead_code)] span:         Span,
+        #[allow(dead_code)]
+        source_spell: String,
+        #[allow(dead_code)]
+        span: Span,
     },
 }
 
 // ── Literals ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum IntKind { I8, I16, I32, I64, U8, U16, U32, U64 }
+pub enum IntKind {
+    I8,
+    I16,
+    I32,
+    I64,
+    U8,
+    U16,
+    U32,
+    U64,
+}
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum FloatKind { F32, F64 }
+pub enum FloatKind {
+    F32,
+    F64,
+}
 
 #[derive(Debug, Clone)]
 pub enum Literal {
@@ -474,9 +585,15 @@ pub enum Literal {
     Float(f64),
     /// An integer literal with an explicit bit-width suffix, e.g. `42u8`, `100i32`.
     /// `value` is stored as `i128` to accommodate the full u64 range.
-    SizedInt { value: i128, kind: IntKind },
+    SizedInt {
+        value: i128,
+        kind: IntKind,
+    },
     /// A float literal with an explicit precision suffix, e.g. `3.14f32`.
-    SizedFloat { value: f64, kind: FloatKind },
+    SizedFloat {
+        value: f64,
+        kind: FloatKind,
+    },
     Char(char),
     Boolean(bool),
     Str(String),

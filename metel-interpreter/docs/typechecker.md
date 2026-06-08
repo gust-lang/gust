@@ -205,6 +205,26 @@ A few inference cases call `ctx.solve()` eagerly to determine structural type in
 
 These partial solves are read-only (they produce a `Substitution` value but don't modify `ctx.constraints`). They are a pragmatic workaround for the fact that field/method lookup requires knowing the concrete type name — a fundamental limitation of constraint-only inference.
 
+### Incremental Constraint Solving (v0.8.2)
+
+`InferContext::solve()` now caches the solved substitution for the already-seen
+prefix of `ctx.constraints` and only processes newly appended constraints on the
+next call. This is valid because inference only ever appends constraints; it
+does not rewrite or remove earlier ones.
+
+This matters because generic-heavy inference triggers many eager partial solves.
+Re-solving the full constraint list on every call was the dominant cost in the
+`0.8.2` benchmark baseline. The cache keeps the behavior the same while making
+repeated solves proportional to the number of new constraints rather than the
+entire accumulated list.
+
+The invariant is:
+
+- constraints are append-only during a typecheck run
+- cached substitutions may be reused only for the already-solved prefix
+- `default_literal_vars(...)` remains a caller-side post-processing step and is
+  not stored in the cache
+
 ### Mutability Enforcement
 
 Binding mutability is tracked as a boolean flag in `mono_env`: `HashMap<String, (InferType, bool)>`. `bind_mono(name, ty, is_mutable)` stores the flag. `lookup_for_write(name, span)` retrieves the binding and returns `T0006` if `is_mutable` is false.

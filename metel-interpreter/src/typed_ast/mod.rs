@@ -5,12 +5,12 @@
 use std::collections::HashMap;
 
 use crate::ast::{
-    Literal, BinOp, UnaryOp, AssignOp, Pattern, Span,
-    Param, TypeExpr, FieldDef, GenericParam, AspectMethod, VariantDef, Block,
+    AspectMethod, AssignOp, BinOp, Block, FieldDef, GenericParam, Literal, Param, Pattern, Span,
+    TypeExpr, UnaryOp, VariantDef,
 };
 use crate::symbols::SymbolId;
-use crate::types::Type;
 use crate::typeinference::{TypeDefinitionRegistry, TypeScheme};
+use crate::types::Type;
 
 /// How a method call is dispatched, resolved by the elaboration pass.
 #[derive(Debug, Clone, PartialEq)]
@@ -86,22 +86,22 @@ pub enum TypedDecl {
 
 #[derive(Debug, Clone)]
 pub struct TypedLetDecl {
-    pub name:     String,
+    pub name: String,
     #[allow(dead_code)] // kept for future tooling (hover types, LSP)
     pub type_ann: Option<TypeExpr>,
-    pub value:    TypedExpr,
+    pub value: TypedExpr,
     #[allow(dead_code)] // kept for future error messages
-    pub span:     Span,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedMutDecl {
-    pub name:     String,
+    pub name: String,
     #[allow(dead_code)] // kept for future tooling (hover types, LSP)
     pub type_ann: Option<TypeExpr>,
-    pub value:    TypedExpr,
+    pub value: TypedExpr,
     #[allow(dead_code)] // kept for future error messages
-    pub span:     Span,
+    pub span: Span,
 }
 
 /// The body of a typed function declaration.
@@ -118,15 +118,15 @@ pub enum FunBody {
 
 #[derive(Debug, Clone)]
 pub struct TypedFunDecl {
-    pub name:        String,
+    pub name: String,
     #[allow(dead_code)] // kept for future reflection / documentation generation
-    pub generics:    Vec<GenericParam>,
-    pub params:      Vec<Param>,
+    pub generics: Vec<GenericParam>,
+    pub params: Vec<Param>,
     #[allow(dead_code)] // kept for future reflection / documentation generation
     pub return_type: Option<TypeExpr>,
-    pub body:        FunBody,
+    pub body: FunBody,
     #[allow(dead_code)] // kept for future error messages
-    pub span:        Span,
+    pub span: Span,
 }
 
 /// Carried in TypedDecl for structural completeness; the evaluator produces no
@@ -134,10 +134,10 @@ pub struct TypedFunDecl {
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct TypedStructDecl {
-    pub name:     String,
+    pub name: String,
     pub generics: Vec<GenericParam>,
-    pub fields:   Vec<FieldDef>,
-    pub span:     Span,
+    pub fields: Vec<FieldDef>,
+    pub span: Span,
 }
 
 /// Carried in TypedDecl for structural completeness; the evaluator produces no
@@ -145,23 +145,23 @@ pub struct TypedStructDecl {
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct TypedEnumDecl {
-    pub name:     String,
+    pub name: String,
     pub generics: Vec<GenericParam>,
     pub variants: Vec<VariantDef>,
-    pub span:     Span,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedImplBlock {
-    pub aspect_name:      Option<String>,
+    pub aspect_name: Option<String>,
     /// Stable identity of the aspect this impl satisfies.  `None` for inherent impls.
     /// Populated by the typechecker construction pass when `names.symbols` is available.
-    pub aspect_id:        Option<SymbolId>,
+    pub aspect_id: Option<SymbolId>,
     pub aspect_type_args: Vec<TypeExpr>,
-    pub target_type:      TypeExpr,
-    pub methods:          Vec<TypedFunDecl>,
+    pub target_type: TypeExpr,
+    pub methods: Vec<TypedFunDecl>,
     #[allow(dead_code)] // kept for future error messages
-    pub span:             Span,
+    pub span: Span,
 }
 
 /// Carried in TypedDecl for structural completeness; the evaluator produces no
@@ -169,10 +169,10 @@ pub struct TypedImplBlock {
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct TypedAspectDecl {
-    pub name:     String,
+    pub name: String,
     pub generics: Vec<String>,
-    pub methods:  Vec<AspectMethod>,
-    pub span:     Span,
+    pub methods: Vec<AspectMethod>,
+    pub span: Span,
 }
 
 // ── Typed Statements ──────────────────────────────────────────────────────────
@@ -192,19 +192,19 @@ pub enum TypedStmt {
 #[derive(Debug, Clone)]
 pub struct TypedWhileStmt {
     pub condition: TypedExpr,
-    pub body:      TypedBlock,
+    pub body: TypedBlock,
     #[allow(dead_code)] // kept for future error messages
-    pub span:      Span,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedForStmt {
-    pub init:      Option<TypedForInit>,
+    pub init: Option<TypedForInit>,
     pub condition: Option<TypedExpr>,
-    pub step:      Option<TypedExpr>,
-    pub body:      TypedBlock,
+    pub step: Option<TypedExpr>,
+    pub body: TypedBlock,
     #[allow(dead_code)] // kept for future error messages
-    pub span:      Span,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -216,25 +216,25 @@ pub enum TypedForInit {
 
 #[derive(Debug, Clone)]
 pub struct TypedForInStmt {
-    pub binding:  String,
-    pub mutable:  bool,
+    pub binding: String,
+    pub mutable: bool,
     pub iterable: TypedExpr,
-    pub body:     TypedBlock,
-    pub span:     Span,
+    pub body: TypedBlock,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedReturnStmt {
     pub value: Option<TypedExpr>,
     #[allow(dead_code)] // kept for future error messages
-    pub span:  Span,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedBreakStmt {
     pub value: Option<TypedExpr>,
     #[allow(dead_code)] // kept for future error messages
-    pub span:  Span,
+    pub span: Span,
 }
 
 // ── Typed Block ───────────────────────────────────────────────────────────────
@@ -243,9 +243,9 @@ pub struct TypedBreakStmt {
 #[derive(Debug, Clone)]
 pub struct TypedBlock {
     pub stmts: Vec<TypedDecl>,
-    pub tail:  Option<Box<TypedExpr>>,
+    pub tail: Option<Box<TypedExpr>>,
     #[allow(dead_code)] // kept for future error messages
-    pub span:  Span,
+    pub span: Span,
 }
 
 // ── Typed lvalue places ───────────────────────────────────────────────────────
@@ -256,9 +256,20 @@ pub struct TypedBlock {
 #[derive(Debug, Clone)]
 pub enum TypedPlace {
     Ident(String, Span),
-    Deref { object: Box<TypedExpr>, span: Span },
-    Field { object: Box<TypedPlace>, field: String, span: Span },
-    Index { object: Box<TypedPlace>, index: Box<TypedExpr>, span: Span },
+    Deref {
+        object: Box<TypedExpr>,
+        span: Span,
+    },
+    Field {
+        object: Box<TypedPlace>,
+        field: String,
+        span: Span,
+    },
+    Index {
+        object: Box<TypedPlace>,
+        index: Box<TypedExpr>,
+        span: Span,
+    },
 }
 
 // ── Typed Expressions ─────────────────────────────────────────────────────────
@@ -346,13 +357,13 @@ pub enum TypedExpr {
     GenericClosure {
         /// Binding name from the enclosing `let`/`mut` declaration, used at runtime to look
         /// up the closure's `TypeScheme` from `type_ctx.scheme_env` for construction-at-call-time.
-        name:        Option<String>,
-        params:      Vec<Param>,
+        name: Option<String>,
+        params: Vec<Param>,
         #[allow(dead_code)] // kept for future type annotation checking
         return_type: Option<TypeExpr>,
-        body:        Block,
-        ty:          Type,
-        span:        Span,
+        body: Block,
+        ty: Type,
+        span: Span,
     },
     StructLiteral {
         path: Vec<String>,
@@ -425,14 +436,14 @@ impl TypedExpr {
 pub struct TypedMatchExpr {
     pub scrutinee: Box<TypedExpr>,
     pub arms: Vec<TypedMatchArm>,
-    pub expr_type: Type,  // The type of the entire match expression
+    pub expr_type: Type, // The type of the entire match expression
     pub span: Span,
 }
 
 /// Mirrors `ast::MatchArm` with typed expressions.
 #[derive(Debug, Clone)]
 pub struct TypedMatchArm {
-    pub pattern: Pattern,  // Patterns don't contain expressions, reuse as-is
+    pub pattern: Pattern, // Patterns don't contain expressions, reuse as-is
     pub guard: Option<TypedExpr>,
     pub body: TypedBlock,
     #[allow(dead_code)] // kept for future error messages

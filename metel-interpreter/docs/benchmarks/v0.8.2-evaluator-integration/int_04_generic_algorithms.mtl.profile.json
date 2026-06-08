@@ -1,0 +1,750 @@
+{
+  "functions": [
+    {
+      "function": "<closure>",
+      "calls": 160,
+      "inclusive_ns": 408005,
+      "self_ns": 378876
+    },
+    {
+      "function": "Array::len",
+      "calls": 64,
+      "inclusive_ns": 3544,
+      "self_ns": 3544
+    },
+    {
+      "function": "List::as_slice",
+      "calls": 18,
+      "inclusive_ns": 2804,
+      "self_ns": 2804
+    },
+    {
+      "function": "List::from",
+      "calls": 3,
+      "inclusive_ns": 1117,
+      "self_ns": 1117
+    },
+    {
+      "function": "List::new",
+      "calls": 15,
+      "inclusive_ns": 2882,
+      "self_ns": 2882
+    },
+    {
+      "function": "List::push",
+      "calls": 76,
+      "inclusive_ns": 12456,
+      "self_ns": 12456
+    },
+    {
+      "function": "all",
+      "calls": 2,
+      "inclusive_ns": 112603,
+      "self_ns": 92593
+    },
+    {
+      "function": "any",
+      "calls": 2,
+      "inclusive_ns": 175488,
+      "self_ns": 140517
+    },
+    {
+      "function": "array_max",
+      "calls": 1,
+      "inclusive_ns": 35174,
+      "self_ns": 27897
+    },
+    {
+      "function": "array_min",
+      "calls": 1,
+      "inclusive_ns": 38743,
+      "self_ns": 30865
+    },
+    {
+      "function": "assert",
+      "calls": 81,
+      "inclusive_ns": 4136,
+      "self_ns": 4136
+    },
+    {
+      "function": "bsearch",
+      "calls": 11,
+      "inclusive_ns": 173844,
+      "self_ns": 96004
+    },
+    {
+      "function": "concat_int",
+      "calls": 1,
+      "inclusive_ns": 11343,
+      "self_ns": 10226
+    },
+    {
+      "function": "drop",
+      "calls": 1,
+      "inclusive_ns": 44198,
+      "self_ns": 43145
+    },
+    {
+      "function": "filter",
+      "calls": 3,
+      "inclusive_ns": 230673,
+      "self_ns": 189151
+    },
+    {
+      "function": "find_first",
+      "calls": 3,
+      "inclusive_ns": 237632,
+      "self_ns": 175985
+    },
+    {
+      "function": "fold",
+      "calls": 6,
+      "inclusive_ns": 432977,
+      "self_ns": 323580
+    },
+    {
+      "function": "id",
+      "calls": 3,
+      "inclusive_ns": 45110,
+      "self_ns": 45110
+    },
+    {
+      "function": "konst",
+      "calls": 3,
+      "inclusive_ns": 47710,
+      "self_ns": 47710
+    },
+    {
+      "function": "main",
+      "calls": 1,
+      "inclusive_ns": 4272365,
+      "self_ns": 1241044
+    },
+    {
+      "function": "map_arr",
+      "calls": 5,
+      "inclusive_ns": 420245,
+      "self_ns": 320352
+    },
+    {
+      "function": "max_int",
+      "calls": 16,
+      "inclusive_ns": 18405,
+      "self_ns": 18405
+    },
+    {
+      "function": "min_int",
+      "calls": 6,
+      "inclusive_ns": 7362,
+      "self_ns": 7362
+    },
+    {
+      "function": "perhaps_is_some",
+      "calls": 3,
+      "inclusive_ns": 59102,
+      "self_ns": 59102
+    },
+    {
+      "function": "perhaps_or",
+      "calls": 2,
+      "inclusive_ns": 35861,
+      "self_ns": 35861
+    },
+    {
+      "function": "result_and_then",
+      "calls": 4,
+      "inclusive_ns": 124735,
+      "self_ns": 109139
+    },
+    {
+      "function": "result_is_ok",
+      "calls": 9,
+      "inclusive_ns": 199806,
+      "self_ns": 199806
+    },
+    {
+      "function": "result_map",
+      "calls": 3,
+      "inclusive_ns": 85692,
+      "self_ns": 82284
+    },
+    {
+      "function": "result_unwrap_or",
+      "calls": 7,
+      "inclusive_ns": 132867,
+      "self_ns": 132867
+    },
+    {
+      "function": "rsum",
+      "calls": 13,
+      "inclusive_ns": 327511,
+      "self_ns": 92931
+    },
+    {
+      "function": "safe_div",
+      "calls": 4,
+      "inclusive_ns": 7428,
+      "self_ns": 7428
+    },
+    {
+      "function": "safe_sqrt",
+      "calls": 1,
+      "inclusive_ns": 4479,
+      "self_ns": 4479
+    },
+    {
+      "function": "stack_empty",
+      "calls": 2,
+      "inclusive_ns": 5943,
+      "self_ns": 5943
+    },
+    {
+      "function": "stack_new",
+      "calls": 1,
+      "inclusive_ns": 3474,
+      "self_ns": 3474
+    },
+    {
+      "function": "stack_push",
+      "calls": 3,
+      "inclusive_ns": 41503,
+      "self_ns": 38810
+    },
+    {
+      "function": "stack_top",
+      "calls": 1,
+      "inclusive_ns": 4348,
+      "self_ns": 3935
+    },
+    {
+      "function": "string_concat",
+      "calls": 3,
+      "inclusive_ns": 602,
+      "self_ns": 602
+    },
+    {
+      "function": "string_len",
+      "calls": 6,
+      "inclusive_ns": 912,
+      "self_ns": 912
+    },
+    {
+      "function": "take",
+      "calls": 2,
+      "inclusive_ns": 94398,
+      "self_ns": 90669
+    },
+    {
+      "function": "u64::From<i64>::from",
+      "calls": 77,
+      "inclusive_ns": 3751,
+      "self_ns": 3751
+    },
+    {
+      "function": "zip_with",
+      "calls": 3,
+      "inclusive_ns": 208353,
+      "self_ns": 184611
+    }
+  ],
+  "edges": [
+    {
+      "caller": null,
+      "callee": "main",
+      "calls": 1,
+      "inclusive_ns": 4272365
+    },
+    {
+      "caller": "<closure>",
+      "callee": "<closure>",
+      "calls": 5,
+      "inclusive_ns": 11512
+    },
+    {
+      "caller": "<closure>",
+      "callee": "max_int",
+      "calls": 10,
+      "inclusive_ns": 11624
+    },
+    {
+      "caller": "<closure>",
+      "callee": "safe_sqrt",
+      "calls": 1,
+      "inclusive_ns": 4479
+    },
+    {
+      "caller": "<closure>",
+      "callee": "string_concat",
+      "calls": 3,
+      "inclusive_ns": 602
+    },
+    {
+      "caller": "<closure>",
+      "callee": "string_len",
+      "calls": 6,
+      "inclusive_ns": 912
+    },
+    {
+      "caller": "all",
+      "callee": "<closure>",
+      "calls": 11,
+      "inclusive_ns": 20010
+    },
+    {
+      "caller": "any",
+      "callee": "<closure>",
+      "calls": 20,
+      "inclusive_ns": 34971
+    },
+    {
+      "caller": "array_max",
+      "callee": "Array::len",
+      "calls": 7,
+      "inclusive_ns": 262
+    },
+    {
+      "caller": "array_max",
+      "callee": "max_int",
+      "calls": 6,
+      "inclusive_ns": 6781
+    },
+    {
+      "caller": "array_max",
+      "callee": "u64::From<i64>::from",
+      "calls": 6,
+      "inclusive_ns": 234
+    },
+    {
+      "caller": "array_min",
+      "callee": "Array::len",
+      "calls": 7,
+      "inclusive_ns": 310
+    },
+    {
+      "caller": "array_min",
+      "callee": "min_int",
+      "calls": 6,
+      "inclusive_ns": 7362
+    },
+    {
+      "caller": "array_min",
+      "callee": "u64::From<i64>::from",
+      "calls": 6,
+      "inclusive_ns": 206
+    },
+    {
+      "caller": "bsearch",
+      "callee": "bsearch",
+      "calls": 7,
+      "inclusive_ns": 77015
+    },
+    {
+      "caller": "bsearch",
+      "callee": "u64::From<i64>::from",
+      "calls": 17,
+      "inclusive_ns": 825
+    },
+    {
+      "caller": "concat_int",
+      "callee": "List::as_slice",
+      "calls": 1,
+      "inclusive_ns": 94
+    },
+    {
+      "caller": "concat_int",
+      "callee": "List::new",
+      "calls": 1,
+      "inclusive_ns": 254
+    },
+    {
+      "caller": "concat_int",
+      "callee": "List::push",
+      "calls": 6,
+      "inclusive_ns": 769
+    },
+    {
+      "caller": "drop",
+      "callee": "Array::len",
+      "calls": 4,
+      "inclusive_ns": 199
+    },
+    {
+      "caller": "drop",
+      "callee": "List::as_slice",
+      "calls": 1,
+      "inclusive_ns": 141
+    },
+    {
+      "caller": "drop",
+      "callee": "List::new",
+      "calls": 1,
+      "inclusive_ns": 188
+    },
+    {
+      "caller": "drop",
+      "callee": "List::push",
+      "calls": 3,
+      "inclusive_ns": 384
+    },
+    {
+      "caller": "drop",
+      "callee": "u64::From<i64>::from",
+      "calls": 3,
+      "inclusive_ns": 141
+    },
+    {
+      "caller": "filter",
+      "callee": "<closure>",
+      "calls": 24,
+      "inclusive_ns": 38592
+    },
+    {
+      "caller": "filter",
+      "callee": "List::as_slice",
+      "calls": 3,
+      "inclusive_ns": 422
+    },
+    {
+      "caller": "filter",
+      "callee": "List::new",
+      "calls": 3,
+      "inclusive_ns": 629
+    },
+    {
+      "caller": "filter",
+      "callee": "List::push",
+      "calls": 10,
+      "inclusive_ns": 1879
+    },
+    {
+      "caller": "find_first",
+      "callee": "<closure>",
+      "calls": 19,
+      "inclusive_ns": 61647
+    },
+    {
+      "caller": "fold",
+      "callee": "<closure>",
+      "calls": 36,
+      "inclusive_ns": 109397
+    },
+    {
+      "caller": "main",
+      "callee": "Array::len",
+      "calls": 10,
+      "inclusive_ns": 816
+    },
+    {
+      "caller": "main",
+      "callee": "all",
+      "calls": 2,
+      "inclusive_ns": 112603
+    },
+    {
+      "caller": "main",
+      "callee": "any",
+      "calls": 2,
+      "inclusive_ns": 175488
+    },
+    {
+      "caller": "main",
+      "callee": "array_max",
+      "calls": 1,
+      "inclusive_ns": 35174
+    },
+    {
+      "caller": "main",
+      "callee": "array_min",
+      "calls": 1,
+      "inclusive_ns": 38743
+    },
+    {
+      "caller": "main",
+      "callee": "assert",
+      "calls": 81,
+      "inclusive_ns": 4136
+    },
+    {
+      "caller": "main",
+      "callee": "bsearch",
+      "calls": 4,
+      "inclusive_ns": 96829
+    },
+    {
+      "caller": "main",
+      "callee": "concat_int",
+      "calls": 1,
+      "inclusive_ns": 11343
+    },
+    {
+      "caller": "main",
+      "callee": "drop",
+      "calls": 1,
+      "inclusive_ns": 44198
+    },
+    {
+      "caller": "main",
+      "callee": "filter",
+      "calls": 3,
+      "inclusive_ns": 230673
+    },
+    {
+      "caller": "main",
+      "callee": "find_first",
+      "calls": 3,
+      "inclusive_ns": 237632
+    },
+    {
+      "caller": "main",
+      "callee": "fold",
+      "calls": 6,
+      "inclusive_ns": 432977
+    },
+    {
+      "caller": "main",
+      "callee": "id",
+      "calls": 3,
+      "inclusive_ns": 45110
+    },
+    {
+      "caller": "main",
+      "callee": "konst",
+      "calls": 3,
+      "inclusive_ns": 47710
+    },
+    {
+      "caller": "main",
+      "callee": "map_arr",
+      "calls": 5,
+      "inclusive_ns": 420245
+    },
+    {
+      "caller": "main",
+      "callee": "perhaps_is_some",
+      "calls": 3,
+      "inclusive_ns": 59102
+    },
+    {
+      "caller": "main",
+      "callee": "perhaps_or",
+      "calls": 2,
+      "inclusive_ns": 35861
+    },
+    {
+      "caller": "main",
+      "callee": "result_and_then",
+      "calls": 4,
+      "inclusive_ns": 124735
+    },
+    {
+      "caller": "main",
+      "callee": "result_is_ok",
+      "calls": 9,
+      "inclusive_ns": 199806
+    },
+    {
+      "caller": "main",
+      "callee": "result_map",
+      "calls": 3,
+      "inclusive_ns": 85692
+    },
+    {
+      "caller": "main",
+      "callee": "result_unwrap_or",
+      "calls": 7,
+      "inclusive_ns": 132867
+    },
+    {
+      "caller": "main",
+      "callee": "rsum",
+      "calls": 2,
+      "inclusive_ns": 94134
+    },
+    {
+      "caller": "main",
+      "callee": "safe_div",
+      "calls": 4,
+      "inclusive_ns": 7428
+    },
+    {
+      "caller": "main",
+      "callee": "stack_empty",
+      "calls": 2,
+      "inclusive_ns": 5943
+    },
+    {
+      "caller": "main",
+      "callee": "stack_new",
+      "calls": 1,
+      "inclusive_ns": 3474
+    },
+    {
+      "caller": "main",
+      "callee": "stack_push",
+      "calls": 3,
+      "inclusive_ns": 41503
+    },
+    {
+      "caller": "main",
+      "callee": "stack_top",
+      "calls": 1,
+      "inclusive_ns": 4348
+    },
+    {
+      "caller": "main",
+      "callee": "take",
+      "calls": 2,
+      "inclusive_ns": 94398
+    },
+    {
+      "caller": "main",
+      "callee": "zip_with",
+      "calls": 3,
+      "inclusive_ns": 208353
+    },
+    {
+      "caller": "map_arr",
+      "callee": "<closure>",
+      "calls": 31,
+      "inclusive_ns": 93165
+    },
+    {
+      "caller": "map_arr",
+      "callee": "List::as_slice",
+      "calls": 5,
+      "inclusive_ns": 628
+    },
+    {
+      "caller": "map_arr",
+      "callee": "List::new",
+      "calls": 5,
+      "inclusive_ns": 844
+    },
+    {
+      "caller": "map_arr",
+      "callee": "List::push",
+      "calls": 31,
+      "inclusive_ns": 5256
+    },
+    {
+      "caller": "result_and_then",
+      "callee": "<closure>",
+      "calls": 2,
+      "inclusive_ns": 15596
+    },
+    {
+      "caller": "result_map",
+      "callee": "<closure>",
+      "calls": 2,
+      "inclusive_ns": 3408
+    },
+    {
+      "caller": "rsum",
+      "callee": "Array::len",
+      "calls": 13,
+      "inclusive_ns": 780
+    },
+    {
+      "caller": "rsum",
+      "callee": "rsum",
+      "calls": 11,
+      "inclusive_ns": 233377
+    },
+    {
+      "caller": "rsum",
+      "callee": "u64::From<i64>::from",
+      "calls": 11,
+      "inclusive_ns": 423
+    },
+    {
+      "caller": "stack_push",
+      "callee": "List::as_slice",
+      "calls": 3,
+      "inclusive_ns": 760
+    },
+    {
+      "caller": "stack_push",
+      "callee": "List::from",
+      "calls": 3,
+      "inclusive_ns": 1117
+    },
+    {
+      "caller": "stack_push",
+      "callee": "List::push",
+      "calls": 3,
+      "inclusive_ns": 816
+    },
+    {
+      "caller": "stack_top",
+      "callee": "u64::From<i64>::from",
+      "calls": 1,
+      "inclusive_ns": 413
+    },
+    {
+      "caller": "take",
+      "callee": "Array::len",
+      "calls": 14,
+      "inclusive_ns": 706
+    },
+    {
+      "caller": "take",
+      "callee": "List::as_slice",
+      "calls": 2,
+      "inclusive_ns": 310
+    },
+    {
+      "caller": "take",
+      "callee": "List::new",
+      "calls": 2,
+      "inclusive_ns": 385
+    },
+    {
+      "caller": "take",
+      "callee": "List::push",
+      "calls": 13,
+      "inclusive_ns": 1717
+    },
+    {
+      "caller": "take",
+      "callee": "u64::From<i64>::from",
+      "calls": 13,
+      "inclusive_ns": 611
+    },
+    {
+      "caller": "zip_with",
+      "callee": "<closure>",
+      "calls": 10,
+      "inclusive_ns": 19707
+    },
+    {
+      "caller": "zip_with",
+      "callee": "Array::len",
+      "calls": 9,
+      "inclusive_ns": 471
+    },
+    {
+      "caller": "zip_with",
+      "callee": "List::as_slice",
+      "calls": 3,
+      "inclusive_ns": 449
+    },
+    {
+      "caller": "zip_with",
+      "callee": "List::new",
+      "calls": 3,
+      "inclusive_ns": 582
+    },
+    {
+      "caller": "zip_with",
+      "callee": "List::push",
+      "calls": 10,
+      "inclusive_ns": 1635
+    },
+    {
+      "caller": "zip_with",
+      "callee": "u64::From<i64>::from",
+      "calls": 20,
+      "inclusive_ns": 898
+    }
+  ]
+}

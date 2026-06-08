@@ -1,0 +1,222 @@
+{
+  "functions": [
+    {
+      "function": "<closure>",
+      "calls": 18,
+      "inclusive_ns": 14487,
+      "self_ns": 13802
+    },
+    {
+      "function": "Array::len",
+      "calls": 1,
+      "inclusive_ns": 291,
+      "self_ns": 291
+    },
+    {
+      "function": "List::get",
+      "calls": 23,
+      "inclusive_ns": 5343,
+      "self_ns": 5343
+    },
+    {
+      "function": "List::len",
+      "calls": 12,
+      "inclusive_ns": 1352,
+      "self_ns": 1352
+    },
+    {
+      "function": "List::new",
+      "calls": 11,
+      "inclusive_ns": 1653,
+      "self_ns": 1653
+    },
+    {
+      "function": "List::push",
+      "calls": 39,
+      "inclusive_ns": 5364,
+      "self_ns": 5364
+    },
+    {
+      "function": "all_positive_i32",
+      "calls": 2,
+      "inclusive_ns": 15663,
+      "self_ns": 14244
+    },
+    {
+      "function": "assert",
+      "calls": 33,
+      "inclusive_ns": 1460,
+      "self_ns": 1460
+    },
+    {
+      "function": "clamp",
+      "calls": 8,
+      "inclusive_ns": 78839,
+      "self_ns": 78839
+    },
+    {
+      "function": "i64::From<i32>::from",
+      "calls": 5,
+      "inclusive_ns": 685,
+      "self_ns": 685
+    },
+    {
+      "function": "i64::From<u8>::from",
+      "calls": 5,
+      "inclusive_ns": 319,
+      "self_ns": 319
+    },
+    {
+      "function": "main",
+      "calls": 1,
+      "inclusive_ns": 457617,
+      "self_ns": 159291
+    },
+    {
+      "function": "map_to_list",
+      "calls": 4,
+      "inclusive_ns": 176699,
+      "self_ns": 158007
+    },
+    {
+      "function": "zip_add_i32",
+      "calls": 1,
+      "inclusive_ns": 19024,
+      "self_ns": 16967
+    }
+  ],
+  "edges": [
+    {
+      "caller": null,
+      "callee": "main",
+      "calls": 1,
+      "inclusive_ns": 457617
+    },
+    {
+      "caller": "<closure>",
+      "callee": "i64::From<i32>::from",
+      "calls": 5,
+      "inclusive_ns": 685
+    },
+    {
+      "caller": "all_positive_i32",
+      "callee": "List::get",
+      "calls": 5,
+      "inclusive_ns": 1194
+    },
+    {
+      "caller": "all_positive_i32",
+      "callee": "List::len",
+      "calls": 2,
+      "inclusive_ns": 225
+    },
+    {
+      "caller": "main",
+      "callee": "Array::len",
+      "calls": 1,
+      "inclusive_ns": 291
+    },
+    {
+      "caller": "main",
+      "callee": "List::get",
+      "calls": 12,
+      "inclusive_ns": 2816
+    },
+    {
+      "caller": "main",
+      "callee": "List::len",
+      "calls": 7,
+      "inclusive_ns": 873
+    },
+    {
+      "caller": "main",
+      "callee": "List::new",
+      "calls": 6,
+      "inclusive_ns": 555
+    },
+    {
+      "caller": "main",
+      "callee": "List::push",
+      "calls": 18,
+      "inclusive_ns": 1787
+    },
+    {
+      "caller": "main",
+      "callee": "all_positive_i32",
+      "calls": 2,
+      "inclusive_ns": 15663
+    },
+    {
+      "caller": "main",
+      "callee": "assert",
+      "calls": 33,
+      "inclusive_ns": 1460
+    },
+    {
+      "caller": "main",
+      "callee": "clamp",
+      "calls": 8,
+      "inclusive_ns": 78839
+    },
+    {
+      "caller": "main",
+      "callee": "i64::From<u8>::from",
+      "calls": 5,
+      "inclusive_ns": 319
+    },
+    {
+      "caller": "main",
+      "callee": "map_to_list",
+      "calls": 4,
+      "inclusive_ns": 176699
+    },
+    {
+      "caller": "main",
+      "callee": "zip_add_i32",
+      "calls": 1,
+      "inclusive_ns": 19024
+    },
+    {
+      "caller": "map_to_list",
+      "callee": "<closure>",
+      "calls": 18,
+      "inclusive_ns": 14487
+    },
+    {
+      "caller": "map_to_list",
+      "callee": "List::new",
+      "calls": 4,
+      "inclusive_ns": 929
+    },
+    {
+      "caller": "map_to_list",
+      "callee": "List::push",
+      "calls": 18,
+      "inclusive_ns": 3276
+    },
+    {
+      "caller": "zip_add_i32",
+      "callee": "List::get",
+      "calls": 6,
+      "inclusive_ns": 1333
+    },
+    {
+      "caller": "zip_add_i32",
+      "callee": "List::len",
+      "calls": 3,
+      "inclusive_ns": 254
+    },
+    {
+      "caller": "zip_add_i32",
+      "callee": "List::new",
+      "calls": 1,
+      "inclusive_ns": 169
+    },
+    {
+      "caller": "zip_add_i32",
+      "callee": "List::push",
+      "calls": 3,
+      "inclusive_ns": 301
+    }
+  ]
+}

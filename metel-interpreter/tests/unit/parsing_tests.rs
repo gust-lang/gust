@@ -54,8 +54,7 @@ fun main() {
     let _snapshot = *read_only;
 }
 "#;
-    parser::parse(source, "pointer_and_receiver_syntax.mtl")
-        .unwrap_or_else(|e| panic!("{e}"));
+    parser::parse(source, "pointer_and_receiver_syntax.mtl").unwrap_or_else(|e| panic!("{e}"));
 }
 
 #[test]
@@ -71,8 +70,7 @@ export ast::Ast;
 
 fun main() { }
 "#;
-    let program = parser::parse(source, "module_ast.mtl")
-        .unwrap_or_else(|e| panic!("{e}"));
+    let program = parser::parse(source, "module_ast.mtl").unwrap_or_else(|e| panic!("{e}"));
 
     assert_eq!(program.imports.len(), 5);
     assert_eq!(program.exports.len(), 1);
@@ -80,7 +78,10 @@ fun main() { }
     assert_eq!(program.imports[0].path.root, PathRoot::Std);
     assert_eq!(
         program.imports[0].path.tree,
-        ImportTree::Name { name: "math".to_string(), alias: None }
+        ImportTree::Name {
+            name: "math".to_string(),
+            alias: None
+        }
     );
 
     assert_eq!(program.imports[1].path.root, PathRoot::Root);
@@ -88,7 +89,10 @@ fun main() { }
         program.imports[1].path.tree,
         ImportTree::Path {
             name: "parser".to_string(),
-            tree: Box::new(ImportTree::Name { name: "Ast".to_string(), alias: None }),
+            tree: Box::new(ImportTree::Name {
+                name: "Ast".to_string(),
+                alias: None
+            }),
         }
     );
 
@@ -112,27 +116,39 @@ fun main() { }
                     name: "Parser".to_string(),
                     alias: Some("ParserV2".to_string()),
                 },
-                ImportTree::Name { name: "Token".to_string(), alias: None },
+                ImportTree::Name {
+                    name: "Token".to_string(),
+                    alias: None
+                },
             ])),
         }
     );
 
     assert_eq!(
         program.imports[4].path.tree,
-        ImportTree::Path { name: "prelude".to_string(), tree: Box::new(ImportTree::Glob) }
+        ImportTree::Path {
+            name: "prelude".to_string(),
+            tree: Box::new(ImportTree::Glob)
+        }
     );
 
-    assert_eq!(program.exports[0].path.root, PathRoot::Name("ast".to_string()));
+    assert_eq!(
+        program.exports[0].path.root,
+        PathRoot::Name("ast".to_string())
+    );
     assert_eq!(
         program.exports[0].path.tree,
-        ImportTree::Name { name: "Ast".to_string(), alias: None }
+        ImportTree::Name {
+            name: "Ast".to_string(),
+            alias: None
+        }
     );
 }
 
 fn parse_error_message(filename: &str) -> String {
     let path = format!("tests/integration/sources/parsing/{filename}");
-    let source = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("could not read {}: {}", path, e));
+    let source =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("could not read {}: {}", path, e));
     match parser::parse(&source, filename) {
         Err(e) => format!("{e}"),
         Ok(_) => panic!("expected a parse error from {filename} but parsing succeeded"),
@@ -142,7 +158,10 @@ fn parse_error_message(filename: &str) -> String {
 #[test]
 fn error_format_p0001_contains_filename() {
     let msg = parse_error_message("neg_01_syntax_error.mtl");
-    assert!(msg.contains("neg_01_syntax_error.mtl"), "message was: {msg}");
+    assert!(
+        msg.contains("neg_01_syntax_error.mtl"),
+        "message was: {msg}"
+    );
 }
 
 #[test]
@@ -157,19 +176,28 @@ fn error_format_p0001_contains_line_col() {
 #[test]
 fn error_format_p0001_contains_error_code() {
     let msg = parse_error_message("neg_01_syntax_error.mtl");
-    assert!(msg.contains("P0001"), "expected '[P0001]' in message, got: {msg}");
+    assert!(
+        msg.contains("P0001"),
+        "expected '[P0001]' in message, got: {msg}"
+    );
 }
 
 #[test]
 fn error_format_p0001_does_not_contain_raw_byte_offset() {
     let msg = parse_error_message("neg_01_syntax_error.mtl");
-    assert!(!msg.contains(".."), "message should not contain '..' (raw byte range), got: {msg}");
+    assert!(
+        !msg.contains(".."),
+        "message should not contain '..' (raw byte range), got: {msg}"
+    );
 }
 
 #[test]
 fn error_format_p0002_file_line_col() {
     let msg = parse_error_message("neg_02_int_overflow.mtl");
-    assert!(msg.contains("P0002"), "expected '[P0002]' in message, got: {msg}");
+    assert!(
+        msg.contains("P0002"),
+        "expected '[P0002]' in message, got: {msg}"
+    );
     assert!(
         msg.contains("neg_02_int_overflow.mtl:1:14"),
         "expected 'file:1:14' in message, got: {msg}"
@@ -246,6 +274,5 @@ fun main() -> i64 {
 }
 "#;
 
-    parser::parse(source, "zero_arg_closure_and_type.mtl")
-        .unwrap_or_else(|e| panic!("{e}"));
+    parser::parse(source, "zero_arg_closure_and_type.mtl").unwrap_or_else(|e| panic!("{e}"));
 }

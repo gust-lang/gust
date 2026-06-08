@@ -10,10 +10,17 @@ pub enum Type {
     /// loops with no reachable `break`, `return`, `panic!`). Coerces to any type.
     Never,
     // ── Sized integer types ───────────────────────────────────────────────────
-    I8, I16, I32, I64,
-    U8, U16, U32, U64,
+    I8,
+    I16,
+    I32,
+    I64,
+    U8,
+    U16,
+    U32,
+    U64,
     // ── Sized float types ─────────────────────────────────────────────────────
-    F32, F64,
+    F32,
+    F64,
     // ─────────────────────────────────────────────────────────────────────────
     Tuple(Vec<Type>),
     Array(Box<Type>),
@@ -25,12 +32,20 @@ pub enum Type {
     Named(String, Vec<Type>),
 }
 
-
 impl Type {
     /// Returns true if this is any integer type (signed or unsigned, any width).
     pub fn is_integer(&self) -> bool {
-        matches!(self, Type::I64 | Type::I8 | Type::I16 | Type::I32
-                     | Type::U8 | Type::U16 | Type::U32 | Type::U64)
+        matches!(
+            self,
+            Type::I64
+                | Type::I8
+                | Type::I16
+                | Type::I32
+                | Type::U8
+                | Type::U16
+                | Type::U32
+                | Type::U64
+        )
     }
 
     /// Returns true if this is any float type.
@@ -54,10 +69,10 @@ impl std::fmt::Display for Type {
             Type::Char => write!(f, "Char"),
             Type::Unit => write!(f, "()"),
             Type::Never => write!(f, "!"),
-            Type::I8  => write!(f, "i8"),
+            Type::I8 => write!(f, "i8"),
             Type::I16 => write!(f, "i16"),
             Type::I32 => write!(f, "i32"),
-            Type::U8  => write!(f, "u8"),
+            Type::U8 => write!(f, "u8"),
             Type::U16 => write!(f, "u16"),
             Type::U32 => write!(f, "u32"),
             Type::U64 => write!(f, "u64"),
@@ -65,7 +80,9 @@ impl std::fmt::Display for Type {
             Type::Tuple(ts) => {
                 write!(f, "(")?;
                 for (i, t) in ts.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", t)?;
                 }
                 write!(f, ")")
@@ -77,7 +94,9 @@ impl std::fmt::Display for Type {
             Type::Fun(params, ret) => {
                 write!(f, "(")?;
                 for (i, t) in params.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", t)?;
                 }
                 write!(f, ") -> {}", ret)
@@ -87,7 +106,9 @@ impl std::fmt::Display for Type {
                 if !args.is_empty() {
                     write!(f, "<")?;
                     for (i, a) in args.iter().enumerate() {
-                        if i > 0 { write!(f, ", ")?; }
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
                         write!(f, "{}", a)?;
                     }
                     write!(f, ">")?;

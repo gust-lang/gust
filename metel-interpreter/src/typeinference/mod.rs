@@ -4,9 +4,10 @@
 //! See `docs/internal/typechecker.md` for theory background and implementation notes.
 
 use crate::ast::{AspectMethod, ReceiverKind, Span, Visibility};
-use crate::types::Type;
 use crate::error::MetelError;
+use crate::types::Type;
 use std::collections::{HashMap, HashSet};
+use std::time::Instant;
 
 // ── Phase 1: Type Variables ───────────────────────────────────────────────────
 
@@ -72,7 +73,6 @@ impl Default for TypeVarGenerator {
 
 // ── Phase 2: Inference Types ──────────────────────────────────────────────────
 
-
 /// A type that may contain unresolved type variables.
 /// Used during inference before all types are known.
 /// Distinct from `Type`, which is fully resolved and contains no variables.
@@ -102,14 +102,28 @@ pub enum InferType {
 }
 
 impl InferType {
-    pub fn int() -> Self { InferType::Concrete(Type::I64) }
-    pub fn float() -> Self { InferType::Concrete(Type::F64) }
-    pub fn bool() -> Self { InferType::Concrete(Type::Boolean) }
-    pub fn str() -> Self { InferType::Concrete(Type::Str) }
-    pub fn unit() -> Self { InferType::Concrete(Type::Unit) }
-    pub fn never() -> Self { InferType::Never }
+    pub fn int() -> Self {
+        InferType::Concrete(Type::I64)
+    }
+    pub fn float() -> Self {
+        InferType::Concrete(Type::F64)
+    }
+    pub fn bool() -> Self {
+        InferType::Concrete(Type::Boolean)
+    }
+    pub fn str() -> Self {
+        InferType::Concrete(Type::Str)
+    }
+    pub fn unit() -> Self {
+        InferType::Concrete(Type::Unit)
+    }
+    pub fn never() -> Self {
+        InferType::Never
+    }
     #[allow(dead_code)] // public API used by typeinference test suite
-    pub fn var(v: TypeVar) -> Self { InferType::Var(v) }
+    pub fn var(v: TypeVar) -> Self {
+        InferType::Var(v)
+    }
 }
 
 impl std::fmt::Display for InferType {
@@ -121,7 +135,9 @@ impl std::fmt::Display for InferType {
             InferType::Fun(params, ret) => {
                 write!(f, "(")?;
                 for (i, p) in params.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", p)?;
                 }
                 write!(f, ") -> {}", ret)
@@ -129,7 +145,9 @@ impl std::fmt::Display for InferType {
             InferType::Tuple(ts) => {
                 write!(f, "(")?;
                 for (i, t) in ts.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", t)?;
                 }
                 write!(f, ")")
@@ -143,7 +161,9 @@ impl std::fmt::Display for InferType {
                 if !args.is_empty() {
                     write!(f, "<")?;
                     for (i, a) in args.iter().enumerate() {
-                        if i > 0 { write!(f, ", ")?; }
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
                         write!(f, "{}", a)?;
                     }
                     write!(f, ">")?;
@@ -165,7 +185,9 @@ pub struct Substitution {
 
 impl Substitution {
     pub fn new() -> Self {
-        Substitution { bindings: HashMap::new() }
+        Substitution {
+            bindings: HashMap::new(),
+        }
     }
 
     /// Record that `var` maps to `ty`.
@@ -270,14 +292,20 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             if t1 == t2 {
                 Ok(Substitution::new())
             } else {
-                Err(MetelError::internal(format!("cannot unify {} with {}", a, b)))
+                Err(MetelError::internal(format!(
+                    "cannot unify {} with {}",
+                    a, b
+                )))
             }
         }
         (InferType::Var(v), _) => bind_var(*v, b),
         (_, InferType::Var(v)) => bind_var(*v, a),
         (InferType::Fun(params1, ret1), InferType::Fun(params2, ret2)) => {
             if params1.len() != params2.len() {
-                return Err(MetelError::internal(format!("cannot unify {} with {}", a, b)));
+                return Err(MetelError::internal(format!(
+                    "cannot unify {} with {}",
+                    a, b
+                )));
             }
             let mut subst = Substitution::new();
             for (p1, p2) in params1.iter().zip(params2.iter()) {
@@ -289,7 +317,10 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
         }
         (InferType::Tuple(ts1), InferType::Tuple(ts2)) => {
             if ts1.len() != ts2.len() {
-                return Err(MetelError::internal(format!("cannot unify {} with {}", a, b)));
+                return Err(MetelError::internal(format!(
+                    "cannot unify {} with {}",
+                    a, b
+                )));
             }
             let mut subst = Substitution::new();
             for (t1, t2) in ts1.iter().zip(ts2.iter()) {
@@ -301,7 +332,10 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
         (InferType::Array(t1), InferType::Array(t2)) => unify(t1, t2),
         (InferType::SizedArray(t1, n1), InferType::SizedArray(t2, n2)) => {
             if n1 != n2 {
-                return Err(MetelError::internal(format!("cannot unify {} with {}", a, b)));
+                return Err(MetelError::internal(format!(
+                    "cannot unify {} with {}",
+                    a, b
+                )));
             }
             unify(t1, t2)
         }
@@ -314,7 +348,10 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
         | (InferType::MutPointer(t1), InferType::Pointer(t2)) => unify(t1, t2),
         (InferType::Named(n1, args1), InferType::Named(n2, args2)) => {
             if n1 != n2 || args1.len() != args2.len() {
-                return Err(MetelError::internal(format!("cannot unify {} with {}", a, b)));
+                return Err(MetelError::internal(format!(
+                    "cannot unify {} with {}",
+                    a, b
+                )));
             }
             let mut subst = Substitution::new();
             for (a1, a2) in args1.iter().zip(args2.iter()) {
@@ -323,7 +360,10 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             }
             Ok(subst)
         }
-        _ => Err(MetelError::internal(format!("cannot unify {} with {}", a, b))),
+        _ => Err(MetelError::internal(format!(
+            "cannot unify {} with {}",
+            a, b
+        ))),
     }
 }
 
@@ -345,7 +385,10 @@ impl Constraint {
 }
 
 fn is_integer_type(t: &Type) -> bool {
-    matches!(t, Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::U8 | Type::U16 | Type::U32 | Type::U64)
+    matches!(
+        t,
+        Type::I8 | Type::I16 | Type::I32 | Type::I64 | Type::U8 | Type::U16 | Type::U32 | Type::U64
+    )
 }
 
 fn is_float_type(t: &Type) -> bool {
@@ -360,6 +403,7 @@ fn is_float_type(t: &Type) -> bool {
 ///
 /// Integer/float literal TypeVars are validated: if one resolves to a concrete
 /// non-numeric type, T0001 is raised at the constraint site.
+#[allow(dead_code)] // kept as a standalone solver helper for tests and profiling comparisons
 pub fn solve_constraints(
     constraints: Vec<Constraint>,
     integer_literal_vars: &HashSet<TypeVar>,
@@ -367,37 +411,68 @@ pub fn solve_constraints(
 ) -> Result<Substitution, MetelError> {
     let mut subst = Substitution::new();
     for c in constraints {
-        let lhs = subst.apply(&c.lhs);
-        let rhs = subst.apply(&c.rhs);
-        let s = unify(&lhs, &rhs).map_err(|_| {
-            MetelError::type_error(crate::error::TypeErrorCode::T0001, format!("cannot unify {} with {}", lhs, rhs), &c.span)
-        })?;
-        subst = subst.compose(&s);
-        // Validate: integer/float literal vars must only resolve to numeric types.
-        for &var in integer_literal_vars {
-            match subst.apply(&InferType::Var(var)) {
-                InferType::Var(_) | InferType::Never => {}
-                InferType::Concrete(t) if is_integer_type(&t) => {}
-                other => return Err(MetelError::type_error(
+        apply_constraint(&mut subst, &c, integer_literal_vars, float_literal_vars)?;
+    }
+    Ok(subst)
+}
+
+fn apply_constraint(
+    subst: &mut Substitution,
+    constraint: &Constraint,
+    integer_literal_vars: &HashSet<TypeVar>,
+    float_literal_vars: &HashSet<TypeVar>,
+) -> Result<(), MetelError> {
+    let lhs = subst.apply(&constraint.lhs);
+    let rhs = subst.apply(&constraint.rhs);
+    let solved = unify(&lhs, &rhs).map_err(|_| {
+        MetelError::type_error(
+            crate::error::TypeErrorCode::T0001,
+            format!("cannot unify {} with {}", lhs, rhs),
+            &constraint.span,
+        )
+    })?;
+    *subst = subst.compose(&solved);
+    validate_literal_bindings(
+        subst,
+        integer_literal_vars,
+        float_literal_vars,
+        &constraint.span,
+    )
+}
+
+fn validate_literal_bindings(
+    subst: &Substitution,
+    integer_literal_vars: &HashSet<TypeVar>,
+    float_literal_vars: &HashSet<TypeVar>,
+    span: &Span,
+) -> Result<(), MetelError> {
+    for &var in integer_literal_vars {
+        match subst.apply(&InferType::Var(var)) {
+            InferType::Var(_) | InferType::Never => {}
+            InferType::Concrete(t) if is_integer_type(&t) => {}
+            other => {
+                return Err(MetelError::type_error(
                     crate::error::TypeErrorCode::T0001,
                     format!("cannot unify integer literal with `{other}`"),
-                    &c.span,
-                )),
-            }
-        }
-        for &var in float_literal_vars {
-            match subst.apply(&InferType::Var(var)) {
-                InferType::Var(_) | InferType::Never => {}
-                InferType::Concrete(t) if is_float_type(&t) => {}
-                other => return Err(MetelError::type_error(
-                    crate::error::TypeErrorCode::T0001,
-                    format!("cannot unify float literal with `{other}`"),
-                    &c.span,
-                )),
+                    span,
+                ))
             }
         }
     }
-    Ok(subst)
+    for &var in float_literal_vars {
+        match subst.apply(&InferType::Var(var)) {
+            InferType::Var(_) | InferType::Never => {}
+            InferType::Concrete(t) if is_float_type(&t) => {}
+            other => {
+                return Err(MetelError::type_error(
+                    crate::error::TypeErrorCode::T0001,
+                    format!("cannot unify float literal with `{other}`"),
+                    span,
+                ))
+            }
+        }
+    }
+    Ok(())
 }
 
 // ── Phase 6: Type Schemes ─────────────────────────────────────────────────────
@@ -409,7 +484,9 @@ pub fn free_vars(ty: &InferType) -> HashSet<TypeVar> {
         InferType::Var(v) => [*v].into(),
         InferType::Fun(params, ret) => {
             let mut vars = free_vars(ret);
-            for p in params { vars.extend(free_vars(p)); }
+            for p in params {
+                vars.extend(free_vars(p));
+            }
             vars
         }
         InferType::Tuple(ts) => ts.iter().flat_map(free_vars).collect(),
@@ -439,7 +516,11 @@ pub struct TypeScheme {
 impl TypeScheme {
     /// A monomorphic scheme — no quantified variables.
     pub fn mono(ty: InferType) -> Self {
-        Self { quantified_vars: vec![], param_names: vec![], ty }
+        Self {
+            quantified_vars: vec![],
+            param_names: vec![],
+            ty,
+        }
     }
 }
 
@@ -450,7 +531,9 @@ impl std::fmt::Display for TypeScheme {
         } else {
             write!(f, "∀")?;
             for (i, v) in self.quantified_vars.iter().enumerate() {
-                if i > 0 { write!(f, ", ")?; }
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
                 write!(f, "{}", v)?;
             }
             write!(f, ". {}", self.ty)
@@ -464,12 +547,13 @@ impl std::fmt::Display for TypeScheme {
 /// `env_free_vars` is the set of variables that are still being solved in the
 /// surrounding environment — those must not be captured.
 pub fn generalize(ty: InferType, env_free_vars: &HashSet<TypeVar>) -> TypeScheme {
-    let mut quantified: Vec<TypeVar> = free_vars(&ty)
-        .difference(env_free_vars)
-        .copied()
-        .collect();
+    let mut quantified: Vec<TypeVar> = free_vars(&ty).difference(env_free_vars).copied().collect();
     quantified.sort();
-    TypeScheme { quantified_vars: quantified, param_names: vec![], ty }
+    TypeScheme {
+        quantified_vars: quantified,
+        param_names: vec![],
+        ty,
+    }
 }
 
 /// Like `generalize` but also records the source-level name for each quantified variable.
@@ -480,7 +564,9 @@ pub fn generalize_with_names(
     name_map: &HashMap<TypeVar, String>,
 ) -> TypeScheme {
     let mut scheme = generalize(ty, env_free_vars);
-    scheme.param_names = scheme.quantified_vars.iter()
+    scheme.param_names = scheme
+        .quantified_vars
+        .iter()
         .map(|v| name_map.get(v).cloned().unwrap_or_default())
         .collect();
     scheme
@@ -500,10 +586,10 @@ pub fn instantiate(scheme: &TypeScheme, gen: &mut TypeVarGenerator) -> InferType
 /// TypeVar to the fresh TypeVar it was replaced with.
 pub fn instantiate_with_renaming(
     scheme: &TypeScheme,
-    gen:    &mut TypeVarGenerator,
+    gen: &mut TypeVarGenerator,
 ) -> (InferType, HashMap<TypeVar, TypeVar>) {
     let mut renaming = HashMap::new();
-    let mut subst    = Substitution::new();
+    let mut subst = Substitution::new();
     for &var in &scheme.quantified_vars {
         let fresh = gen.fresh();
         subst.bind(var, InferType::Var(fresh));
@@ -525,14 +611,14 @@ pub struct FieldEntry {
 
 #[derive(Debug, Clone)]
 pub struct VariantInfo {
-    pub name:   String,
+    pub name: String,
     pub fields: Vec<FieldEntry>,
 }
 
 #[derive(Debug, Clone)]
 pub struct EnumInfo {
     pub type_params: Vec<TypeVar>,
-    pub variants:    Vec<VariantInfo>,
+    pub variants: Vec<VariantInfo>,
 }
 
 // ── Type Definition Registry ──────────────────────────────────────────────────
@@ -559,7 +645,7 @@ pub struct EnumInfo {
 #[derive(Debug, Clone)]
 pub struct TypeDefinitionRegistry {
     /// struct name → fields with declaration spans.
-    struct_env:         HashMap<String, Vec<FieldEntry>>,
+    struct_env: HashMap<String, Vec<FieldEntry>>,
     /// struct name → declaring module path.
     struct_decl_modules: HashMap<String, Vec<String>>,
     /// Ordered type-parameter TypeVars per generic struct (absent for non-generic structs).
@@ -581,14 +667,14 @@ pub struct TypeDefinitionRegistry {
     /// Tracks which struct names were registered in each lexical scope so they
     /// can be removed on scope exit. Empty when outside any scoped block.
     struct_scope_stack: Vec<Vec<String>>,
-    method_env:  HashMap<String, HashMap<String, InferType>>,
+    method_env: HashMap<String, HashMap<String, InferType>>,
     method_receiver_env: HashMap<String, HashMap<String, ReceiverKind>>,
-    enum_env:    HashMap<String, EnumInfo>,
+    enum_env: HashMap<String, EnumInfo>,
     /// enum name → declaring module path.
     enum_decl_modules: HashMap<String, Vec<String>>,
     /// aspect name → ordered list of method names the aspect declares.
     /// Used to verify impl blocks are complete.
-    aspect_env:  HashMap<String, Vec<String>>,
+    aspect_env: HashMap<String, Vec<String>>,
     /// aspect name → declaring module path.
     aspect_decl_modules: HashMap<String, Vec<String>>,
     /// aspect name → full declared methods, including default bodies.
@@ -601,28 +687,34 @@ pub struct TypeDefinitionRegistry {
 impl TypeDefinitionRegistry {
     pub fn new() -> Self {
         Self {
-            struct_env:          HashMap::new(),
+            struct_env: HashMap::new(),
             struct_decl_modules: HashMap::new(),
-            struct_type_params:  HashMap::new(),
+            struct_type_params: HashMap::new(),
             struct_generic_names: HashMap::new(),
-            method_scheme_env:   HashMap::new(),
-            type_param_bounds:   HashMap::new(),
-            fun_bounds:          HashMap::new(),
-            struct_scope_stack:  Vec::new(),
-            method_env:         HashMap::new(),
+            method_scheme_env: HashMap::new(),
+            type_param_bounds: HashMap::new(),
+            fun_bounds: HashMap::new(),
+            struct_scope_stack: Vec::new(),
+            method_env: HashMap::new(),
             method_receiver_env: HashMap::new(),
-            enum_env:           HashMap::new(),
-            enum_decl_modules:  HashMap::new(),
-            aspect_env:          HashMap::new(),
+            enum_env: HashMap::new(),
+            enum_decl_modules: HashMap::new(),
+            aspect_env: HashMap::new(),
             aspect_decl_modules: HashMap::new(),
-            aspect_method_defs:  HashMap::new(),
-            impl_aspect_env:    HashMap::new(),
+            aspect_method_defs: HashMap::new(),
+            impl_aspect_env: HashMap::new(),
         }
     }
 
-    pub fn register_struct_fields(&mut self, name: String, fields: Vec<FieldEntry>, declaring_module: Vec<String>) {
+    pub fn register_struct_fields(
+        &mut self,
+        name: String,
+        fields: Vec<FieldEntry>,
+        declaring_module: Vec<String>,
+    ) {
         self.struct_env.insert(name.clone(), fields);
-        self.struct_decl_modules.insert(name.clone(), declaring_module);
+        self.struct_decl_modules
+            .insert(name.clone(), declaring_module);
         if let Some(scope) = self.struct_scope_stack.last_mut() {
             scope.push(name);
         }
@@ -642,7 +734,10 @@ impl TypeDefinitionRegistry {
     }
 
     pub fn register_method(&mut self, type_name: String, method_name: String, fun_ty: InferType) {
-        self.method_env.entry(type_name).or_default().insert(method_name, fun_ty);
+        self.method_env
+            .entry(type_name)
+            .or_default()
+            .insert(method_name, fun_ty);
     }
 
     pub fn register_method_receiver(
@@ -700,7 +795,8 @@ impl TypeDefinitionRegistry {
 
     /// Returns true if `type_name` has a registered `impl AspectName` in the env.
     pub fn impl_aspect_env_has(&self, type_name: &str, aspect_name: &str) -> bool {
-        self.impl_aspect_env.contains_key(&(type_name.to_string(), aspect_name.to_string()))
+        self.impl_aspect_env
+            .contains_key(&(type_name.to_string(), aspect_name.to_string()))
     }
 
     pub fn register_fun_bounds(&mut self, name: String, bounds: HashMap<TypeVar, Vec<String>>) {
@@ -730,7 +826,11 @@ impl TypeDefinitionRegistry {
         self.method_env.get(type_name)?.get(method_name)
     }
 
-    pub fn method_receiver_kind(&self, type_name: &str, method_name: &str) -> Option<&ReceiverKind> {
+    pub fn method_receiver_kind(
+        &self,
+        type_name: &str,
+        method_name: &str,
+    ) -> Option<&ReceiverKind> {
         self.method_receiver_env.get(type_name)?.get(method_name)
     }
 
@@ -818,55 +918,85 @@ impl TypeDefinitionRegistry {
     /// already-checked dependency modules. See ADR-0032.
     pub fn merge_from(&mut self, other: &TypeDefinitionRegistry) {
         for (k, v) in &other.struct_env {
-            self.struct_env.entry(k.clone()).or_insert_with(|| v.clone());
+            self.struct_env
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.struct_decl_modules {
-            self.struct_decl_modules.entry(k.clone()).or_insert_with(|| v.clone());
+            self.struct_decl_modules
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.struct_type_params {
-            self.struct_type_params.entry(k.clone()).or_insert_with(|| v.clone());
+            self.struct_type_params
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.struct_generic_names {
-            self.struct_generic_names.entry(k.clone()).or_insert_with(|| v.clone());
+            self.struct_generic_names
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.method_scheme_env {
-            self.method_scheme_env.entry(k.clone()).or_insert_with(|| v.clone());
+            self.method_scheme_env
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.type_param_bounds {
-            self.type_param_bounds.entry(k.clone()).or_insert_with(|| v.clone());
+            self.type_param_bounds
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.fun_bounds {
-            self.fun_bounds.entry(k.clone()).or_insert_with(|| v.clone());
+            self.fun_bounds
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.method_env {
-            self.method_env.entry(k.clone()).or_insert_with(|| v.clone());
+            self.method_env
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.method_receiver_env {
-            self.method_receiver_env.entry(k.clone()).or_insert_with(|| v.clone());
+            self.method_receiver_env
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.enum_env {
             self.enum_env.entry(k.clone()).or_insert_with(|| v.clone());
         }
         for (k, v) in &other.enum_decl_modules {
-            self.enum_decl_modules.entry(k.clone()).or_insert_with(|| v.clone());
+            self.enum_decl_modules
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.aspect_env {
-            self.aspect_env.entry(k.clone()).or_insert_with(|| v.clone());
+            self.aspect_env
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.aspect_decl_modules {
-            self.aspect_decl_modules.entry(k.clone()).or_insert_with(|| v.clone());
+            self.aspect_decl_modules
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.aspect_method_defs {
-            self.aspect_method_defs.entry(k.clone()).or_insert_with(|| v.clone());
+            self.aspect_method_defs
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.impl_aspect_env {
-            self.impl_aspect_env.entry(k.clone()).or_insert_with(|| v.clone());
+            self.impl_aspect_env
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
         }
     }
 }
 
 impl Default for TypeDefinitionRegistry {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ── Phase 7: Inference Context ────────────────────────────────────────────────
@@ -885,7 +1015,7 @@ pub struct InferContext {
     poly_env: Vec<HashMap<String, TypeScheme>>,
     constraints: Vec<Constraint>,
     current_return_type: Option<InferType>,
-    current_break_type:  Option<InferType>,
+    current_break_type: Option<InferType>,
     registry: TypeDefinitionRegistry,
     /// Type-param name → TypeVar for the currently-being-inferred generic function.
     /// Empty when inferring a non-generic function or at top level.
@@ -903,6 +1033,16 @@ pub struct InferContext {
     /// TypeVars introduced by unsuffixed float literals (`3.14`, `2.0`).
     /// Any such var that is still free after constraint solving defaults to `f64`.
     float_literal_vars: HashSet<TypeVar>,
+    cached_subst: Substitution,
+    solved_constraint_count: usize,
+    solve_stats: SolveStats,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SolveStats {
+    pub solve_calls: u64,
+    pub constraints_processed: u64,
+    pub solve_ns: u64,
 }
 
 impl InferContext {
@@ -918,11 +1058,11 @@ impl InferContext {
     ) -> Self {
         let mut ctx = Self {
             var_gen: gen,
-            mono_env: vec![HashMap::new()],  // root scope pre-pushed
-            poly_env: vec![HashMap::new()],  // root scope pre-pushed
+            mono_env: vec![HashMap::new()], // root scope pre-pushed
+            poly_env: vec![HashMap::new()], // root scope pre-pushed
             constraints: Vec::new(),
             current_return_type: None,
-            current_break_type:  None,
+            current_break_type: None,
             registry,
             current_type_params: HashMap::new(),
             current_type_param_bounds: HashMap::new(),
@@ -930,6 +1070,9 @@ impl InferContext {
             deferred_glob_conflicts: HashMap::new(),
             integer_literal_vars: HashSet::new(),
             float_literal_vars: HashSet::new(),
+            cached_subst: Substitution::new(),
+            solved_constraint_count: 0,
+            solve_stats: SolveStats::default(),
         };
         for (name, scheme) in imported_schemes {
             ctx.bind_poly(name, scheme.clone());
@@ -960,19 +1103,29 @@ impl InferContext {
         })
     }
 
-    pub fn register_struct_fields(&mut self, name: String, fields: Vec<crate::typeinference::FieldEntry>) {
-        self.registry.register_struct_fields(name, fields, self.current_module_path.clone());
+    pub fn register_struct_fields(
+        &mut self,
+        name: String,
+        fields: Vec<crate::typeinference::FieldEntry>,
+    ) {
+        self.registry
+            .register_struct_fields(name, fields, self.current_module_path.clone());
     }
 
     pub fn get_struct_type_params(&self, name: &str) -> Option<&Vec<TypeVar>> {
         self.registry.struct_type_params_for(name)
     }
 
-    pub fn push_struct_scope(&mut self) { self.registry.push_struct_scope(); }
-    pub fn pop_struct_scope(&mut self)  { self.registry.pop_struct_scope(); }
+    pub fn push_struct_scope(&mut self) {
+        self.registry.push_struct_scope();
+    }
+    pub fn pop_struct_scope(&mut self) {
+        self.registry.pop_struct_scope();
+    }
 
     pub fn register_method(&mut self, type_name: String, method_name: String, fun_ty: InferType) {
-        self.registry.register_method(type_name, method_name, fun_ty);
+        self.registry
+            .register_method(type_name, method_name, fun_ty);
     }
 
     pub fn get_struct_fields(&self, name: &str) -> Option<&Vec<crate::typeinference::FieldEntry>> {
@@ -983,12 +1136,17 @@ impl InferContext {
         self.registry.method_type(type_name, method_name)
     }
 
-    pub fn get_method_receiver_kind(&self, type_name: &str, method_name: &str) -> Option<&ReceiverKind> {
+    pub fn get_method_receiver_kind(
+        &self,
+        type_name: &str,
+        method_name: &str,
+    ) -> Option<&ReceiverKind> {
         self.registry.method_receiver_kind(type_name, method_name)
     }
 
     pub fn register_enum(&mut self, name: String, info: EnumInfo) {
-        self.registry.register_enum(name, info, self.current_module_path.clone());
+        self.registry
+            .register_enum(name, info, self.current_module_path.clone());
     }
 
     pub fn get_enum(&self, name: &str) -> Option<&EnumInfo> {
@@ -1035,7 +1193,10 @@ impl InferContext {
         std::mem::replace(&mut self.current_type_params, map)
     }
 
-    pub fn swap_type_param_bounds(&mut self, bounds: HashMap<TypeVar, Vec<String>>) -> HashMap<TypeVar, Vec<String>> {
+    pub fn swap_type_param_bounds(
+        &mut self,
+        bounds: HashMap<TypeVar, Vec<String>>,
+    ) -> HashMap<TypeVar, Vec<String>> {
         std::mem::replace(&mut self.current_type_param_bounds, bounds)
     }
 
@@ -1072,7 +1233,8 @@ impl InferContext {
         scheme: TypeScheme,
         struct_tvars: Vec<TypeVar>,
     ) {
-        self.registry.register_method_scheme(type_name, method_name, scheme, struct_tvars);
+        self.registry
+            .register_method_scheme(type_name, method_name, scheme, struct_tvars);
     }
 
     pub fn method_scheme_for(
@@ -1169,12 +1331,18 @@ impl InferContext {
     /// Bind a name to a monomorphic type in the current scope.
     /// `is_mutable` is `true` for `mut` bindings, `false` for `let` bindings and parameters.
     pub fn bind_mono(&mut self, name: impl Into<String>, ty: InferType, is_mutable: bool) {
-        self.mono_env.last_mut().unwrap().insert(name.into(), (ty, is_mutable));
+        self.mono_env
+            .last_mut()
+            .unwrap()
+            .insert(name.into(), (ty, is_mutable));
     }
 
     /// Bind a name to a polymorphic type scheme in the current scope.
     pub fn bind_poly(&mut self, name: impl Into<String>, scheme: TypeScheme) {
-        self.poly_env.last_mut().unwrap().insert(name.into(), scheme);
+        self.poly_env
+            .last_mut()
+            .unwrap()
+            .insert(name.into(), scheme);
     }
 
     /// Bind a polymorphic scheme only if the current scope does not already
@@ -1191,10 +1359,18 @@ impl InferContext {
     /// fresh variables; monomorphic bindings are searched innermost-scope-first.
     /// Poly env takes precedence over mono env within each scope level.
     pub fn lookup(&mut self, name: &str) -> Option<InferType> {
-        if let Some(scheme) = self.poly_env.iter().rev().find_map(|s| s.get(name)).cloned() {
+        if let Some(scheme) = self
+            .poly_env
+            .iter()
+            .rev()
+            .find_map(|s| s.get(name))
+            .cloned()
+        {
             Some(instantiate(&scheme, &mut self.var_gen))
         } else {
-            self.mono_env.iter().rev()
+            self.mono_env
+                .iter()
+                .rev()
                 .find_map(|scope| scope.get(name))
                 .map(|(ty, _)| ty.clone())
         }
@@ -1223,7 +1399,8 @@ impl InferContext {
     /// Collect all type variables that appear free across all current mono scopes.
     /// Pass this to `generalize()` to avoid capturing variables still being solved.
     pub fn env_free_vars(&self) -> HashSet<TypeVar> {
-        self.mono_env.iter()
+        self.mono_env
+            .iter()
             .flat_map(|scope| scope.values())
             .flat_map(|(ty, _)| free_vars(ty))
             .collect()
@@ -1235,8 +1412,30 @@ impl InferContext {
     }
 
     /// Solve all accumulated constraints and return the resulting substitution.
-    pub fn solve(&self) -> Result<Substitution, MetelError> {
-        solve_constraints(self.constraints.clone(), &self.integer_literal_vars, &self.float_literal_vars)
+    pub fn solve(&mut self) -> Result<Substitution, MetelError> {
+        let started = Instant::now();
+        self.solve_stats.solve_calls += 1;
+
+        let mut subst = self.cached_subst.clone();
+        for constraint in &self.constraints[self.solved_constraint_count..] {
+            apply_constraint(
+                &mut subst,
+                constraint,
+                &self.integer_literal_vars,
+                &self.float_literal_vars,
+            )?;
+        }
+
+        self.solve_stats.constraints_processed +=
+            (self.constraints.len() - self.solved_constraint_count) as u64;
+        self.solve_stats.solve_ns += started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
+        self.solved_constraint_count = self.constraints.len();
+        self.cached_subst = subst.clone();
+        Ok(subst)
+    }
+
+    pub fn solve_stats(&self) -> SolveStats {
+        self.solve_stats
     }
 
     /// Set the expected return type for the current function, returning the previous value.

@@ -1,0 +1,246 @@
+{
+  "functions": [
+    {
+      "function": "Char::From<u32>::from",
+      "calls": 16,
+      "inclusive_ns": 759,
+      "self_ns": 759
+    },
+    {
+      "function": "Char::to_string",
+      "calls": 2,
+      "inclusive_ns": 170,
+      "self_ns": 170
+    },
+    {
+      "function": "List::as_slice",
+      "calls": 5,
+      "inclusive_ns": 572,
+      "self_ns": 572
+    },
+    {
+      "function": "List::get",
+      "calls": 2,
+      "inclusive_ns": 742,
+      "self_ns": 742
+    },
+    {
+      "function": "List::len",
+      "calls": 2,
+      "inclusive_ns": 253,
+      "self_ns": 253
+    },
+    {
+      "function": "List::new",
+      "calls": 4,
+      "inclusive_ns": 732,
+      "self_ns": 732
+    },
+    {
+      "function": "List::push",
+      "calls": 20,
+      "inclusive_ns": 3072,
+      "self_ns": 3072
+    },
+    {
+      "function": "assert",
+      "calls": 28,
+      "inclusive_ns": 1208,
+      "self_ns": 1208
+    },
+    {
+      "function": "count_uppercase",
+      "calls": 3,
+      "inclusive_ns": 54096,
+      "self_ns": 37646
+    },
+    {
+      "function": "is_lowercase",
+      "calls": 9,
+      "inclusive_ns": 10498,
+      "self_ns": 10169
+    },
+    {
+      "function": "is_uppercase",
+      "calls": 24,
+      "inclusive_ns": 26547,
+      "self_ns": 25645
+    },
+    {
+      "function": "main",
+      "calls": 1,
+      "inclusive_ns": 250363,
+      "self_ns": 121085
+    },
+    {
+      "function": "to_lower",
+      "calls": 7,
+      "inclusive_ns": 31042,
+      "self_ns": 22684
+    },
+    {
+      "function": "to_upper",
+      "calls": 7,
+      "inclusive_ns": 30753,
+      "self_ns": 23042
+    },
+    {
+      "function": "u32::From<Char>::from",
+      "calls": 60,
+      "inclusive_ns": 2584,
+      "self_ns": 2584
+    }
+  ],
+  "edges": [
+    {
+      "caller": null,
+      "callee": "main",
+      "calls": 1,
+      "inclusive_ns": 250363
+    },
+    {
+      "caller": "count_uppercase",
+      "callee": "List::as_slice",
+      "calls": 3,
+      "inclusive_ns": 356
+    },
+    {
+      "caller": "count_uppercase",
+      "callee": "is_uppercase",
+      "calls": 15,
+      "inclusive_ns": 16094
+    },
+    {
+      "caller": "is_lowercase",
+      "callee": "u32::From<Char>::from",
+      "calls": 9,
+      "inclusive_ns": 329
+    },
+    {
+      "caller": "is_uppercase",
+      "callee": "u32::From<Char>::from",
+      "calls": 24,
+      "inclusive_ns": 902
+    },
+    {
+      "caller": "main",
+      "callee": "Char::From<u32>::from",
+      "calls": 7,
+      "inclusive_ns": 318
+    },
+    {
+      "caller": "main",
+      "callee": "Char::to_string",
+      "calls": 2,
+      "inclusive_ns": 170
+    },
+    {
+      "caller": "main",
+      "callee": "List::as_slice",
+      "calls": 2,
+      "inclusive_ns": 216
+    },
+    {
+      "caller": "main",
+      "callee": "List::get",
+      "calls": 2,
+      "inclusive_ns": 742
+    },
+    {
+      "caller": "main",
+      "callee": "List::len",
+      "calls": 2,
+      "inclusive_ns": 253
+    },
+    {
+      "caller": "main",
+      "callee": "List::new",
+      "calls": 4,
+      "inclusive_ns": 732
+    },
+    {
+      "caller": "main",
+      "callee": "List::push",
+      "calls": 20,
+      "inclusive_ns": 3072
+    },
+    {
+      "caller": "main",
+      "callee": "assert",
+      "calls": 28,
+      "inclusive_ns": 1208
+    },
+    {
+      "caller": "main",
+      "callee": "count_uppercase",
+      "calls": 3,
+      "inclusive_ns": 54096
+    },
+    {
+      "caller": "main",
+      "callee": "is_lowercase",
+      "calls": 2,
+      "inclusive_ns": 3221
+    },
+    {
+      "caller": "main",
+      "callee": "is_uppercase",
+      "calls": 2,
+      "inclusive_ns": 2686
+    },
+    {
+      "caller": "main",
+      "callee": "to_lower",
+      "calls": 7,
+      "inclusive_ns": 31042
+    },
+    {
+      "caller": "main",
+      "callee": "to_upper",
+      "calls": 7,
+      "inclusive_ns": 30753
+    },
+    {
+      "caller": "main",
+      "callee": "u32::From<Char>::from",
+      "calls": 13,
+      "inclusive_ns": 769
+    },
+    {
+      "caller": "to_lower",
+      "callee": "Char::From<u32>::from",
+      "calls": 6,
+      "inclusive_ns": 281
+    },
+    {
+      "caller": "to_lower",
+      "callee": "is_uppercase",
+      "calls": 7,
+      "inclusive_ns": 7767
+    },
+    {
+      "caller": "to_lower",
+      "callee": "u32::From<Char>::from",
+      "calls": 7,
+      "inclusive_ns": 310
+    },
+    {
+      "caller": "to_upper",
+      "callee": "Char::From<u32>::from",
+      "calls": 3,
+      "inclusive_ns": 160
+    },
+    {
+      "caller": "to_upper",
+      "callee": "is_lowercase",
+      "calls": 7,
+      "inclusive_ns": 7277
+    },
+    {
+      "caller": "to_upper",
+      "callee": "u32::From<Char>::from",
+      "calls": 7,
+      "inclusive_ns": 274
+    }
+  ]
+}

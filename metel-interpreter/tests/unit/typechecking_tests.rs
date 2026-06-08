@@ -17,10 +17,12 @@ fun load() -> Result<i64, AppError> {
     Result::Ok { value: value }
 }
 "#;
-    let program = parser::parse(source, "qmark_span.mtl")
-        .unwrap_or_else(|e| panic!("parse error: {e}"));
+    let program =
+        parser::parse(source, "qmark_span.mtl").unwrap_or_else(|e| panic!("parse error: {e}"));
     match typechecker::check(program) {
-        Err(MetelError::TypeError { code, line, col, .. }) => {
+        Err(MetelError::TypeError {
+            code, line, col, ..
+        }) => {
             assert_eq!(format!("{code}"), "T0007");
             assert_eq!(line, 10);
             assert_eq!(col, 24);

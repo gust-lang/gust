@@ -1,0 +1,204 @@
+{
+  "functions": [
+    {
+      "function": "assert",
+      "calls": 18,
+      "inclusive_ns": 848,
+      "self_ns": 848
+    },
+    {
+      "function": "boolean::to_string",
+      "calls": 4,
+      "inclusive_ns": 498,
+      "self_ns": 498
+    },
+    {
+      "function": "describe",
+      "calls": 2,
+      "inclusive_ns": 9690,
+      "self_ns": 8479
+    },
+    {
+      "function": "from",
+      "calls": 2,
+      "inclusive_ns": 3230,
+      "self_ns": 2939
+    },
+    {
+      "function": "i64::to_string",
+      "calls": 2,
+      "inclusive_ns": 611,
+      "self_ns": 611
+    },
+    {
+      "function": "load_config",
+      "calls": 4,
+      "inclusive_ns": 6046,
+      "self_ns": 5718
+    },
+    {
+      "function": "main",
+      "calls": 1,
+      "inclusive_ns": 248852,
+      "self_ns": 158992
+    },
+    {
+      "function": "new",
+      "calls": 8,
+      "inclusive_ns": 3477,
+      "self_ns": 3477
+    },
+    {
+      "function": "next",
+      "calls": 28,
+      "inclusive_ns": 29663,
+      "self_ns": 29663
+    },
+    {
+      "function": "require_config",
+      "calls": 2,
+      "inclusive_ns": 16424,
+      "self_ns": 13438
+    },
+    {
+      "function": "run",
+      "calls": 2,
+      "inclusive_ns": 6366,
+      "self_ns": 5756
+    },
+    {
+      "function": "run_with_config",
+      "calls": 2,
+      "inclusive_ns": 21222,
+      "self_ns": 16237
+    },
+    {
+      "function": "string_concat",
+      "calls": 15,
+      "inclusive_ns": 2196,
+      "self_ns": 2196
+    }
+  ],
+  "edges": [
+    {
+      "caller": null,
+      "callee": "main",
+      "calls": 1,
+      "inclusive_ns": 248852
+    },
+    {
+      "caller": "describe",
+      "callee": "boolean::to_string",
+      "calls": 2,
+      "inclusive_ns": 366
+    },
+    {
+      "caller": "describe",
+      "callee": "string_concat",
+      "calls": 8,
+      "inclusive_ns": 845
+    },
+    {
+      "caller": "from",
+      "callee": "string_concat",
+      "calls": 2,
+      "inclusive_ns": 291
+    },
+    {
+      "caller": "load_config",
+      "callee": "string_concat",
+      "calls": 2,
+      "inclusive_ns": 328
+    },
+    {
+      "caller": "main",
+      "callee": "assert",
+      "calls": 18,
+      "inclusive_ns": 848
+    },
+    {
+      "caller": "main",
+      "callee": "boolean::to_string",
+      "calls": 2,
+      "inclusive_ns": 132
+    },
+    {
+      "caller": "main",
+      "callee": "describe",
+      "calls": 2,
+      "inclusive_ns": 9690
+    },
+    {
+      "caller": "main",
+      "callee": "from",
+      "calls": 1,
+      "inclusive_ns": 1427
+    },
+    {
+      "caller": "main",
+      "callee": "i64::to_string",
+      "calls": 2,
+      "inclusive_ns": 611
+    },
+    {
+      "caller": "main",
+      "callee": "new",
+      "calls": 8,
+      "inclusive_ns": 3477
+    },
+    {
+      "caller": "main",
+      "callee": "next",
+      "calls": 28,
+      "inclusive_ns": 29663
+    },
+    {
+      "caller": "main",
+      "callee": "require_config",
+      "calls": 2,
+      "inclusive_ns": 16424
+    },
+    {
+      "caller": "main",
+      "callee": "run",
+      "calls": 2,
+      "inclusive_ns": 6366
+    },
+    {
+      "caller": "main",
+      "callee": "run_with_config",
+      "calls": 2,
+      "inclusive_ns": 21222
+    },
+    {
+      "caller": "require_config",
+      "callee": "load_config",
+      "calls": 2,
+      "inclusive_ns": 2986
+    },
+    {
+      "caller": "run",
+      "callee": "string_concat",
+      "calls": 2,
+      "inclusive_ns": 610
+    },
+    {
+      "caller": "run_with_config",
+      "callee": "from",
+      "calls": 1,
+      "inclusive_ns": 1803
+    },
+    {
+      "caller": "run_with_config",
+      "callee": "load_config",
+      "calls": 2,
+      "inclusive_ns": 3060
+    },
+    {
+      "caller": "run_with_config",
+      "callee": "string_concat",
+      "calls": 1,
+      "inclusive_ns": 122
+    }
+  ]
+}

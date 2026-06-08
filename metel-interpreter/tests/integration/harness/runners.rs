@@ -2,9 +2,13 @@ use std::fs;
 use std::path::Path;
 
 use metel::error::MetelError;
-use metel::{elaborator, evaluator, module_loader, name_resolver, parser, path_normalizer, typechecker};
+use metel::{
+    elaborator, evaluator, module_loader, name_resolver, parser, path_normalizer, typechecker,
+};
 
-use super::fixture::{main_source_path, ExpectStatus, FixtureConfig, GraphChecks, ProgramChecks, StdPreludeMode};
+use super::fixture::{
+    main_source_path, ExpectStatus, FixtureConfig, GraphChecks, ProgramChecks, StdPreludeMode,
+};
 
 pub fn run_fixture(path: &Path, config: &FixtureConfig) {
     let result = match config.runner {
@@ -13,7 +17,9 @@ pub fn run_fixture(path: &Path, config: &FixtureConfig) {
         super::fixture::RunnerKind::Evaluate => run_evaluate(path),
         super::fixture::RunnerKind::LoadProgram => run_load_program(path, &config.program),
         super::fixture::RunnerKind::LoadGraph => run_load_graph(path, &config.graph),
-        super::fixture::RunnerKind::FullPipeline => run_full_pipeline(path, config.prelude, &config.graph),
+        super::fixture::RunnerKind::FullPipeline => {
+            run_full_pipeline(path, config.prelude, &config.graph)
+        }
     };
 
     match config.expect.status {
@@ -45,7 +51,11 @@ fn run_parse(path: &Path) -> Result<(), MetelError> {
     let source_path = main_source_path(path);
     let source = fs::read_to_string(&source_path)
         .unwrap_or_else(|e| panic!("could not read {}: {e}", source_path.display()));
-    let filename = source_path.file_name().unwrap_or_default().to_string_lossy().to_string();
+    let filename = source_path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     parser::parse(&source, &filename).map(|_| ())
 }
 
@@ -53,7 +63,11 @@ fn run_typecheck(path: &Path) -> Result<(), MetelError> {
     let source_path = main_source_path(path);
     let source = fs::read_to_string(&source_path)
         .unwrap_or_else(|e| panic!("could not read {}: {e}", source_path.display()));
-    let filename = source_path.file_name().unwrap_or_default().to_string_lossy().to_string();
+    let filename = source_path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     let program = parser::parse(&source, &filename)?;
     typechecker::check(program).map(|_| ())
 }
@@ -62,7 +76,11 @@ fn run_evaluate(path: &Path) -> Result<(), MetelError> {
     let source_path = main_source_path(path);
     let source = fs::read_to_string(&source_path)
         .unwrap_or_else(|e| panic!("could not read {}: {e}", source_path.display()));
-    let filename = source_path.file_name().unwrap_or_default().to_string_lossy().to_string();
+    let filename = source_path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     let program = parser::parse(&source, &filename)?;
     let (typed, ctx) = typechecker::check_with_ctx(program)?;
     evaluator::evaluate_with_ctx(typed, ctx)
@@ -71,10 +89,20 @@ fn run_evaluate(path: &Path) -> Result<(), MetelError> {
 fn run_load_program(path: &Path, checks: &ProgramChecks) -> Result<(), MetelError> {
     let program = module_loader::load_program(main_source_path(path))?;
     if let Some(expected) = checks.imports {
-        assert_eq!(program.imports.len(), expected, "wrong import count for {}", path.display());
+        assert_eq!(
+            program.imports.len(),
+            expected,
+            "wrong import count for {}",
+            path.display()
+        );
     }
     if let Some(expected) = checks.decls {
-        assert_eq!(program.decls.len(), expected, "wrong decl count for {}", path.display());
+        assert_eq!(
+            program.decls.len(),
+            expected,
+            "wrong decl count for {}",
+            path.display()
+        );
     }
     Ok(())
 }
@@ -85,7 +113,11 @@ fn run_load_graph(path: &Path, checks: &GraphChecks) -> Result<(), MetelError> {
     Ok(())
 }
 
-fn run_full_pipeline(path: &Path, prelude_mode: StdPreludeMode, checks: &GraphChecks) -> Result<(), MetelError> {
+fn run_full_pipeline(
+    path: &Path,
+    prelude_mode: StdPreludeMode,
+    checks: &GraphChecks,
+) -> Result<(), MetelError> {
     let graph = module_loader::load_root(main_source_path(path))?;
     assert_graph_checks(path, &graph, checks);
     let names = name_resolver::resolve(&graph)?;
@@ -104,15 +136,32 @@ fn std_prelude(mode: StdPreludeMode) -> typechecker::StdPrelude {
 
 fn assert_parse_error(path: &Path, err: &MetelError, config: &FixtureConfig) {
     match err {
-        MetelError::ParseError { code, line, col, .. } => {
+        MetelError::ParseError {
+            code, line, col, ..
+        } => {
             if let Some(expected) = &config.expect.code {
-                assert_eq!(&format!("{code}"), expected, "wrong parse error code in {}", path.display());
+                assert_eq!(
+                    &format!("{code}"),
+                    expected,
+                    "wrong parse error code in {}",
+                    path.display()
+                );
             }
             if let Some(expected) = config.expect.line {
-                assert_eq!(*line as usize, expected, "wrong parse error line in {}", path.display());
+                assert_eq!(
+                    *line as usize,
+                    expected,
+                    "wrong parse error line in {}",
+                    path.display()
+                );
             }
             if let Some(expected) = config.expect.col {
-                assert_eq!(*col as usize, expected, "wrong parse error column in {}", path.display());
+                assert_eq!(
+                    *col as usize,
+                    expected,
+                    "wrong parse error column in {}",
+                    path.display()
+                );
             }
             assert_contains(path, &err.to_string(), config.expect.contains.as_deref());
         }
@@ -122,15 +171,32 @@ fn assert_parse_error(path: &Path, err: &MetelError, config: &FixtureConfig) {
 
 fn assert_type_error(path: &Path, err: &MetelError, config: &FixtureConfig) {
     match err {
-        MetelError::TypeError { code, line, col, .. } => {
+        MetelError::TypeError {
+            code, line, col, ..
+        } => {
             if let Some(expected) = &config.expect.code {
-                assert_eq!(&format!("{code}"), expected, "wrong type error code in {}", path.display());
+                assert_eq!(
+                    &format!("{code}"),
+                    expected,
+                    "wrong type error code in {}",
+                    path.display()
+                );
             }
             if let Some(expected) = config.expect.line {
-                assert_eq!(*line as usize, expected, "wrong type error line in {}", path.display());
+                assert_eq!(
+                    *line as usize,
+                    expected,
+                    "wrong type error line in {}",
+                    path.display()
+                );
             }
             if let Some(expected) = config.expect.col {
-                assert_eq!(*col as usize, expected, "wrong type error column in {}", path.display());
+                assert_eq!(
+                    *col as usize,
+                    expected,
+                    "wrong type error column in {}",
+                    path.display()
+                );
             }
             assert_contains(path, &err.to_string(), config.expect.contains.as_deref());
         }
@@ -142,11 +208,19 @@ fn assert_runtime_error(path: &Path, err: &MetelError, config: &FixtureConfig) {
     match err {
         MetelError::RuntimePanic { code, .. } => {
             if let Some(expected) = &config.expect.code {
-                assert_eq!(&format!("{code}"), expected, "wrong runtime error code in {}", path.display());
+                assert_eq!(
+                    &format!("{code}"),
+                    expected,
+                    "wrong runtime error code in {}",
+                    path.display()
+                );
             }
             assert_contains(path, &err.to_string(), config.expect.contains.as_deref());
         }
-        other => panic!("expected runtime error for {}, got: {other}", path.display()),
+        other => panic!(
+            "expected runtime error for {}, got: {other}",
+            path.display()
+        ),
     }
 }
 
@@ -160,13 +234,25 @@ fn assert_contains(path: &Path, actual: &str, expected: Option<&str>) {
     }
 }
 
-fn assert_graph_checks(path: &Path, graph: &metel::module_loader::ModuleGraph, checks: &GraphChecks) {
+fn assert_graph_checks(
+    path: &Path,
+    graph: &metel::module_loader::ModuleGraph,
+    checks: &GraphChecks,
+) {
     if let Some(expected) = checks.module_count {
-        assert_eq!(graph.modules.len(), expected, "wrong module count for {}", path.display());
+        assert_eq!(
+            graph.modules.len(),
+            expected,
+            "wrong module count for {}",
+            path.display()
+        );
     }
     for expected in &checks.has_module_paths {
         assert!(
-            graph.modules.iter().any(|module| module.module_path == *expected),
+            graph
+                .modules
+                .iter()
+                .any(|module| module.module_path == *expected),
             "expected module path `{}` in {}",
             expected.join("::"),
             path.display(),

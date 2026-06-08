@@ -5,7 +5,6 @@
 /// For the tree-walk interpreter, elaboration pre-resolves whether each method call goes
 /// through an aspect (and which one) or is a direct inherent call, so the evaluator can
 /// skip the runtime aspect-registry lookup for statically-known sites.
-
 use std::collections::HashMap;
 
 use crate::ast::TypeExpr;
@@ -13,9 +12,8 @@ use crate::error::{MetelError, TypeErrorCode};
 use crate::name_resolver::ResolvedNames;
 use crate::symbols::SymbolId;
 use crate::typed_ast::{
-    FunBody, MethodDispatch, TypedBlock, TypedDecl, TypedExpr, TypedForInit,
-    TypedImplBlock, TypedMatchArm, TypedMatchExpr, TypedPlace, TypedStmt,
-    TypedModuleGraph,
+    FunBody, MethodDispatch, TypedBlock, TypedDecl, TypedExpr, TypedForInit, TypedImplBlock,
+    TypedMatchArm, TypedMatchExpr, TypedModuleGraph, TypedPlace, TypedStmt,
 };
 use crate::types::Type;
 
@@ -72,11 +70,22 @@ fn build_aspect_method_map(
     for module in &graph.modules {
         for decl in &module.decls {
             if let TypedDecl::Impl(block) = decl {
-                let Some(aspect_name) = &block.aspect_name else { continue };
-                let Some(type_name) = type_expr_outer_name(&block.target_type) else { continue };
+                let Some(aspect_name) = &block.aspect_name else {
+                    continue;
+                };
+                let Some(type_name) = type_expr_outer_name(&block.target_type) else {
+                    continue;
+                };
                 // Resolve the aspect's SymbolId via its declaring module.
-                let Some(declaring_module) = registry.aspect_declaring_module(aspect_name) else { continue };
-                let Some(&id) = names.symbols.get(&(declaring_module.clone(), aspect_name.clone())) else { continue };
+                let Some(declaring_module) = registry.aspect_declaring_module(aspect_name) else {
+                    continue;
+                };
+                let Some(&id) = names
+                    .symbols
+                    .get(&(declaring_module.clone(), aspect_name.clone()))
+                else {
+                    continue;
+                };
                 for method in &block.methods {
                     let key = (type_name.clone(), method.name.clone());
                     let owner = AspectDispatchOwner {
@@ -123,19 +132,19 @@ fn type_expr_outer_name(te: &TypeExpr) -> Option<String> {
 fn receiver_type_name(ty: &Type) -> Option<String> {
     match ty {
         Type::Named(name, _) => Some(name.clone()),
-        Type::Boolean    => Some("boolean".to_string()),
-        Type::Str        => Some("String".to_string()),
-        Type::Char       => Some("Char".to_string()),
-        Type::I8         => Some("i8".to_string()),
-        Type::I16        => Some("i16".to_string()),
-        Type::I32        => Some("i32".to_string()),
-        Type::I64        => Some("i64".to_string()),
-        Type::U8         => Some("u8".to_string()),
-        Type::U16        => Some("u16".to_string()),
-        Type::U32        => Some("u32".to_string()),
-        Type::U64        => Some("u64".to_string()),
-        Type::F32        => Some("f32".to_string()),
-        Type::F64        => Some("f64".to_string()),
+        Type::Boolean => Some("boolean".to_string()),
+        Type::Str => Some("String".to_string()),
+        Type::Char => Some("Char".to_string()),
+        Type::I8 => Some("i8".to_string()),
+        Type::I16 => Some("i16".to_string()),
+        Type::I32 => Some("i32".to_string()),
+        Type::I64 => Some("i64".to_string()),
+        Type::U8 => Some("u8".to_string()),
+        Type::U16 => Some("u16".to_string()),
+        Type::U32 => Some("u32".to_string()),
+        Type::U64 => Some("u64".to_string()),
+        Type::F32 => Some("f32".to_string()),
+        Type::F64 => Some("f64".to_string()),
         // Pointers: dispatch through the pointee type (deref_value unwraps them at runtime).
         Type::Pointer(inner) | Type::MutPointer(inner) => receiver_type_name(inner),
         _ => None,
@@ -241,7 +250,13 @@ fn elaborate_place(place: &mut TypedPlace, map: &DispatchMap) {
 
 fn elaborate_expr(expr: &mut TypedExpr, map: &DispatchMap) {
     match expr {
-        TypedExpr::MethodCall { method, dispatch, receiver, args, .. } => {
+        TypedExpr::MethodCall {
+            method,
+            dispatch,
+            receiver,
+            args,
+            ..
+        } => {
             if *dispatch == MethodDispatch::Dynamic {
                 let recv_type = receiver_type_name(receiver.ty());
                 *dispatch = resolve_dispatch(recv_type.as_deref(), method, map);
@@ -280,7 +295,12 @@ fn elaborate_expr(expr: &mut TypedExpr, map: &DispatchMap) {
             elaborate_expr(index, map);
         }
         TypedExpr::Cast { expr: inner, .. } => elaborate_expr(inner, map),
-        TypedExpr::If { condition, then_branch, else_branch, .. } => {
+        TypedExpr::If {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
             elaborate_expr(condition, map);
             elaborate_block(then_branch, map);
             if let Some(b) = else_branch {
@@ -346,17 +366,25 @@ mod tests {
     #[test]
     fn resolve_dispatch_aspect_returns_aspect_variant() {
         let mut map = HashMap::new();
-        map.insert(("Foo".to_string(), "to_string".to_string()), display_owner());
+        map.insert(
+            ("Foo".to_string(), "to_string".to_string()),
+            display_owner(),
+        );
         assert_eq!(
             resolve_dispatch(Some("Foo"), "to_string", &map),
-            MethodDispatch::Aspect { aspect_id: SYM_ASPECT_DISPLAY }
+            MethodDispatch::Aspect {
+                aspect_id: SYM_ASPECT_DISPLAY
+            }
         );
     }
 
     #[test]
     fn resolve_dispatch_wrong_type_returns_inherent() {
         let mut map = HashMap::new();
-        map.insert(("Foo".to_string(), "to_string".to_string()), display_owner());
+        map.insert(
+            ("Foo".to_string(), "to_string".to_string()),
+            display_owner(),
+        );
         // Same method name but different receiver type → Inherent, not an aspect call.
         assert_eq!(
             resolve_dispatch(Some("Bar"), "to_string", &map),
@@ -367,20 +395,35 @@ mod tests {
     #[test]
     fn resolve_dispatch_no_type_returns_inherent() {
         let mut map = HashMap::new();
-        map.insert(("Foo".to_string(), "to_string".to_string()), display_owner());
-        assert_eq!(resolve_dispatch(None, "to_string", &map), MethodDispatch::Inherent);
+        map.insert(
+            ("Foo".to_string(), "to_string".to_string()),
+            display_owner(),
+        );
+        assert_eq!(
+            resolve_dispatch(None, "to_string", &map),
+            MethodDispatch::Inherent
+        );
     }
 
     #[test]
     fn resolve_dispatch_unknown_method_returns_inherent() {
         let map = HashMap::new();
-        assert_eq!(resolve_dispatch(Some("Foo"), "len", &map), MethodDispatch::Inherent);
+        assert_eq!(
+            resolve_dispatch(Some("Foo"), "len", &map),
+            MethodDispatch::Inherent
+        );
     }
 
     #[test]
     fn resolve_dispatch_non_aspect_method_returns_inherent() {
         let mut map = HashMap::new();
-        map.insert(("Foo".to_string(), "to_string".to_string()), display_owner());
-        assert_eq!(resolve_dispatch(Some("Foo"), "push", &map), MethodDispatch::Inherent);
+        map.insert(
+            ("Foo".to_string(), "to_string".to_string()),
+            display_owner(),
+        );
+        assert_eq!(
+            resolve_dispatch(Some("Foo"), "push", &map),
+            MethodDispatch::Inherent
+        );
     }
 }

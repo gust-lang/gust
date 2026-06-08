@@ -5,8 +5,8 @@ use crate::ast::Span;
 use crate::error::{MetelError, RuntimeErrorCode};
 
 use super::{
-    attach_stack, eval_block, pop_frame, push_frame, type_of, ClosureBody, RuntimeCallable,
-    RuntimeRegistry, Signal, Value,
+    attach_stack, eval_block, pop_frame, profiler_enter, profiler_exit, push_frame, type_of,
+    ClosureBody, RuntimeCallable, RuntimeRegistry, Signal, Value,
 };
 
 /// How the receiver is bound into the callee's environment.
@@ -24,8 +24,11 @@ fn call_runtime_callable(
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
     match callable {
-        RuntimeCallable::Intrinsic { fun, .. } => {
-            fun(args, span).map(Signal::Value).map_err(attach_stack)
+        RuntimeCallable::Intrinsic { label, fun } => {
+            profiler_enter(&label);
+            let result = fun(args, span).map(Signal::Value).map_err(attach_stack);
+            profiler_exit();
+            result
         }
         RuntimeCallable::Closure(rc) => {
             let closure = (*rc).clone();

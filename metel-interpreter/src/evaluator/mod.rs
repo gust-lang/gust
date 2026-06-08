@@ -9,8 +9,11 @@ mod pattern;
 mod type_of;
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
+use std::time::{Duration, Instant};
+
+use serde::Serialize;
 
 use crate::ast::{BinOp, Literal, Param, Span, TypeExpr, UnaryOp};
 use crate::error::{FrameInfo, MetelError, RuntimeErrorCode};
@@ -18,13 +21,16 @@ use crate::typeinference::TypeCtx;
 
 thread_local! {
     static CALL_STACK: RefCell<Vec<FrameInfo>> = const { RefCell::new(Vec::new()) };
+    static PROFILER: RefCell<Option<ProfilerState>> = const { RefCell::new(None) };
 }
 
 pub(super) fn push_frame(fn_name: String, call_site: Span) {
+    profiler_enter(&fn_name);
     CALL_STACK.with(|s| s.borrow_mut().push(FrameInfo { fn_name, call_site }));
 }
 
 pub(super) fn pop_frame() {
+    profiler_exit();
     CALL_STACK.with(|s| {
         s.borrow_mut().pop();
     });
@@ -117,6 +123,187 @@ pub enum RuntimeCallable {
         label: String,
         fun: fn(Vec<Value>, &Span) -> Result<Value, MetelError>,
     },
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct EvaluationOptions {
+    pub collect_profile: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct EvaluationReport {
+    pub profile: Option<EvaluatorProfile>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct EvaluatorProfile {
+    pub functions: Vec<FunctionProfile>,
+    pub edges: Vec<CallEdgeProfile>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FunctionProfile {
+    pub function: String,
+    pub calls: u64,
+    pub inclusive_ns: u64,
+    pub self_ns: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CallEdgeProfile {
+    pub caller: Option<String>,
+    pub callee: String,
+    pub calls: u64,
+    pub inclusive_ns: u64,
+}
+
+#[derive(Debug, Default)]
+struct ProfilerState {
+    functions: HashMap<String, FunctionAccumulator>,
+    edges: HashMap<(Option<String>, String), EdgeAccumulator>,
+    active_frames: Vec<ActiveProfilerFrame>,
+}
+
+#[derive(Debug, Default)]
+struct FunctionAccumulator {
+    calls: u64,
+    inclusive_ns: u64,
+    self_ns: u64,
+}
+
+#[derive(Debug, Default)]
+struct EdgeAccumulator {
+    calls: u64,
+    inclusive_ns: u64,
+}
+
+#[derive(Debug)]
+struct ActiveProfilerFrame {
+    function: String,
+    started_at: Instant,
+    child_time: Duration,
+}
+
+impl ProfilerState {
+    fn into_profile(self) -> EvaluatorProfile {
+        let functions = self
+            .functions
+            .into_iter()
+            .map(|(function, acc)| FunctionProfile {
+                function,
+                calls: acc.calls,
+                inclusive_ns: acc.inclusive_ns,
+                self_ns: acc.self_ns,
+            })
+            .collect::<Vec<_>>();
+        let edges = self
+            .edges
+            .into_iter()
+            .map(|((caller, callee), acc)| CallEdgeProfile {
+                caller,
+                callee,
+                calls: acc.calls,
+                inclusive_ns: acc.inclusive_ns,
+            })
+            .collect::<Vec<_>>();
+
+        let mut function_map: BTreeMap<String, FunctionProfile> = BTreeMap::new();
+        for function in functions {
+            function_map.insert(function.function.clone(), function);
+        }
+        let mut edges = edges;
+        edges.sort_by(|lhs, rhs| {
+            lhs.caller
+                .cmp(&rhs.caller)
+                .then(lhs.callee.cmp(&rhs.callee))
+        });
+
+        EvaluatorProfile {
+            functions: function_map.into_values().collect(),
+            edges,
+        }
+    }
+}
+
+fn reset_runtime_state(collect_profile: bool) {
+    CALL_STACK.with(|s| s.borrow_mut().clear());
+    PROFILER.with(|profiler| {
+        *profiler.borrow_mut() = collect_profile.then(ProfilerState::default);
+    });
+}
+
+fn finish_profile() -> Option<EvaluatorProfile> {
+    PROFILER.with(|profiler| {
+        profiler
+            .borrow_mut()
+            .take()
+            .map(ProfilerState::into_profile)
+    })
+}
+
+pub(super) fn profiler_enter(function: &str) {
+    PROFILER.with(|profiler| {
+        let mut profiler = profiler.borrow_mut();
+        let Some(state) = profiler.as_mut() else {
+            return;
+        };
+
+        let caller = state
+            .active_frames
+            .last()
+            .map(|frame| frame.function.clone());
+        state
+            .functions
+            .entry(function.to_string())
+            .or_default()
+            .calls += 1;
+        state
+            .edges
+            .entry((caller, function.to_string()))
+            .or_default()
+            .calls += 1;
+        state.active_frames.push(ActiveProfilerFrame {
+            function: function.to_string(),
+            started_at: Instant::now(),
+            child_time: Duration::ZERO,
+        });
+    });
+}
+
+pub(super) fn profiler_exit() {
+    PROFILER.with(|profiler| {
+        let mut profiler = profiler.borrow_mut();
+        let Some(state) = profiler.as_mut() else {
+            return;
+        };
+        let Some(frame) = state.active_frames.pop() else {
+            return;
+        };
+
+        let elapsed = frame.started_at.elapsed();
+        let inclusive_ns = duration_ns(elapsed);
+        let self_ns = duration_ns(elapsed.saturating_sub(frame.child_time));
+
+        if let Some(acc) = state.functions.get_mut(&frame.function) {
+            acc.inclusive_ns += inclusive_ns;
+            acc.self_ns += self_ns;
+        }
+
+        let caller = state
+            .active_frames
+            .last()
+            .map(|active| active.function.clone());
+        if let Some(acc) = state.edges.get_mut(&(caller, frame.function.clone())) {
+            acc.inclusive_ns += inclusive_ns;
+        }
+        if let Some(parent) = state.active_frames.last_mut() {
+            parent.child_time += elapsed;
+        }
+    });
+}
+
+fn duration_ns(duration: Duration) -> u64 {
+    duration.as_nanos().min(u64::MAX as u128) as u64
 }
 
 #[derive(Debug, Clone, Default)]
@@ -240,11 +427,9 @@ impl RuntimeRegistry {
         let entry = self.types.entry(type_name.into()).or_default();
         let aspect_name = aspect_name.into();
         let method_name = method_name.into();
-        if let Some(aspect_impl) = entry
-            .aspect_impls
-            .iter_mut()
-            .find(|aspect_impl| aspect_impl.aspect_name == aspect_name && aspect_impl.type_args == type_args)
-        {
+        if let Some(aspect_impl) = entry.aspect_impls.iter_mut().find(|aspect_impl| {
+            aspect_impl.aspect_name == aspect_name && aspect_impl.type_args == type_args
+        }) {
             // Update aspect_id if we now have one (a later registration may have the id).
             if aspect_impl.aspect_id.is_none() {
                 aspect_impl.aspect_id = aspect_id;
@@ -276,7 +461,10 @@ impl RuntimeRegistry {
         // Prefer exact SymbolId match.
         if let Some(method) = entry.aspect_impls.iter().rev().find_map(|ai| {
             if ai.aspect_id == Some(aspect_id) {
-                ai.methods.get(method_name).cloned().filter(|m| m.receiver.is_some())
+                ai.methods
+                    .get(method_name)
+                    .cloned()
+                    .filter(|m| m.receiver.is_some())
             } else {
                 None
             }
@@ -350,20 +538,21 @@ impl RuntimeRegistry {
     }
 
     pub fn get_regular_method(&self, type_name: &str, method_name: &str) -> Option<RuntimeMethod> {
-        self.get_inherent_method(type_name, method_name).or_else(|| {
-            self.types
-                .get(type_name)?
-                .aspect_impls
-                .iter()
-                .rev()
-                .find_map(|aspect_impl| {
-                    aspect_impl
-                        .methods
-                        .get(method_name)
-                        .cloned()
-                        .filter(|method| method.receiver.is_some())
-                })
-        })
+        self.get_inherent_method(type_name, method_name)
+            .or_else(|| {
+                self.types
+                    .get(type_name)?
+                    .aspect_impls
+                    .iter()
+                    .rev()
+                    .find_map(|aspect_impl| {
+                        aspect_impl
+                            .methods
+                            .get(method_name)
+                            .cloned()
+                            .filter(|method| method.receiver.is_some())
+                    })
+            })
     }
 
     pub fn get_method_for_value(&self, value: &Value, method_name: &str) -> Option<RuntimeMethod> {
@@ -644,7 +833,10 @@ fn runtime_type_key(ty: &TypeExpr) -> String {
         TypeExpr::Named(name, args) if args.is_empty() => name.clone(),
         TypeExpr::Named(name, args) => format!(
             "{name}<{}>",
-            args.iter().map(runtime_type_key).collect::<Vec<_>>().join(", ")
+            args.iter()
+                .map(runtime_type_key)
+                .collect::<Vec<_>>()
+                .join(", ")
         ),
         TypeExpr::Unit => "()".to_string(),
         TypeExpr::Tuple(items) => format!(
@@ -693,7 +885,10 @@ fn runtime_method_from_decl(
     method: &crate::typed_ast::TypedFunDecl,
     body: RuntimeCallable,
 ) -> RuntimeMethod {
-    let receiver = method.params.first().and_then(|param| param.receiver.clone());
+    let receiver = method
+        .params
+        .first()
+        .and_then(|param| param.receiver.clone());
     let params = method
         .params
         .iter()
@@ -702,7 +897,10 @@ fn runtime_method_from_decl(
                 None
             } else {
                 Some(
-                    param.type_ann.clone().unwrap_or_else(|| TypeExpr::Named("_".to_string(), vec![])),
+                    param
+                        .type_ann
+                        .clone()
+                        .unwrap_or_else(|| TypeExpr::Named("_".to_string(), vec![])),
                 )
             }
         })
@@ -960,8 +1158,15 @@ impl Environment {
 /// Modules are processed in topological order (dependencies before dependents).
 /// See ADR-0029 for the isolation design and ADR-0019 for the superseded flat-merge approach.
 pub fn evaluate_graph(elaborated: ElaboratedModuleGraph) -> Result<(), MetelError> {
+    evaluate_graph_with_options(elaborated, EvaluationOptions::default()).map(|_| ())
+}
+
+pub fn evaluate_graph_with_options(
+    elaborated: ElaboratedModuleGraph,
+    options: EvaluationOptions,
+) -> Result<EvaluationReport, MetelError> {
     let graph = elaborated.0;
-    CALL_STACK.with(|s| s.borrow_mut().clear());
+    reset_runtime_state(options.collect_profile);
     let mut runtime = builtins::runtime_registry();
 
     // module_envs: path → fully initialised Environment.
@@ -979,7 +1184,11 @@ pub fn evaluate_graph(elaborated: ElaboratedModuleGraph) -> Result<(), MetelErro
 
         // Seed names imported from already-initialised dependency modules.
         for (local_name, import_ref) in &module.imported_names {
-            let ResolvedImportRef { source_module, canonical_name, .. } = import_ref;
+            let ResolvedImportRef {
+                source_module,
+                canonical_name,
+                ..
+            } = import_ref;
             if let Some(src_env) = module_envs.get(source_module) {
                 if let Some(val) = src_env.get(canonical_name) {
                     env.define(local_name, val);
@@ -1018,12 +1227,22 @@ pub fn evaluate_graph(elaborated: ElaboratedModuleGraph) -> Result<(), MetelErro
     let env = module_envs.get_mut(&root_path).ok_or_else(|| {
         MetelError::panic(RuntimeErrorCode::R0001, "root module not found", &dummy)
     })?;
-    run_main(env, &runtime)
+    let result = run_main(env, &runtime);
+    let profile = finish_profile();
+    result?;
+    Ok(EvaluationReport { profile })
 }
 
 #[allow(dead_code)] // public API used by single-file test harness
 pub fn evaluate(program: TypedProgram) -> Result<(), MetelError> {
-    CALL_STACK.with(|s| s.borrow_mut().clear());
+    evaluate_with_options(program, EvaluationOptions::default()).map(|_| ())
+}
+
+pub fn evaluate_with_options(
+    program: TypedProgram,
+    options: EvaluationOptions,
+) -> Result<EvaluationReport, MetelError> {
+    reset_runtime_state(false);
     let mut runtime = builtins::runtime_registry();
     let mut env = Environment::new();
     run_passes(
@@ -1033,12 +1252,24 @@ pub fn evaluate(program: TypedProgram) -> Result<(), MetelError> {
         &mut runtime,
         None,
     )?;
-    run_main(&mut env, &runtime)
+    reset_runtime_state(options.collect_profile);
+    let result = run_main(&mut env, &runtime);
+    let profile = finish_profile();
+    result?;
+    Ok(EvaluationReport { profile })
 }
 
 #[allow(dead_code)] // public API used by single-file test harness
 pub fn evaluate_with_ctx(program: TypedProgram, ctx: TypeCtx) -> Result<(), MetelError> {
-    CALL_STACK.with(|s| s.borrow_mut().clear());
+    evaluate_with_ctx_and_options(program, ctx, EvaluationOptions::default()).map(|_| ())
+}
+
+pub fn evaluate_with_ctx_and_options(
+    program: TypedProgram,
+    ctx: TypeCtx,
+    options: EvaluationOptions,
+) -> Result<EvaluationReport, MetelError> {
+    reset_runtime_state(false);
     let mut runtime = builtins::runtime_registry();
     let mut env = Environment::new();
     let type_ctx_rc = std::rc::Rc::new(ctx);
@@ -1049,7 +1280,11 @@ pub fn evaluate_with_ctx(program: TypedProgram, ctx: TypeCtx) -> Result<(), Mete
         &mut runtime,
         Some(type_ctx_rc),
     )?;
-    run_main(&mut env, &runtime)
+    reset_runtime_state(options.collect_profile);
+    let result = run_main(&mut env, &runtime);
+    let profile = finish_profile();
+    result?;
+    Ok(EvaluationReport { profile })
 }
 
 /// Run the standard 3-pass evaluation on `decls` into `env`.
@@ -1121,8 +1356,11 @@ fn run_passes(
                             closure,
                         );
                         if let Some(aspect_name) = &impl_block.aspect_name {
-                            let aspect_type_args =
-                                impl_block.aspect_type_args.iter().map(runtime_type_key).collect();
+                            let aspect_type_args = impl_block
+                                .aspect_type_args
+                                .iter()
+                                .map(runtime_type_key)
+                                .collect();
                             runtime.register_aspect_method(
                                 type_name,
                                 aspect_name,
@@ -1132,11 +1370,7 @@ fn run_passes(
                                 runtime_method,
                             );
                         } else if runtime_method.receiver.is_none() {
-                            runtime.register_type_value(
-                                type_name,
-                                &method.name,
-                                runtime_method,
-                            );
+                            runtime.register_type_value(type_name, &method.name, runtime_method);
                         } else {
                             runtime.register_inherent_method(
                                 type_name,
@@ -1153,7 +1387,8 @@ fn run_passes(
 
     // Alias registration
     for (alias, canonical) in aliases {
-        if let Some(val) = env.get(canonical)
+        if let Some(val) = env
+            .get(canonical)
             .or_else(|| std_core_lookup(canonical, runtime))
         {
             if env.get(alias).is_none() {
@@ -1205,16 +1440,19 @@ fn run_main(env: &mut Environment, runtime: &RuntimeRegistry) -> Result<(), Mete
             ))
         }
     };
+    profiler_enter("main");
     let main_sig = match &main_body {
         ClosureBody::Typed(b) => eval_block(b, env, runtime),
         ClosureBody::Untyped(_) => {
+            profiler_exit();
             return Err(MetelError::panic(
                 RuntimeErrorCode::R0002,
                 "main() body could not be typed",
                 &dummy,
-            ))
+            ));
         }
     };
+    profiler_exit();
     match main_sig? {
         Signal::Value(_) | Signal::Return(_) => Ok(()),
         other => Err(MetelError::internal(format!(
@@ -1586,16 +1824,16 @@ pub fn eval_expr(
             Ok(Signal::Value(val))
         }
 
-        TypedExpr::Ident(name, _, span) => match env.get(name)
-            .or_else(|| std_core_lookup(name, runtime))
-        {
-            Some(val) => Ok(Signal::Value(val)),
-            None => Err(MetelError::panic(
-                RuntimeErrorCode::R0003,
-                format!("undefined variable `{name}`"),
-                span,
-            )),
-        },
+        TypedExpr::Ident(name, _, span) => {
+            match env.get(name).or_else(|| std_core_lookup(name, runtime)) {
+                Some(val) => Ok(Signal::Value(val)),
+                None => Err(MetelError::panic(
+                    RuntimeErrorCode::R0003,
+                    format!("undefined variable `{name}`"),
+                    span,
+                )),
+            }
+        }
 
         TypedExpr::Path(segments, _, _) => {
             // Unit enum variant: `Colour::Red` → Value::Enum { name: "Colour", variant: "Red", fields: {} }
@@ -2123,11 +2361,9 @@ pub fn eval_expr(
             let method_entry = match dispatch {
                 // Elaboration resolved this as an aspect call: dispatch by stable SymbolId,
                 // falling back to string search for builtins that lack a SymbolId.
-                MethodDispatch::Aspect { aspect_id } => {
-                    runtime_type_name(&recv_type_view)
-                        .and_then(|tn| runtime.get_aspect_method_by_id(tn, *aspect_id, method))
-                        .or_else(|| runtime.get_method_for_value(&recv_type_view, method))
-                }
+                MethodDispatch::Aspect { aspect_id } => runtime_type_name(&recv_type_view)
+                    .and_then(|tn| runtime.get_aspect_method_by_id(tn, *aspect_id, method))
+                    .or_else(|| runtime.get_method_for_value(&recv_type_view, method)),
                 // Inherent or unresolved: use the full lookup (inherent is tried first).
                 MethodDispatch::Inherent | MethodDispatch::Dynamic => {
                     runtime.get_method_for_value(&recv_type_view, method)
@@ -2237,28 +2473,32 @@ pub fn eval_expr(
             params, body, ty, ..
         } => {
             let captured = env.capture_clone();
-            Ok(Signal::Value(Value::Callable(RuntimeCallable::Closure(Rc::new(ClosureValue {
-                name: None,
-                params: params.clone(),
-                body: ClosureBody::Typed(body.clone()),
-                captured,
-                type_ctx: None,
-                fun_type: Some(ty.clone()),
-            })))))
+            Ok(Signal::Value(Value::Callable(RuntimeCallable::Closure(
+                Rc::new(ClosureValue {
+                    name: None,
+                    params: params.clone(),
+                    body: ClosureBody::Typed(body.clone()),
+                    captured,
+                    type_ctx: None,
+                    fun_type: Some(ty.clone()),
+                }),
+            ))))
         }
 
         TypedExpr::GenericClosure {
             name, params, body, ..
         } => {
             let captured = env.capture_clone();
-            Ok(Signal::Value(Value::Callable(RuntimeCallable::Closure(Rc::new(ClosureValue {
-                name: name.clone(),
-                params: params.clone(),
-                body: ClosureBody::Untyped(body.clone()),
-                captured,
-                type_ctx: env.type_ctx.clone(),
-                fun_type: None,
-            })))))
+            Ok(Signal::Value(Value::Callable(RuntimeCallable::Closure(
+                Rc::new(ClosureValue {
+                    name: name.clone(),
+                    params: params.clone(),
+                    body: ClosureBody::Untyped(body.clone()),
+                    captured,
+                    type_ctx: env.type_ctx.clone(),
+                    fun_type: None,
+                }),
+            ))))
         }
     }
 }

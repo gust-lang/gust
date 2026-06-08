@@ -18,31 +18,31 @@ pub struct SymbolId(pub u32);
 
 // ── Builtin types (1–49) ──────────────────────────────────────────────────────
 
-pub const SYM_TYPE_BOOLEAN:        SymbolId = SymbolId(1);
-pub const SYM_TYPE_STRING:         SymbolId = SymbolId(2);
-pub const SYM_TYPE_CHAR:           SymbolId = SymbolId(3);
-pub const SYM_TYPE_I8:             SymbolId = SymbolId(4);
-pub const SYM_TYPE_I16:            SymbolId = SymbolId(5);
-pub const SYM_TYPE_I32:            SymbolId = SymbolId(6);
-pub const SYM_TYPE_I64:            SymbolId = SymbolId(7);
-pub const SYM_TYPE_U8:             SymbolId = SymbolId(8);
-pub const SYM_TYPE_U16:            SymbolId = SymbolId(9);
-pub const SYM_TYPE_U32:            SymbolId = SymbolId(10);
-pub const SYM_TYPE_U64:            SymbolId = SymbolId(11);
-pub const SYM_TYPE_F32:            SymbolId = SymbolId(12);
-pub const SYM_TYPE_F64:            SymbolId = SymbolId(13);
-pub const SYM_TYPE_LIST:           SymbolId = SymbolId(14);
-pub const SYM_TYPE_PERHAPS:        SymbolId = SymbolId(15);
-pub const SYM_TYPE_RESULT:         SymbolId = SymbolId(16);
-pub const SYM_TYPE_RANGE:          SymbolId = SymbolId(17);
+pub const SYM_TYPE_BOOLEAN: SymbolId = SymbolId(1);
+pub const SYM_TYPE_STRING: SymbolId = SymbolId(2);
+pub const SYM_TYPE_CHAR: SymbolId = SymbolId(3);
+pub const SYM_TYPE_I8: SymbolId = SymbolId(4);
+pub const SYM_TYPE_I16: SymbolId = SymbolId(5);
+pub const SYM_TYPE_I32: SymbolId = SymbolId(6);
+pub const SYM_TYPE_I64: SymbolId = SymbolId(7);
+pub const SYM_TYPE_U8: SymbolId = SymbolId(8);
+pub const SYM_TYPE_U16: SymbolId = SymbolId(9);
+pub const SYM_TYPE_U32: SymbolId = SymbolId(10);
+pub const SYM_TYPE_U64: SymbolId = SymbolId(11);
+pub const SYM_TYPE_F32: SymbolId = SymbolId(12);
+pub const SYM_TYPE_F64: SymbolId = SymbolId(13);
+pub const SYM_TYPE_LIST: SymbolId = SymbolId(14);
+pub const SYM_TYPE_PERHAPS: SymbolId = SymbolId(15);
+pub const SYM_TYPE_RESULT: SymbolId = SymbolId(16);
+pub const SYM_TYPE_RANGE: SymbolId = SymbolId(17);
 pub const SYM_TYPE_RANGE_INCLUSIVE: SymbolId = SymbolId(18);
 // 19–49 reserved for future stdlib types.
 
 // ── Builtin aspects (50–99) ───────────────────────────────────────────────────
 
-pub const SYM_ASPECT_DISPLAY:      SymbolId = SymbolId(50);
-pub const SYM_ASPECT_ITERABLE:     SymbolId = SymbolId(51);
-pub const SYM_ASPECT_FROM:         SymbolId = SymbolId(52);
+pub const SYM_ASPECT_DISPLAY: SymbolId = SymbolId(50);
+pub const SYM_ASPECT_ITERABLE: SymbolId = SymbolId(51);
+pub const SYM_ASPECT_FROM: SymbolId = SymbolId(52);
 // 53–99 reserved for future aspects.
 
 // 100–999 reserved for stdlib expansion.
@@ -68,31 +68,34 @@ impl SymbolTable {
         let sc = || vec!["std".to_string(), "core".to_string()];
 
         // Builtin types
-        map.insert((sc(), "boolean".into()),       SYM_TYPE_BOOLEAN);
-        map.insert((sc(), "String".into()),        SYM_TYPE_STRING);
-        map.insert((sc(), "Char".into()),          SYM_TYPE_CHAR);
-        map.insert((sc(), "i8".into()),            SYM_TYPE_I8);
-        map.insert((sc(), "i16".into()),           SYM_TYPE_I16);
-        map.insert((sc(), "i32".into()),           SYM_TYPE_I32);
-        map.insert((sc(), "i64".into()),           SYM_TYPE_I64);
-        map.insert((sc(), "u8".into()),            SYM_TYPE_U8);
-        map.insert((sc(), "u16".into()),           SYM_TYPE_U16);
-        map.insert((sc(), "u32".into()),           SYM_TYPE_U32);
-        map.insert((sc(), "u64".into()),           SYM_TYPE_U64);
-        map.insert((sc(), "f32".into()),           SYM_TYPE_F32);
-        map.insert((sc(), "f64".into()),           SYM_TYPE_F64);
-        map.insert((sc(), "List".into()),          SYM_TYPE_LIST);
-        map.insert((sc(), "Perhaps".into()),       SYM_TYPE_PERHAPS);
-        map.insert((sc(), "Result".into()),        SYM_TYPE_RESULT);
-        map.insert((sc(), "Range".into()),         SYM_TYPE_RANGE);
+        map.insert((sc(), "boolean".into()), SYM_TYPE_BOOLEAN);
+        map.insert((sc(), "String".into()), SYM_TYPE_STRING);
+        map.insert((sc(), "Char".into()), SYM_TYPE_CHAR);
+        map.insert((sc(), "i8".into()), SYM_TYPE_I8);
+        map.insert((sc(), "i16".into()), SYM_TYPE_I16);
+        map.insert((sc(), "i32".into()), SYM_TYPE_I32);
+        map.insert((sc(), "i64".into()), SYM_TYPE_I64);
+        map.insert((sc(), "u8".into()), SYM_TYPE_U8);
+        map.insert((sc(), "u16".into()), SYM_TYPE_U16);
+        map.insert((sc(), "u32".into()), SYM_TYPE_U32);
+        map.insert((sc(), "u64".into()), SYM_TYPE_U64);
+        map.insert((sc(), "f32".into()), SYM_TYPE_F32);
+        map.insert((sc(), "f64".into()), SYM_TYPE_F64);
+        map.insert((sc(), "List".into()), SYM_TYPE_LIST);
+        map.insert((sc(), "Perhaps".into()), SYM_TYPE_PERHAPS);
+        map.insert((sc(), "Result".into()), SYM_TYPE_RESULT);
+        map.insert((sc(), "Range".into()), SYM_TYPE_RANGE);
         map.insert((sc(), "RangeInclusive".into()), SYM_TYPE_RANGE_INCLUSIVE);
 
         // Builtin aspects
-        map.insert((sc(), "Display".into()),       SYM_ASPECT_DISPLAY);
-        map.insert((sc(), "Iterable".into()),      SYM_ASPECT_ITERABLE);
-        map.insert((sc(), "From".into()),          SYM_ASPECT_FROM);
+        map.insert((sc(), "Display".into()), SYM_ASPECT_DISPLAY);
+        map.insert((sc(), "Iterable".into()), SYM_ASPECT_ITERABLE);
+        map.insert((sc(), "From".into()), SYM_ASPECT_FROM);
 
-        Self { map, next_id: USER_SYM_START }
+        Self {
+            map,
+            next_id: USER_SYM_START,
+        }
     }
 
     /// Return the existing `SymbolId` for `(source_module, source_name)`, or assign

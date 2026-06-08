@@ -135,7 +135,13 @@ fn suite_defaults(suite: &str) -> FixtureConfig {
 
 impl Expectation {
     fn success() -> Self {
-        Self { status: ExpectStatus::Success, code: None, contains: None, line: None, col: None }
+        Self {
+            status: ExpectStatus::Success,
+            code: None,
+            contains: None,
+            line: None,
+            col: None,
+        }
     }
 }
 
@@ -156,7 +162,9 @@ fn merge_config(defaults: FixtureConfig, partial: PartialConfig) -> FixtureConfi
         },
         graph: GraphChecks {
             module_count: partial.graph_module_count.or(defaults.graph.module_count),
-            has_module_paths: partial.graph_has_module_paths.unwrap_or(defaults.graph.has_module_paths),
+            has_module_paths: partial
+                .graph_has_module_paths
+                .unwrap_or(defaults.graph.has_module_paths),
         },
     }
 }
@@ -188,7 +196,8 @@ fn parse_sidecar(path: &Path) -> PartialConfig {
             continue;
         }
 
-        let (key, value) = line.split_once('=')
+        let (key, value) = line
+            .split_once('=')
             .unwrap_or_else(|| panic!("invalid sidecar line in {}: `{line}`", path.display()));
         let key = key.trim();
         let value = parse_scalar(value.trim());
@@ -197,39 +206,58 @@ fn parse_sidecar(path: &Path) -> PartialConfig {
             "" => match key {
                 "runner" => partial.runner = Some(parse_runner(&value)),
                 "prelude" => partial.prelude = Some(parse_prelude(&value)),
-                other => panic!("unknown top-level sidecar key `{other}` in {}", path.display()),
+                other => panic!(
+                    "unknown top-level sidecar key `{other}` in {}",
+                    path.display()
+                ),
             },
             "expect" => match key {
                 "status" => partial.status = Some(parse_status(&value)),
                 "code" => partial.code = Some(value),
                 "contains" => partial.contains = Some(value),
-                "line" => partial.line = Some(value.parse().unwrap_or_else(|e| {
-                    panic!("invalid integer for `line` in {}: {e}", path.display())
-                })),
-                "col" => partial.col = Some(value.parse().unwrap_or_else(|e| {
-                    panic!("invalid integer for `col` in {}: {e}", path.display())
-                })),
+                "line" => {
+                    partial.line = Some(value.parse().unwrap_or_else(|e| {
+                        panic!("invalid integer for `line` in {}: {e}", path.display())
+                    }))
+                }
+                "col" => {
+                    partial.col = Some(value.parse().unwrap_or_else(|e| {
+                        panic!("invalid integer for `col` in {}: {e}", path.display())
+                    }))
+                }
                 other => panic!("unknown expect sidecar key `{other}` in {}", path.display()),
             },
             "program" => match key {
-                "imports" => partial.program_imports = Some(value.parse().unwrap_or_else(|e| {
-                    panic!("invalid integer for `imports` in {}: {e}", path.display())
-                })),
-                "decls" => partial.program_decls = Some(value.parse().unwrap_or_else(|e| {
-                    panic!("invalid integer for `decls` in {}: {e}", path.display())
-                })),
-                other => panic!("unknown program sidecar key `{other}` in {}", path.display()),
+                "imports" => {
+                    partial.program_imports = Some(value.parse().unwrap_or_else(|e| {
+                        panic!("invalid integer for `imports` in {}: {e}", path.display())
+                    }))
+                }
+                "decls" => {
+                    partial.program_decls = Some(value.parse().unwrap_or_else(|e| {
+                        panic!("invalid integer for `decls` in {}: {e}", path.display())
+                    }))
+                }
+                other => panic!(
+                    "unknown program sidecar key `{other}` in {}",
+                    path.display()
+                ),
             },
             "graph" => match key {
-                "module_count" => partial.graph_module_count = Some(value.parse().unwrap_or_else(|e| {
-                    panic!("invalid integer for `module_count` in {}: {e}", path.display())
-                })),
+                "module_count" => {
+                    partial.graph_module_count = Some(value.parse().unwrap_or_else(|e| {
+                        panic!(
+                            "invalid integer for `module_count` in {}: {e}",
+                            path.display()
+                        )
+                    }))
+                }
                 "has_module_paths" => {
                     partial.graph_has_module_paths = Some(
                         parse_list(&value)
                             .into_iter()
                             .map(|path| path.split("::").map(|seg| seg.to_string()).collect())
-                            .collect()
+                            .collect(),
                     )
                 }
                 other => panic!("unknown graph sidecar key `{other}` in {}", path.display()),
@@ -287,7 +315,10 @@ fn parse_legacy_expectation(suite: &str, fixture_path: &Path) -> Option<PartialC
             .file_stem()
             .and_then(|stem| stem.to_str())
             .filter(|stem| stem.starts_with("neg_"))
-            .map(|_| PartialConfig { status: Some(ExpectStatus::ParseError), ..PartialConfig::default() });
+            .map(|_| PartialConfig {
+                status: Some(ExpectStatus::ParseError),
+                ..PartialConfig::default()
+            });
     }
 
     let source_path = main_source_path(fixture_path);

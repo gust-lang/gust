@@ -82,7 +82,10 @@ struct SymbolTable {
 
 impl SymbolTable {
     fn new() -> Self {
-        Self { map: HashMap::new(), next_id: 1 }
+        Self {
+            map: HashMap::new(),
+            next_id: 1,
+        }
     }
 
     /// Return the existing `SymbolId` for `(source_module, source_name)`, or assign
@@ -117,25 +120,27 @@ fn canonical_path(path: &[String], aliases: &HashMap<Vec<String>, Vec<String>>) 
 
 pub fn resolve(graph: &ModuleGraph) -> Result<ResolvedNames, MetelError> {
     let path_aliases = &graph.path_aliases;
-    let known_modules: HashSet<Vec<String>> = graph.modules.iter()
+    let known_modules: HashSet<Vec<String>> = graph
+        .modules
+        .iter()
         .map(|m| m.module_path.clone())
         .collect();
 
     // First pass: collect locally-declared names per module (public and all).
-    let mut pub_surface: HashMap<Vec<String>, HashSet<String>> = graph.modules.iter()
+    let mut pub_surface: HashMap<Vec<String>, HashSet<String>> = graph
+        .modules
+        .iter()
         .map(|m| {
-            let names = m.program.decls.iter()
-                .filter_map(decl_pub_name)
-                .collect();
+            let names = m.program.decls.iter().filter_map(decl_pub_name).collect();
             (m.module_path.clone(), names)
         })
         .collect();
 
-    let declared_names: HashMap<Vec<String>, HashSet<String>> = graph.modules.iter()
+    let declared_names: HashMap<Vec<String>, HashSet<String>> = graph
+        .modules
+        .iter()
         .map(|m| {
-            let names = m.program.decls.iter()
-                .filter_map(decl_any_name)
-                .collect();
+            let names = m.program.decls.iter().filter_map(decl_any_name).collect();
             (m.module_path.clone(), names)
         })
         .collect();
@@ -155,8 +160,10 @@ pub fn resolve(graph: &ModuleGraph) -> Result<ResolvedNames, MetelError> {
     // Second pass: process re-exports and extend pub_surface.
     // Simple single-pass (no support for transitive re-export chains; that's future work).
     for loaded in &graph.modules {
-        let re_exported = collect_re_exports(loaded, &known_modules, &pub_surface, path_aliases, &mut sym)?;
-        pub_surface.entry(loaded.module_path.clone())
+        let re_exported =
+            collect_re_exports(loaded, &known_modules, &pub_surface, path_aliases, &mut sym)?;
+        pub_surface
+            .entry(loaded.module_path.clone())
             .or_default()
             .extend(re_exported.keys().cloned());
     }
@@ -172,20 +179,30 @@ pub fn resolve(graph: &ModuleGraph) -> Result<ResolvedNames, MetelError> {
     // `import std::core::Perhaps` and similar are recognized as valid imports.
     // (std::core has no physical file; these names are registered in the type registry.)
     // See ADR-0027 for the virtual-module design and its migration path.
-    let std_core_surface: HashSet<String> = [
-        "Perhaps", "Result", "Display", "Iterable", "From", "List",
-    ].iter().map(|s| s.to_string()).collect();
-    pub_surface.insert(vec!["std".to_string(), "core".to_string()], std_core_surface);
+    let std_core_surface: HashSet<String> =
+        ["Perhaps", "Result", "Display", "Iterable", "From", "List"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+    pub_surface.insert(
+        vec!["std".to_string(), "core".to_string()],
+        std_core_surface,
+    );
 
-    Ok(ResolvedNames { scopes, pub_surface, declared_names, symbols: sym.map })
+    Ok(ResolvedNames {
+        scopes,
+        pub_surface,
+        declared_names,
+        symbols: sym.map,
+    })
 }
 
 /// Returns the name of a declaration if it is public.
 fn decl_pub_name(decl: &Decl) -> Option<String> {
     match decl {
-        Decl::Fun(d)    if d.visibility == Visibility::Public => Some(d.name.clone()),
+        Decl::Fun(d) if d.visibility == Visibility::Public => Some(d.name.clone()),
         Decl::Struct(d) if d.visibility == Visibility::Public => Some(d.name.clone()),
-        Decl::Enum(d)   if d.visibility == Visibility::Public => Some(d.name.clone()),
+        Decl::Enum(d) if d.visibility == Visibility::Public => Some(d.name.clone()),
         Decl::Aspect(d) if d.visibility == Visibility::Public => Some(d.name.clone()),
         _ => None,
     }
@@ -194,12 +211,12 @@ fn decl_pub_name(decl: &Decl) -> Option<String> {
 /// Returns the name of a declaration regardless of visibility.
 fn decl_any_name(decl: &Decl) -> Option<String> {
     match decl {
-        Decl::Fun(d)    => Some(d.name.clone()),
+        Decl::Fun(d) => Some(d.name.clone()),
         Decl::Struct(d) => Some(d.name.clone()),
-        Decl::Enum(d)   => Some(d.name.clone()),
+        Decl::Enum(d) => Some(d.name.clone()),
         Decl::Aspect(d) => Some(d.name.clone()),
-        Decl::Let(d)    => Some(d.name.clone()),
-        Decl::Mut(d)    => Some(d.name.clone()),
+        Decl::Let(d) => Some(d.name.clone()),
+        Decl::Mut(d) => Some(d.name.clone()),
         Decl::Impl(_) | Decl::Stmt(_) => None,
     }
 }
@@ -222,12 +239,22 @@ fn resolve_module(
 
     for import in &loaded.program.imports {
         let base = absolute_base(&import.path.root, &loaded.module_path);
-        process_tree(&base, &import.path.tree, known_modules, path_aliases, &mut scope, &import.span, sym)?;
+        process_tree(
+            &base,
+            &import.path.tree,
+            known_modules,
+            path_aliases,
+            &mut scope,
+            &import.span,
+            sym,
+        )?;
     }
 
     // Auto-import std::core at lowest (Std) priority — RFC-0030. See ADR-0026 (glob tiers)
     // and ADR-0027 (virtual module). Every module sees core names without an explicit import.
-    scope.globs.push((GlobTier::Std, vec!["std".to_string(), "core".to_string()]));
+    scope
+        .globs
+        .push((GlobTier::Std, vec!["std".to_string(), "core".to_string()]));
 
     Ok(scope)
 }
@@ -245,7 +272,16 @@ fn collect_re_exports(
 
     for export in &loaded.program.exports {
         let base = absolute_base(&export.path.root, &loaded.module_path);
-        process_export_tree(&base, &export.path.tree, known_modules, pub_surface, path_aliases, &mut re_exports, &export.span, sym)?;
+        process_export_tree(
+            &base,
+            &export.path.tree,
+            known_modules,
+            pub_surface,
+            path_aliases,
+            &mut re_exports,
+            &export.span,
+            sym,
+        )?;
     }
 
     Ok(re_exports)
@@ -271,12 +307,15 @@ fn process_export_tree(
             if let Some(names) = pub_surface.get(base) {
                 for name in names {
                     let symbol_id = sym.intern(base, name);
-                    re_exports.insert(name.clone(), ImportBinding {
-                        source_module: base.to_vec(),
-                        source_name: name.clone(),
-                        kind: BindingKind::Item,
-                        symbol_id,
-                    });
+                    re_exports.insert(
+                        name.clone(),
+                        ImportBinding {
+                            source_module: base.to_vec(),
+                            source_name: name.clone(),
+                            kind: BindingKind::Item,
+                            symbol_id,
+                        },
+                    );
                 }
             }
         }
@@ -289,12 +328,15 @@ fn process_export_tree(
             if known_modules.contains(&module_candidate) {
                 // Re-exporting a module handle (unusual but allowed).
                 let symbol_id = sym.intern(&module_candidate, name);
-                re_exports.insert(local, ImportBinding {
-                    source_module: module_candidate,
-                    source_name: name.clone(),
-                    kind: BindingKind::Module,
-                    symbol_id,
-                });
+                re_exports.insert(
+                    local,
+                    ImportBinding {
+                        source_module: module_candidate,
+                        source_name: name.clone(),
+                        kind: BindingKind::Module,
+                        symbol_id,
+                    },
+                );
             } else {
                 // Item re-export: verify it's public in the source module.
                 if let Some(surface) = pub_surface.get(base) {
@@ -310,24 +352,45 @@ fn process_export_tree(
                     }
                 }
                 let symbol_id = sym.intern(base, name);
-                re_exports.insert(local, ImportBinding {
-                    source_module: base.to_vec(),
-                    source_name: name.clone(),
-                    kind: BindingKind::Item,
-                    symbol_id,
-                });
+                re_exports.insert(
+                    local,
+                    ImportBinding {
+                        source_module: base.to_vec(),
+                        source_name: name.clone(),
+                        kind: BindingKind::Item,
+                        symbol_id,
+                    },
+                );
             }
         }
 
         ImportTree::Path { name, tree } => {
             let mut new_base = base.to_vec();
             new_base.push(name.clone());
-            process_export_tree(&new_base, tree, known_modules, pub_surface, path_aliases, re_exports, export_span, sym)?;
+            process_export_tree(
+                &new_base,
+                tree,
+                known_modules,
+                pub_surface,
+                path_aliases,
+                re_exports,
+                export_span,
+                sym,
+            )?;
         }
 
         ImportTree::Group(items) => {
             for item in items {
-                process_export_tree(base, item, known_modules, pub_surface, path_aliases, re_exports, export_span, sym)?;
+                process_export_tree(
+                    base,
+                    item,
+                    known_modules,
+                    pub_surface,
+                    path_aliases,
+                    re_exports,
+                    export_span,
+                    sym,
+                )?;
             }
         }
     }
@@ -376,23 +439,44 @@ fn process_tree(
             };
 
             let symbol_id = sym.intern(&source_module, name);
-            add_explicit(scope, local, ImportBinding {
-                source_module,
-                source_name: name.clone(),
-                kind,
-                symbol_id,
-            }, import_span)?;
+            add_explicit(
+                scope,
+                local,
+                ImportBinding {
+                    source_module,
+                    source_name: name.clone(),
+                    kind,
+                    symbol_id,
+                },
+                import_span,
+            )?;
         }
 
         ImportTree::Path { name, tree } => {
             let mut new_base = base.to_vec();
             new_base.push(name.clone());
-            process_tree(&new_base, tree, known_modules, path_aliases, scope, import_span, sym)?;
+            process_tree(
+                &new_base,
+                tree,
+                known_modules,
+                path_aliases,
+                scope,
+                import_span,
+                sym,
+            )?;
         }
 
         ImportTree::Group(items) => {
             for item in items {
-                process_tree(base, item, known_modules, path_aliases, scope, import_span, sym)?;
+                process_tree(
+                    base,
+                    item,
+                    known_modules,
+                    path_aliases,
+                    scope,
+                    import_span,
+                    sym,
+                )?;
             }
         }
     }
@@ -414,8 +498,10 @@ fn add_explicit(
                  use an explicit import to disambiguate: `import {}::{}` or `import {}::{}`",
                 existing.source_module.join("::"),
                 binding.source_module.join("::"),
-                existing.source_module.join("::"), existing.source_name,
-                binding.source_module.join("::"), binding.source_name,
+                existing.source_module.join("::"),
+                existing.source_name,
+                binding.source_module.join("::"),
+                binding.source_name,
             ),
             import_span,
         ));
@@ -429,7 +515,10 @@ fn add_explicit(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Block, Decl, FunDecl, ImportDecl, ImportPath, ImportTree, PathRoot, Program, Span, Visibility};
+    use crate::ast::{
+        Block, Decl, FunDecl, ImportDecl, ImportPath, ImportTree, PathRoot, Program, Span,
+        Visibility,
+    };
     use crate::module_loader::{LoadedModule, ModuleGraph};
     use std::path::PathBuf;
 
@@ -438,52 +527,94 @@ mod tests {
     }
 
     fn make_import(root: PathRoot, tree: ImportTree) -> ImportDecl {
-        ImportDecl { path: ImportPath { root, tree }, span: span() }
+        ImportDecl {
+            path: ImportPath { root, tree },
+            span: span(),
+        }
     }
 
     fn make_program(imports: Vec<ImportDecl>) -> Program {
-        Program { imports, exports: vec![], decls: vec![] }
+        Program {
+            imports,
+            exports: vec![],
+            decls: vec![],
+        }
     }
 
     fn make_program_with_pubs(imports: Vec<ImportDecl>, pub_names: &[&str]) -> Program {
-        let decls = pub_names.iter().map(|n| Decl::Fun(FunDecl {
-            visibility: Visibility::Public,
-            name: (*n).into(),
-            generics: vec![],
-            where_clause: None,
-            params: vec![],
-            return_type: None,
-            body: Block { stmts: vec![], tail: None, span: span() },
-            span: span(),
-        })).collect();
-        Program { imports, exports: vec![], decls }
+        let decls = pub_names
+            .iter()
+            .map(|n| {
+                Decl::Fun(FunDecl {
+                    visibility: Visibility::Public,
+                    name: (*n).into(),
+                    generics: vec![],
+                    where_clause: None,
+                    params: vec![],
+                    return_type: None,
+                    body: Block {
+                        stmts: vec![],
+                        tail: None,
+                        span: span(),
+                    },
+                    span: span(),
+                })
+            })
+            .collect();
+        Program {
+            imports,
+            exports: vec![],
+            decls,
+        }
     }
 
     fn make_graph(modules: Vec<(Vec<String>, Program)>) -> ModuleGraph {
-        let root = if modules.is_empty() { PathBuf::new() } else { PathBuf::from("root.mtl") };
-        let modules = modules.into_iter().map(|(path, program)| LoadedModule {
-            module_path: path,
-            file_path: PathBuf::from("test.mtl"),
-            program,
-        }).collect();
-        ModuleGraph { root, modules, path_aliases: std::collections::HashMap::new() }
+        let root = if modules.is_empty() {
+            PathBuf::new()
+        } else {
+            PathBuf::from("root.mtl")
+        };
+        let modules = modules
+            .into_iter()
+            .map(|(path, program)| LoadedModule {
+                module_path: path,
+                file_path: PathBuf::from("test.mtl"),
+                program,
+            })
+            .collect();
+        ModuleGraph {
+            root,
+            modules,
+            path_aliases: std::collections::HashMap::new(),
+        }
     }
 
     #[test]
     fn resolves_explicit_item_import() {
         // import parser::Token;
         let graph = make_graph(vec![
-            (vec![], make_program(vec![
-                make_import(PathRoot::Name("parser".into()), ImportTree::Name {
-                    name: "Token".into(), alias: None,
-                }),
-            ])),
-            (vec!["parser".into()], make_program_with_pubs(vec![], &["Token"])),
+            (
+                vec![],
+                make_program(vec![make_import(
+                    PathRoot::Name("parser".into()),
+                    ImportTree::Name {
+                        name: "Token".into(),
+                        alias: None,
+                    },
+                )]),
+            ),
+            (
+                vec!["parser".into()],
+                make_program_with_pubs(vec![], &["Token"]),
+            ),
         ]);
 
         let names = resolve(&graph).unwrap();
         let root_scope = &names.scopes[&vec![]];
-        let binding = root_scope.explicit.get("Token").expect("Token should be bound");
+        let binding = root_scope
+            .explicit
+            .get("Token")
+            .expect("Token should be bound");
         assert_eq!(binding.source_module, vec!["parser"]);
         assert_eq!(binding.source_name, "Token");
         assert_eq!(binding.kind, BindingKind::Item);
@@ -493,18 +624,32 @@ mod tests {
     fn resolves_alias_import() {
         // import parser::Token as Tok;
         let graph = make_graph(vec![
-            (vec![], make_program(vec![
-                make_import(PathRoot::Name("parser".into()), ImportTree::Name {
-                    name: "Token".into(), alias: Some("Tok".into()),
-                }),
-            ])),
-            (vec!["parser".into()], make_program_with_pubs(vec![], &["Token"])),
+            (
+                vec![],
+                make_program(vec![make_import(
+                    PathRoot::Name("parser".into()),
+                    ImportTree::Name {
+                        name: "Token".into(),
+                        alias: Some("Tok".into()),
+                    },
+                )]),
+            ),
+            (
+                vec!["parser".into()],
+                make_program_with_pubs(vec![], &["Token"]),
+            ),
         ]);
 
         let names = resolve(&graph).unwrap();
         let root_scope = &names.scopes[&vec![]];
-        assert!(root_scope.explicit.contains_key("Tok"), "alias Tok should be bound");
-        assert!(!root_scope.explicit.contains_key("Token"), "original name Token should not be bound");
+        assert!(
+            root_scope.explicit.contains_key("Tok"),
+            "alias Tok should be bound"
+        );
+        assert!(
+            !root_scope.explicit.contains_key("Token"),
+            "original name Token should not be bound"
+        );
         let binding = &root_scope.explicit["Tok"];
         assert_eq!(binding.source_name, "Token");
     }
@@ -513,13 +658,26 @@ mod tests {
     fn resolves_group_import() {
         // import parser::{Ast, Token};
         let graph = make_graph(vec![
-            (vec![], make_program(vec![
-                make_import(PathRoot::Name("parser".into()), ImportTree::Group(vec![
-                    ImportTree::Name { name: "Ast".into(), alias: None },
-                    ImportTree::Name { name: "Token".into(), alias: None },
-                ])),
-            ])),
-            (vec!["parser".into()], make_program_with_pubs(vec![], &["Ast", "Token"])),
+            (
+                vec![],
+                make_program(vec![make_import(
+                    PathRoot::Name("parser".into()),
+                    ImportTree::Group(vec![
+                        ImportTree::Name {
+                            name: "Ast".into(),
+                            alias: None,
+                        },
+                        ImportTree::Name {
+                            name: "Token".into(),
+                            alias: None,
+                        },
+                    ]),
+                )]),
+            ),
+            (
+                vec!["parser".into()],
+                make_program_with_pubs(vec![], &["Ast", "Token"]),
+            ),
         ]);
 
         let names = resolve(&graph).unwrap();
@@ -532,36 +690,54 @@ mod tests {
     fn resolves_glob_import() {
         // import parser::*;
         let graph = make_graph(vec![
-            (vec![], make_program(vec![
-                make_import(PathRoot::Name("parser".into()), ImportTree::Glob),
-            ])),
+            (
+                vec![],
+                make_program(vec![make_import(
+                    PathRoot::Name("parser".into()),
+                    ImportTree::Glob,
+                )]),
+            ),
             (vec!["parser".into()], make_program(vec![])),
         ]);
 
         let names = resolve(&graph).unwrap();
         let root_scope = &names.scopes[&vec![]];
-        assert!(root_scope.explicit.is_empty(), "glob should not add explicit bindings");
-        assert_eq!(root_scope.globs, vec![
-            (GlobTier::User, vec!["parser".to_string()]),
-            (GlobTier::Std,  vec!["std".to_string(), "core".to_string()]),
-        ]);
+        assert!(
+            root_scope.explicit.is_empty(),
+            "glob should not add explicit bindings"
+        );
+        assert_eq!(
+            root_scope.globs,
+            vec![
+                (GlobTier::User, vec!["parser".to_string()]),
+                (GlobTier::Std, vec!["std".to_string(), "core".to_string()]),
+            ]
+        );
     }
 
     #[test]
     fn resolves_module_handle_import() {
         // import parser; — parser is a known module, so this is a handle import
         let graph = make_graph(vec![
-            (vec![], make_program(vec![
-                make_import(PathRoot::Root, ImportTree::Name {
-                    name: "parser".into(), alias: None,
-                }),
-            ])),
+            (
+                vec![],
+                make_program(vec![make_import(
+                    PathRoot::Root,
+                    ImportTree::Name {
+                        name: "parser".into(),
+                        alias: None,
+                    },
+                )]),
+            ),
             (vec!["parser".into()], make_program(vec![])),
         ]);
 
         let names = resolve(&graph).unwrap();
         let root_scope = &names.scopes[&vec![]];
-        let binding = root_scope.explicit.get("parser").expect("parser handle should be bound");
+        let binding = root_scope
+            .explicit
+            .get("parser")
+            .expect("parser handle should be bound");
         assert_eq!(binding.kind, BindingKind::Module);
         assert_eq!(binding.source_module, vec!["parser"]);
     }
@@ -571,20 +747,40 @@ mod tests {
         // import parser::Token;
         // import lexer::Token;  ← conflict
         let graph = make_graph(vec![
-            (vec![], make_program(vec![
-                make_import(PathRoot::Name("parser".into()), ImportTree::Name {
-                    name: "Token".into(), alias: None,
-                }),
-                make_import(PathRoot::Name("lexer".into()), ImportTree::Name {
-                    name: "Token".into(), alias: None,
-                }),
-            ])),
-            (vec!["parser".into()], make_program_with_pubs(vec![], &["Token"])),
-            (vec!["lexer".into()],  make_program_with_pubs(vec![], &["Token"])),
+            (
+                vec![],
+                make_program(vec![
+                    make_import(
+                        PathRoot::Name("parser".into()),
+                        ImportTree::Name {
+                            name: "Token".into(),
+                            alias: None,
+                        },
+                    ),
+                    make_import(
+                        PathRoot::Name("lexer".into()),
+                        ImportTree::Name {
+                            name: "Token".into(),
+                            alias: None,
+                        },
+                    ),
+                ]),
+            ),
+            (
+                vec!["parser".into()],
+                make_program_with_pubs(vec![], &["Token"]),
+            ),
+            (
+                vec!["lexer".into()],
+                make_program_with_pubs(vec![], &["Token"]),
+            ),
         ]);
 
         let err = resolve(&graph).expect_err("duplicate import should fail");
-        assert!(err.to_string().contains("Token"), "error should mention Token");
+        assert!(
+            err.to_string().contains("Token"),
+            "error should mention Token"
+        );
     }
 
     #[test]
@@ -594,11 +790,16 @@ mod tests {
         // happens in the typechecker's build_import_schemes which has access to
         // the full NormalizedModuleGraph to distinguish private from absent.
         let graph = make_graph(vec![
-            (vec![], make_program(vec![
-                make_import(PathRoot::Name("parser".into()), ImportTree::Name {
-                    name: "Token".into(), alias: None,
-                }),
-            ])),
+            (
+                vec![],
+                make_program(vec![make_import(
+                    PathRoot::Name("parser".into()),
+                    ImportTree::Name {
+                        name: "Token".into(),
+                        alias: None,
+                    },
+                )]),
+            ),
             (vec!["parser".into()], make_program(vec![])), // no pub declarations
         ]);
 
@@ -614,13 +815,23 @@ mod tests {
     fn resolves_root_absolute_path() {
         // import root::parser::Ast;
         let graph = make_graph(vec![
-            (vec![], make_program(vec![
-                make_import(PathRoot::Root, ImportTree::Path {
-                    name: "parser".into(),
-                    tree: Box::new(ImportTree::Name { name: "Ast".into(), alias: None }),
-                }),
-            ])),
-            (vec!["parser".into()], make_program_with_pubs(vec![], &["Ast"])),
+            (
+                vec![],
+                make_program(vec![make_import(
+                    PathRoot::Root,
+                    ImportTree::Path {
+                        name: "parser".into(),
+                        tree: Box::new(ImportTree::Name {
+                            name: "Ast".into(),
+                            alias: None,
+                        }),
+                    },
+                )]),
+            ),
+            (
+                vec!["parser".into()],
+                make_program_with_pubs(vec![], &["Ast"]),
+            ),
         ]);
 
         let names = resolve(&graph).unwrap();
@@ -633,18 +844,31 @@ mod tests {
     fn resolves_self_relative_path() {
         // In module ["parser"], import self::child::Thing;
         let graph = make_graph(vec![
-            (vec!["parser".into()], make_program(vec![
-                make_import(PathRoot::Self_, ImportTree::Path {
-                    name: "child".into(),
-                    tree: Box::new(ImportTree::Name { name: "Thing".into(), alias: None }),
-                }),
-            ])),
-            (vec!["parser".into(), "child".into()], make_program_with_pubs(vec![], &["Thing"])),
+            (
+                vec!["parser".into()],
+                make_program(vec![make_import(
+                    PathRoot::Self_,
+                    ImportTree::Path {
+                        name: "child".into(),
+                        tree: Box::new(ImportTree::Name {
+                            name: "Thing".into(),
+                            alias: None,
+                        }),
+                    },
+                )]),
+            ),
+            (
+                vec!["parser".into(), "child".into()],
+                make_program_with_pubs(vec![], &["Thing"]),
+            ),
         ]);
 
         let names = resolve(&graph).unwrap();
         let parser_scope = &names.scopes[&vec!["parser".to_string()]];
-        let binding = parser_scope.explicit.get("Thing").expect("Thing should be bound");
+        let binding = parser_scope
+            .explicit
+            .get("Thing")
+            .expect("Thing should be bound");
         assert_eq!(binding.source_module, vec!["parser", "child"]);
     }
 
@@ -652,23 +876,37 @@ mod tests {
     fn resolves_super_relative_path() {
         // In module ["parser", "child"], import super::Token;
         let graph = make_graph(vec![
-            (vec!["parser".into(), "child".into()], make_program(vec![
-                make_import(PathRoot::Super, ImportTree::Name {
-                    name: "Token".into(), alias: None,
-                }),
-            ])),
-            (vec!["parser".into()], make_program_with_pubs(vec![], &["Token"])),
+            (
+                vec!["parser".into(), "child".into()],
+                make_program(vec![make_import(
+                    PathRoot::Super,
+                    ImportTree::Name {
+                        name: "Token".into(),
+                        alias: None,
+                    },
+                )]),
+            ),
+            (
+                vec!["parser".into()],
+                make_program_with_pubs(vec![], &["Token"]),
+            ),
         ]);
 
         let names = resolve(&graph).unwrap();
         let child_scope = &names.scopes[&vec!["parser".to_string(), "child".to_string()]];
-        let binding = child_scope.explicit.get("Token").expect("Token should be bound");
+        let binding = child_scope
+            .explicit
+            .get("Token")
+            .expect("Token should be bound");
         assert_eq!(binding.source_module, vec!["parser"]);
     }
 
     fn make_export(root: PathRoot, tree: ImportTree) -> crate::ast::ExportDecl {
         use crate::ast::ExportDecl;
-        ExportDecl { path: ImportPath { root, tree }, span: span() }
+        ExportDecl {
+            path: ImportPath { root, tree },
+            span: span(),
+        }
     }
 
     #[test]
@@ -680,15 +918,20 @@ mod tests {
             imports: vec![],
             exports: vec![make_export(
                 PathRoot::Name("ast".into()),
-                ImportTree::Name { name: "Ast".into(), alias: None },
+                ImportTree::Name {
+                    name: "Ast".into(),
+                    alias: None,
+                },
             )],
             decls: vec![],
         };
-        let root_prog = make_program(vec![
-            make_import(PathRoot::Name("parser".into()), ImportTree::Name {
-                name: "Ast".into(), alias: None,
-            }),
-        ]);
+        let root_prog = make_program(vec![make_import(
+            PathRoot::Name("parser".into()),
+            ImportTree::Name {
+                name: "Ast".into(),
+                alias: None,
+            },
+        )]);
         let graph = make_graph(vec![
             (vec![], root_prog),
             (vec!["parser".into()], parser_prog),
@@ -699,10 +942,16 @@ mod tests {
         let names = resolve(&graph).unwrap();
         // parser's re_exports should include Ast
         let parser_scope = &names.scopes[&vec!["parser".to_string()]];
-        assert!(parser_scope.re_exports.contains_key("Ast"), "parser should re-export Ast");
+        assert!(
+            parser_scope.re_exports.contains_key("Ast"),
+            "parser should re-export Ast"
+        );
         // root should have imported Ast from parser
         let root_scope = &names.scopes[&vec![]];
-        let binding = root_scope.explicit.get("Ast").expect("Ast should be importable from facade");
+        let binding = root_scope
+            .explicit
+            .get("Ast")
+            .expect("Ast should be importable from facade");
         assert_eq!(binding.source_module, vec!["parser"]);
     }
 
@@ -714,7 +963,10 @@ mod tests {
             imports: vec![],
             exports: vec![make_export(
                 PathRoot::Name("ast".into()),
-                ImportTree::Name { name: "Ast".into(), alias: Some("Tree".into()) },
+                ImportTree::Name {
+                    name: "Ast".into(),
+                    alias: Some("Tree".into()),
+                },
             )],
             decls: vec![],
         };
@@ -726,8 +978,14 @@ mod tests {
 
         let names = resolve(&graph).unwrap();
         let parser_scope = &names.scopes[&vec!["parser".to_string()]];
-        assert!(parser_scope.re_exports.contains_key("Tree"), "aliased re-export Tree should appear");
-        assert!(!parser_scope.re_exports.contains_key("Ast"), "original name Ast should not appear");
+        assert!(
+            parser_scope.re_exports.contains_key("Tree"),
+            "aliased re-export Tree should appear"
+        );
+        assert!(
+            !parser_scope.re_exports.contains_key("Ast"),
+            "original name Ast should not appear"
+        );
     }
 
     #[test]
@@ -738,7 +996,10 @@ mod tests {
             imports: vec![],
             exports: vec![make_export(
                 PathRoot::Name("ast".into()),
-                ImportTree::Name { name: "Hidden".into(), alias: None },
+                ImportTree::Name {
+                    name: "Hidden".into(),
+                    alias: None,
+                },
             )],
             decls: vec![],
         };
@@ -751,7 +1012,10 @@ mod tests {
         let err = resolve(&graph).expect_err("re-exporting private item should fail");
         let msg = err.to_string();
         assert!(msg.contains("Hidden"), "error should mention Hidden");
-        assert!(msg.contains("visibility"), "error should mention visibility");
+        assert!(
+            msg.contains("visibility"),
+            "error should mention visibility"
+        );
     }
 
     #[test]
@@ -760,17 +1024,16 @@ mod tests {
         let ast_module_prog = make_program_with_pubs(vec![], &["Ast", "Token"]);
         let parser_prog = Program {
             imports: vec![],
-            exports: vec![make_export(
-                PathRoot::Name("ast".into()),
-                ImportTree::Glob,
-            )],
+            exports: vec![make_export(PathRoot::Name("ast".into()), ImportTree::Glob)],
             decls: vec![],
         };
-        let root_prog = make_program(vec![
-            make_import(PathRoot::Name("parser".into()), ImportTree::Name {
-                name: "Ast".into(), alias: None,
-            }),
-        ]);
+        let root_prog = make_program(vec![make_import(
+            PathRoot::Name("parser".into()),
+            ImportTree::Name {
+                name: "Ast".into(),
+                alias: None,
+            },
+        )]);
         let graph = make_graph(vec![
             (vec![], root_prog),
             (vec!["parser".into()], parser_prog),
@@ -793,93 +1056,148 @@ mod tests {
     fn same_declaration_gets_same_symbol_id_regardless_of_importer() {
         // root and other both import parser::Token (via absolute root:: path).
         // Both must get the same SymbolId for parser::Token.
-        let root_prog = make_program(vec![
-            make_import(PathRoot::Root, ImportTree::Path {
+        let root_prog = make_program(vec![make_import(
+            PathRoot::Root,
+            ImportTree::Path {
                 name: "parser".into(),
-                tree: Box::new(ImportTree::Name { name: "Token".into(), alias: None }),
-            }),
-        ]);
-        let other_prog = make_program(vec![
-            make_import(PathRoot::Root, ImportTree::Path {
+                tree: Box::new(ImportTree::Name {
+                    name: "Token".into(),
+                    alias: None,
+                }),
+            },
+        )]);
+        let other_prog = make_program(vec![make_import(
+            PathRoot::Root,
+            ImportTree::Path {
                 name: "parser".into(),
-                tree: Box::new(ImportTree::Name { name: "Token".into(), alias: None }),
-            }),
-        ]);
+                tree: Box::new(ImportTree::Name {
+                    name: "Token".into(),
+                    alias: None,
+                }),
+            },
+        )]);
         let graph = make_graph(vec![
             (vec![], root_prog),
             (vec!["other".into()], other_prog),
-            (vec!["parser".into()], make_program_with_pubs(vec![], &["Token"])),
+            (
+                vec!["parser".into()],
+                make_program_with_pubs(vec![], &["Token"]),
+            ),
         ]);
 
         let names = resolve(&graph).unwrap();
         let root_id = names.scopes[&vec![]].explicit["Token"].symbol_id;
         let other_id = names.scopes[&vec!["other".to_string()]].explicit["Token"].symbol_id;
-        assert_eq!(root_id, other_id, "same declaration must get same SymbolId in both importers");
+        assert_eq!(
+            root_id, other_id,
+            "same declaration must get same SymbolId in both importers"
+        );
     }
 
     #[test]
     fn aliased_import_has_same_symbol_id_as_direct_import() {
         // root imports parser::Token as Tok; other imports parser::Token directly.
         // Both must resolve to the same SymbolId — alias must not change identity.
-        let root_prog = make_program(vec![
-            make_import(PathRoot::Root, ImportTree::Path {
+        let root_prog = make_program(vec![make_import(
+            PathRoot::Root,
+            ImportTree::Path {
                 name: "parser".into(),
-                tree: Box::new(ImportTree::Name { name: "Token".into(), alias: Some("Tok".into()) }),
-            }),
-        ]);
-        let other_prog = make_program(vec![
-            make_import(PathRoot::Root, ImportTree::Path {
+                tree: Box::new(ImportTree::Name {
+                    name: "Token".into(),
+                    alias: Some("Tok".into()),
+                }),
+            },
+        )]);
+        let other_prog = make_program(vec![make_import(
+            PathRoot::Root,
+            ImportTree::Path {
                 name: "parser".into(),
-                tree: Box::new(ImportTree::Name { name: "Token".into(), alias: None }),
-            }),
-        ]);
+                tree: Box::new(ImportTree::Name {
+                    name: "Token".into(),
+                    alias: None,
+                }),
+            },
+        )]);
         let graph = make_graph(vec![
             (vec![], root_prog),
             (vec!["other".into()], other_prog),
-            (vec!["parser".into()], make_program_with_pubs(vec![], &["Token"])),
+            (
+                vec!["parser".into()],
+                make_program_with_pubs(vec![], &["Token"]),
+            ),
         ]);
 
         let names = resolve(&graph).unwrap();
         let alias_id = names.scopes[&vec![]].explicit["Tok"].symbol_id;
         let direct_id = names.scopes[&vec!["other".to_string()]].explicit["Token"].symbol_id;
-        assert_eq!(alias_id, direct_id, "aliased import should have same SymbolId as direct import");
+        assert_eq!(
+            alias_id, direct_id,
+            "aliased import should have same SymbolId as direct import"
+        );
     }
 
     #[test]
     fn distinct_declarations_get_distinct_symbol_ids() {
         // parser::Token and parser::Ast must have different SymbolIds.
         let graph = make_graph(vec![
-            (vec![], make_program(vec![
-                make_import(PathRoot::Name("parser".into()), ImportTree::Group(vec![
-                    ImportTree::Name { name: "Token".into(), alias: None },
-                    ImportTree::Name { name: "Ast".into(), alias: None },
-                ])),
-            ])),
-            (vec!["parser".into()], make_program_with_pubs(vec![], &["Token", "Ast"])),
+            (
+                vec![],
+                make_program(vec![make_import(
+                    PathRoot::Name("parser".into()),
+                    ImportTree::Group(vec![
+                        ImportTree::Name {
+                            name: "Token".into(),
+                            alias: None,
+                        },
+                        ImportTree::Name {
+                            name: "Ast".into(),
+                            alias: None,
+                        },
+                    ]),
+                )]),
+            ),
+            (
+                vec!["parser".into()],
+                make_program_with_pubs(vec![], &["Token", "Ast"]),
+            ),
         ]);
 
         let names = resolve(&graph).unwrap();
         let root_scope = &names.scopes[&vec![]];
         let token_id = root_scope.explicit["Token"].symbol_id;
         let ast_id = root_scope.explicit["Ast"].symbol_id;
-        assert_ne!(token_id, ast_id, "distinct declarations must have distinct SymbolIds");
+        assert_ne!(
+            token_id, ast_id,
+            "distinct declarations must have distinct SymbolIds"
+        );
     }
 
     #[test]
     fn symbol_id_is_stable_in_symbol_table() {
         // names.symbols should contain the same (module, name) → id mapping.
         let graph = make_graph(vec![
-            (vec![], make_program(vec![
-                make_import(PathRoot::Name("parser".into()), ImportTree::Name {
-                    name: "Token".into(), alias: None,
-                }),
-            ])),
-            (vec!["parser".into()], make_program_with_pubs(vec![], &["Token"])),
+            (
+                vec![],
+                make_program(vec![make_import(
+                    PathRoot::Name("parser".into()),
+                    ImportTree::Name {
+                        name: "Token".into(),
+                        alias: None,
+                    },
+                )]),
+            ),
+            (
+                vec!["parser".into()],
+                make_program_with_pubs(vec![], &["Token"]),
+            ),
         ]);
 
         let names = resolve(&graph).unwrap();
         let binding_id = names.scopes[&vec![]].explicit["Token"].symbol_id;
         let table_id = names.symbols[&(vec!["parser".to_string()], "Token".to_string())];
-        assert_eq!(binding_id, table_id, "SymbolId in binding must match entry in names.symbols");
+        assert_eq!(
+            binding_id, table_id,
+            "SymbolId in binding must match entry in names.symbols"
+        );
     }
 }

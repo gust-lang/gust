@@ -1,0 +1,246 @@
+{
+  "functions": [
+    {
+      "function": "Array::len",
+      "calls": 1,
+      "inclusive_ns": 131,
+      "self_ns": 131
+    },
+    {
+      "function": "List::as_slice",
+      "calls": 3,
+      "inclusive_ns": 384,
+      "self_ns": 384
+    },
+    {
+      "function": "List::get",
+      "calls": 3,
+      "inclusive_ns": 1136,
+      "self_ns": 1136
+    },
+    {
+      "function": "List::len",
+      "calls": 2,
+      "inclusive_ns": 244,
+      "self_ns": 244
+    },
+    {
+      "function": "List::new",
+      "calls": 3,
+      "inclusive_ns": 581,
+      "self_ns": 581
+    },
+    {
+      "function": "List::push",
+      "calls": 14,
+      "inclusive_ns": 2844,
+      "self_ns": 2844
+    },
+    {
+      "function": "assert",
+      "calls": 21,
+      "inclusive_ns": 806,
+      "self_ns": 806
+    },
+    {
+      "function": "bucket_of",
+      "calls": 5,
+      "inclusive_ns": 5417,
+      "self_ns": 5030
+    },
+    {
+      "function": "f32::From<i16>::from",
+      "calls": 5,
+      "inclusive_ns": 338,
+      "self_ns": 338
+    },
+    {
+      "function": "f32::From<i64>::from",
+      "calls": 1,
+      "inclusive_ns": 122,
+      "self_ns": 122
+    },
+    {
+      "function": "i32::From<i16>::from",
+      "calls": 1,
+      "inclusive_ns": 94,
+      "self_ns": 94
+    },
+    {
+      "function": "i64::From<i32>::from",
+      "calls": 5,
+      "inclusive_ns": 330,
+      "self_ns": 330
+    },
+    {
+      "function": "main",
+      "calls": 1,
+      "inclusive_ns": 117703,
+      "self_ns": 85548
+    },
+    {
+      "function": "mean_f32",
+      "calls": 1,
+      "inclusive_ns": 6592,
+      "self_ns": 6273
+    },
+    {
+      "function": "scale",
+      "calls": 5,
+      "inclusive_ns": 6742,
+      "self_ns": 6404
+    },
+    {
+      "function": "sum_i32",
+      "calls": 1,
+      "inclusive_ns": 7240,
+      "self_ns": 6948
+    },
+    {
+      "function": "u8::From<f32>::from",
+      "calls": 5,
+      "inclusive_ns": 387,
+      "self_ns": 387
+    },
+    {
+      "function": "u8::From<i64>::from",
+      "calls": 1,
+      "inclusive_ns": 103,
+      "self_ns": 103
+    }
+  ],
+  "edges": [
+    {
+      "caller": null,
+      "callee": "main",
+      "calls": 1,
+      "inclusive_ns": 117703
+    },
+    {
+      "caller": "bucket_of",
+      "callee": "u8::From<f32>::from",
+      "calls": 5,
+      "inclusive_ns": 387
+    },
+    {
+      "caller": "main",
+      "callee": "Array::len",
+      "calls": 1,
+      "inclusive_ns": 131
+    },
+    {
+      "caller": "main",
+      "callee": "List::as_slice",
+      "calls": 1,
+      "inclusive_ns": 178
+    },
+    {
+      "caller": "main",
+      "callee": "List::get",
+      "calls": 3,
+      "inclusive_ns": 1136
+    },
+    {
+      "caller": "main",
+      "callee": "List::len",
+      "calls": 1,
+      "inclusive_ns": 150
+    },
+    {
+      "caller": "main",
+      "callee": "List::new",
+      "calls": 3,
+      "inclusive_ns": 581
+    },
+    {
+      "caller": "main",
+      "callee": "List::push",
+      "calls": 14,
+      "inclusive_ns": 2844
+    },
+    {
+      "caller": "main",
+      "callee": "assert",
+      "calls": 21,
+      "inclusive_ns": 806
+    },
+    {
+      "caller": "main",
+      "callee": "bucket_of",
+      "calls": 5,
+      "inclusive_ns": 5417
+    },
+    {
+      "caller": "main",
+      "callee": "i32::From<i16>::from",
+      "calls": 1,
+      "inclusive_ns": 94
+    },
+    {
+      "caller": "main",
+      "callee": "i64::From<i32>::from",
+      "calls": 1,
+      "inclusive_ns": 141
+    },
+    {
+      "caller": "main",
+      "callee": "mean_f32",
+      "calls": 1,
+      "inclusive_ns": 6592
+    },
+    {
+      "caller": "main",
+      "callee": "scale",
+      "calls": 5,
+      "inclusive_ns": 6742
+    },
+    {
+      "caller": "main",
+      "callee": "sum_i32",
+      "calls": 1,
+      "inclusive_ns": 7240
+    },
+    {
+      "caller": "main",
+      "callee": "u8::From<i64>::from",
+      "calls": 1,
+      "inclusive_ns": 103
+    },
+    {
+      "caller": "mean_f32",
+      "callee": "List::as_slice",
+      "calls": 1,
+      "inclusive_ns": 103
+    },
+    {
+      "caller": "mean_f32",
+      "callee": "List::len",
+      "calls": 1,
+      "inclusive_ns": 94
+    },
+    {
+      "caller": "mean_f32",
+      "callee": "f32::From<i64>::from",
+      "calls": 1,
+      "inclusive_ns": 122
+    },
+    {
+      "caller": "scale",
+      "callee": "f32::From<i16>::from",
+      "calls": 5,
+      "inclusive_ns": 338
+    },
+    {
+      "caller": "sum_i32",
+      "callee": "List::as_slice",
+      "calls": 1,
+      "inclusive_ns": 103
+    },
+    {
+      "caller": "sum_i32",
+      "callee": "i64::From<i32>::from",
+      "calls": 4,
+      "inclusive_ns": 189
+    }
+  ]
+}

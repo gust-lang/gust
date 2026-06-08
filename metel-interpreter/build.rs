@@ -2,13 +2,29 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 fn main() {
-    let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+    let manifest_dir =
+        PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     let suites = [
-        ("parsing", PathBuf::from("tests/integration/sources/parsing")),
-        ("typechecking", PathBuf::from("tests/integration/sources/typechecking")),
-        ("evaluator", PathBuf::from("tests/integration/sources/evaluator")),
-        ("module_loading", PathBuf::from("tests/integration/sources/module_loading")),
-        ("module_semantics", PathBuf::from("tests/integration/sources/module_semantics")),
+        (
+            "parsing",
+            PathBuf::from("tests/integration/sources/parsing"),
+        ),
+        (
+            "typechecking",
+            PathBuf::from("tests/integration/sources/typechecking"),
+        ),
+        (
+            "evaluator",
+            PathBuf::from("tests/integration/sources/evaluator"),
+        ),
+        (
+            "module_loading",
+            PathBuf::from("tests/integration/sources/module_loading"),
+        ),
+        (
+            "module_semantics",
+            PathBuf::from("tests/integration/sources/module_semantics"),
+        ),
     ];
 
     let mut generated = String::new();
@@ -55,7 +71,9 @@ fn discover_dir(suite: &str, dir: &Path, fixtures: &mut Vec<PathBuf>) {
 
     let mut entries: Vec<_> = fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", dir.display()))
-        .map(|entry| entry.unwrap_or_else(|e| panic!("failed to read dir entry in {}: {e}", dir.display())))
+        .map(|entry| {
+            entry.unwrap_or_else(|e| panic!("failed to read dir entry in {}: {e}", dir.display()))
+        })
         .collect();
     entries.sort_by_key(|entry| entry.path());
 
@@ -70,7 +88,12 @@ fn discover_dir(suite: &str, dir: &Path, fixtures: &mut Vec<PathBuf>) {
             continue;
         }
 
-        if suite == "parsing" && path.file_stem().and_then(|stem| stem.to_str()).is_some_and(|stem| stem.starts_with("neg_")) {
+        if suite == "parsing"
+            && path
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .is_some_and(|stem| stem.starts_with("neg_"))
+        {
             continue;
         }
 
@@ -89,10 +112,18 @@ fn build_test_name(suite: &str, root: &Path, fixture: &Path) -> String {
 
     let mut parts = vec![suite.to_string()];
     if fixture.is_dir() {
-        parts.extend(relative.components().map(|component| component.as_os_str().to_string_lossy().into_owned()));
+        parts.extend(
+            relative
+                .components()
+                .map(|component| component.as_os_str().to_string_lossy().into_owned()),
+        );
     } else {
         if let Some(parent) = relative.parent() {
-            parts.extend(parent.components().map(|component| component.as_os_str().to_string_lossy().into_owned()));
+            parts.extend(
+                parent
+                    .components()
+                    .map(|component| component.as_os_str().to_string_lossy().into_owned()),
+            );
         }
         parts.push(
             relative

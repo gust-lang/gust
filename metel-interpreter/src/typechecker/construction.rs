@@ -1,21 +1,17 @@
 use std::collections::HashMap;
 
 use crate::ast::*;
-use crate::error::{TypeErrorCode, MetelError};
+use crate::error::{MetelError, TypeErrorCode};
 use crate::symbols::SymbolId;
 use crate::typed_ast::*;
 use crate::typeinference::{self, *};
 use crate::types::Type;
 
-use super::SchemeEnv;
 use super::conversions::{
-    infer_type_to_type,
-    resolved_to_type,
-    type_expr_to_infer,
-    type_expr_to_infer_with_generics,
-    type_expr_to_infer_with_self,
-    type_to_infer,
+    infer_type_to_type, resolved_to_type, type_expr_to_infer, type_expr_to_infer_with_generics,
+    type_expr_to_infer_with_self, type_to_infer,
 };
+use super::SchemeEnv;
 
 type ConcreteFields = Vec<(String, Type, Span)>;
 type ConcreteStructEnv = HashMap<String, ConcreteFields>;
@@ -24,12 +20,19 @@ type ConcreteStructEnv = HashMap<String, ConcreteFields>;
 /// Generic structs are excluded — they are resolved per-use-site during construction.
 pub(super) fn build_concrete_struct_env(
     registry: &TypeDefinitionRegistry,
-    subst:    &Substitution,
+    subst: &Substitution,
 ) -> Result<ConcreteStructEnv, MetelError> {
-    registry.raw_struct_env().iter()
-        .filter(|(name, _)| !registry.raw_struct_type_params().contains_key(name.as_str()))
+    registry
+        .raw_struct_env()
+        .iter()
+        .filter(|(name, _)| {
+            !registry
+                .raw_struct_type_params()
+                .contains_key(name.as_str())
+        })
         .map(|(name, fields)| {
-            let concrete = fields.iter()
+            let concrete = fields
+                .iter()
                 .map(|field| {
                     Ok((
                         field.name.clone(),
@@ -48,19 +51,23 @@ pub(super) fn build_concrete_struct_env(
 /// they are resolved at the call site via method_scheme_env.
 pub(super) fn build_concrete_method_env(
     registry: &TypeDefinitionRegistry,
-    subst:    &Substitution,
+    subst: &Substitution,
 ) -> Result<HashMap<String, HashMap<String, Type>>, MetelError> {
     let dummy = Span::new(0, 0, "");
-    registry.raw_method_env().iter()
+    registry
+        .raw_method_env()
+        .iter()
         .map(|(type_name, methods)| {
-            let concrete: HashMap<_, _> = methods.iter()
+            let concrete: HashMap<_, _> = methods
+                .iter()
                 .filter_map(|(mname, mty)| {
                     let resolved = subst.apply(mty);
                     // Skip methods that still have unresolved TypeVars — they belong in scheme env.
                     if !typeinference::free_vars(&resolved).is_empty() {
                         return None;
                     }
-                    infer_type_to_type(&resolved, &dummy).ok()
+                    infer_type_to_type(&resolved, &dummy)
+                        .ok()
                         .map(|t| (mname.clone(), t))
                 })
                 .collect();
@@ -72,20 +79,20 @@ pub(super) fn build_concrete_method_env(
 /// Scope-aware context for Pass 2. Mirrors InferContext's scope management but
 /// holds concrete `Type` values; no constraint emission.
 struct ConstructCtx<'a> {
-    subst:        &'a Substitution,
-    scheme_env:   &'a SchemeEnv,
-    env:          Vec<HashMap<String, Type>>,
+    subst: &'a Substitution,
+    scheme_env: &'a SchemeEnv,
+    env: Vec<HashMap<String, Type>>,
     /// Stack of concrete struct field maps (name → fields with spans), innermost last.
     struct_scopes: Vec<ConcreteStructEnv>,
     /// Unified registry — source of truth for type definitions across all passes. See ADR-0025.
-    registry:     &'a TypeDefinitionRegistry,
-    method_env:   HashMap<String, HashMap<String, Type>>,
+    registry: &'a TypeDefinitionRegistry,
+    method_env: HashMap<String, HashMap<String, Type>>,
     /// Shared generator continued from Pass 1; keeps TypeVar identities globally unique.
-    gen:          TypeVarGenerator,
+    gen: TypeVarGenerator,
     /// Return type of the innermost enclosing function (None = unit / unknown).
     current_return_ty: Option<Type>,
     /// Break value type of the innermost enclosing `loop` (None = no loop or bare break).
-    current_break_ty:  Option<Type>,
+    current_break_ty: Option<Type>,
     /// Generic type param name → fresh TypeVar; populated during construction-at-call-time
     /// so type annotations like `T[]` in a generic body resolve to concrete types.
     generic_params: HashMap<String, TypeVar>,
@@ -96,22 +103,24 @@ struct ConstructCtx<'a> {
 
 impl<'a> ConstructCtx<'a> {
     fn new(
-        subst:      &'a Substitution,
+        subst: &'a Substitution,
         scheme_env: &'a SchemeEnv,
-        registry:   &'a TypeDefinitionRegistry,
-        gen:        TypeVarGenerator,
-        symbols:    Option<&'a HashMap<(Vec<String>, String), SymbolId>>,
+        registry: &'a TypeDefinitionRegistry,
+        gen: TypeVarGenerator,
+        symbols: Option<&'a HashMap<(Vec<String>, String), SymbolId>>,
     ) -> Result<Self, MetelError> {
         let concrete_struct_env = build_concrete_struct_env(registry, subst)?;
         let method_env = build_concrete_method_env(registry, subst)?;
         let mut ctx = Self {
-            subst, scheme_env,
+            subst,
+            scheme_env,
             env: vec![HashMap::new()],
-            struct_scopes: vec![concrete_struct_env],  // global scope pre-pushed
+            struct_scopes: vec![concrete_struct_env], // global scope pre-pushed
             registry,
-            method_env, gen,
+            method_env,
+            gen,
             current_return_ty: None,
-            current_break_ty:  None,
+            current_break_ty: None,
             generic_params: HashMap::new(),
             symbols,
         };
@@ -129,11 +138,19 @@ impl<'a> ConstructCtx<'a> {
         Ok(ctx)
     }
 
-    fn push_scope(&mut self) { self.env.push(HashMap::new()); }
-    fn pop_scope(&mut self)  { self.env.pop(); }
+    fn push_scope(&mut self) {
+        self.env.push(HashMap::new());
+    }
+    fn pop_scope(&mut self) {
+        self.env.pop();
+    }
 
-    fn push_struct_scope(&mut self) { self.struct_scopes.push(HashMap::new()); }
-    fn pop_struct_scope(&mut self)  { self.struct_scopes.pop(); }
+    fn push_struct_scope(&mut self) {
+        self.struct_scopes.push(HashMap::new());
+    }
+    fn pop_struct_scope(&mut self) {
+        self.struct_scopes.pop();
+    }
 
     fn register_local_struct(&mut self, name: String, fields: Vec<(String, Type, Span)>) {
         self.struct_scopes.last_mut().unwrap().insert(name, fields);
@@ -181,15 +198,15 @@ impl<'a> ConstructCtx<'a> {
 /// type with the corresponding runtime argument type (via `arg_types`), then runs the
 /// construction pass on `body` with the resulting substitution.
 pub(super) fn construct_generic_body(
-    scheme:    &TypeScheme,
-    params:    &[crate::ast::Param],
+    scheme: &TypeScheme,
+    params: &[crate::ast::Param],
     arg_types: &[crate::types::Type],
-    body:      &crate::ast::Block,
-    span:      &crate::ast::Span,
-    type_ctx:  &crate::typeinference::TypeCtx,
+    body: &crate::ast::Block,
+    span: &crate::ast::Span,
+    type_ctx: &crate::typeinference::TypeCtx,
 ) -> Result<crate::typed_ast::TypedBlock, crate::error::MetelError> {
-    use crate::typeinference::{instantiate_with_renaming, TypeVarGenerator};
     use super::conversions::{infer_type_to_type, type_to_infer};
+    use crate::typeinference::{instantiate_with_renaming, TypeVarGenerator};
 
     // Use a high starting counter to avoid collisions with registry TypeVars (allocated
     // starting from 0 during build_registry). The substitution built here would otherwise
@@ -199,9 +216,11 @@ pub(super) fn construct_generic_body(
     let (instance, renaming) = instantiate_with_renaming(scheme, &mut gen);
     let (param_infertypes, ret_infertype) = match instance {
         InferType::Fun(p, r) => (p, r),
-        _ => return Err(crate::error::MetelError::internal(
-            "construct_generic_body: scheme is not a function type"
-        )),
+        _ => {
+            return Err(crate::error::MetelError::internal(
+                "construct_generic_body: scheme is not a function type",
+            ))
+        }
     };
 
     // Unify instantiated param types with concrete arg types from runtime values.
@@ -220,7 +239,8 @@ pub(super) fn construct_generic_body(
     // Fill any still-unresolved type vars with Unit so `infer_type_to_type` does not
     // error during construction. The resulting typed AST may have placeholder types
     // but evaluation correctness is unaffected — runtime dispatch goes by value kind.
-    let all_free: std::collections::HashSet<_> = param_infertypes.iter()
+    let all_free: std::collections::HashSet<_> = param_infertypes
+        .iter()
         .chain(std::iter::once(&*ret_infertype))
         .flat_map(typeinference::free_vars)
         .collect();
@@ -232,13 +252,7 @@ pub(super) fn construct_generic_body(
 
     let ret_ty = infer_type_to_type(&subst.apply(&ret_infertype), span).ok();
 
-    let mut ctx = ConstructCtx::new(
-        &subst,
-        &type_ctx.scheme_env,
-        &type_ctx.registry,
-        gen,
-        None,
-    )?;
+    let mut ctx = ConstructCtx::new(&subst, &type_ctx.scheme_env, &type_ctx.registry, gen, None)?;
 
     // Build name → fresh TypeVar mapping so type annotations like `T[]` in the body
     // resolve to concrete types. scheme.param_names[i] corresponds to quantified_vars[i],
@@ -255,8 +269,8 @@ pub(super) fn construct_generic_body(
 
     ctx.push_scope();
     for (param, param_it) in params.iter().zip(param_infertypes.iter()) {
-        let concrete_ty = infer_type_to_type(&subst.apply(param_it), span)
-            .unwrap_or(crate::types::Type::Unit);
+        let concrete_ty =
+            infer_type_to_type(&subst.apply(param_it), span).unwrap_or(crate::types::Type::Unit);
         ctx.bind(&param.name, concrete_ty);
     }
     let saved_return = ctx.push_return_type(ret_ty.clone());
@@ -268,12 +282,12 @@ pub(super) fn construct_generic_body(
 }
 
 pub(super) fn construct_program(
-    program:    &Program,
-    subst:      &Substitution,
+    program: &Program,
+    subst: &Substitution,
     scheme_env: &SchemeEnv,
-    registry:   &TypeDefinitionRegistry,
-    gen:        TypeVarGenerator,
-    symbols:    Option<&HashMap<(Vec<String>, String), SymbolId>>,
+    registry: &TypeDefinitionRegistry,
+    gen: TypeVarGenerator,
+    symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
 ) -> Result<TypedProgram, MetelError> {
     let mut ctx = ConstructCtx::new(subst, scheme_env, registry, gen, symbols)?;
 
@@ -290,81 +304,109 @@ fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<TypedDecl, Mete
             // Let-polymorphism: if a closure is in scheme_env with quantified vars,
             // store it as GenericClosure. The name stays absent from ctx.env so call
             // sites use scheme_env instantiation in construct_call.
-            if let Expr::Closure { params, return_type, body, span: cls_span } = &ld.value {
+            if let Expr::Closure {
+                params,
+                return_type,
+                body,
+                span: cls_span,
+            } = &ld.value
+            {
                 if let Some(scheme) = ctx.scheme_env.get(ld.name.as_str()) {
                     if !scheme.quantified_vars.is_empty() {
                         return Ok(TypedDecl::Let(TypedLetDecl {
-                            name:     ld.name.clone(),
+                            name: ld.name.clone(),
                             type_ann: ld.type_ann.clone(),
                             value: TypedExpr::GenericClosure {
-                                name:        Some(ld.name.clone()),
-                                params:      params.clone(),
+                                name: Some(ld.name.clone()),
+                                params: params.clone(),
                                 return_type: return_type.clone(),
-                                body:        body.clone(),
-                                ty:          Type::Unit,
-                                span:        cls_span.clone(),
+                                body: body.clone(),
+                                ty: Type::Unit,
+                                span: cls_span.clone(),
                             },
                             span: ld.span.clone(),
                         }));
                     }
                 }
             }
-            let expected_ty = ld.type_ann.as_ref()
+            let expected_ty = ld
+                .type_ann
+                .as_ref()
                 .map(|ann| resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, &ld.span))
                 .transpose()?;
             let value = construct_expr(&ld.value, expected_ty.as_ref(), ctx)?;
             let ty = expected_ty.unwrap_or_else(|| value.ty().clone());
             ctx.bind(&ld.name, ty);
             Ok(TypedDecl::Let(TypedLetDecl {
-                name: ld.name.clone(), type_ann: ld.type_ann.clone(),
-                value, span: ld.span.clone(),
+                name: ld.name.clone(),
+                type_ann: ld.type_ann.clone(),
+                value,
+                span: ld.span.clone(),
             }))
         }
         Decl::Mut(md) => {
-            let expected_ty = md.type_ann.as_ref()
+            let expected_ty = md
+                .type_ann
+                .as_ref()
                 .map(|ann| resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, &md.span))
                 .transpose()?;
             let value = construct_expr(&md.value, expected_ty.as_ref(), ctx)?;
             let ty = expected_ty.unwrap_or_else(|| value.ty().clone());
             ctx.bind(&md.name, ty);
             Ok(TypedDecl::Mut(TypedMutDecl {
-                name: md.name.clone(), type_ann: md.type_ann.clone(),
-                value, span: md.span.clone(),
+                name: md.name.clone(),
+                type_ann: md.type_ann.clone(),
+                value,
+                span: md.span.clone(),
             }))
         }
-        Decl::Fun(fd)    => construct_fun_decl(fd, ctx),
+        Decl::Fun(fd) => construct_fun_decl(fd, ctx),
         Decl::Struct(sd) => Ok(TypedDecl::Struct(TypedStructDecl {
-            name: sd.name.clone(), generics: sd.generics.clone(),
-            fields: sd.fields.clone(), span: sd.span.clone(),
+            name: sd.name.clone(),
+            generics: sd.generics.clone(),
+            fields: sd.fields.clone(),
+            span: sd.span.clone(),
         })),
-        Decl::Enum(ed)   => Ok(TypedDecl::Enum(TypedEnumDecl {
-            name: ed.name.clone(), generics: ed.generics.clone(),
-            variants: ed.variants.clone(), span: ed.span.clone(),
+        Decl::Enum(ed) => Ok(TypedDecl::Enum(TypedEnumDecl {
+            name: ed.name.clone(),
+            generics: ed.generics.clone(),
+            variants: ed.variants.clone(),
+            span: ed.span.clone(),
         })),
-        Decl::Impl(ib)   => construct_impl_decl(ib, ctx),
+        Decl::Impl(ib) => construct_impl_decl(ib, ctx),
         Decl::Aspect(td) => Ok(TypedDecl::Aspect(TypedAspectDecl {
-            name: td.name.clone(), generics: td.generics.clone(),
-            methods: td.methods.clone(), span: td.span.clone(),
+            name: td.name.clone(),
+            generics: td.generics.clone(),
+            methods: td.methods.clone(),
+            span: td.span.clone(),
         })),
         Decl::Stmt(stmt) => Ok(TypedDecl::Stmt(Box::new(construct_stmt(stmt, ctx)?))),
     }
 }
 
 fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl, MetelError> {
-    let scheme = ctx.scheme_env.get(&fun.name)
+    let scheme = ctx
+        .scheme_env
+        .get(&fun.name)
         .ok_or_else(|| MetelError::internal(format!("missing type for fn `{}`", fun.name)))?
         .clone();
 
     let body = if scheme.quantified_vars.is_empty() {
         let (param_types, ret_ty) = match ctx.subst.apply(&scheme.ty) {
             InferType::Fun(params, ret) => {
-                let pts = params.iter()
+                let pts = params
+                    .iter()
                     .map(|p| infer_type_to_type(p, &fun.span))
                     .collect::<Result<Vec<_>, _>>()?;
                 let rt = infer_type_to_type(&ret, &fun.span).ok();
                 (pts, rt)
             }
-            _ => return Err(MetelError::internal(format!("expected Fun type for `{}`", fun.name))),
+            _ => {
+                return Err(MetelError::internal(format!(
+                    "expected Fun type for `{}`",
+                    fun.name
+                )))
+            }
         };
         ctx.push_scope();
         for (param, ty) in fun.params.iter().zip(param_types.iter()) {
@@ -380,18 +422,27 @@ fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl
     };
 
     Ok(TypedDecl::Fun(TypedFunDecl {
-        name: fun.name.clone(), generics: fun.generics.clone(),
-        params: fun.params.clone(), return_type: fun.return_type.clone(),
-        body, span: fun.span.clone(),
+        name: fun.name.clone(),
+        generics: fun.generics.clone(),
+        params: fun.params.clone(),
+        return_type: fun.return_type.clone(),
+        body,
+        span: fun.span.clone(),
     }))
 }
 
 fn construct_impl_decl(ib: &ImplBlock, ctx: &mut ConstructCtx) -> Result<TypedDecl, MetelError> {
     let target_name = match &ib.target_type {
         TypeExpr::Named(name, _) => name.clone(),
-        _ => return Err(MetelError::not_implemented("generic impl blocks not yet supported")),
+        _ => {
+            return Err(MetelError::not_implemented(
+                "generic impl blocks not yet supported",
+            ))
+        }
     };
-    let mut methods = ib.methods.iter()
+    let mut methods = ib
+        .methods
+        .iter()
         .map(|m| construct_impl_method(m, &target_name, ctx))
         .collect::<Result<Vec<_>, _>>()?;
     methods.extend(construct_default_aspect_methods(ib, &target_name, ctx)?);
@@ -399,14 +450,16 @@ fn construct_impl_decl(ib: &ImplBlock, ctx: &mut ConstructCtx) -> Result<TypedDe
     // Resolve aspect_id from the symbol table when available.
     let aspect_id = ib.aspect_name.as_deref().and_then(|aspect_name| {
         let declaring_module = ctx.registry.aspect_declaring_module(aspect_name)?;
-        ctx.symbols?.get(&(declaring_module.clone(), aspect_name.to_string())).copied()
+        ctx.symbols?
+            .get(&(declaring_module.clone(), aspect_name.to_string()))
+            .copied()
     });
 
     Ok(TypedDecl::Impl(TypedImplBlock {
-        aspect_name:      ib.aspect_name.clone(),
+        aspect_name: ib.aspect_name.clone(),
         aspect_id,
         aspect_type_args: ib.aspect_type_args.clone(),
-        target_type:      ib.target_type.clone(),
+        target_type: ib.target_type.clone(),
         methods,
         span: ib.span.clone(),
     }))
@@ -420,35 +473,46 @@ fn construct_impl_method(
     // Methods on generic structs have T-typed params that can't be resolved to concrete
     // types in Pass 2 without call-site type args. Store the body as Generic (untyped)
     // so the evaluator handles dispatch at runtime — same pattern as top-level generic fns.
-    if ctx.registry.raw_struct_type_params().contains_key(target_name) {
+    if ctx
+        .registry
+        .raw_struct_type_params()
+        .contains_key(target_name)
+    {
         return Ok(TypedFunDecl {
-            name:        method.name.clone(),
-            generics:    method.generics.clone(),
-            params:      method.params.clone(),
+            name: method.name.clone(),
+            generics: method.generics.clone(),
+            params: method.params.clone(),
             return_type: method.return_type.clone(),
-            body:        FunBody::Generic(method.body.clone()),
-            span:        method.span.clone(),
+            body: FunBody::Generic(method.body.clone()),
+            span: method.span.clone(),
         });
     }
 
     let self_ty = Type::Named(target_name.to_string(), vec![]);
     let te_to_infer = |te: &TypeExpr| type_expr_to_infer_with_self(te, target_name);
-    let param_types: Vec<Type> = method.params.iter()
+    let param_types: Vec<Type> = method
+        .params
+        .iter()
         .map(|p| {
             if p.name == "self" {
                 Ok(self_ty.clone())
             } else {
-                p.type_ann.as_ref()
+                p.type_ann
+                    .as_ref()
                     .map(|ann| resolved_to_type(&te_to_infer(ann), ctx.subst, &p.span))
-                    .unwrap_or_else(|| Err(MetelError::type_error(
-                        TypeErrorCode::T0002,
-                        format!("parameter `{}` needs a type annotation", p.name),
-                        &p.span,
-                    )))
+                    .unwrap_or_else(|| {
+                        Err(MetelError::type_error(
+                            TypeErrorCode::T0002,
+                            format!("parameter `{}` needs a type annotation", p.name),
+                            &p.span,
+                        ))
+                    })
             }
         })
         .collect::<Result<_, _>>()?;
-    let ret_ty = method.return_type.as_ref()
+    let ret_ty = method
+        .return_type
+        .as_ref()
         .map(|ann| resolved_to_type(&te_to_infer(ann), ctx.subst, &method.span))
         .transpose()?;
     ctx.push_scope();
@@ -460,12 +524,12 @@ fn construct_impl_method(
     ctx.pop_return_type(saved_return);
     ctx.pop_scope();
     Ok(TypedFunDecl {
-        name:        method.name.clone(),
-        generics:    method.generics.clone(),
-        params:      method.params.clone(),
+        name: method.name.clone(),
+        generics: method.generics.clone(),
+        params: method.params.clone(),
         return_type: method.return_type.clone(),
-        body:        FunBody::Typed(typed_block),
-        span:        method.span.clone(),
+        body: FunBody::Typed(typed_block),
+        span: method.span.clone(),
     })
 }
 
@@ -477,12 +541,17 @@ fn construct_default_aspect_methods(
     target_name: &str,
     ctx: &mut ConstructCtx,
 ) -> Result<Vec<TypedFunDecl>, MetelError> {
-    let Some(aspect_name) = &ib.aspect_name else { return Ok(vec![]); };
-    let Some(methods) = ctx.registry.aspect_method_defs(aspect_name).cloned() else { return Ok(vec![]); };
+    let Some(aspect_name) = &ib.aspect_name else {
+        return Ok(vec![]);
+    };
+    let Some(methods) = ctx.registry.aspect_method_defs(aspect_name).cloned() else {
+        return Ok(vec![]);
+    };
     let provided: std::collections::HashSet<&str> =
         ib.methods.iter().map(|m| m.name.as_str()).collect();
 
-    methods.iter()
+    methods
+        .iter()
         .filter(|method| method.default_body.is_some() && !provided.contains(method.name.as_str()))
         .map(|method| construct_default_aspect_method(method, target_name, ctx))
         .collect()
@@ -495,25 +564,34 @@ fn construct_default_aspect_method(
 ) -> Result<TypedFunDecl, MetelError> {
     let self_ty = Type::Named(target_name.to_string(), vec![]);
     let te_to_infer = |te: &TypeExpr| type_expr_to_infer_with_self(te, target_name);
-    let param_types: Vec<Type> = method.params.iter()
+    let param_types: Vec<Type> = method
+        .params
+        .iter()
         .map(|p| {
             if p.name == "self" {
                 Ok(self_ty.clone())
             } else {
-                p.type_ann.as_ref()
+                p.type_ann
+                    .as_ref()
                     .map(|ann| resolved_to_type(&te_to_infer(ann), ctx.subst, &p.span))
-                    .unwrap_or_else(|| Err(MetelError::type_error(
-                        TypeErrorCode::T0002,
-                        format!("parameter `{}` needs a type annotation", p.name),
-                        &p.span,
-                    )))
+                    .unwrap_or_else(|| {
+                        Err(MetelError::type_error(
+                            TypeErrorCode::T0002,
+                            format!("parameter `{}` needs a type annotation", p.name),
+                            &p.span,
+                        ))
+                    })
             }
         })
         .collect::<Result<_, _>>()?;
-    let ret_ty = method.return_type.as_ref()
+    let ret_ty = method
+        .return_type
+        .as_ref()
         .map(|ann| resolved_to_type(&te_to_infer(ann), ctx.subst, &method.span))
         .transpose()?;
-    let body = method.default_body.as_ref()
+    let body = method
+        .default_body
+        .as_ref()
         .ok_or_else(|| MetelError::internal("missing aspect default body"))?;
     ctx.push_scope();
     for (p, ty) in method.params.iter().zip(param_types.iter()) {
@@ -524,12 +602,12 @@ fn construct_default_aspect_method(
     ctx.pop_return_type(saved_return);
     ctx.pop_scope();
     Ok(TypedFunDecl {
-        name:        method.name.clone(),
-        generics:    method.generics.clone(),
-        params:      method.params.clone(),
+        name: method.name.clone(),
+        generics: method.generics.clone(),
+        params: method.params.clone(),
         return_type: method.return_type.clone(),
-        body:        FunBody::Typed(typed_block),
-        span:        method.span.clone(),
+        body: FunBody::Typed(typed_block),
+        span: method.span.clone(),
     })
 }
 
@@ -544,9 +622,15 @@ fn construct_block(
     // for any expression in the block regardless of declaration order.
     for decl in &block.stmts {
         if let Decl::Struct(sd) = decl {
-            let fields = sd.fields.iter()
+            let fields = sd
+                .fields
+                .iter()
                 .map(|f| {
-                    let ty = resolved_to_type(&ctx.type_expr_to_infer_ctx(&f.type_ann), ctx.subst, &f.span)?;
+                    let ty = resolved_to_type(
+                        &ctx.type_expr_to_infer_ctx(&f.type_ann),
+                        ctx.subst,
+                        &f.span,
+                    )?;
                     Ok((f.name.clone(), ty, f.span.clone()))
                 })
                 .collect::<Result<_, MetelError>>()?;
@@ -559,11 +643,15 @@ fn construct_block(
     }
     let tail = match &block.tail {
         Some(e) => Some(Box::new(construct_expr(e, expected_tail_ty, ctx)?)),
-        None    => None,
+        None => None,
     };
     ctx.pop_struct_scope();
     ctx.pop_scope();
-    Ok(TypedBlock { stmts, tail, span: block.span.clone() })
+    Ok(TypedBlock {
+        stmts,
+        tail,
+        span: block.span.clone(),
+    })
 }
 
 fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, MetelError> {
@@ -573,23 +661,33 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
             let return_ty = ctx.current_return_ty.clone();
             let value = match &r.value {
                 Some(e) => Some(construct_expr(e, return_ty.as_ref(), ctx)?),
-                None    => None,
+                None => None,
             };
-            Ok(TypedStmt::Return(TypedReturnStmt { value, span: r.span.clone() }))
+            Ok(TypedStmt::Return(TypedReturnStmt {
+                value,
+                span: r.span.clone(),
+            }))
         }
         Stmt::Break(bs) => {
             let break_ty = ctx.current_break_ty.clone();
             let value = match &bs.value {
                 Some(e) => Some(construct_expr(e, break_ty.as_ref(), ctx)?),
-                None    => None,
+                None => None,
             };
-            Ok(TypedStmt::Break(TypedBreakStmt { value, span: bs.span.clone() }))
+            Ok(TypedStmt::Break(TypedBreakStmt {
+                value,
+                span: bs.span.clone(),
+            }))
         }
         Stmt::Continue(span) => Ok(TypedStmt::Continue(span.clone())),
         Stmt::While(ws) => {
             let condition = construct_expr(&ws.condition, None, ctx)?;
             let body = construct_block(&ws.body, None, ctx)?;
-            Ok(TypedStmt::While(TypedWhileStmt { condition, body, span: ws.span.clone() }))
+            Ok(TypedStmt::While(TypedWhileStmt {
+                condition,
+                body,
+                span: ws.span.clone(),
+            }))
         }
         Stmt::For(fs) => {
             ctx.push_scope();
@@ -599,8 +697,10 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
                     let ty = value.ty().clone();
                     ctx.bind(&ld.name, ty);
                     let typed_ld = TypedLetDecl {
-                        name: ld.name.clone(), type_ann: ld.type_ann.clone(),
-                        value, span: ld.span.clone(),
+                        name: ld.name.clone(),
+                        type_ann: ld.type_ann.clone(),
+                        value,
+                        span: ld.span.clone(),
                     };
                     Some(TypedForInit::Let(typed_ld))
                 }
@@ -609,27 +709,33 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
                     let ty = value.ty().clone();
                     ctx.bind(&md.name, ty);
                     let typed_md = TypedMutDecl {
-                        name: md.name.clone(), type_ann: md.type_ann.clone(),
-                        value, span: md.span.clone(),
+                        name: md.name.clone(),
+                        type_ann: md.type_ann.clone(),
+                        value,
+                        span: md.span.clone(),
                     };
                     Some(TypedForInit::Mut(typed_md))
                 }
-                Some(ForInit::Expr(e)) => {
-                    Some(TypedForInit::Expr(construct_expr(e, None, ctx)?))
-                }
+                Some(ForInit::Expr(e)) => Some(TypedForInit::Expr(construct_expr(e, None, ctx)?)),
                 None => None,
             };
             let condition = match &fs.condition {
                 Some(c) => Some(construct_expr(c, None, ctx)?),
-                None    => None,
+                None => None,
             };
             let step = match &fs.step {
                 Some(s) => Some(construct_expr(s, None, ctx)?),
-                None    => None,
+                None => None,
             };
             let body = construct_block(&fs.body, None, ctx)?;
             ctx.pop_scope();
-            Ok(TypedStmt::For(Box::new(TypedForStmt { init, condition, step, body, span: fs.span.clone() })))
+            Ok(TypedStmt::For(Box::new(TypedForStmt {
+                init,
+                condition,
+                step,
+                body,
+                span: fs.span.clone(),
+            })))
         }
         Stmt::ForIn(fi) => {
             let iterable = construct_expr(&fi.iterable, None, ctx)?;
@@ -638,16 +744,27 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
                 Type::Named(name, _) if name == "Range" => Type::I64,
                 Type::Named(type_name, _) => {
                     // User-defined Iterable: derive elem type from next() -> Perhaps<T>.
-                    let next_ret = ctx.method_env.get(type_name.as_str())
+                    let next_ret = ctx
+                        .method_env
+                        .get(type_name.as_str())
                         .and_then(|m| m.get("next"))
-                        .and_then(|ty| if let Type::Fun(_, ret) = ty { Some(ret.as_ref()) } else { None })
+                        .and_then(|ty| {
+                            if let Type::Fun(_, ret) = ty {
+                                Some(ret.as_ref())
+                            } else {
+                                None
+                            }
+                        })
                         .cloned();
                     match next_ret {
-                        Some(Type::Named(n, mut args)) if n == "Perhaps" && args.len() == 1 =>
-                            args.remove(0),
-                        _ => return Err(MetelError::internal(
-                            format!("for-in: `{type_name}` has no `next() -> Perhaps<T>` method")
-                        )),
+                        Some(Type::Named(n, mut args)) if n == "Perhaps" && args.len() == 1 => {
+                            args.remove(0)
+                        }
+                        _ => {
+                            return Err(MetelError::internal(format!(
+                                "for-in: `{type_name}` has no `next() -> Perhaps<T>` method"
+                            )))
+                        }
                     }
                 }
                 _ => return Err(MetelError::internal("for-in over non-iterable type")),
@@ -657,7 +774,11 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
             let body = construct_block(&fi.body, None, ctx)?;
             ctx.pop_scope();
             Ok(TypedStmt::ForIn(Box::new(TypedForInStmt {
-                binding: fi.binding.clone(), mutable: fi.mutable, iterable, body, span: fi.span.clone(),
+                binding: fi.binding.clone(),
+                mutable: fi.mutable,
+                iterable,
+                body,
+                span: fi.span.clone(),
             })))
         }
     }
@@ -674,19 +795,28 @@ fn construct_expr(
             Ok(TypedExpr::Literal(lit.clone(), ty, span.clone()))
         }
         Expr::Ident(name, span) => {
-            let ty = ctx.lookup(name).cloned().ok_or_else(|| MetelError::type_error(
-                TypeErrorCode::T0003,
-                format!("undefined name `{name}`"),
-                span,
-            ))?;
+            let ty = ctx.lookup(name).cloned().ok_or_else(|| {
+                MetelError::type_error(
+                    TypeErrorCode::T0003,
+                    format!("undefined name `{name}`"),
+                    span,
+                )
+            })?;
             Ok(TypedExpr::Ident(name.clone(), ty, span.clone()))
         }
-        Expr::ResolvedPath { resolved, original, symbol_id: _, span } => {
-            let ty = ctx.lookup(resolved).cloned().ok_or_else(|| MetelError::type_error(
-                TypeErrorCode::T0003,
-                format!("undefined name `{}`", original.join("::")),
-                span,
-            ))?;
+        Expr::ResolvedPath {
+            resolved,
+            original,
+            symbol_id: _,
+            span,
+        } => {
+            let ty = ctx.lookup(resolved).cloned().ok_or_else(|| {
+                MetelError::type_error(
+                    TypeErrorCode::T0003,
+                    format!("undefined name `{}`", original.join("::")),
+                    span,
+                )
+            })?;
             Ok(TypedExpr::Ident(resolved.clone(), ty, span.clone()))
         }
         Expr::BinOp(lhs, op, rhs, span) => construct_binop(lhs, op, rhs, span, ctx),
@@ -705,7 +835,8 @@ fn construct_expr(
             construct_unaryop(op, operand, span, inner_hint, ctx)
         }
         Expr::Tuple(elems, span) => {
-            let typed: Vec<TypedExpr> = elems.iter()
+            let typed: Vec<TypedExpr> = elems
+                .iter()
                 .map(|e| construct_expr(e, None, ctx))
                 .collect::<Result<_, _>>()?;
             let ty = Type::Tuple(typed.iter().map(|e| e.ty().clone()).collect());
@@ -713,11 +844,13 @@ fn construct_expr(
         }
         Expr::Array(elems, span) => {
             if elems.is_empty() {
-                let ty = expected_ty.cloned().ok_or_else(|| MetelError::type_error(
-                    TypeErrorCode::T0002,
-                    "cannot infer element type of empty array; add a type annotation",
-                    span,
-                ))?;
+                let ty = expected_ty.cloned().ok_or_else(|| {
+                    MetelError::type_error(
+                        TypeErrorCode::T0002,
+                        "cannot infer element type of empty array; add a type annotation",
+                        span,
+                    )
+                })?;
                 return Ok(TypedExpr::Array(vec![], ty, span.clone()));
             }
             // When the expected type is SizedArray, validate element count and use that type.
@@ -729,7 +862,8 @@ fn construct_expr(
                         span,
                     ));
                 }
-                let typed: Vec<TypedExpr> = elems.iter()
+                let typed: Vec<TypedExpr> = elems
+                    .iter()
                     .map(|e| construct_expr(e, Some(expected_elem.as_ref()), ctx))
                     .collect::<Result<_, _>>()?;
                 let ty = Type::SizedArray(expected_elem.clone(), *n);
@@ -737,13 +871,15 @@ fn construct_expr(
             }
             // When expected type is Array(T), propagate element type hint.
             if let Some(Type::Array(expected_elem)) = expected_ty {
-                let typed: Vec<TypedExpr> = elems.iter()
+                let typed: Vec<TypedExpr> = elems
+                    .iter()
                     .map(|e| construct_expr(e, Some(expected_elem.as_ref()), ctx))
                     .collect::<Result<_, _>>()?;
                 let ty = Type::Array(expected_elem.clone());
                 return Ok(TypedExpr::Array(typed, ty, span.clone()));
             }
-            let typed: Vec<TypedExpr> = elems.iter()
+            let typed: Vec<TypedExpr> = elems
+                .iter()
                 .map(|e| construct_expr(e, None, ctx))
                 .collect::<Result<_, _>>()?;
             let elem_ty = typed[0].ty().clone();
@@ -759,41 +895,67 @@ fn construct_expr(
             let typed_elem = construct_expr(elem, elem_hint, ctx)?;
             let elem_ty = typed_elem.ty().clone();
             let ty = Type::SizedArray(Box::new(elem_ty), *n);
-            Ok(TypedExpr::RepeatArray(Box::new(typed_elem), *n, ty, span.clone()))
+            Ok(TypedExpr::RepeatArray(
+                Box::new(typed_elem),
+                *n,
+                ty,
+                span.clone(),
+            ))
         }
-        Expr::Call { callee, type_args, args, span } => construct_call(callee, type_args, args, span, expected_ty, ctx),
-        Expr::Index { object, index, span } => {
+        Expr::Call {
+            callee,
+            type_args,
+            args,
+            span,
+        } => construct_call(callee, type_args, args, span, expected_ty, ctx),
+        Expr::Index {
+            object,
+            index,
+            span,
+        } => {
             let typed_obj = construct_expr(object, None, ctx)?;
             let typed_idx = construct_expr(index, Some(&Type::U64), ctx)?;
             if typed_idx.ty() != &Type::U64 {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0001,
-                    format!("array index must be u64, got {}; use `expr as u64`", typed_idx.ty()),
+                    format!(
+                        "array index must be u64, got {}; use `expr as u64`",
+                        typed_idx.ty()
+                    ),
                     span,
                 ));
             }
             let elem_ty = match typed_obj.ty() {
                 Type::Array(elem) | Type::SizedArray(elem, _) => *elem.clone(),
-                _ => return Err(MetelError::type_error(
-                    TypeErrorCode::T0001,
-                    "indexed value is not an array",
-                    span,
-                )),
+                _ => {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0001,
+                        "indexed value is not an array",
+                        span,
+                    ))
+                }
             };
             Ok(TypedExpr::Index {
                 object: Box::new(typed_obj),
-                index:  Box::new(typed_idx),
+                index: Box::new(typed_idx),
                 ty: elem_ty,
                 span: span.clone(),
             })
         }
-        Expr::If { condition, then_branch, else_branch, span } => {
+        Expr::If {
+            condition,
+            then_branch,
+            else_branch,
+            span,
+        } => {
             let condition = construct_expr(condition, None, ctx)?;
             let then_branch = construct_block(then_branch, expected_ty, ctx)?;
             let (else_branch, ty) = match else_branch {
                 Some(eb) => {
                     let typed_else = construct_block(eb, expected_ty, ctx)?;
-                    let ty = then_branch.tail.as_ref()
+                    let ty = then_branch
+                        .tail
+                        .as_ref()
                         .map(|e| e.ty().clone())
                         .unwrap_or(Type::Unit);
                     (Some(typed_else), ty)
@@ -808,7 +970,12 @@ fn construct_expr(
                 span: span.clone(),
             })
         }
-        Expr::Assign { target, op, value, span } => {
+        Expr::Assign {
+            target,
+            op,
+            value,
+            span,
+        } => {
             let value_hint: Option<Type> = if let AssignTarget::Ident(name, _) = target {
                 ctx.lookup(name).cloned()
             } else {
@@ -824,28 +991,46 @@ fn construct_expr(
                 span: span.clone(),
             })
         }
-        Expr::FieldAccess { object, field, span } => {
+        Expr::FieldAccess {
+            object,
+            field,
+            span,
+        } => {
             let typed_obj = construct_expr(object, None, ctx)?;
             let (struct_name, type_args) = match typed_obj.ty() {
                 Type::Named(name, args) => (name.clone(), args.clone()),
                 Type::Pointer(inner) | Type::MutPointer(inner) => match inner.as_ref() {
                     Type::Named(name, args) => (name.clone(), args.clone()),
-                    t => return Err(MetelError::internal(
-                        format!("field access on non-struct pointer target {t}")
-                    )),
+                    t => {
+                        return Err(MetelError::internal(format!(
+                            "field access on non-struct pointer target {t}"
+                        )))
+                    }
                 },
-                t => return Err(MetelError::internal(
-                    format!("field access on non-struct type {t}")
-                )),
+                t => {
+                    return Err(MetelError::internal(format!(
+                        "field access on non-struct type {t}"
+                    )))
+                }
             };
-            let field_ty = if let Some(type_params) = ctx.registry.raw_struct_type_params().get(&struct_name) {
+            let field_ty = if let Some(type_params) =
+                ctx.registry.raw_struct_type_params().get(&struct_name)
+            {
                 // Generic struct: look up raw InferType field, build remap, apply, convert.
-                let raw_fields = ctx.registry.raw_struct_env().get(&struct_name)
-                    .ok_or_else(|| MetelError::internal(format!("missing raw fields for `{struct_name}`")))?;
-                let raw_ty = raw_fields.iter()
+                let raw_fields =
+                    ctx.registry
+                        .raw_struct_env()
+                        .get(&struct_name)
+                        .ok_or_else(|| {
+                            MetelError::internal(format!("missing raw fields for `{struct_name}`"))
+                        })?;
+                let raw_ty = raw_fields
+                    .iter()
                     .find(|entry| entry.name == *field)
                     .map(|entry| entry.ty.clone())
-                    .ok_or_else(|| MetelError::internal(format!("no field `{field}` on `{struct_name}`")))?;
+                    .ok_or_else(|| {
+                        MetelError::internal(format!("no field `{field}` on `{struct_name}`"))
+                    })?;
                 let mut remap = Substitution::new();
                 for (&tp, arg) in type_params.iter().zip(type_args.iter()) {
                     remap.bind(tp, type_to_infer(arg));
@@ -855,21 +1040,28 @@ fn construct_expr(
                 ctx.get_struct_fields(&struct_name)
                     .and_then(|fs| fs.iter().find(|(name, _, _)| name == field))
                     .map(|(_, ty, _)| ty.clone())
-                    .ok_or_else(|| MetelError::internal(
-                        format!("no field `{field}` on `{struct_name}`")
-                    ))?
+                    .ok_or_else(|| {
+                        MetelError::internal(format!("no field `{field}` on `{struct_name}`"))
+                    })?
             };
             Ok(TypedExpr::FieldAccess {
                 object: Box::new(typed_obj),
-                field:  field.clone(),
-                ty:     field_ty,
-                span:   span.clone(),
+                field: field.clone(),
+                ty: field_ty,
+                span: span.clone(),
             })
         }
-        Expr::MethodCall { receiver, method, type_args, args, span } => {
+        Expr::MethodCall {
+            receiver,
+            method,
+            type_args,
+            args,
+            span,
+        } => {
             let typed_receiver = construct_expr(receiver, None, ctx)?;
             if matches!(typed_receiver.ty(), Type::Array(_) | Type::SizedArray(_, _)) {
-                let typed_args: Vec<TypedExpr> = args.iter()
+                let typed_args: Vec<TypedExpr> = args
+                    .iter()
                     .map(|arg| construct_expr(arg, None, ctx))
                     .collect::<Result<_, _>>()?;
                 if let Some(result) =
@@ -882,33 +1074,45 @@ fn construct_expr(
                 Type::Named(name, targs) => (name.clone(), targs.clone()),
                 Type::Pointer(inner) | Type::MutPointer(inner) => match inner.as_ref() {
                     Type::Named(name, targs) => (name.clone(), targs.clone()),
-                    t => return Err(MetelError::internal(
-                        format!("method call on non-struct pointer target {t}")
-                    )),
+                    t => {
+                        return Err(MetelError::internal(format!(
+                            "method call on non-struct pointer target {t}"
+                        )))
+                    }
                 },
-                Type::Str   => ("String".to_string(), vec![]),
-                Type::I64   => ("i64".to_string(), vec![]),
+                Type::Str => ("String".to_string(), vec![]),
+                Type::I64 => ("i64".to_string(), vec![]),
                 Type::F64 => ("f64".to_string(), vec![]),
-                Type::Boolean  => ("boolean".to_string(),   vec![]),
-                Type::Char  => ("Char".to_string(),   vec![]),
-                Type::Array(_) | Type::SizedArray(_, _) =>
-                    return Err(MetelError::internal("array pattern methods handled before nominal lookup")),
-                t => return Err(MetelError::internal(
-                    format!("method call on non-struct type {t}")
-                )),
+                Type::Boolean => ("boolean".to_string(), vec![]),
+                Type::Char => ("Char".to_string(), vec![]),
+                Type::Array(_) | Type::SizedArray(_, _) => {
+                    return Err(MetelError::internal(
+                        "array pattern methods handled before nominal lookup",
+                    ))
+                }
+                t => {
+                    return Err(MetelError::internal(format!(
+                        "method call on non-struct type {t}"
+                    )))
+                }
             };
 
             // Resolve explicit method type args once.
             let explicit_method_tys: Option<Vec<Type>> = if type_args.is_empty() {
                 None
             } else {
-                Some(type_args.iter()
-                    .map(|te| infer_type_to_type(&type_expr_to_infer(te), span))
-                    .collect::<Result<_, _>>()?)
+                Some(
+                    type_args
+                        .iter()
+                        .map(|te| infer_type_to_type(&type_expr_to_infer(te), span))
+                        .collect::<Result<_, _>>()?,
+                )
             };
 
             // Fast path: concrete method type already in method_env.
-            let method_fun_ty = if let Some(ty) = ctx.method_env.get(&struct_name)
+            let method_fun_ty = if let Some(ty) = ctx
+                .method_env
+                .get(&struct_name)
                 .and_then(|m| m.get(method.as_str()))
                 .cloned()
             {
@@ -923,11 +1127,12 @@ fn construct_expr(
             } else {
                 // Slow path: method on a generic struct — look up polymorphic scheme and
                 // instantiate it using the receiver's concrete type arguments.
-                let (scheme, struct_tvars) = ctx.registry
+                let (scheme, struct_tvars) = ctx
+                    .registry
                     .method_scheme_for(&struct_name, method)
-                    .ok_or_else(|| MetelError::internal(
-                        format!("no method `{method}` on `{struct_name}`")
-                    ))?;
+                    .ok_or_else(|| {
+                    MetelError::internal(format!("no method `{method}` on `{struct_name}`"))
+                })?;
                 // Build substitution: struct_tvars[i] → receiver_type_args[i].
                 let mut subst = Substitution::new();
                 for (&tv, concrete) in struct_tvars.iter().zip(receiver_type_args.iter()) {
@@ -946,7 +1151,11 @@ fn construct_expr(
                     if explicit.len() != free.len() {
                         return Err(MetelError::type_error(
                             TypeErrorCode::T0004,
-                            format!("expected {} type argument(s), got {}", free.len(), explicit.len()),
+                            format!(
+                                "expected {} type argument(s), got {}",
+                                free.len(),
+                                explicit.len()
+                            ),
                             span,
                         ));
                     }
@@ -963,7 +1172,9 @@ fn construct_expr(
             // adopt the method's expected element type (e.g. List<i32>.push(5) → I32).
             let typed_args: Vec<TypedExpr> = if let Type::Fun(ref params, _) = method_fun_ty {
                 // params[0] is self/receiver; the rest correspond to args.
-                let arg_params: Vec<Option<&Type>> = params.iter().skip(1)
+                let arg_params: Vec<Option<&Type>> = params
+                    .iter()
+                    .skip(1)
                     .map(Some)
                     .chain(std::iter::repeat(None))
                     .take(args.len())
@@ -973,7 +1184,9 @@ fn construct_expr(
                     .map(|(a, hint)| construct_expr(a, *hint, ctx))
                     .collect::<Result<_, _>>()?
             } else {
-                args.iter().map(|a| construct_expr(a, None, ctx)).collect::<Result<_, _>>()?
+                args.iter()
+                    .map(|a| construct_expr(a, None, ctx))
+                    .collect::<Result<_, _>>()?
             };
             let ret_ty = match method_fun_ty {
                 Type::Fun(_, ret) => *ret,
@@ -981,22 +1194,23 @@ fn construct_expr(
             };
             Ok(TypedExpr::MethodCall {
                 receiver: Box::new(typed_receiver),
-                method:   method.clone(),
-                args:     typed_args,
-                ty:       ret_ty,
+                method: method.clone(),
+                args: typed_args,
+                ty: ret_ty,
                 dispatch: crate::typed_ast::MethodDispatch::Dynamic,
-                span:     span.clone(),
+                span: span.clone(),
             })
         }
         Expr::StructLiteral { path, fields, span } => {
             // Look up field type hints from the struct definition for non-generic structs.
             // Clone to release the borrow on ctx before calling construct_expr below.
             let type_name = path.last().map(|s| s.as_str()).unwrap_or("");
-            let field_hints: HashMap<String, Type> =
-                ctx.get_struct_fields(type_name).map(|fs| {
-                    fs.iter().map(|(n, t, _)| (n.clone(), t.clone())).collect()
-                }).unwrap_or_default();
-            let typed_fields: Vec<(String, TypedExpr)> = fields.iter()
+            let field_hints: HashMap<String, Type> = ctx
+                .get_struct_fields(type_name)
+                .map(|fs| fs.iter().map(|(n, t, _)| (n.clone(), t.clone())).collect())
+                .unwrap_or_default();
+            let typed_fields: Vec<(String, TypedExpr)> = fields
+                .iter()
                 .map(|(name, expr)| {
                     let hint = field_hints.get(name.as_str());
                     Ok((name.clone(), construct_expr(expr, hint, ctx)?))
@@ -1004,13 +1218,25 @@ fn construct_expr(
                 .collect::<Result<_, _>>()?;
 
             let ty = if path.len() == 2 {
-                construct_enum_literal_ty(&path[0], &path[1], &typed_fields, expected_ty, span, ctx)?
+                construct_enum_literal_ty(
+                    &path[0],
+                    &path[1],
+                    &typed_fields,
+                    expected_ty,
+                    span,
+                    ctx,
+                )?
             } else {
                 let type_name = path.last().unwrap();
                 if let Some(type_params) = ctx.registry.raw_struct_type_params().get(type_name) {
                     // Generic struct: infer type args from the typed field values.
-                    let raw_fields = ctx.registry.raw_struct_env().get(type_name.as_str())
-                        .ok_or_else(|| MetelError::internal(format!("missing raw fields for `{type_name}`")))?;
+                    let raw_fields = ctx
+                        .registry
+                        .raw_struct_env()
+                        .get(type_name.as_str())
+                        .ok_or_else(|| {
+                            MetelError::internal(format!("missing raw fields for `{type_name}`"))
+                        })?;
                     let mut remap: HashMap<TypeVar, InferType> = HashMap::new();
                     for &tp in type_params {
                         remap.entry(tp).or_insert_with(|| InferType::Var(tp));
@@ -1025,7 +1251,8 @@ fn construct_expr(
                             }
                         }
                     }
-                    let type_args: Vec<Type> = type_params.iter()
+                    let type_args: Vec<Type> = type_params
+                        .iter()
                         .map(|tp| {
                             let it = remap.get(tp).cloned().unwrap_or(InferType::Var(*tp));
                             infer_type_to_type(&ctx.subst.apply(&it), span)
@@ -1034,7 +1261,9 @@ fn construct_expr(
                     // T0012: check each resolved type arg satisfies the declared bounds.
                     if let Some(param_bounds) = ctx.registry.type_param_bounds_for(type_name) {
                         for (i, bounds) in param_bounds.iter().enumerate() {
-                            if bounds.is_empty() { continue; }
+                            if bounds.is_empty() {
+                                continue;
+                            }
                             let arg = match type_args.get(i) {
                                 Some(a) => a,
                                 None => continue,
@@ -1044,8 +1273,8 @@ fn construct_expr(
                                 _ => continue,
                             };
                             for aspect in bounds {
-                                let has_impl = ctx.registry
-                                    .impl_aspect_env_has(&type_arg_name, aspect);
+                                let has_impl =
+                                    ctx.registry.impl_aspect_env_has(&type_arg_name, aspect);
                                 if !has_impl {
                                     return Err(MetelError::type_error(
                                         TypeErrorCode::T0012,
@@ -1063,16 +1292,17 @@ fn construct_expr(
             };
 
             Ok(TypedExpr::StructLiteral {
-                path:   path.clone(),
+                path: path.clone(),
                 fields: typed_fields,
                 ty,
-                span:   span.clone(),
+                span: span.clone(),
             })
         }
         Expr::Path(segments, span) => {
             // For 2-segment paths, try method_env first (static methods, enum variant constructors).
             if let [type_name, member_name] = segments.as_slice() {
-                if let Some(ty) = ctx.method_env
+                if let Some(ty) = ctx
+                    .method_env
                     .get(type_name.as_str())
                     .and_then(|m| m.get(member_name.as_str()))
                     .cloned()
@@ -1085,28 +1315,50 @@ fn construct_expr(
                         let ty = if variant.fields.is_empty() {
                             Type::Named(type_name.clone(), vec![])
                         } else {
-                            let field_types: Vec<Type> = variant.fields.iter()
+                            let field_types: Vec<Type> = variant
+                                .fields
+                                .iter()
                                 .map(|field| infer_type_to_type(&field.ty, span))
                                 .collect::<Result<_, _>>()?;
-                            Type::Fun(field_types, Box::new(Type::Named(type_name.clone(), vec![])))
+                            Type::Fun(
+                                field_types,
+                                Box::new(Type::Named(type_name.clone(), vec![])),
+                            )
                         };
                         return Ok(TypedExpr::Path(segments.clone(), ty, span.clone()));
                     }
                 }
             }
-            Err(MetelError::internal(format!("unresolved path `{}`", segments.join("::"))))
+            Err(MetelError::internal(format!(
+                "unresolved path `{}`",
+                segments.join("::")
+            )))
         }
-        Expr::Closure { params, return_type, body, span } => {
-            let param_types: Vec<Type> = params.iter()
-                .map(|p| p.type_ann.as_ref()
-                    .map(|ann| resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, &p.span))
-                    .unwrap_or_else(|| Err(MetelError::type_error(
-                        TypeErrorCode::T0002,
-                        format!("closure parameter `{}` needs a type annotation", p.name),
-                        &p.span,
-                    ))))
+        Expr::Closure {
+            params,
+            return_type,
+            body,
+            span,
+        } => {
+            let param_types: Vec<Type> = params
+                .iter()
+                .map(|p| {
+                    p.type_ann
+                        .as_ref()
+                        .map(|ann| {
+                            resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, &p.span)
+                        })
+                        .unwrap_or_else(|| {
+                            Err(MetelError::type_error(
+                                TypeErrorCode::T0002,
+                                format!("closure parameter `{}` needs a type annotation", p.name),
+                                &p.span,
+                            ))
+                        })
+                })
                 .collect::<Result<_, _>>()?;
-            let ret_ty = return_type.as_ref()
+            let ret_ty = return_type
+                .as_ref()
                 .map(|ann| resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, span))
                 .transpose()?
                 .unwrap_or(Type::Unit);
@@ -1129,15 +1381,17 @@ fn construct_expr(
             })
         }
         Expr::Match(m) => construct_match(m, expected_ty, ctx),
-        Expr::PropagateError { expr, span } => {
-            construct_propagate_error(expr, span, ctx)
-        }
+        Expr::PropagateError { expr, span } => construct_propagate_error(expr, span, ctx),
         Expr::Ascribe { expr, ann, span } => {
             let ty = resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, span)?;
             construct_expr(expr, Some(&ty), ctx)
         }
 
-        Expr::Cast { expr, target_type, span } => {
+        Expr::Cast {
+            expr,
+            target_type,
+            span,
+        } => {
             let typed_expr = construct_expr(expr, None, ctx)?;
             let ty = resolved_to_type(&ctx.type_expr_to_infer_ctx(target_type), ctx.subst, span)?;
             Ok(TypedExpr::Cast {
@@ -1148,13 +1402,16 @@ fn construct_expr(
             })
         }
 
-        Expr::TupleAccess { object, index, span } => {
+        Expr::TupleAccess {
+            object,
+            index,
+            span,
+        } => {
             let typed_obj = construct_expr(object, None, ctx)?;
             let ty = match typed_obj.ty() {
-                Type::Tuple(elems) => elems.get(*index).cloned()
-                    .ok_or_else(|| MetelError::internal(
-                        format!("tuple index {index} out of bounds")
-                    ))?,
+                Type::Tuple(elems) => elems.get(*index).cloned().ok_or_else(|| {
+                    MetelError::internal(format!("tuple index {index} out of bounds"))
+                })?,
                 _ => return Err(MetelError::internal("tuple access on non-tuple")),
             };
             Ok(TypedExpr::TupleAccess {
@@ -1169,7 +1426,11 @@ fn construct_expr(
             let typed_body = construct_block(body, None, ctx)?;
             ctx.pop_break_type(saved_break);
             let ty = find_loop_break_type(&typed_body).unwrap_or(Type::Never);
-            Ok(TypedExpr::Loop { body: typed_body, ty, span: span.clone() })
+            Ok(TypedExpr::Loop {
+                body: typed_body,
+                ty,
+                span: span.clone(),
+            })
         }
     }
 }
@@ -1224,10 +1485,12 @@ fn find_break_in_stmt(stmt: &TypedStmt) -> Option<Type> {
 
 fn find_break_in_expr(expr: &TypedExpr) -> Option<Type> {
     match expr {
-        TypedExpr::If { then_branch, else_branch, .. } => {
-            find_loop_break_type(then_branch)
-                .or_else(|| else_branch.as_ref().and_then(find_loop_break_type))
-        }
+        TypedExpr::If {
+            then_branch,
+            else_branch,
+            ..
+        } => find_loop_break_type(then_branch)
+            .or_else(|| else_branch.as_ref().and_then(find_loop_break_type)),
         // break inside a nested loop exits the inner loop, not the outer
         TypedExpr::Loop { .. } => None,
         // break inside a closure doesn't escape to the enclosing loop
@@ -1236,7 +1499,11 @@ fn find_break_in_expr(expr: &TypedExpr) -> Option<Type> {
     }
 }
 
-fn construct_match(m: &MatchExpr, expected_ty: Option<&Type>, ctx: &mut ConstructCtx) -> Result<TypedExpr, MetelError> {
+fn construct_match(
+    m: &MatchExpr,
+    expected_ty: Option<&Type>,
+    ctx: &mut ConstructCtx,
+) -> Result<TypedExpr, MetelError> {
     let scrutinee = construct_expr(&m.scrutinee, None, ctx)?;
     let scrutinee_ty = scrutinee.ty().clone();
     let mut typed_arms = vec![];
@@ -1245,7 +1512,7 @@ fn construct_match(m: &MatchExpr, expected_ty: Option<&Type>, ctx: &mut Construc
         construct_pattern_bindings(&arm.pattern, &scrutinee_ty, ctx)?;
         let guard = match &arm.guard {
             Some(g) => Some(construct_expr(g, None, ctx)?),
-            None    => None,
+            None => None,
         };
         let body = construct_block(&arm.body, expected_ty, ctx)?;
         typed_arms.push(TypedMatchArm {
@@ -1256,9 +1523,21 @@ fn construct_match(m: &MatchExpr, expected_ty: Option<&Type>, ctx: &mut Construc
         });
         ctx.pop_scope();
     }
-    check_match_exhaustiveness(&typed_arms, &scrutinee_ty, ctx.registry.raw_enum_env(), &m.span)?;
-    let expr_type = typed_arms.first()
-        .map(|a| a.body.tail.as_ref().map(|e| e.ty().clone()).unwrap_or(Type::Unit))
+    check_match_exhaustiveness(
+        &typed_arms,
+        &scrutinee_ty,
+        ctx.registry.raw_enum_env(),
+        &m.span,
+    )?;
+    let expr_type = typed_arms
+        .first()
+        .map(|a| {
+            a.body
+                .tail
+                .as_ref()
+                .map(|e| e.ty().clone())
+                .unwrap_or(Type::Unit)
+        })
         .unwrap_or(Type::Unit);
     Ok(TypedExpr::Match(TypedMatchExpr {
         scrutinee: Box::new(scrutinee),
@@ -1274,29 +1553,46 @@ fn check_match_exhaustiveness(
     enum_env: &HashMap<String, EnumInfo>,
     span: &Span,
 ) -> Result<(), MetelError> {
-    if arms.iter().any(|a| a.guard.is_none() && is_catch_all_pattern(&a.pattern)) {
+    if arms
+        .iter()
+        .any(|a| a.guard.is_none() && is_catch_all_pattern(&a.pattern))
+    {
         return Ok(());
     }
     let exhaustive = match scrutinee_ty {
         Type::Boolean => {
-            let has_true  = arms.iter().any(|a| a.guard.is_none() && is_bool_literal_pattern(&a.pattern, true));
-            let has_false = arms.iter().any(|a| a.guard.is_none() && is_bool_literal_pattern(&a.pattern, false));
+            let has_true = arms
+                .iter()
+                .any(|a| a.guard.is_none() && is_bool_literal_pattern(&a.pattern, true));
+            let has_false = arms
+                .iter()
+                .any(|a| a.guard.is_none() && is_bool_literal_pattern(&a.pattern, false));
             has_true && has_false
         }
         Type::Named(name, _) if name == "Perhaps" => {
-            let has_some = arms.iter().any(|a| a.guard.is_none() && pattern_covers_variant(&a.pattern, "Perhaps", "Some"));
-            let has_none = arms.iter().any(|a| a.guard.is_none() && pattern_covers_variant(&a.pattern, "Perhaps", "None"));
+            let has_some = arms.iter().any(|a| {
+                a.guard.is_none() && pattern_covers_variant(&a.pattern, "Perhaps", "Some")
+            });
+            let has_none = arms.iter().any(|a| {
+                a.guard.is_none() && pattern_covers_variant(&a.pattern, "Perhaps", "None")
+            });
             has_some && has_none
         }
         Type::Named(name, _) if name == "Result" => {
-            let has_ok  = arms.iter().any(|a| a.guard.is_none() && pattern_covers_variant(&a.pattern, "Result", "Ok"));
-            let has_err = arms.iter().any(|a| a.guard.is_none() && pattern_covers_variant(&a.pattern, "Result", "Err"));
+            let has_ok = arms
+                .iter()
+                .any(|a| a.guard.is_none() && pattern_covers_variant(&a.pattern, "Result", "Ok"));
+            let has_err = arms
+                .iter()
+                .any(|a| a.guard.is_none() && pattern_covers_variant(&a.pattern, "Result", "Err"));
             has_ok && has_err
         }
         Type::Named(name, _) => {
             if let Some(enum_info) = enum_env.get(name.as_str()) {
                 enum_info.variants.iter().all(|v| {
-                    arms.iter().any(|a| a.guard.is_none() && pattern_covers_variant(&a.pattern, name, &v.name))
+                    arms.iter().any(|a| {
+                        a.guard.is_none() && pattern_covers_variant(&a.pattern, name, &v.name)
+                    })
                 })
             } else {
                 false
@@ -1306,16 +1602,20 @@ fn check_match_exhaustiveness(
         Type::Never => true,
         // SizedArray [T; N]: exhaustive if there is an arm with an exact N-element array
         // pattern (each element itself exhaustive) or a rest pattern.
-        Type::SizedArray(_, n) => {
-            arms.iter().any(|a| {
-                a.guard.is_none() && match &a.pattern {
-                    Pattern::Array { elems, rest: Some(_), .. } => elems.iter().all(is_catch_all_pattern),
-                    Pattern::Array { elems, rest: None, .. } =>
-                        elems.len() as u64 == *n && elems.iter().all(is_catch_all_pattern),
+        Type::SizedArray(_, n) => arms.iter().any(|a| {
+            a.guard.is_none()
+                && match &a.pattern {
+                    Pattern::Array {
+                        elems,
+                        rest: Some(_),
+                        ..
+                    } => elems.iter().all(is_catch_all_pattern),
+                    Pattern::Array {
+                        elems, rest: None, ..
+                    } => elems.len() as u64 == *n && elems.iter().all(is_catch_all_pattern),
                     _ => false,
                 }
-            })
-        }
+        }),
         // Int, Float, Str, Tuple, Array, Fun — value-infinite; only a catch-all suffices.
         _ => false,
     };
@@ -1335,7 +1635,11 @@ fn is_catch_all_pattern(pattern: &Pattern) -> bool {
         // A tuple pattern is irrefutable when every element is also irrefutable.
         Pattern::Tuple(pats, _) => pats.iter().all(is_catch_all_pattern),
         // An array pattern with a rest binding is irrefutable if all explicit elems are.
-        Pattern::Array { elems, rest: Some(_), .. } => elems.iter().all(is_catch_all_pattern),
+        Pattern::Array {
+            elems,
+            rest: Some(_),
+            ..
+        } => elems.iter().all(is_catch_all_pattern),
         _ => false,
     }
 }
@@ -1383,7 +1687,11 @@ fn construct_pattern_bindings(
             let _ = span;
             bind_enum_variant_fields(enum_name, variant_name, fields, scrutinee_ty, ctx)?;
         }
-        Pattern::Array { elems, rest, span: _ } => {
+        Pattern::Array {
+            elems,
+            rest,
+            span: _,
+        } => {
             let elem_ty = match scrutinee_ty {
                 Type::Array(t) | Type::SizedArray(t, _) => *t.clone(),
                 _ => return Err(MetelError::internal("array pattern on non-array type")),
@@ -1416,24 +1724,31 @@ fn construct_enum_literal_ty(
 ) -> Result<Type, MetelError> {
     // Resolve concrete type arguments using the same instantiate-then-unify
     // pattern as instantiate_scheme_for_call.
-    let enum_info = ctx.registry.enum_info(enum_name)
-        .ok_or_else(|| MetelError::type_error(
+    let enum_info = ctx.registry.enum_info(enum_name).ok_or_else(|| {
+        MetelError::type_error(
             TypeErrorCode::T0003,
             format!("unknown enum `{enum_name}`"),
             span,
-        ))?;
-    let variant = enum_info.variants.iter()
+        )
+    })?;
+    let variant = enum_info
+        .variants
+        .iter()
         .find(|v| v.name == variant_name)
-        .ok_or_else(|| MetelError::type_error(
-            TypeErrorCode::T0003,
-            format!("no variant `{variant_name}` on enum `{enum_name}`"),
-            span,
-        ))?;
+        .ok_or_else(|| {
+            MetelError::type_error(
+                TypeErrorCode::T0003,
+                format!("no variant `{variant_name}` on enum `{enum_name}`"),
+                span,
+            )
+        })?;
 
     // Assign a fresh type variable to each formal type parameter and
     // build an instantiation substitution for this particular usage site.
     let mut init_subst = Substitution::new();
-    let fresh_vars: Vec<InferType> = enum_info.type_params.iter()
+    let fresh_vars: Vec<InferType> = enum_info
+        .type_params
+        .iter()
         .map(|&tp| {
             let fresh = InferType::Var(ctx.gen.fresh());
             init_subst.bind(tp, fresh.clone());
@@ -1445,12 +1760,17 @@ fn construct_enum_literal_ty(
     // to solve for the fresh variables.
     let mut local_subst = Substitution::new();
     for (field_name, typed_expr) in typed_fields {
-        if let Some(field_entry) = variant.fields.iter()
+        if let Some(field_entry) = variant
+            .fields
+            .iter()
             .find(|entry| &entry.name == field_name)
         {
             let instantiated = init_subst.apply(&field_entry.ty);
             let actual = type_to_infer(typed_expr.ty());
-            if let Ok(s) = unify(&local_subst.apply(&instantiated), &local_subst.apply(&actual)) {
+            if let Ok(s) = unify(
+                &local_subst.apply(&instantiated),
+                &local_subst.apply(&actual),
+            ) {
                 local_subst = local_subst.compose(&s);
             }
         }
@@ -1476,17 +1796,19 @@ fn construct_enum_literal_ty(
             }
         })
         .unwrap_or_default();
-    let concrete_args: Vec<Type> = fresh_vars.iter()
+    let concrete_args: Vec<Type> = fresh_vars
+        .iter()
         .enumerate()
         .map(|(i, fv)| {
             let resolved = local_subst.apply(fv);
             if matches!(resolved, InferType::Var(_)) {
-                hint_args.get(i).cloned()
-                    .ok_or_else(|| MetelError::type_error(
+                hint_args.get(i).cloned().ok_or_else(|| {
+                    MetelError::type_error(
                         TypeErrorCode::T0002,
                         "cannot infer type; add a type annotation",
                         span,
-                    ))
+                    )
+                })
             } else {
                 infer_type_to_type(&resolved, span)
             }
@@ -1496,7 +1818,9 @@ fn construct_enum_literal_ty(
     // T0012: check each resolved type arg satisfies the enum's declared bounds.
     if let Some(param_bounds) = ctx.registry.type_param_bounds_for(enum_name) {
         for (i, bounds) in param_bounds.iter().enumerate() {
-            if bounds.is_empty() { continue; }
+            if bounds.is_empty() {
+                continue;
+            }
             let type_name = match concrete_args.get(i) {
                 Some(Type::Named(n, _)) => n.clone(),
                 _ => continue,
@@ -1524,10 +1848,14 @@ fn bind_enum_variant_fields(
     scrutinee_ty: &Type,
     ctx: &mut ConstructCtx,
 ) -> Result<(), MetelError> {
-    let enum_info = ctx.registry.enum_info(enum_name)
+    let enum_info = ctx
+        .registry
+        .enum_info(enum_name)
         .ok_or_else(|| MetelError::internal(format!("unknown enum `{enum_name}`")))?
         .clone();
-    let variant = enum_info.variants.iter()
+    let variant = enum_info
+        .variants
+        .iter()
         .find(|v| v.name == variant_name)
         .ok_or_else(|| MetelError::internal(format!("unknown variant `{variant_name}`")))?
         .clone();
@@ -1537,12 +1865,16 @@ fn bind_enum_variant_fields(
         remap.bind(tp, InferType::Concrete(arg_ty.clone()));
     }
     for field_name in fields {
-        let (template_ty, field_span) = variant.fields.iter()
+        let (template_ty, field_span) = variant
+            .fields
+            .iter()
             .find(|entry| entry.name == *field_name)
             .map(|entry| (entry.ty.clone(), entry.span.clone()))
-            .ok_or_else(|| MetelError::internal(
-                format!("no field `{field_name}` on variant `{variant_name}`")
-            ))?;
+            .ok_or_else(|| {
+                MetelError::internal(format!(
+                    "no field `{field_name}` on variant `{variant_name}`"
+                ))
+            })?;
         let concrete = infer_type_to_type(&remap.apply(&template_ty), &field_span)?;
         ctx.bind(field_name, concrete);
     }
@@ -1556,43 +1888,43 @@ fn bind_enum_variant_fields(
 /// local unification. This is the Pass 2 counterpart of the inline
 /// solve-and-generalize done in `infer_fun_decl`.
 fn construct_call(
-    callee:      &Expr,
-    type_args:   &[TypeExpr],
-    args:        &[Expr],
-    span:        &Span,
+    callee: &Expr,
+    type_args: &[TypeExpr],
+    args: &[Expr],
+    span: &Span,
     expected_ty: Option<&Type>,
-    ctx:         &mut ConstructCtx,
+    ctx: &mut ConstructCtx,
 ) -> Result<TypedExpr, MetelError> {
     // For monomorphic callee identifiers already in scope, extract param types as hints so
     // inherently ambiguous args (bare `[]`, `None`) can resolve without requiring ascription.
     // Generic (scheme-based) callees need arg types first for instantiation — no hints there.
     let param_hints: Vec<Option<Type>> = match callee {
-        Expr::Ident(name, _) => {
-            match ctx.lookup(name) {
-                Some(Type::Fun(params, _)) if params.len() == args.len() =>
-                    params.iter().map(|p| Some(p.clone())).collect(),
-                _ => vec![None; args.len()],
+        Expr::Ident(name, _) => match ctx.lookup(name) {
+            Some(Type::Fun(params, _)) if params.len() == args.len() => {
+                params.iter().map(|p| Some(p.clone())).collect()
             }
-        }
+            _ => vec![None; args.len()],
+        },
         Expr::Path(segments, _) => {
             let last = segments.last().map(|s| s.as_str()).unwrap_or("");
             match ctx.lookup(last) {
-                Some(Type::Fun(params, _)) if params.len() == args.len() =>
-                    params.iter().map(|p| Some(p.clone())).collect(),
+                Some(Type::Fun(params, _)) if params.len() == args.len() => {
+                    params.iter().map(|p| Some(p.clone())).collect()
+                }
                 _ => vec![None; args.len()],
             }
         }
-        Expr::ResolvedPath { resolved, .. } => {
-            match ctx.lookup(resolved) {
-                Some(Type::Fun(params, _)) if params.len() == args.len() =>
-                    params.iter().map(|p| Some(p.clone())).collect(),
-                _ => vec![None; args.len()],
+        Expr::ResolvedPath { resolved, .. } => match ctx.lookup(resolved) {
+            Some(Type::Fun(params, _)) if params.len() == args.len() => {
+                params.iter().map(|p| Some(p.clone())).collect()
             }
-        }
+            _ => vec![None; args.len()],
+        },
         _ => vec![None; args.len()],
     };
 
-    let typed_args: Vec<TypedExpr> = args.iter()
+    let typed_args: Vec<TypedExpr> = args
+        .iter()
         .zip(param_hints.iter())
         .map(|(a, hint)| construct_expr(a, hint.as_ref(), ctx))
         .collect::<Result<_, _>>()?;
@@ -1602,29 +1934,38 @@ fn construct_call(
     let explicit_tys: Option<Vec<Type>> = if type_args.is_empty() {
         None
     } else {
-        Some(type_args.iter()
-            .map(|te| infer_type_to_type(&type_expr_to_infer(te), span))
-            .collect::<Result<_, _>>()?)
+        Some(
+            type_args
+                .iter()
+                .map(|te| infer_type_to_type(&type_expr_to_infer(te), span))
+                .collect::<Result<_, _>>()?,
+        )
     };
 
     let (typed_callee, fun_ty) = match callee {
         Expr::Ident(name, ident_span) if ctx.lookup(name).is_none() => {
             let scheme = ctx.scheme_env.get(name.as_str()).ok_or_else(|| {
-                MetelError::type_error(TypeErrorCode::T0003, format!("undefined name `{name}`"), ident_span)
+                MetelError::type_error(
+                    TypeErrorCode::T0003,
+                    format!("undefined name `{name}`"),
+                    ident_span,
+                )
             })?;
             let (concrete, var_map) = match &explicit_tys {
                 Some(tys) => instantiate_scheme_with_turbofish(scheme, tys, span)?,
-                None      => instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen)?,
+                None => instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen)?,
             };
             check_fun_call_bounds(name, &var_map, span, ctx.registry)?;
             let typed = TypedExpr::Ident(name.clone(), concrete.clone(), ident_span.clone());
             (typed, concrete)
         }
         // Qualified static constructors like "List::new" / "List::from" registered as joined-key schemes.
-        Expr::Path(segments, path_span) if {
-            let joined = segments.join("::");
-            ctx.lookup(&joined).is_none() && ctx.scheme_env.contains_key(joined.as_str())
-        } => {
+        Expr::Path(segments, path_span)
+            if {
+                let joined = segments.join("::");
+                ctx.lookup(&joined).is_none() && ctx.scheme_env.contains_key(joined.as_str())
+            } =>
+        {
             let joined = segments.join("::");
             let scheme = ctx.scheme_env.get(joined.as_str()).unwrap();
             let (concrete, var_map) = match &explicit_tys {
@@ -1637,8 +1978,13 @@ fn construct_call(
                             // Try resolving the return type from the expected type via unification.
                             match expected_ty {
                                 Some(expected) => instantiate_scheme_with_expected_ret(
-                                    scheme, &arg_types, expected, span, &mut ctx.gen,
-                                ).map_err(|_| e)?,
+                                    scheme,
+                                    &arg_types,
+                                    expected,
+                                    span,
+                                    &mut ctx.gen,
+                                )
+                                .map_err(|_| e)?,
                                 None => return Err(e),
                             }
                         }
@@ -1649,33 +1995,38 @@ fn construct_call(
             let typed = TypedExpr::Path(segments.clone(), concrete.clone(), path_span.clone());
             (typed, concrete)
         }
-        Expr::Path(segments, path_span) if {
-            let last = segments.last().map(|s| s.as_str()).unwrap_or("");
-            ctx.lookup(last).is_none()
+        Expr::Path(segments, path_span)
+            if {
+                let last = segments.last().map(|s| s.as_str()).unwrap_or("");
+                ctx.lookup(last).is_none()
                 && ctx.scheme_env.contains_key(last)
                 // Only use scheme instantiation if method_env doesn't have it
                 && !(segments.len() == 2 && ctx.method_env
                     .get(segments[0].as_str())
                     .and_then(|m| m.get(segments[1].as_str()))
                     .is_some())
-        } => {
+            } =>
+        {
             let last = segments.last().unwrap().clone();
             let scheme = ctx.scheme_env.get(last.as_str()).unwrap();
             let (concrete, var_map) = match &explicit_tys {
                 Some(tys) => instantiate_scheme_with_turbofish(scheme, tys, span)?,
-                None      => instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen)?,
+                None => instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen)?,
             };
             check_fun_call_bounds(&last, &var_map, span, ctx.registry)?;
             let typed = TypedExpr::Path(segments.clone(), concrete.clone(), path_span.clone());
             (typed, concrete)
         }
-        Expr::ResolvedPath { resolved, symbol_id: _, original: _, span: rspan }
-            if ctx.lookup(resolved).is_none() && ctx.scheme_env.contains_key(resolved.as_str()) =>
-        {
+        Expr::ResolvedPath {
+            resolved,
+            symbol_id: _,
+            original: _,
+            span: rspan,
+        } if ctx.lookup(resolved).is_none() && ctx.scheme_env.contains_key(resolved.as_str()) => {
             let scheme = ctx.scheme_env.get(resolved.as_str()).unwrap();
             let (concrete, var_map) = match &explicit_tys {
                 Some(tys) => instantiate_scheme_with_turbofish(scheme, tys, span)?,
-                None      => instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen)?,
+                None => instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen)?,
             };
             check_fun_call_bounds(resolved, &var_map, span, ctx.registry)?;
             let typed = TypedExpr::Ident(resolved.clone(), concrete.clone(), rspan.clone());
@@ -1693,12 +2044,18 @@ fn construct_call(
     // turbofish calls: clamp::<i32>(5, 0, 10) would have built I64 args).
     let fun_ty_for_hints = match &fun_ty {
         Type::Pointer(inner) | Type::MutPointer(inner)
-            if matches!(inner.as_ref(), Type::Fun(..)) => inner.as_ref(),
+            if matches!(inner.as_ref(), Type::Fun(..)) =>
+        {
+            inner.as_ref()
+        }
         other => other,
     };
     let typed_args = if let Type::Fun(params, _) = fun_ty_for_hints {
         if params.len() == typed_args.len()
-            && typed_args.iter().zip(params.iter()).any(|(a, p)| a.ty() != p)
+            && typed_args
+                .iter()
+                .zip(params.iter())
+                .any(|(a, p)| a.ty() != p)
         {
             args.iter()
                 .zip(params.iter())
@@ -1714,7 +2071,10 @@ fn construct_call(
     // Auto-deref: calling through a *Fun or *mut Fun is allowed.
     let fun_ty_inner = match &fun_ty {
         Type::Pointer(inner) | Type::MutPointer(inner)
-            if matches!(inner.as_ref(), Type::Fun(..)) => inner.as_ref(),
+            if matches!(inner.as_ref(), Type::Fun(..)) =>
+        {
+            inner.as_ref()
+        }
         other => other,
     };
     match fun_ty_inner {
@@ -1722,15 +2082,19 @@ fn construct_call(
             if params.len() != typed_args.len() {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0004,
-                    format!("expected {} argument(s), got {}", params.len(), typed_args.len()),
+                    format!(
+                        "expected {} argument(s), got {}",
+                        params.len(),
+                        typed_args.len()
+                    ),
                     span,
                 ));
             }
             Ok(TypedExpr::Call {
                 callee: Box::new(typed_callee),
-                args:   typed_args,
-                ty:     *ret.clone(),
-                span:   span.clone(),
+                args: typed_args,
+                ty: *ret.clone(),
+                span: span.clone(),
             })
         }
         _ => Err(MetelError::type_error(
@@ -1744,26 +2108,30 @@ fn construct_call(
 /// Check that the concrete types instantiated for a function's generic type params
 /// satisfy the aspect bounds declared on that function. Emits T0012 on the call span.
 fn check_fun_call_bounds(
-    fun_name:    &str,
+    fun_name: &str,
     var_to_type: &HashMap<TypeVar, Type>,
-    span:        &Span,
-    registry:    &TypeDefinitionRegistry,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
 ) -> Result<(), MetelError> {
-    let Some(bounds_map) = registry.fun_bounds_for(fun_name) else { return Ok(()); };
+    let Some(bounds_map) = registry.fun_bounds_for(fun_name) else {
+        return Ok(());
+    };
     for (tv, aspect_names) in bounds_map {
         let concrete = match var_to_type.get(tv) {
             Some(t) => t,
-            None    => continue,
+            None => continue,
         };
         let type_name = match concrete {
             Type::Named(n, _) => n.clone(),
-            _                 => continue,
+            _ => continue,
         };
         for aspect in aspect_names {
             if !registry.impl_aspect_env_has(&type_name, aspect) {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0012,
-                    format!("`{type_name}` does not implement `{aspect}` (required by `{fun_name}`)"),
+                    format!(
+                        "`{type_name}` does not implement `{aspect}` (required by `{fun_name}`)"
+                    ),
                     span,
                 ));
             }
@@ -1773,10 +2141,10 @@ fn check_fun_call_bounds(
 }
 
 fn instantiate_scheme_for_call(
-    scheme:    &TypeScheme,
+    scheme: &TypeScheme,
     arg_types: &[&Type],
-    span:      &Span,
-    gen:       &mut TypeVarGenerator,
+    span: &Span,
+    gen: &mut TypeVarGenerator,
 ) -> Result<(Type, HashMap<TypeVar, Type>), MetelError> {
     let (instance, renaming) = typeinference::instantiate_with_renaming(scheme, gen);
 
@@ -1795,7 +2163,8 @@ fn instantiate_scheme_for_call(
         subst = subst.compose(&s);
     }
 
-    let concrete_params: Vec<Type> = params.iter()
+    let concrete_params: Vec<Type> = params
+        .iter()
         .map(|p| infer_type_to_type(&subst.apply(p), span))
         .collect::<Result<_, _>>()?;
     let concrete_ret = infer_type_to_type(&subst.apply(&ret), span)?;
@@ -1808,13 +2177,16 @@ fn instantiate_scheme_for_call(
         }
     }
 
-    Ok((Type::Fun(concrete_params, Box::new(concrete_ret)), var_to_concrete))
+    Ok((
+        Type::Fun(concrete_params, Box::new(concrete_ret)),
+        var_to_concrete,
+    ))
 }
 
 fn instantiate_scheme_with_turbofish(
-    scheme:         &TypeScheme,
+    scheme: &TypeScheme,
     explicit_types: &[Type],
-    span:           &Span,
+    span: &Span,
 ) -> Result<(Type, HashMap<TypeVar, Type>), MetelError> {
     if explicit_types.len() != scheme.quantified_vars.len() {
         return Err(MetelError::type_error(
@@ -1842,11 +2214,11 @@ fn instantiate_scheme_with_turbofish(
 /// Used for zero-arg generic constructors (e.g. `List::new()`) where T cannot
 /// be inferred from arguments but is known from the enclosing let annotation.
 fn instantiate_scheme_with_expected_ret(
-    scheme:      &TypeScheme,
-    arg_types:   &[&Type],
+    scheme: &TypeScheme,
+    arg_types: &[&Type],
     expected_ret: &Type,
-    span:        &Span,
-    gen:         &mut TypeVarGenerator,
+    span: &Span,
+    gen: &mut TypeVarGenerator,
 ) -> Result<(Type, HashMap<TypeVar, Type>), MetelError> {
     let (instance, renaming) = typeinference::instantiate_with_renaming(scheme, gen);
     let (params, ret) = match instance {
@@ -1863,10 +2235,15 @@ fn instantiate_scheme_with_expected_ret(
     }
     let applied_ret = subst.apply(&ret);
     let s = typeinference::unify(&applied_ret, &type_to_infer(expected_ret)).map_err(|_| {
-        MetelError::type_error(TypeErrorCode::T0001, "return type does not match annotation", span)
+        MetelError::type_error(
+            TypeErrorCode::T0001,
+            "return type does not match annotation",
+            span,
+        )
     })?;
     subst = subst.compose(&s);
-    let concrete_params: Vec<Type> = params.iter()
+    let concrete_params: Vec<Type> = params
+        .iter()
         .map(|p| infer_type_to_type(&subst.apply(p), span))
         .collect::<Result<_, _>>()?;
     let concrete_ret = infer_type_to_type(&subst.apply(&ret), span)?;
@@ -1876,7 +2253,10 @@ fn instantiate_scheme_with_expected_ret(
             var_to_concrete.insert(*orig_var, t);
         }
     }
-    Ok((Type::Fun(concrete_params, Box::new(concrete_ret)), var_to_concrete))
+    Ok((
+        Type::Fun(concrete_params, Box::new(concrete_ret)),
+        var_to_concrete,
+    ))
 }
 
 fn construct_literal_type(
@@ -1884,14 +2264,14 @@ fn construct_literal_type(
     expected_ty: Option<&Type>,
     span: &Span,
 ) -> Result<Type, MetelError> {
-    use crate::ast::{IntKind, FloatKind};
+    use crate::ast::{FloatKind, IntKind};
     match lit {
         Literal::Int(n) => {
             match expected_ty {
-                Some(Type::I8)  => Ok(Type::I8),
+                Some(Type::I8) => Ok(Type::I8),
                 Some(Type::I16) => Ok(Type::I16),
                 Some(Type::I32) => Ok(Type::I32),
-                Some(Type::U8)  => Ok(Type::U8),
+                Some(Type::U8) => Ok(Type::U8),
                 Some(Type::U16) => Ok(Type::U16),
                 Some(Type::U32) => Ok(Type::U32),
                 Some(Type::U64) => {
@@ -1914,11 +2294,11 @@ fn construct_literal_type(
             _ => Ok(Type::F64),
         },
         Literal::SizedInt { kind, .. } => Ok(match kind {
-            IntKind::I8  => Type::I8,
+            IntKind::I8 => Type::I8,
             IntKind::I16 => Type::I16,
             IntKind::I32 => Type::I32,
             IntKind::I64 => Type::I64,
-            IntKind::U8  => Type::U8,
+            IntKind::U8 => Type::U8,
             IntKind::U16 => Type::U16,
             IntKind::U32 => Type::U32,
             IntKind::U64 => Type::U64,
@@ -1927,25 +2307,27 @@ fn construct_literal_type(
             FloatKind::F32 => Type::F32,
             FloatKind::F64 => Type::F64,
         }),
-        Literal::Char(_)  => Ok(Type::Char),
-        Literal::Boolean(_)  => Ok(Type::Boolean),
-        Literal::Str(_)   => Ok(Type::Str),
-        Literal::Unit     => Ok(Type::Unit),
+        Literal::Char(_) => Ok(Type::Char),
+        Literal::Boolean(_) => Ok(Type::Boolean),
+        Literal::Str(_) => Ok(Type::Str),
+        Literal::Unit => Ok(Type::Unit),
         // None's type cannot be re-derived from the literal alone. Pass 2 must receive
         // the expected type from the enclosing binding's annotation (propagated via
         // construct_expr's expected_ty parameter). If no annotation, E0002 — but Pass 1
         // should have already caught the unannotated case via an unresolved type var.
-        Literal::None     => expected_ty.cloned().ok_or_else(|| MetelError::type_error(
-            TypeErrorCode::T0002,
-            "cannot infer type of `None`; add a type annotation",
-            span,
-        )),
+        Literal::None => expected_ty.cloned().ok_or_else(|| {
+            MetelError::type_error(
+                TypeErrorCode::T0002,
+                "cannot infer type of `None`; add a type annotation",
+                span,
+            )
+        }),
     }
 }
 
 fn construct_binop(
     lhs: &Expr,
-    op:  &BinOp,
+    op: &BinOp,
     rhs: &Expr,
     span: &Span,
     ctx: &mut ConstructCtx,
@@ -1991,7 +2373,9 @@ fn construct_binop(
             if !matches!(t, Type::Str | Type::Char | Type::Never) && !t.is_numeric() {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0005,
-                    format!("ordering comparison requires a numeric type or String operands, got `{t}`"),
+                    format!(
+                        "ordering comparison requires a numeric type or String operands, got `{t}`"
+                    ),
                     span,
                 ));
             }
@@ -2001,27 +2385,33 @@ fn construct_binop(
         BinOp::And | BinOp::Or => Type::Boolean,
         BinOp::Range | BinOp::RangeInclusive => Type::Named("Range".to_string(), vec![Type::I64]),
     };
-    Ok(TypedExpr::BinOp(Box::new(lhs), op.clone(), Box::new(rhs), ty, span.clone()))
+    Ok(TypedExpr::BinOp(
+        Box::new(lhs),
+        op.clone(),
+        Box::new(rhs),
+        ty,
+        span.clone(),
+    ))
 }
 
 fn type_to_type_expr(ty: &Type) -> TypeExpr {
     let named = |s: &str| TypeExpr::Named(s.to_string(), vec![]);
     match ty {
-        Type::I64   => named("i64"),
+        Type::I64 => named("i64"),
         Type::F64 => named("f64"),
-        Type::Boolean  => named("boolean"),
-        Type::Char  => named("Char"),
-        Type::Str   => named("String"),
-        Type::Unit  => TypeExpr::Unit,
+        Type::Boolean => named("boolean"),
+        Type::Char => named("Char"),
+        Type::Str => named("String"),
+        Type::Unit => TypeExpr::Unit,
         Type::Never => named("!"),
-        Type::I8    => named("i8"),
-        Type::I16   => named("i16"),
-        Type::I32   => named("i32"),
-        Type::U8    => named("u8"),
-        Type::U16   => named("u16"),
-        Type::U32   => named("u32"),
-        Type::U64   => named("u64"),
-        Type::F32   => named("f32"),
+        Type::I8 => named("i8"),
+        Type::I16 => named("i16"),
+        Type::I32 => named("i32"),
+        Type::U8 => named("u8"),
+        Type::U16 => named("u16"),
+        Type::U32 => named("u32"),
+        Type::U64 => named("u64"),
+        Type::F32 => named("f32"),
         Type::Tuple(items) => TypeExpr::Tuple(items.iter().map(type_to_type_expr).collect()),
         Type::Array(item) => TypeExpr::Array(Box::new(type_to_type_expr(item))),
         Type::SizedArray(item, n) => TypeExpr::SizedArray(Box::new(type_to_type_expr(item)), *n),
@@ -2068,7 +2458,9 @@ fn construct_propagate_error(
         other => {
             return Err(MetelError::type_error(
                 TypeErrorCode::T0005,
-                format!("`?` requires the enclosing function to return Result<T, E>, got `{other}`"),
+                format!(
+                    "`?` requires the enclosing function to return Result<T, E>, got `{other}`"
+                ),
                 span,
             ));
         }
@@ -2115,15 +2507,17 @@ fn construct_propagate_error(
         },
         guard: None,
         body: TypedBlock {
-            stmts: vec![TypedDecl::Stmt(Box::new(TypedStmt::Return(TypedReturnStmt {
-                value: Some(TypedExpr::StructLiteral {
-                    path: vec!["Result".to_string(), "Err".to_string()],
-                    fields: vec![("error".to_string(), err_value)],
-                    ty: return_ty,
+            stmts: vec![TypedDecl::Stmt(Box::new(TypedStmt::Return(
+                TypedReturnStmt {
+                    value: Some(TypedExpr::StructLiteral {
+                        path: vec!["Result".to_string(), "Err".to_string()],
+                        fields: vec![("error".to_string(), err_value)],
+                        ty: return_ty,
+                        span: span.clone(),
+                    }),
                     span: span.clone(),
-                }),
-                span: span.clone(),
-            })))],
+                },
+            )))],
             tail: None,
             span: span.clone(),
         },
@@ -2139,11 +2533,11 @@ fn construct_propagate_error(
 }
 
 fn construct_unaryop(
-    op:          &UnaryOp,
-    operand:     &Expr,
-    span:        &Span,
+    op: &UnaryOp,
+    operand: &Expr,
+    span: &Span,
     expected_ty: Option<&Type>,
-    ctx:         &mut ConstructCtx,
+    ctx: &mut ConstructCtx,
 ) -> Result<TypedExpr, MetelError> {
     let operand = construct_expr(operand, expected_ty, ctx)?;
     let ty = match op {
@@ -2172,7 +2566,12 @@ fn construct_unaryop(
             }
         },
     };
-    Ok(TypedExpr::UnaryOp(op.clone(), Box::new(operand), ty, span.clone()))
+    Ok(TypedExpr::UnaryOp(
+        op.clone(),
+        Box::new(operand),
+        ty,
+        span.clone(),
+    ))
 }
 
 // ── Typed place construction ──────────────────────────────────────────────────
@@ -2182,31 +2581,39 @@ fn assign_target_to_typed_place(
     ctx: &mut ConstructCtx<'_>,
 ) -> Result<TypedPlace, MetelError> {
     match target {
-        AssignTarget::Ident(name, span) =>
-            Ok(TypedPlace::Ident(name.clone(), span.clone())),
-        AssignTarget::Deref { object, span } =>
-            Ok(TypedPlace::Deref {
-                object: Box::new(construct_expr(object, None, ctx)?),
-                span: span.clone(),
-            }),
-        AssignTarget::FieldAccess { object, field, span } =>
-            Ok(TypedPlace::Field {
-                object: Box::new(expr_to_typed_place(object, ctx)?),
-                field: field.clone(),
-                span: span.clone(),
-            }),
-        AssignTarget::Index { object, index, span } => {
+        AssignTarget::Ident(name, span) => Ok(TypedPlace::Ident(name.clone(), span.clone())),
+        AssignTarget::Deref { object, span } => Ok(TypedPlace::Deref {
+            object: Box::new(construct_expr(object, None, ctx)?),
+            span: span.clone(),
+        }),
+        AssignTarget::FieldAccess {
+            object,
+            field,
+            span,
+        } => Ok(TypedPlace::Field {
+            object: Box::new(expr_to_typed_place(object, ctx)?),
+            field: field.clone(),
+            span: span.clone(),
+        }),
+        AssignTarget::Index {
+            object,
+            index,
+            span,
+        } => {
             let typed_idx = construct_expr(index, Some(&Type::U64), ctx)?;
             if typed_idx.ty() != &Type::U64 {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0001,
-                    format!("array index must be u64, got {}; use `expr as u64`", typed_idx.ty()),
+                    format!(
+                        "array index must be u64, got {}; use `expr as u64`",
+                        typed_idx.ty()
+                    ),
                     span,
                 ));
             }
             Ok(TypedPlace::Index {
                 object: Box::new(expr_to_typed_place(object, ctx)?),
-                index:  Box::new(typed_idx),
+                index: Box::new(typed_idx),
                 span: span.clone(),
             })
         }
@@ -2215,34 +2622,44 @@ fn assign_target_to_typed_place(
 
 fn expr_to_typed_place(expr: &Expr, ctx: &mut ConstructCtx<'_>) -> Result<TypedPlace, MetelError> {
     match expr {
-        Expr::Ident(name, span) =>
-            Ok(TypedPlace::Ident(name.clone(), span.clone())),
-        Expr::FieldAccess { object, field, span } =>
-            Ok(TypedPlace::Field {
-                object: Box::new(expr_to_typed_place(object, ctx)?),
-                field: field.clone(),
-                span: span.clone(),
-            }),
-        Expr::Index { object, index, span } => {
+        Expr::Ident(name, span) => Ok(TypedPlace::Ident(name.clone(), span.clone())),
+        Expr::FieldAccess {
+            object,
+            field,
+            span,
+        } => Ok(TypedPlace::Field {
+            object: Box::new(expr_to_typed_place(object, ctx)?),
+            field: field.clone(),
+            span: span.clone(),
+        }),
+        Expr::Index {
+            object,
+            index,
+            span,
+        } => {
             let typed_idx = construct_expr(index, Some(&Type::U64), ctx)?;
             if typed_idx.ty() != &Type::U64 {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0001,
-                    format!("array index must be u64, got {}; use `expr as u64`", typed_idx.ty()),
+                    format!(
+                        "array index must be u64, got {}; use `expr as u64`",
+                        typed_idx.ty()
+                    ),
                     span,
                 ));
             }
             Ok(TypedPlace::Index {
                 object: Box::new(expr_to_typed_place(object, ctx)?),
-                index:  Box::new(typed_idx),
+                index: Box::new(typed_idx),
                 span: span.clone(),
             })
         }
-        Expr::UnaryOp(UnaryOp::Deref, inner, span) =>
-            Ok(TypedPlace::Deref {
-                object: Box::new(construct_expr(inner, None, ctx)?),
-                span: span.clone(),
-            }),
-        _ => Err(MetelError::internal("invalid sub-expression in assignment target")),
+        Expr::UnaryOp(UnaryOp::Deref, inner, span) => Ok(TypedPlace::Deref {
+            object: Box::new(construct_expr(inner, None, ctx)?),
+            span: span.clone(),
+        }),
+        _ => Err(MetelError::internal(
+            "invalid sub-expression in assignment target",
+        )),
     }
 }

@@ -1,0 +1,54 @@
+{
+  "functions": [
+    {
+      "function": "assert",
+      "calls": 4,
+      "inclusive_ns": 253,
+      "self_ns": 253
+    },
+    {
+      "function": "classify",
+      "calls": 1,
+      "inclusive_ns": 1183,
+      "self_ns": 1183
+    },
+    {
+      "function": "distance",
+      "calls": 1,
+      "inclusive_ns": 2169,
+      "self_ns": 2169
+    },
+    {
+      "function": "main",
+      "calls": 1,
+      "inclusive_ns": 17785,
+      "self_ns": 14180
+    }
+  ],
+  "edges": [
+    {
+      "caller": null,
+      "callee": "main",
+      "calls": 1,
+      "inclusive_ns": 17785
+    },
+    {
+      "caller": "main",
+      "callee": "assert",
+      "calls": 4,
+      "inclusive_ns": 253
+    },
+    {
+      "caller": "main",
+      "callee": "classify",
+      "calls": 1,
+      "inclusive_ns": 1183
+    },
+    {
+      "caller": "main",
+      "callee": "distance",
+      "calls": 1,
+      "inclusive_ns": 2169
+    }
+  ]
+}

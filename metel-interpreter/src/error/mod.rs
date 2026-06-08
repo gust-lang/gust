@@ -127,16 +127,58 @@ pub enum MetelError {
 impl std::fmt::Display for MetelError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MetelError::ParseError { code, message, filename, line, col, source_line: None, .. } =>
-                write!(f, "[{code}] parse error in {filename}:{line}:{col}: {message}"),
-            MetelError::ParseError { code, message, filename, line, col, source_line: Some(src), .. } =>
-                write!(f, "[{code}] parse error in {filename}:{line}:{col} (`{src}`): {message}"),
-            MetelError::TypeError { code, message, filename, line, col, .. } =>
-                write!(f, "[{code}] type error in {filename}:{line}:{col}: {message}"),
-            MetelError::RuntimePanic { code, message, filename, line, col, stack, .. } => {
-                write!(f, "[{code}] runtime error: {message}\n  at {filename}:{line}:{col}")?;
+            MetelError::ParseError {
+                code,
+                message,
+                filename,
+                line,
+                col,
+                source_line: None,
+                ..
+            } => write!(
+                f,
+                "[{code}] parse error in {filename}:{line}:{col}: {message}"
+            ),
+            MetelError::ParseError {
+                code,
+                message,
+                filename,
+                line,
+                col,
+                source_line: Some(src),
+                ..
+            } => write!(
+                f,
+                "[{code}] parse error in {filename}:{line}:{col} (`{src}`): {message}"
+            ),
+            MetelError::TypeError {
+                code,
+                message,
+                filename,
+                line,
+                col,
+                ..
+            } => write!(
+                f,
+                "[{code}] type error in {filename}:{line}:{col}: {message}"
+            ),
+            MetelError::RuntimePanic {
+                code,
+                message,
+                filename,
+                line,
+                col,
+                stack,
+                ..
+            } => {
+                write!(
+                    f,
+                    "[{code}] runtime error: {message}\n  at {filename}:{line}:{col}"
+                )?;
                 for frame in stack.iter().rev() {
-                    write!(f, "\n  in {} at {}:{}:{}",
+                    write!(
+                        f,
+                        "\n  in {} at {}:{}:{}",
                         frame.fn_name,
                         frame.call_site.filename,
                         frame.call_site.line,
@@ -145,8 +187,9 @@ impl std::fmt::Display for MetelError {
                 }
                 Ok(())
             }
-            MetelError::Internal { code, message } =>
-                write!(f, "[{code}] internal error: {message}"),
+            MetelError::Internal { code, message } => {
+                write!(f, "[{code}] internal error: {message}")
+            }
         }
     }
 }
@@ -197,20 +240,42 @@ impl MetelError {
     /// Attach a call stack to a RuntimePanic; no-op if already set or not a panic.
     pub fn with_stack(self, frames: Vec<FrameInfo>) -> Self {
         match self {
-            Self::RuntimePanic { code, message, start, end, filename, line, col, stack }
-                if stack.is_empty() =>
-                Self::RuntimePanic { code, message, start, end, filename, line, col, stack: frames },
+            Self::RuntimePanic {
+                code,
+                message,
+                start,
+                end,
+                filename,
+                line,
+                col,
+                stack,
+            } if stack.is_empty() => Self::RuntimePanic {
+                code,
+                message,
+                start,
+                end,
+                filename,
+                line,
+                col,
+                stack: frames,
+            },
             other => other,
         }
     }
 
     /// Interpreter bug — the typechecker should have prevented this state.
     pub fn internal(msg: impl Into<String>) -> Self {
-        Self::Internal { code: InternalErrorCode::I0001, message: msg.into() }
+        Self::Internal {
+            code: InternalErrorCode::I0001,
+            message: msg.into(),
+        }
     }
 
     /// Feature not yet implemented in this version of the interpreter.
     pub fn not_implemented(msg: impl Into<String>) -> Self {
-        Self::Internal { code: InternalErrorCode::I0002, message: msg.into() }
+        Self::Internal {
+            code: InternalErrorCode::I0002,
+            message: msg.into(),
+        }
     }
 }

@@ -11,14 +11,14 @@ mod module_paths;
 mod name_resolver;
 mod parser;
 mod path_normalizer;
+mod pipeline;
 mod symbols;
-mod typed_ast;
 mod typechecker;
+mod typed_ast;
 mod typeinference;
 mod types;
 
 use error::MetelError;
-use typechecker::StdPrelude;
 
 #[derive(Parser)]
 #[command(name = "metel")]
@@ -45,6 +45,11 @@ fn main() {
 }
 
 fn run(filename: &str, debug_ast: bool) -> Result<(), MetelError> {
+    if !debug_ast {
+        pipeline::run_file(filename, &pipeline::RunOptions::default())?;
+        return Ok(());
+    }
+
     // 1. Load modules
     let graph = module_loader::load_root(filename)?;
 
@@ -54,19 +59,5 @@ fn run(filename: &str, debug_ast: bool) -> Result<(), MetelError> {
         }
         return Ok(());
     }
-
-    // 2. Resolve names and normalize paths
-    let names = name_resolver::resolve(&graph)?;
-    let normalized = path_normalizer::normalize(graph, &names)?;
-
-    // 3. Typecheck
-    let typed_graph = typechecker::check_graph(normalized, &names, StdPrelude::default())?;
-
-    // 4. Elaborate
-    let elaborated = elaborator::elaborate(typed_graph, &names)?;
-
-    // 5. Evaluate
-    evaluator::evaluate_graph(elaborated)?;
-
     Ok(())
 }

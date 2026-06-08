@@ -1,0 +1,516 @@
+{
+  "functions": [
+    {
+      "function": "<closure>",
+      "calls": 34,
+      "inclusive_ns": 40188,
+      "self_ns": 40188
+    },
+    {
+      "function": "Array::len",
+      "calls": 20,
+      "inclusive_ns": 1315,
+      "self_ns": 1315
+    },
+    {
+      "function": "List::as_slice",
+      "calls": 8,
+      "inclusive_ns": 1265,
+      "self_ns": 1265
+    },
+    {
+      "function": "List::from",
+      "calls": 3,
+      "inclusive_ns": 1227,
+      "self_ns": 1227
+    },
+    {
+      "function": "List::new",
+      "calls": 5,
+      "inclusive_ns": 917,
+      "self_ns": 917
+    },
+    {
+      "function": "List::push",
+      "calls": 29,
+      "inclusive_ns": 3784,
+      "self_ns": 3784
+    },
+    {
+      "function": "abs_float",
+      "calls": 8,
+      "inclusive_ns": 12232,
+      "self_ns": 12232
+    },
+    {
+      "function": "assert",
+      "calls": 47,
+      "inclusive_ns": 2147,
+      "self_ns": 2147
+    },
+    {
+      "function": "binary_search",
+      "calls": 3,
+      "inclusive_ns": 141079,
+      "self_ns": 70856
+    },
+    {
+      "function": "compute_stats",
+      "calls": 7,
+      "inclusive_ns": 110300,
+      "self_ns": 107121
+    },
+    {
+      "function": "count_if",
+      "calls": 2,
+      "inclusive_ns": 63782,
+      "self_ns": 47464
+    },
+    {
+      "function": "f64::From<i64>::from",
+      "calls": 10,
+      "inclusive_ns": 829,
+      "self_ns": 829
+    },
+    {
+      "function": "f64::to_string",
+      "calls": 2,
+      "inclusive_ns": 1548,
+      "self_ns": 1548
+    },
+    {
+      "function": "filter_floats",
+      "calls": 1,
+      "inclusive_ns": 41697,
+      "self_ns": 31644
+    },
+    {
+      "function": "float_eq",
+      "calls": 8,
+      "inclusive_ns": 74374,
+      "self_ns": 62142
+    },
+    {
+      "function": "i64::to_string",
+      "calls": 1,
+      "inclusive_ns": 482,
+      "self_ns": 482
+    },
+    {
+      "function": "main",
+      "calls": 1,
+      "inclusive_ns": 1128978,
+      "self_ns": 385743
+    },
+    {
+      "function": "map_floats",
+      "calls": 2,
+      "inclusive_ns": 76334,
+      "self_ns": 59267
+    },
+    {
+      "function": "median",
+      "calls": 3,
+      "inclusive_ns": 84187,
+      "self_ns": 30288
+    },
+    {
+      "function": "range",
+      "calls": 2,
+      "inclusive_ns": 4964,
+      "self_ns": 4964
+    },
+    {
+      "function": "running_sums",
+      "calls": 1,
+      "inclusive_ns": 13062,
+      "self_ns": 11950
+    },
+    {
+      "function": "sort_floats",
+      "calls": 3,
+      "inclusive_ns": 141117,
+      "self_ns": 133246
+    },
+    {
+      "function": "sqrt_approx",
+      "calls": 2,
+      "inclusive_ns": 22463,
+      "self_ns": 22463
+    },
+    {
+      "function": "squares_up_to",
+      "calls": 1,
+      "inclusive_ns": 10174,
+      "self_ns": 9306
+    },
+    {
+      "function": "std_dev",
+      "calls": 2,
+      "inclusive_ns": 38648,
+      "self_ns": 16185
+    },
+    {
+      "function": "string_concat",
+      "calls": 5,
+      "inclusive_ns": 945,
+      "self_ns": 945
+    },
+    {
+      "function": "string_len",
+      "calls": 2,
+      "inclusive_ns": 631,
+      "self_ns": 631
+    },
+    {
+      "function": "sum_floats",
+      "calls": 2,
+      "inclusive_ns": 6720,
+      "self_ns": 6720
+    },
+    {
+      "function": "to_str",
+      "calls": 1,
+      "inclusive_ns": 15007,
+      "self_ns": 12032
+    },
+    {
+      "function": "u64::From<i64>::from",
+      "calls": 200,
+      "inclusive_ns": 8530,
+      "self_ns": 8530
+    },
+    {
+      "function": "z_score",
+      "calls": 2,
+      "inclusive_ns": 88575,
+      "self_ns": 41547
+    }
+  ],
+  "edges": [
+    {
+      "caller": null,
+      "callee": "main",
+      "calls": 1,
+      "inclusive_ns": 1128978
+    },
+    {
+      "caller": "binary_search",
+      "callee": "Array::len",
+      "calls": 5,
+      "inclusive_ns": 350
+    },
+    {
+      "caller": "binary_search",
+      "callee": "float_eq",
+      "calls": 7,
+      "inclusive_ns": 69023
+    },
+    {
+      "caller": "binary_search",
+      "callee": "u64::From<i64>::from",
+      "calls": 13,
+      "inclusive_ns": 850
+    },
+    {
+      "caller": "compute_stats",
+      "callee": "Array::len",
+      "calls": 7,
+      "inclusive_ns": 416
+    },
+    {
+      "caller": "compute_stats",
+      "callee": "f64::From<i64>::from",
+      "calls": 10,
+      "inclusive_ns": 829
+    },
+    {
+      "caller": "compute_stats",
+      "callee": "u64::From<i64>::from",
+      "calls": 48,
+      "inclusive_ns": 1934
+    },
+    {
+      "caller": "count_if",
+      "callee": "<closure>",
+      "calls": 13,
+      "inclusive_ns": 16318
+    },
+    {
+      "caller": "filter_floats",
+      "callee": "<closure>",
+      "calls": 8,
+      "inclusive_ns": 9458
+    },
+    {
+      "caller": "filter_floats",
+      "callee": "List::as_slice",
+      "calls": 1,
+      "inclusive_ns": 104
+    },
+    {
+      "caller": "filter_floats",
+      "callee": "List::new",
+      "calls": 1,
+      "inclusive_ns": 133
+    },
+    {
+      "caller": "filter_floats",
+      "callee": "List::push",
+      "calls": 3,
+      "inclusive_ns": 358
+    },
+    {
+      "caller": "float_eq",
+      "callee": "abs_float",
+      "calls": 8,
+      "inclusive_ns": 12232
+    },
+    {
+      "caller": "main",
+      "callee": "Array::len",
+      "calls": 2,
+      "inclusive_ns": 124
+    },
+    {
+      "caller": "main",
+      "callee": "assert",
+      "calls": 47,
+      "inclusive_ns": 2147
+    },
+    {
+      "caller": "main",
+      "callee": "binary_search",
+      "calls": 3,
+      "inclusive_ns": 141079
+    },
+    {
+      "caller": "main",
+      "callee": "compute_stats",
+      "calls": 5,
+      "inclusive_ns": 87395
+    },
+    {
+      "caller": "main",
+      "callee": "count_if",
+      "calls": 2,
+      "inclusive_ns": 63782
+    },
+    {
+      "caller": "main",
+      "callee": "filter_floats",
+      "calls": 1,
+      "inclusive_ns": 41697
+    },
+    {
+      "caller": "main",
+      "callee": "map_floats",
+      "calls": 2,
+      "inclusive_ns": 76334
+    },
+    {
+      "caller": "main",
+      "callee": "median",
+      "calls": 3,
+      "inclusive_ns": 84187
+    },
+    {
+      "caller": "main",
+      "callee": "range",
+      "calls": 2,
+      "inclusive_ns": 4964
+    },
+    {
+      "caller": "main",
+      "callee": "running_sums",
+      "calls": 1,
+      "inclusive_ns": 13062
+    },
+    {
+      "caller": "main",
+      "callee": "sort_floats",
+      "calls": 1,
+      "inclusive_ns": 87481
+    },
+    {
+      "caller": "main",
+      "callee": "squares_up_to",
+      "calls": 1,
+      "inclusive_ns": 10174
+    },
+    {
+      "caller": "main",
+      "callee": "std_dev",
+      "calls": 1,
+      "inclusive_ns": 19876
+    },
+    {
+      "caller": "main",
+      "callee": "string_len",
+      "calls": 2,
+      "inclusive_ns": 631
+    },
+    {
+      "caller": "main",
+      "callee": "sum_floats",
+      "calls": 2,
+      "inclusive_ns": 6720
+    },
+    {
+      "caller": "main",
+      "callee": "to_str",
+      "calls": 1,
+      "inclusive_ns": 15007
+    },
+    {
+      "caller": "main",
+      "callee": "z_score",
+      "calls": 2,
+      "inclusive_ns": 88575
+    },
+    {
+      "caller": "map_floats",
+      "callee": "<closure>",
+      "calls": 13,
+      "inclusive_ns": 14412
+    },
+    {
+      "caller": "map_floats",
+      "callee": "List::as_slice",
+      "calls": 2,
+      "inclusive_ns": 236
+    },
+    {
+      "caller": "map_floats",
+      "callee": "List::new",
+      "calls": 2,
+      "inclusive_ns": 482
+    },
+    {
+      "caller": "map_floats",
+      "callee": "List::push",
+      "calls": 13,
+      "inclusive_ns": 1937
+    },
+    {
+      "caller": "median",
+      "callee": "Array::len",
+      "calls": 3,
+      "inclusive_ns": 151
+    },
+    {
+      "caller": "median",
+      "callee": "sort_floats",
+      "calls": 2,
+      "inclusive_ns": 53636
+    },
+    {
+      "caller": "median",
+      "callee": "u64::From<i64>::from",
+      "calls": 3,
+      "inclusive_ns": 112
+    },
+    {
+      "caller": "running_sums",
+      "callee": "List::as_slice",
+      "calls": 1,
+      "inclusive_ns": 85
+    },
+    {
+      "caller": "running_sums",
+      "callee": "List::new",
+      "calls": 1,
+      "inclusive_ns": 151
+    },
+    {
+      "caller": "running_sums",
+      "callee": "List::push",
+      "calls": 8,
+      "inclusive_ns": 876
+    },
+    {
+      "caller": "sort_floats",
+      "callee": "Array::len",
+      "calls": 3,
+      "inclusive_ns": 274
+    },
+    {
+      "caller": "sort_floats",
+      "callee": "List::as_slice",
+      "calls": 3,
+      "inclusive_ns": 736
+    },
+    {
+      "caller": "sort_floats",
+      "callee": "List::from",
+      "calls": 3,
+      "inclusive_ns": 1227
+    },
+    {
+      "caller": "sort_floats",
+      "callee": "u64::From<i64>::from",
+      "calls": 136,
+      "inclusive_ns": 5634
+    },
+    {
+      "caller": "squares_up_to",
+      "callee": "List::as_slice",
+      "calls": 1,
+      "inclusive_ns": 104
+    },
+    {
+      "caller": "squares_up_to",
+      "callee": "List::new",
+      "calls": 1,
+      "inclusive_ns": 151
+    },
+    {
+      "caller": "squares_up_to",
+      "callee": "List::push",
+      "calls": 5,
+      "inclusive_ns": 613
+    },
+    {
+      "caller": "std_dev",
+      "callee": "sqrt_approx",
+      "calls": 2,
+      "inclusive_ns": 22463
+    },
+    {
+      "caller": "to_str",
+      "callee": "f64::to_string",
+      "calls": 2,
+      "inclusive_ns": 1548
+    },
+    {
+      "caller": "to_str",
+      "callee": "i64::to_string",
+      "calls": 1,
+      "inclusive_ns": 482
+    },
+    {
+      "caller": "to_str",
+      "callee": "string_concat",
+      "calls": 5,
+      "inclusive_ns": 945
+    },
+    {
+      "caller": "z_score",
+      "callee": "compute_stats",
+      "calls": 2,
+      "inclusive_ns": 22905
+    },
+    {
+      "caller": "z_score",
+      "callee": "float_eq",
+      "calls": 1,
+      "inclusive_ns": 5351
+    },
+    {
+      "caller": "z_score",
+      "callee": "std_dev",
+      "calls": 1,
+      "inclusive_ns": 18772
+    }
+  ]
+}

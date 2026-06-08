@@ -12,7 +12,9 @@
 
 use std::collections::HashSet;
 
-use crate::ast::{Block, Decl, Expr, ForInit, FunDecl, ImplBlock, LetDecl, MatchArm, MutDecl, Stmt};
+use crate::ast::{
+    Block, Decl, Expr, ForInit, FunDecl, ImplBlock, LetDecl, MatchArm, MutDecl, Stmt,
+};
 use crate::error::MetelError;
 use crate::module_loader::{LoadedModule, ModuleGraph};
 use crate::name_resolver::{ModuleScope, ResolvedNames};
@@ -26,7 +28,9 @@ use crate::symbols::SymbolId;
 pub struct NormalizedModuleGraph(pub(crate) ModuleGraph);
 
 impl NormalizedModuleGraph {
-    pub fn modules(&self) -> &[LoadedModule] { &self.0.modules }
+    pub fn modules(&self) -> &[LoadedModule] {
+        &self.0.modules
+    }
 }
 
 /// Run the path normalization pass on `graph`, rewriting qualified `Expr::Path`
@@ -38,7 +42,9 @@ pub fn normalize(
     mut graph: ModuleGraph,
     names: &ResolvedNames,
 ) -> Result<NormalizedModuleGraph, MetelError> {
-    let module_names: HashSet<String> = graph.modules.iter()
+    let module_names: HashSet<String> = graph
+        .modules
+        .iter()
         .flat_map(|m| m.module_path.first().cloned())
         .collect();
 
@@ -68,11 +74,11 @@ fn normalize_decl(
     module_names: &HashSet<String>,
 ) -> Result<(), MetelError> {
     match decl {
-        Decl::Let(ld)  => normalize_expr(&mut ld.value, scope, module_names),
-        Decl::Mut(md)  => normalize_expr(&mut md.value, scope, module_names),
-        Decl::Fun(fd)  => normalize_fun(fd, scope, module_names),
+        Decl::Let(ld) => normalize_expr(&mut ld.value, scope, module_names),
+        Decl::Mut(md) => normalize_expr(&mut md.value, scope, module_names),
+        Decl::Fun(fd) => normalize_fun(fd, scope, module_names),
         Decl::Impl(ib) => normalize_impl(ib, scope, module_names),
-        Decl::Stmt(s)  => normalize_stmt(s, scope, module_names),
+        Decl::Stmt(s) => normalize_stmt(s, scope, module_names),
         Decl::Struct(_) | Decl::Enum(_) | Decl::Aspect(_) => Ok(()),
     }
 }
@@ -118,10 +124,18 @@ fn normalize_stmt(
     match stmt {
         Stmt::Expr(e) => normalize_expr(e, scope, module_names),
         Stmt::Return(r) => {
-            if let Some(v) = &mut r.value { normalize_expr(v, scope, module_names) } else { Ok(()) }
+            if let Some(v) = &mut r.value {
+                normalize_expr(v, scope, module_names)
+            } else {
+                Ok(())
+            }
         }
         Stmt::Break(b) => {
-            if let Some(v) = &mut b.value { normalize_expr(v, scope, module_names) } else { Ok(()) }
+            if let Some(v) = &mut b.value {
+                normalize_expr(v, scope, module_names)
+            } else {
+                Ok(())
+            }
         }
         Stmt::Continue(_) => Ok(()),
         Stmt::While(w) => {
@@ -136,8 +150,12 @@ fn normalize_stmt(
                     ForInit::Mut(md) => normalize_mut_decl(md, scope, module_names)?,
                 }
             }
-            if let Some(cond) = &mut f.condition { normalize_expr(cond, scope, module_names)?; }
-            if let Some(step) = &mut f.step      { normalize_expr(step, scope, module_names)?; }
+            if let Some(cond) = &mut f.condition {
+                normalize_expr(cond, scope, module_names)?;
+            }
+            if let Some(step) = &mut f.step {
+                normalize_expr(step, scope, module_names)?;
+            }
             normalize_block(&mut f.body, scope, module_names)
         }
         Stmt::ForIn(fi) => {
@@ -174,17 +192,26 @@ fn normalize_expr(
         Expr::Path(segments, span) => {
             if let Some((resolved, symbol_id)) = try_resolve_path(segments, scope, module_names) {
                 let original = std::mem::take(segments);
-                *expr = Expr::ResolvedPath { resolved, symbol_id, original, span: span.clone() };
+                *expr = Expr::ResolvedPath {
+                    resolved,
+                    symbol_id,
+                    original,
+                    span: span.clone(),
+                };
             }
             Ok(())
         }
 
         Expr::Tuple(elems, _) => {
-            for e in elems { normalize_expr(e, scope, module_names)?; }
+            for e in elems {
+                normalize_expr(e, scope, module_names)?;
+            }
             Ok(())
         }
         Expr::Array(elems, _) => {
-            for e in elems { normalize_expr(e, scope, module_names)?; }
+            for e in elems {
+                normalize_expr(e, scope, module_names)?;
+            }
             Ok(())
         }
         Expr::RepeatArray(elem, _, _) => normalize_expr(elem, scope, module_names),
@@ -199,38 +226,54 @@ fn normalize_expr(
         Expr::Assign { value, .. } => normalize_expr(value, scope, module_names),
         Expr::Call { callee, args, .. } => {
             normalize_expr(callee, scope, module_names)?;
-            for a in args { normalize_expr(a, scope, module_names)?; }
+            for a in args {
+                normalize_expr(a, scope, module_names)?;
+            }
             Ok(())
         }
         Expr::MethodCall { receiver, args, .. } => {
             normalize_expr(receiver, scope, module_names)?;
-            for a in args { normalize_expr(a, scope, module_names)?; }
+            for a in args {
+                normalize_expr(a, scope, module_names)?;
+            }
             Ok(())
         }
-        Expr::FieldAccess { object, .. }
-        | Expr::TupleAccess { object, .. } => normalize_expr(object, scope, module_names),
+        Expr::FieldAccess { object, .. } | Expr::TupleAccess { object, .. } => {
+            normalize_expr(object, scope, module_names)
+        }
         Expr::Index { object, index, .. } => {
             normalize_expr(object, scope, module_names)?;
             normalize_expr(index, scope, module_names)
         }
-        Expr::If { condition, then_branch, else_branch, .. } => {
+        Expr::If {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
             normalize_expr(condition, scope, module_names)?;
             normalize_block(then_branch, scope, module_names)?;
-            if let Some(eb) = else_branch { normalize_block(eb, scope, module_names)?; }
+            if let Some(eb) = else_branch {
+                normalize_block(eb, scope, module_names)?;
+            }
             Ok(())
         }
         Expr::Loop { body, .. } => normalize_block(body, scope, module_names),
         Expr::Closure { body, .. } => normalize_block(body, scope, module_names),
         Expr::Match(m) => {
             normalize_expr(&mut m.scrutinee, scope, module_names)?;
-            for arm in &mut m.arms { normalize_arm(arm, scope, module_names)?; }
+            for arm in &mut m.arms {
+                normalize_arm(arm, scope, module_names)?;
+            }
             Ok(())
         }
         Expr::StructLiteral { path, fields, .. } => {
             if let Some(local_path) = try_normalize_struct_path(path, scope, module_names) {
                 *path = local_path;
             }
-            for (_, v) in fields { normalize_expr(v, scope, module_names)?; }
+            for (_, v) in fields {
+                normalize_expr(v, scope, module_names)?;
+            }
             Ok(())
         }
         Expr::PropagateError { expr, .. } => normalize_expr(expr, scope, module_names),
@@ -242,7 +285,9 @@ fn normalize_arm(
     scope: Option<&ModuleScope>,
     module_names: &HashSet<String>,
 ) -> Result<(), MetelError> {
-    if let Some(guard) = &mut arm.guard { normalize_expr(guard, scope, module_names)?; }
+    if let Some(guard) = &mut arm.guard {
+        normalize_expr(guard, scope, module_names)?;
+    }
     normalize_block(&mut arm.body, scope, module_names)
 }
 
@@ -269,7 +314,11 @@ fn try_resolve_path(
     if first == "root" || first == "self" || first == "super" {
         // Check the scope for an alias, otherwise use the declared name
         if let Some(s) = scope {
-            if let Some((local, binding)) = s.explicit.iter().find(|(_, b)| &b.source_name == declared_name) {
+            if let Some((local, binding)) = s
+                .explicit
+                .iter()
+                .find(|(_, b)| &b.source_name == declared_name)
+            {
                 return Some((local.clone(), Some(binding.symbol_id)));
             }
         }
@@ -279,7 +328,11 @@ fn try_resolve_path(
     // Accept if `first` is either a loaded module name OR the first segment of a glob path
     // (handles virtual modules like `std` that have no physical file).
     let is_known_prefix = module_names.contains(first.as_str())
-        || scope.is_some_and(|s| s.globs.iter().any(|(_, g)| g.first().map(|s| s.as_str()) == Some(first.as_str())));
+        || scope.is_some_and(|s| {
+            s.globs
+                .iter()
+                .any(|(_, g)| g.first().map(|s| s.as_str()) == Some(first.as_str()))
+        });
 
     if !is_known_prefix {
         return None; // e.g. Color::Red — Color is a type, not a module
@@ -297,7 +350,9 @@ fn try_resolve_path(
         }
         // 2. Glob import from this module — local name == source name
         let source_module: Vec<String> = segments[..segments.len() - 1].to_vec();
-        if s.globs.iter().any(|(_, g)| g == &source_module || g.first().map(|s| s.as_str()) == Some(first.as_str())) {
+        if s.globs.iter().any(|(_, g)| {
+            g == &source_module || g.first().map(|s| s.as_str()) == Some(first.as_str())
+        }) {
             return Some((declared_name.clone(), None));
         }
     }
@@ -321,7 +376,11 @@ fn try_normalize_struct_path(
     let first = &path[0];
     // Only process if the first segment looks like a module, not a type.
     let is_known_prefix = module_names.contains(first.as_str())
-        || scope.is_some_and(|s| s.globs.iter().any(|(_, g)| g.first().map(|s| s.as_str()) == Some(first.as_str())));
+        || scope.is_some_and(|s| {
+            s.globs
+                .iter()
+                .any(|(_, g)| g.first().map(|s| s.as_str()) == Some(first.as_str()))
+        });
     if !is_known_prefix {
         return None;
     }

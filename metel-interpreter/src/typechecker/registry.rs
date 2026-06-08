@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 
-use crate::ast::{AspectDecl, AspectMethod, Decl, GenericParam, Program, Span, TypeExpr, WhereClause};
-use crate::types::Type;
+use crate::ast::{
+    AspectDecl, AspectMethod, Decl, GenericParam, Program, Span, TypeExpr, WhereClause,
+};
 use crate::typeinference::{
     EnumInfo, FieldEntry, InferContext, InferType, TypeDefinitionRegistry, TypeScheme, TypeVar,
     TypeVarGenerator, VariantInfo,
 };
+use crate::types::Type;
 
 use super::conversions::{
-    type_expr_to_infer,
-    type_expr_to_infer_with_generics,
-    type_expr_to_infer_with_self,
+    type_expr_to_infer, type_expr_to_infer_with_generics, type_expr_to_infer_with_self,
 };
 
 /// Collect merged aspect-name bounds per type param from inline bounds + where clause.
@@ -20,32 +20,44 @@ fn collect_type_param_bounds(
     generics: &[GenericParam],
     where_clause: Option<&WhereClause>,
 ) -> Vec<Vec<String>> {
-    generics.iter().map(|gp| {
-        let mut names: Vec<String> = gp.bounds.iter()
-            .filter_map(|b| if let TypeExpr::Named(n, _) = b { Some(n.clone()) } else { None })
-            .collect();
-        if let Some(wc) = where_clause {
-            for (param_name, bounds) in &wc.constraints {
-                if param_name != &gp.name { continue; }
-                for b in bounds {
+    generics
+        .iter()
+        .map(|gp| {
+            let mut names: Vec<String> = gp
+                .bounds
+                .iter()
+                .filter_map(|b| {
                     if let TypeExpr::Named(n, _) = b {
-                        if !names.contains(n) { names.push(n.clone()); }
+                        Some(n.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            if let Some(wc) = where_clause {
+                for (param_name, bounds) in &wc.constraints {
+                    if param_name != &gp.name {
+                        continue;
+                    }
+                    for b in bounds {
+                        if let TypeExpr::Named(n, _) = b {
+                            if !names.contains(n) {
+                                names.push(n.clone());
+                            }
+                        }
                     }
                 }
             }
-        }
-        names
-    }).collect()
+            names
+        })
+        .collect()
 }
 
 fn dbg_scheme(t: TypeVar) -> TypeScheme {
     TypeScheme {
         quantified_vars: vec![t],
         param_names: vec![],
-        ty: InferType::Fun(
-            vec![InferType::Var(t)],
-            Box::new(InferType::Var(t)),
-        ),
+        ty: InferType::Fun(vec![InferType::Var(t)], Box::new(InferType::Var(t))),
     }
 }
 
@@ -53,7 +65,10 @@ fn list_new_scheme(t: TypeVar) -> TypeScheme {
     TypeScheme {
         quantified_vars: vec![t],
         param_names: vec![],
-        ty: InferType::Fun(vec![], Box::new(InferType::Named("List".into(), vec![InferType::Var(t)]))),
+        ty: InferType::Fun(
+            vec![],
+            Box::new(InferType::Named("List".into(), vec![InferType::Var(t)])),
+        ),
     }
 }
 
@@ -72,39 +87,47 @@ fn print_scheme(t: TypeVar) -> TypeScheme {
     TypeScheme {
         quantified_vars: vec![t],
         param_names: vec![],
-        ty: InferType::Fun(
-            vec![InferType::Var(t)],
-            Box::new(InferType::unit()),
-        ),
+        ty: InferType::Fun(vec![InferType::Var(t)], Box::new(InferType::unit())),
     }
 }
 
 fn register_builtin_aspect_impls(registry: &mut TypeDefinitionRegistry) {
     use crate::types::Type;
     // Iterable impls for built-in sequence types
-    registry.register_aspect_impl("Range".into(),          "Iterable".into(), vec![Type::I64]);
+    registry.register_aspect_impl("Range".into(), "Iterable".into(), vec![Type::I64]);
     registry.register_aspect_impl("RangeInclusive".into(), "Iterable".into(), vec![Type::I64]);
     // Full cross-product numeric From impls: every numeric type has From<T> for every other.
     let all_numeric = [
-        (Type::I8, "i8"), (Type::I16, "i16"), (Type::I32, "i32"), (Type::I64, "i64"),
-        (Type::U8, "u8"), (Type::U16, "u16"), (Type::U32, "u32"), (Type::U64, "u64"),
-        (Type::F32, "f32"), (Type::F64, "f64"),
+        (Type::I8, "i8"),
+        (Type::I16, "i16"),
+        (Type::I32, "i32"),
+        (Type::I64, "i64"),
+        (Type::U8, "u8"),
+        (Type::U16, "u16"),
+        (Type::U32, "u32"),
+        (Type::U64, "u64"),
+        (Type::F32, "f32"),
+        (Type::F64, "f64"),
     ];
     for (target_ty, target_name) in &all_numeric {
         for (source_ty, _) in &all_numeric {
             if target_ty != source_ty {
-                registry.register_aspect_impl((*target_name).to_string(), "From".into(), vec![source_ty.clone()]);
+                registry.register_aspect_impl(
+                    (*target_name).to_string(),
+                    "From".into(),
+                    vec![source_ty.clone()],
+                );
             }
         }
     }
     // Display impls for built-in types (used by to_string method dispatch)
-    registry.register_aspect_impl("i64".into(),    "Display".into(), vec![]);
-    registry.register_aspect_impl("f64".into(),  "Display".into(), vec![]);
-    registry.register_aspect_impl("boolean".into(),   "Display".into(), vec![]);
-    registry.register_aspect_impl("Char".into(),   "Display".into(), vec![]);
+    registry.register_aspect_impl("i64".into(), "Display".into(), vec![]);
+    registry.register_aspect_impl("f64".into(), "Display".into(), vec![]);
+    registry.register_aspect_impl("boolean".into(), "Display".into(), vec![]);
+    registry.register_aspect_impl("Char".into(), "Display".into(), vec![]);
     registry.register_aspect_impl("String".into(), "Display".into(), vec![]);
     // Char ↔ u32 (Unicode code point) conversions
-    registry.register_aspect_impl("u32".into(),  "From".into(), vec![Type::Char]);
+    registry.register_aspect_impl("u32".into(), "From".into(), vec![Type::Char]);
     registry.register_aspect_impl("Char".into(), "From".into(), vec![Type::U32]);
 }
 
@@ -124,79 +147,149 @@ pub(super) fn build_registry(
 
     // Register built-in generic enums.
     let t = gen.fresh();
-    registry.register_enum("Perhaps".into(), EnumInfo {
-        type_params: vec![t],
-        variants: vec![
-            VariantInfo { name: "Some".into(), fields: vec![FieldEntry {
-                name: "value".into(),
-                ty: InferType::Var(t),
-                span: builtin_span.clone(),
-                visibility: crate::ast::Visibility::Public,
-            }] },
-            VariantInfo { name: "None".into(), fields: vec![] },
-        ],
-    }, vec!["std".into(), "core".into()]);
+    registry.register_enum(
+        "Perhaps".into(),
+        EnumInfo {
+            type_params: vec![t],
+            variants: vec![
+                VariantInfo {
+                    name: "Some".into(),
+                    fields: vec![FieldEntry {
+                        name: "value".into(),
+                        ty: InferType::Var(t),
+                        span: builtin_span.clone(),
+                        visibility: crate::ast::Visibility::Public,
+                    }],
+                },
+                VariantInfo {
+                    name: "None".into(),
+                    fields: vec![],
+                },
+            ],
+        },
+        vec!["std".into(), "core".into()],
+    );
     let t = gen.fresh();
     let e = gen.fresh();
-    registry.register_enum("Result".into(), EnumInfo {
-        type_params: vec![t, e],
-        variants: vec![
-            VariantInfo { name: "Ok".into(),  fields: vec![FieldEntry {
-                name: "value".into(),
-                ty: InferType::Var(t),
-                span: builtin_span.clone(),
-                visibility: crate::ast::Visibility::Public,
-            }] },
-            VariantInfo { name: "Err".into(), fields: vec![FieldEntry {
-                name: "error".into(),
-                ty: InferType::Var(e),
-                span: builtin_span.clone(),
-                visibility: crate::ast::Visibility::Public,
-            }] },
-        ],
-    }, vec!["std".into(), "core".into()]);
+    registry.register_enum(
+        "Result".into(),
+        EnumInfo {
+            type_params: vec![t, e],
+            variants: vec![
+                VariantInfo {
+                    name: "Ok".into(),
+                    fields: vec![FieldEntry {
+                        name: "value".into(),
+                        ty: InferType::Var(t),
+                        span: builtin_span.clone(),
+                        visibility: crate::ast::Visibility::Public,
+                    }],
+                },
+                VariantInfo {
+                    name: "Err".into(),
+                    fields: vec![FieldEntry {
+                        name: "error".into(),
+                        ty: InferType::Var(e),
+                        span: builtin_span.clone(),
+                        visibility: crate::ast::Visibility::Public,
+                    }],
+                },
+            ],
+        },
+        vec!["std".into(), "core".into()],
+    );
 
     // Register built-in generic struct List<T>.
     let t = gen.fresh();
-    registry.register_struct_fields("List".into(), vec![FieldEntry {
-        name: "inner".into(),
-        ty: InferType::Array(Box::new(InferType::Var(t))),
-        span: builtin_span.clone(),
-        visibility: crate::ast::Visibility::Private,
-    }], vec!["std".into(), "core".into()]);
+    registry.register_struct_fields(
+        "List".into(),
+        vec![FieldEntry {
+            name: "inner".into(),
+            ty: InferType::Array(Box::new(InferType::Var(t))),
+            span: builtin_span.clone(),
+            visibility: crate::ast::Visibility::Private,
+        }],
+        vec!["std".into(), "core".into()],
+    );
     registry.register_struct_type_params("List".into(), vec![t]);
     registry.register_struct_generic_names("List".into(), vec!["T".into()]);
     // List method schemes (all reference struct type param t).
     let list_self = || InferType::Named("List".into(), vec![InferType::Var(t)]);
-    let perhaps_t  = || InferType::Named("Perhaps".into(), vec![InferType::Var(t)]);
-    registry.register_method_scheme("List".into(), "push".into(), TypeScheme {
-        quantified_vars: vec![t], param_names: vec![],
-        ty: InferType::Fun(vec![list_self(), InferType::Var(t)], Box::new(InferType::unit())),
-    }, vec![t]);
-    registry.register_method_receiver("List".into(), "push".into(), crate::ast::ReceiverKind::RefMut);
-    registry.register_method_scheme("List".into(), "pop".into(), TypeScheme {
-        quantified_vars: vec![t], param_names: vec![],
-        ty: InferType::Fun(vec![list_self()], Box::new(perhaps_t())),
-    }, vec![t]);
-    registry.register_method_receiver("List".into(), "pop".into(), crate::ast::ReceiverKind::RefMut);
-    registry.register_method_scheme("List".into(), "len".into(), TypeScheme {
-        quantified_vars: vec![t], param_names: vec![],
-        ty: InferType::Fun(vec![list_self()], Box::new(InferType::int())),
-    }, vec![t]);
-    registry.register_method_scheme("List".into(), "get".into(), TypeScheme {
-        quantified_vars: vec![t], param_names: vec![],
-        ty: InferType::Fun(vec![list_self(), InferType::int()], Box::new(perhaps_t())),
-    }, vec![t]);
-    registry.register_method_scheme("List".into(), "as_slice".into(), TypeScheme {
-        quantified_vars: vec![t], param_names: vec![],
-        ty: InferType::Fun(vec![list_self()], Box::new(InferType::Array(Box::new(InferType::Var(t))))),
-    }, vec![t]);
+    let perhaps_t = || InferType::Named("Perhaps".into(), vec![InferType::Var(t)]);
+    registry.register_method_scheme(
+        "List".into(),
+        "push".into(),
+        TypeScheme {
+            quantified_vars: vec![t],
+            param_names: vec![],
+            ty: InferType::Fun(
+                vec![list_self(), InferType::Var(t)],
+                Box::new(InferType::unit()),
+            ),
+        },
+        vec![t],
+    );
+    registry.register_method_receiver(
+        "List".into(),
+        "push".into(),
+        crate::ast::ReceiverKind::RefMut,
+    );
+    registry.register_method_scheme(
+        "List".into(),
+        "pop".into(),
+        TypeScheme {
+            quantified_vars: vec![t],
+            param_names: vec![],
+            ty: InferType::Fun(vec![list_self()], Box::new(perhaps_t())),
+        },
+        vec![t],
+    );
+    registry.register_method_receiver(
+        "List".into(),
+        "pop".into(),
+        crate::ast::ReceiverKind::RefMut,
+    );
+    registry.register_method_scheme(
+        "List".into(),
+        "len".into(),
+        TypeScheme {
+            quantified_vars: vec![t],
+            param_names: vec![],
+            ty: InferType::Fun(vec![list_self()], Box::new(InferType::int())),
+        },
+        vec![t],
+    );
+    registry.register_method_scheme(
+        "List".into(),
+        "get".into(),
+        TypeScheme {
+            quantified_vars: vec![t],
+            param_names: vec![],
+            ty: InferType::Fun(vec![list_self(), InferType::int()], Box::new(perhaps_t())),
+        },
+        vec![t],
+    );
+    registry.register_method_scheme(
+        "List".into(),
+        "as_slice".into(),
+        TypeScheme {
+            quantified_vars: vec![t],
+            param_names: vec![],
+            ty: InferType::Fun(
+                vec![list_self()],
+                Box::new(InferType::Array(Box::new(InferType::Var(t)))),
+            ),
+        },
+        vec![t],
+    );
 
     // Pass 1: register user-defined structs, enums, and aspects.
     for decl in &program.decls {
         match decl {
             Decl::Struct(sd) if sd.generics.is_empty() => {
-                let fields: Vec<FieldEntry> = sd.fields.iter()
+                let fields: Vec<FieldEntry> = sd
+                    .fields
+                    .iter()
                     .map(|f| FieldEntry {
                         name: f.name.clone(),
                         ty: type_expr_to_infer(&f.type_ann),
@@ -204,7 +297,11 @@ pub(super) fn build_registry(
                         visibility: f.visibility.clone(),
                     })
                     .collect();
-                registry.register_struct_fields(sd.name.clone(), fields, current_module_path.to_vec());
+                registry.register_struct_fields(
+                    sd.name.clone(),
+                    fields,
+                    current_module_path.to_vec(),
+                );
             }
             Decl::Struct(sd) => {
                 let mut gen_map: HashMap<String, TypeVar> = HashMap::new();
@@ -214,7 +311,9 @@ pub(super) fn build_registry(
                     gen_map.insert(gp.name.clone(), tv);
                     type_params.push(tv);
                 }
-                let fields: Vec<FieldEntry> = sd.fields.iter()
+                let fields: Vec<FieldEntry> = sd
+                    .fields
+                    .iter()
                     .map(|f| FieldEntry {
                         name: f.name.clone(),
                         ty: type_expr_to_infer_with_generics(&f.type_ann, &gen_map),
@@ -222,7 +321,11 @@ pub(super) fn build_registry(
                         visibility: f.visibility.clone(),
                     })
                     .collect();
-                registry.register_struct_fields(sd.name.clone(), fields, current_module_path.to_vec());
+                registry.register_struct_fields(
+                    sd.name.clone(),
+                    fields,
+                    current_module_path.to_vec(),
+                );
                 registry.register_struct_type_params(sd.name.clone(), type_params);
                 registry.register_struct_generic_names(
                     sd.name.clone(),
@@ -241,26 +344,36 @@ pub(super) fn build_registry(
                     gen_map.insert(gp.name.clone(), tv);
                     type_params.push(tv);
                 }
-                let variants = ed.variants.iter().map(|v| VariantInfo {
-                    name: v.name.clone(),
-                    fields: v.fields.iter()
-                        .map(|f| FieldEntry {
-                            name: f.name.clone(),
-                            ty: type_expr_to_infer_with_generics(&f.type_ann, &gen_map),
-                            span: f.span.clone(),
-                            visibility: f.visibility.clone(),
-                        })
-                        .collect(),
-                }).collect();
+                let variants = ed
+                    .variants
+                    .iter()
+                    .map(|v| VariantInfo {
+                        name: v.name.clone(),
+                        fields: v
+                            .fields
+                            .iter()
+                            .map(|f| FieldEntry {
+                                name: f.name.clone(),
+                                ty: type_expr_to_infer_with_generics(&f.type_ann, &gen_map),
+                                span: f.span.clone(),
+                                visibility: f.visibility.clone(),
+                            })
+                            .collect(),
+                    })
+                    .collect();
                 registry.register_struct_generic_names(
                     ed.name.clone(),
                     ed.generics.iter().map(|g| g.name.clone()).collect(),
                 );
                 let bounds = collect_type_param_bounds(&ed.generics, ed.where_clause.as_ref());
-                registry.register_enum(ed.name.clone(), EnumInfo {
-                    type_params,
-                    variants,
-                }, current_module_path.to_vec());
+                registry.register_enum(
+                    ed.name.clone(),
+                    EnumInfo {
+                        type_params,
+                        variants,
+                    },
+                    current_module_path.to_vec(),
+                );
                 if bounds.iter().any(|b| !b.is_empty()) {
                     registry.register_type_param_bounds(ed.name.clone(), bounds);
                 }
@@ -282,7 +395,10 @@ pub(super) fn build_registry(
                 TypeExpr::Named(name, _) => name.clone(),
                 _ => continue,
             };
-            if registry.raw_struct_type_params().contains_key(target_name.as_str()) {
+            if registry
+                .raw_struct_type_params()
+                .contains_key(target_name.as_str())
+            {
                 // Generic struct — method bodies inferred by infer_impl_method with TypeVars.
                 // Only register aspect membership; skip method type registration.
             } else {
@@ -296,7 +412,9 @@ pub(super) fn build_registry(
             // conversion must be made generic-param-aware (e.g. wildcard sentinel or
             // a separate generic-impl registry).
             if let Some(aspect_name) = &ib.aspect_name {
-                let type_args: Vec<crate::types::Type> = ib.aspect_type_args.iter()
+                let type_args: Vec<crate::types::Type> = ib
+                    .aspect_type_args
+                    .iter()
                     .filter_map(|te| {
                         use super::conversions::type_expr_to_infer;
                         match type_expr_to_infer(te) {
@@ -314,7 +432,11 @@ pub(super) fn build_registry(
     registry
 }
 
-fn register_aspect_decl(ad: &AspectDecl, declaring_module: &[String], registry: &mut TypeDefinitionRegistry) {
+fn register_aspect_decl(
+    ad: &AspectDecl,
+    declaring_module: &[String],
+    registry: &mut TypeDefinitionRegistry,
+) {
     let method_names = ad.methods.iter().map(|m| m.name.clone()).collect();
     registry.register_aspect(ad.name.clone(), method_names);
     registry.register_aspect_method_defs(ad.name.clone(), ad.methods.clone());
@@ -339,7 +461,9 @@ fn register_impl_methods<'a>(
             };
             param_types.push(pt);
         }
-        let ret_ty = method.return_type.as_ref()
+        let ret_ty = method
+            .return_type
+            .as_ref()
             .map(|ann| type_expr_to_infer_with_self(ann, target_name))
             .unwrap_or_else(InferType::unit);
         registry.register_method(
@@ -348,7 +472,11 @@ fn register_impl_methods<'a>(
             InferType::Fun(param_types, Box::new(ret_ty)),
         );
         if let Some(receiver) = method.params.first().and_then(|p| p.receiver.clone()) {
-            registry.register_method_receiver(target_name.to_string(), method.name.clone(), receiver);
+            registry.register_method_receiver(
+                target_name.to_string(),
+                method.name.clone(),
+                receiver,
+            );
         }
     }
 }
@@ -359,8 +487,12 @@ fn register_default_aspect_methods(
     gen: &mut TypeVarGenerator,
     registry: &mut TypeDefinitionRegistry,
 ) {
-    let Some(aspect_name) = &ib.aspect_name else { return; };
-    let Some(methods) = registry.aspect_method_defs(aspect_name).cloned() else { return; };
+    let Some(aspect_name) = &ib.aspect_name else {
+        return;
+    };
+    let Some(methods) = registry.aspect_method_defs(aspect_name).cloned() else {
+        return;
+    };
     let provided: std::collections::HashSet<&str> =
         ib.methods.iter().map(|m| m.name.as_str()).collect();
 
@@ -389,7 +521,9 @@ fn register_default_aspect_method(
         };
         param_types.push(pt);
     }
-    let ret_ty = method.return_type.as_ref()
+    let ret_ty = method
+        .return_type
+        .as_ref()
         .map(|ann| type_expr_to_infer_with_self(ann, target_name))
         .unwrap_or_else(InferType::unit);
     registry.register_method(
@@ -404,11 +538,14 @@ fn register_default_aspect_method(
 
 /// Seed `ctx` with all built-in free-function bindings from `StdPrelude`,
 /// plus built-in method registrations and aspect declarations.
-pub(super) fn register_primitive_type_bindings(ctx: &mut InferContext, prelude: &super::StdPrelude) {
-    let str_ty   = InferType::str();
-    let int_ty   = InferType::int();
+pub(super) fn register_primitive_type_bindings(
+    ctx: &mut InferContext,
+    prelude: &super::StdPrelude,
+) {
+    let str_ty = InferType::str();
+    let int_ty = InferType::int();
     let float_ty = InferType::float();
-    let bool_ty  = InferType::bool();
+    let bool_ty = InferType::bool();
 
     // Free-function builtins all come from StdPrelude — no separate list needed.
     for (name, scheme) in prelude.schemes() {
@@ -419,27 +556,39 @@ pub(super) fn register_primitive_type_bindings(ctx: &mut InferContext, prelude: 
     let char_ty = InferType::Concrete(Type::Char);
     for type_name in &["i64", "f64", "boolean", "Char", "String"] {
         let self_ty = match *type_name {
-            "i64"    => int_ty.clone(),
-            "f64"    => float_ty.clone(),
-            "boolean"   => bool_ty.clone(),
-            "Char"   => char_ty.clone(),
+            "i64" => int_ty.clone(),
+            "f64" => float_ty.clone(),
+            "boolean" => bool_ty.clone(),
+            "Char" => char_ty.clone(),
             "String" => str_ty.clone(),
             _ => unreachable!(),
         };
-        ctx.register_method(type_name.to_string(), "to_string".to_string(),
-            InferType::Fun(vec![self_ty], Box::new(str_ty.clone())));
+        ctx.register_method(
+            type_name.to_string(),
+            "to_string".to_string(),
+            InferType::Fun(vec![self_ty], Box::new(str_ty.clone())),
+        );
     }
-    ctx.register_method("String".to_string(), "len".to_string(),
-        InferType::Fun(vec![str_ty.clone()], Box::new(int_ty.clone())));
+    ctx.register_method(
+        "String".to_string(),
+        "len".to_string(),
+        InferType::Fun(vec![str_ty.clone()], Box::new(int_ty.clone())),
+    );
     // T[]::len — handled as a special case in the typechecker; no TypeVar needed here.
 
     let std_core = vec!["std".to_string(), "core".to_string()];
-    ctx.registry_mut().register_aspect("Display".into(),  vec!["to_string".into()]);
-    ctx.registry_mut().register_aspect("Iterable".into(), vec!["next".into()]);
-    ctx.registry_mut().register_aspect("From".into(),     vec!["from".into()]);
-    ctx.registry_mut().register_aspect_declaring_module("Display".into(),  std_core.clone());
-    ctx.registry_mut().register_aspect_declaring_module("Iterable".into(), std_core.clone());
-    ctx.registry_mut().register_aspect_declaring_module("From".into(),     std_core);
+    ctx.registry_mut()
+        .register_aspect("Display".into(), vec!["to_string".into()]);
+    ctx.registry_mut()
+        .register_aspect("Iterable".into(), vec!["next".into()]);
+    ctx.registry_mut()
+        .register_aspect("From".into(), vec!["from".into()]);
+    ctx.registry_mut()
+        .register_aspect_declaring_module("Display".into(), std_core.clone());
+    ctx.registry_mut()
+        .register_aspect_declaring_module("Iterable".into(), std_core.clone());
+    ctx.registry_mut()
+        .register_aspect_declaring_module("From".into(), std_core);
 }
 
 /// Add all built-in function schemes from `StdPrelude` to `scheme_env`.
@@ -457,26 +606,43 @@ pub(super) fn register_builtin_schemes(
 
 /// Populate `map` with all built-in function schemes.
 /// Called by `StdPrelude::default()` — this is the single canonical list.
-pub(super) fn populate_std_schemes(map: &mut HashMap<String, TypeScheme>, gen: &mut TypeVarGenerator) {
+pub(super) fn populate_std_schemes(
+    map: &mut HashMap<String, TypeScheme>,
+    gen: &mut TypeVarGenerator,
+) {
     let mono = |params: Vec<InferType>, ret: InferType| {
         TypeScheme::mono(InferType::Fun(params, Box::new(ret)))
     };
-    let str_ty   = InferType::str();
-    let int_ty   = InferType::int();
-    let bool_ty  = InferType::bool();
-    let unit_ty  = InferType::unit();
+    let str_ty = InferType::str();
+    let int_ty = InferType::int();
+    let bool_ty = InferType::bool();
+    let unit_ty = InferType::unit();
 
     // Polymorphic builtins.
-    let t = gen.fresh(); map.insert("print".into(),      print_scheme(t));
-    let t = gen.fresh(); map.insert("println".into(),    print_scheme(t));
-    let t = gen.fresh(); map.insert("List::new".into(),  list_new_scheme(t));
-    let t = gen.fresh(); map.insert("List::from".into(), list_from_scheme(t));
-    let t = gen.fresh(); map.insert("dbg".into(),        dbg_scheme(t));
+    let t = gen.fresh();
+    map.insert("print".into(), print_scheme(t));
+    let t = gen.fresh();
+    map.insert("println".into(), print_scheme(t));
+    let t = gen.fresh();
+    map.insert("List::new".into(), list_new_scheme(t));
+    let t = gen.fresh();
+    map.insert("List::from".into(), list_from_scheme(t));
+    let t = gen.fresh();
+    map.insert("dbg".into(), dbg_scheme(t));
 
     // Monomorphic builtins.
-    map.insert("string_len".into(),    mono(vec![str_ty.clone()], int_ty.clone()));
-    map.insert("string_concat".into(), mono(vec![str_ty.clone(), str_ty.clone()], str_ty.clone()));
-    map.insert("clock".into(),         mono(vec![], int_ty.clone()));
-    map.insert("assert".into(),        mono(vec![bool_ty.clone()], unit_ty.clone()));
-    map.insert("assert_msg".into(),    mono(vec![bool_ty, str_ty], unit_ty));
+    map.insert(
+        "string_len".into(),
+        mono(vec![str_ty.clone()], int_ty.clone()),
+    );
+    map.insert(
+        "string_concat".into(),
+        mono(vec![str_ty.clone(), str_ty.clone()], str_ty.clone()),
+    );
+    map.insert("clock".into(), mono(vec![], int_ty.clone()));
+    map.insert(
+        "assert".into(),
+        mono(vec![bool_ty.clone()], unit_ty.clone()),
+    );
+    map.insert("assert_msg".into(), mono(vec![bool_ty, str_ty], unit_ty));
 }

@@ -1,0 +1,366 @@
+{
+  "functions": [
+    {
+      "function": "<closure>",
+      "calls": 7,
+      "inclusive_ns": 19216,
+      "self_ns": 19216
+    },
+    {
+      "function": "Array::len",
+      "calls": 2,
+      "inclusive_ns": 358,
+      "self_ns": 358
+    },
+    {
+      "function": "add_defense",
+      "calls": 6,
+      "inclusive_ns": 17724,
+      "self_ns": 17724
+    },
+    {
+      "function": "always_attack",
+      "calls": 5,
+      "inclusive_ns": 7816,
+      "self_ns": 7816
+    },
+    {
+      "function": "assert",
+      "calls": 32,
+      "inclusive_ns": 1418,
+      "self_ns": 1418
+    },
+    {
+      "function": "battle",
+      "calls": 3,
+      "inclusive_ns": 431731,
+      "self_ns": 226209
+    },
+    {
+      "function": "best_attacker_idx",
+      "calls": 2,
+      "inclusive_ns": 12581,
+      "self_ns": 11901
+    },
+    {
+      "function": "defender_strategy",
+      "calls": 3,
+      "inclusive_ns": 5258,
+      "self_ns": 5258
+    },
+    {
+      "function": "describe_action",
+      "calls": 3,
+      "inclusive_ns": 6456,
+      "self_ns": 5692
+    },
+    {
+      "function": "format_round",
+      "calls": 1,
+      "inclusive_ns": 37478,
+      "self_ns": 21488
+    },
+    {
+      "function": "heal",
+      "calls": 7,
+      "inclusive_ns": 26644,
+      "self_ns": 26644
+    },
+    {
+      "function": "i64::to_string",
+      "calls": 6,
+      "inclusive_ns": 868,
+      "self_ns": 868
+    },
+    {
+      "function": "is_alive",
+      "calls": 18,
+      "inclusive_ns": 22465,
+      "self_ns": 22465
+    },
+    {
+      "function": "main",
+      "calls": 1,
+      "inclusive_ns": 1054079,
+      "self_ns": 389943
+    },
+    {
+      "function": "resolve",
+      "calls": 20,
+      "inclusive_ns": 259154,
+      "self_ns": 183622
+    },
+    {
+      "function": "simulate_rounds",
+      "calls": 1,
+      "inclusive_ns": 34005,
+      "self_ns": 17772
+    },
+    {
+      "function": "smart_healer",
+      "calls": 6,
+      "inclusive_ns": 13204,
+      "self_ns": 13204
+    },
+    {
+      "function": "string_concat",
+      "calls": 16,
+      "inclusive_ns": 2238,
+      "self_ns": 2238
+    },
+    {
+      "function": "string_len",
+      "calls": 5,
+      "inclusive_ns": 1340,
+      "self_ns": 1340
+    },
+    {
+      "function": "summary",
+      "calls": 2,
+      "inclusive_ns": 15120,
+      "self_ns": 13648
+    },
+    {
+      "function": "take_damage",
+      "calls": 13,
+      "inclusive_ns": 58808,
+      "self_ns": 58808
+    },
+    {
+      "function": "total_party_hp",
+      "calls": 1,
+      "inclusive_ns": 6125,
+      "self_ns": 6125
+    },
+    {
+      "function": "u64::From<i64>::from",
+      "calls": 4,
+      "inclusive_ns": 322,
+      "self_ns": 322
+    }
+  ],
+  "edges": [
+    {
+      "caller": null,
+      "callee": "main",
+      "calls": 1,
+      "inclusive_ns": 1054079
+    },
+    {
+      "caller": "battle",
+      "callee": "<closure>",
+      "calls": 5,
+      "inclusive_ns": 12864
+    },
+    {
+      "caller": "battle",
+      "callee": "always_attack",
+      "calls": 3,
+      "inclusive_ns": 4512
+    },
+    {
+      "caller": "battle",
+      "callee": "is_alive",
+      "calls": 12,
+      "inclusive_ns": 15197
+    },
+    {
+      "caller": "battle",
+      "callee": "resolve",
+      "calls": 12,
+      "inclusive_ns": 164785
+    },
+    {
+      "caller": "battle",
+      "callee": "smart_healer",
+      "calls": 4,
+      "inclusive_ns": 8164
+    },
+    {
+      "caller": "best_attacker_idx",
+      "callee": "Array::len",
+      "calls": 2,
+      "inclusive_ns": 358
+    },
+    {
+      "caller": "best_attacker_idx",
+      "callee": "u64::From<i64>::from",
+      "calls": 4,
+      "inclusive_ns": 322
+    },
+    {
+      "caller": "describe_action",
+      "callee": "i64::to_string",
+      "calls": 1,
+      "inclusive_ns": 453
+    },
+    {
+      "caller": "describe_action",
+      "callee": "string_concat",
+      "calls": 1,
+      "inclusive_ns": 311
+    },
+    {
+      "caller": "format_round",
+      "callee": "i64::to_string",
+      "calls": 1,
+      "inclusive_ns": 104
+    },
+    {
+      "caller": "format_round",
+      "callee": "string_concat",
+      "calls": 5,
+      "inclusive_ns": 766
+    },
+    {
+      "caller": "format_round",
+      "callee": "summary",
+      "calls": 2,
+      "inclusive_ns": 15120
+    },
+    {
+      "caller": "main",
+      "callee": "<closure>",
+      "calls": 2,
+      "inclusive_ns": 6352
+    },
+    {
+      "caller": "main",
+      "callee": "add_defense",
+      "calls": 1,
+      "inclusive_ns": 3171
+    },
+    {
+      "caller": "main",
+      "callee": "always_attack",
+      "calls": 1,
+      "inclusive_ns": 1850
+    },
+    {
+      "caller": "main",
+      "callee": "assert",
+      "calls": 32,
+      "inclusive_ns": 1418
+    },
+    {
+      "caller": "main",
+      "callee": "battle",
+      "calls": 3,
+      "inclusive_ns": 431731
+    },
+    {
+      "caller": "main",
+      "callee": "best_attacker_idx",
+      "calls": 2,
+      "inclusive_ns": 12581
+    },
+    {
+      "caller": "main",
+      "callee": "defender_strategy",
+      "calls": 3,
+      "inclusive_ns": 5258
+    },
+    {
+      "caller": "main",
+      "callee": "describe_action",
+      "calls": 3,
+      "inclusive_ns": 6456
+    },
+    {
+      "caller": "main",
+      "callee": "format_round",
+      "calls": 1,
+      "inclusive_ns": 37478
+    },
+    {
+      "caller": "main",
+      "callee": "heal",
+      "calls": 2,
+      "inclusive_ns": 8098
+    },
+    {
+      "caller": "main",
+      "callee": "is_alive",
+      "calls": 6,
+      "inclusive_ns": 7268
+    },
+    {
+      "caller": "main",
+      "callee": "resolve",
+      "calls": 7,
+      "inclusive_ns": 79590
+    },
+    {
+      "caller": "main",
+      "callee": "simulate_rounds",
+      "calls": 1,
+      "inclusive_ns": 34005
+    },
+    {
+      "caller": "main",
+      "callee": "smart_healer",
+      "calls": 2,
+      "inclusive_ns": 5040
+    },
+    {
+      "caller": "main",
+      "callee": "string_len",
+      "calls": 5,
+      "inclusive_ns": 1340
+    },
+    {
+      "caller": "main",
+      "callee": "take_damage",
+      "calls": 3,
+      "inclusive_ns": 16375
+    },
+    {
+      "caller": "main",
+      "callee": "total_party_hp",
+      "calls": 1,
+      "inclusive_ns": 6125
+    },
+    {
+      "caller": "resolve",
+      "callee": "add_defense",
+      "calls": 5,
+      "inclusive_ns": 14553
+    },
+    {
+      "caller": "resolve",
+      "callee": "heal",
+      "calls": 5,
+      "inclusive_ns": 18546
+    },
+    {
+      "caller": "resolve",
+      "callee": "take_damage",
+      "calls": 10,
+      "inclusive_ns": 42433
+    },
+    {
+      "caller": "simulate_rounds",
+      "callee": "always_attack",
+      "calls": 1,
+      "inclusive_ns": 1454
+    },
+    {
+      "caller": "simulate_rounds",
+      "callee": "resolve",
+      "calls": 1,
+      "inclusive_ns": 14779
+    },
+    {
+      "caller": "summary",
+      "callee": "i64::to_string",
+      "calls": 4,
+      "inclusive_ns": 311
+    },
+    {
+      "caller": "summary",
+      "callee": "string_concat",
+      "calls": 10,
+      "inclusive_ns": 1161
+    }
+  ]
+}

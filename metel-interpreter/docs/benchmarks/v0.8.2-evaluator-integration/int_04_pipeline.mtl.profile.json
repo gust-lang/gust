@@ -1,0 +1,252 @@
+{
+  "functions": [
+    {
+      "function": "Array::len",
+      "calls": 12,
+      "inclusive_ns": 742,
+      "self_ns": 742
+    },
+    {
+      "function": "assert",
+      "calls": 19,
+      "inclusive_ns": 1031,
+      "self_ns": 1031
+    },
+    {
+      "function": "double",
+      "calls": 2,
+      "inclusive_ns": 2921,
+      "self_ns": 2921
+    },
+    {
+      "function": "f64::From<i64>::from",
+      "calls": 1,
+      "inclusive_ns": 169,
+      "self_ns": 169
+    },
+    {
+      "function": "from",
+      "calls": 3,
+      "inclusive_ns": 4668,
+      "self_ns": 4293
+    },
+    {
+      "function": "i64::From<f64>::from",
+      "calls": 1,
+      "inclusive_ns": 301,
+      "self_ns": 301
+    },
+    {
+      "function": "i64::to_string",
+      "calls": 5,
+      "inclusive_ns": 798,
+      "self_ns": 798
+    },
+    {
+      "function": "len",
+      "calls": 1,
+      "inclusive_ns": 2244,
+      "self_ns": 2112
+    },
+    {
+      "function": "lex_token",
+      "calls": 3,
+      "inclusive_ns": 6423,
+      "self_ns": 6170
+    },
+    {
+      "function": "main",
+      "calls": 1,
+      "inclusive_ns": 260843,
+      "self_ns": 138212
+    },
+    {
+      "function": "negate",
+      "calls": 1,
+      "inclusive_ns": 1071,
+      "self_ns": 1071
+    },
+    {
+      "function": "new",
+      "calls": 3,
+      "inclusive_ns": 2413,
+      "self_ns": 2413
+    },
+    {
+      "function": "next",
+      "calls": 11,
+      "inclusive_ns": 31435,
+      "self_ns": 30259
+    },
+    {
+      "function": "parse_number",
+      "calls": 2,
+      "inclusive_ns": 3558,
+      "self_ns": 3558
+    },
+    {
+      "function": "pipeline_step",
+      "calls": 3,
+      "inclusive_ns": 67804,
+      "self_ns": 56105
+    },
+    {
+      "function": "string_concat",
+      "calls": 10,
+      "inclusive_ns": 1633,
+      "self_ns": 1633
+    },
+    {
+      "function": "summary",
+      "calls": 3,
+      "inclusive_ns": 10142,
+      "self_ns": 8489
+    },
+    {
+      "function": "u64::From<i64>::from",
+      "calls": 8,
+      "inclusive_ns": 566,
+      "self_ns": 566
+    }
+  ],
+  "edges": [
+    {
+      "caller": null,
+      "callee": "main",
+      "calls": 1,
+      "inclusive_ns": 260843
+    },
+    {
+      "caller": "from",
+      "callee": "string_concat",
+      "calls": 3,
+      "inclusive_ns": 375
+    },
+    {
+      "caller": "len",
+      "callee": "Array::len",
+      "calls": 1,
+      "inclusive_ns": 132
+    },
+    {
+      "caller": "lex_token",
+      "callee": "string_concat",
+      "calls": 1,
+      "inclusive_ns": 253
+    },
+    {
+      "caller": "main",
+      "callee": "assert",
+      "calls": 19,
+      "inclusive_ns": 1031
+    },
+    {
+      "caller": "main",
+      "callee": "double",
+      "calls": 2,
+      "inclusive_ns": 2921
+    },
+    {
+      "caller": "main",
+      "callee": "f64::From<i64>::from",
+      "calls": 1,
+      "inclusive_ns": 169
+    },
+    {
+      "caller": "main",
+      "callee": "from",
+      "calls": 2,
+      "inclusive_ns": 2950
+    },
+    {
+      "caller": "main",
+      "callee": "i64::From<f64>::from",
+      "calls": 1,
+      "inclusive_ns": 301
+    },
+    {
+      "caller": "main",
+      "callee": "i64::to_string",
+      "calls": 2,
+      "inclusive_ns": 150
+    },
+    {
+      "caller": "main",
+      "callee": "len",
+      "calls": 1,
+      "inclusive_ns": 2244
+    },
+    {
+      "caller": "main",
+      "callee": "negate",
+      "calls": 1,
+      "inclusive_ns": 1071
+    },
+    {
+      "caller": "main",
+      "callee": "new",
+      "calls": 3,
+      "inclusive_ns": 2413
+    },
+    {
+      "caller": "main",
+      "callee": "next",
+      "calls": 11,
+      "inclusive_ns": 31435
+    },
+    {
+      "caller": "main",
+      "callee": "pipeline_step",
+      "calls": 3,
+      "inclusive_ns": 67804
+    },
+    {
+      "caller": "main",
+      "callee": "summary",
+      "calls": 3,
+      "inclusive_ns": 10142
+    },
+    {
+      "caller": "next",
+      "callee": "Array::len",
+      "calls": 11,
+      "inclusive_ns": 610
+    },
+    {
+      "caller": "next",
+      "callee": "u64::From<i64>::from",
+      "calls": 8,
+      "inclusive_ns": 566
+    },
+    {
+      "caller": "pipeline_step",
+      "callee": "from",
+      "calls": 1,
+      "inclusive_ns": 1718
+    },
+    {
+      "caller": "pipeline_step",
+      "callee": "lex_token",
+      "calls": 3,
+      "inclusive_ns": 6423
+    },
+    {
+      "caller": "pipeline_step",
+      "callee": "parse_number",
+      "calls": 2,
+      "inclusive_ns": 3558
+    },
+    {
+      "caller": "summary",
+      "callee": "i64::to_string",
+      "calls": 3,
+      "inclusive_ns": 648
+    },
+    {
+      "caller": "summary",
+      "callee": "string_concat",
+      "calls": 6,
+      "inclusive_ns": 1005
+    }
+  ]
+}

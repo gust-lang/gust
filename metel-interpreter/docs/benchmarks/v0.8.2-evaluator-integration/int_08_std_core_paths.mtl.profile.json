@@ -1,0 +1,168 @@
+{
+  "functions": [
+    {
+      "function": "Array::len",
+      "calls": 21,
+      "inclusive_ns": 1126,
+      "self_ns": 1126
+    },
+    {
+      "function": "add_parsed",
+      "calls": 3,
+      "inclusive_ns": 57343,
+      "self_ns": 44733
+    },
+    {
+      "function": "assert",
+      "calls": 16,
+      "inclusive_ns": 1227,
+      "self_ns": 1227
+    },
+    {
+      "function": "double_parsed",
+      "calls": 2,
+      "inclusive_ns": 19794,
+      "self_ns": 16066
+    },
+    {
+      "function": "find_in",
+      "calls": 5,
+      "inclusive_ns": 38094,
+      "self_ns": 35852
+    },
+    {
+      "function": "from",
+      "calls": 2,
+      "inclusive_ns": 3868,
+      "self_ns": 3642
+    },
+    {
+      "function": "main",
+      "calls": 1,
+      "inclusive_ns": 308675,
+      "self_ns": 173099
+    },
+    {
+      "function": "map_some",
+      "calls": 3,
+      "inclusive_ns": 4873,
+      "self_ns": 4873
+    },
+    {
+      "function": "parse_positive",
+      "calls": 9,
+      "inclusive_ns": 21053,
+      "self_ns": 19937
+    },
+    {
+      "function": "perhaps_to_result",
+      "calls": 4,
+      "inclusive_ns": 5662,
+      "self_ns": 5662
+    },
+    {
+      "function": "string_concat",
+      "calls": 6,
+      "inclusive_ns": 1342,
+      "self_ns": 1342
+    },
+    {
+      "function": "u64::From<i64>::from",
+      "calls": 19,
+      "inclusive_ns": 1116,
+      "self_ns": 1116
+    }
+  ],
+  "edges": [
+    {
+      "caller": null,
+      "callee": "main",
+      "calls": 1,
+      "inclusive_ns": 308675
+    },
+    {
+      "caller": "add_parsed",
+      "callee": "from",
+      "calls": 2,
+      "inclusive_ns": 3868
+    },
+    {
+      "caller": "add_parsed",
+      "callee": "parse_positive",
+      "calls": 5,
+      "inclusive_ns": 8742
+    },
+    {
+      "caller": "double_parsed",
+      "callee": "parse_positive",
+      "calls": 2,
+      "inclusive_ns": 3728
+    },
+    {
+      "caller": "find_in",
+      "callee": "Array::len",
+      "calls": 21,
+      "inclusive_ns": 1126
+    },
+    {
+      "caller": "find_in",
+      "callee": "u64::From<i64>::from",
+      "calls": 19,
+      "inclusive_ns": 1116
+    },
+    {
+      "caller": "from",
+      "callee": "string_concat",
+      "calls": 2,
+      "inclusive_ns": 226
+    },
+    {
+      "caller": "main",
+      "callee": "add_parsed",
+      "calls": 3,
+      "inclusive_ns": 57343
+    },
+    {
+      "caller": "main",
+      "callee": "assert",
+      "calls": 16,
+      "inclusive_ns": 1227
+    },
+    {
+      "caller": "main",
+      "callee": "double_parsed",
+      "calls": 2,
+      "inclusive_ns": 19794
+    },
+    {
+      "caller": "main",
+      "callee": "find_in",
+      "calls": 5,
+      "inclusive_ns": 38094
+    },
+    {
+      "caller": "main",
+      "callee": "map_some",
+      "calls": 3,
+      "inclusive_ns": 4873
+    },
+    {
+      "caller": "main",
+      "callee": "parse_positive",
+      "calls": 2,
+      "inclusive_ns": 8583
+    },
+    {
+      "caller": "main",
+      "callee": "perhaps_to_result",
+      "calls": 4,
+      "inclusive_ns": 5662
+    },
+    {
+      "caller": "parse_positive",
+      "callee": "string_concat",
+      "calls": 4,
+      "inclusive_ns": 1116
+    }
+  ]
+}

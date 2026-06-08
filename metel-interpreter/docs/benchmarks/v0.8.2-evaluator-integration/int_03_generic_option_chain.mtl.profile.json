@@ -1,0 +1,390 @@
+{
+  "functions": [
+    {
+      "function": "<closure>",
+      "calls": 68,
+      "inclusive_ns": 184607,
+      "self_ns": 136698
+    },
+    {
+      "function": "Array::len",
+      "calls": 28,
+      "inclusive_ns": 1808,
+      "self_ns": 1808
+    },
+    {
+      "function": "List::as_slice",
+      "calls": 3,
+      "inclusive_ns": 516,
+      "self_ns": 516
+    },
+    {
+      "function": "List::new",
+      "calls": 3,
+      "inclusive_ns": 855,
+      "self_ns": 855
+    },
+    {
+      "function": "List::push",
+      "calls": 19,
+      "inclusive_ns": 2903,
+      "self_ns": 2903
+    },
+    {
+      "function": "assert",
+      "calls": 54,
+      "inclusive_ns": 2964,
+      "self_ns": 2964
+    },
+    {
+      "function": "count_where",
+      "calls": 1,
+      "inclusive_ns": 76180,
+      "self_ns": 62491
+    },
+    {
+      "function": "find_first",
+      "calls": 6,
+      "inclusive_ns": 299265,
+      "self_ns": 263674
+    },
+    {
+      "function": "id",
+      "calls": 6,
+      "inclusive_ns": 54763,
+      "self_ns": 54763
+    },
+    {
+      "function": "main",
+      "calls": 1,
+      "inclusive_ns": 2278821,
+      "self_ns": 700870
+    },
+    {
+      "function": "map_array",
+      "calls": 3,
+      "inclusive_ns": 241385,
+      "self_ns": 181268
+    },
+    {
+      "function": "option_and_then",
+      "calls": 5,
+      "inclusive_ns": 150268,
+      "self_ns": 94792
+    },
+    {
+      "function": "option_filter",
+      "calls": 2,
+      "inclusive_ns": 42715,
+      "self_ns": 40705
+    },
+    {
+      "function": "option_is_some",
+      "calls": 11,
+      "inclusive_ns": 122332,
+      "self_ns": 122332
+    },
+    {
+      "function": "option_map",
+      "calls": 10,
+      "inclusive_ns": 234062,
+      "self_ns": 220202
+    },
+    {
+      "function": "option_or",
+      "calls": 18,
+      "inclusive_ns": 213729,
+      "self_ns": 213729
+    },
+    {
+      "function": "pair_map_first",
+      "calls": 1,
+      "inclusive_ns": 26499,
+      "self_ns": 24978
+    },
+    {
+      "function": "pair_map_second",
+      "calls": 2,
+      "inclusive_ns": 41287,
+      "self_ns": 38366
+    },
+    {
+      "function": "pair_swap",
+      "calls": 1,
+      "inclusive_ns": 11643,
+      "self_ns": 11643
+    },
+    {
+      "function": "safe_div",
+      "calls": 6,
+      "inclusive_ns": 6583,
+      "self_ns": 6583
+    },
+    {
+      "function": "safe_get_int",
+      "calls": 5,
+      "inclusive_ns": 15071,
+      "self_ns": 14139
+    },
+    {
+      "function": "string_len",
+      "calls": 1,
+      "inclusive_ns": 470,
+      "self_ns": 470
+    },
+    {
+      "function": "table_get",
+      "calls": 3,
+      "inclusive_ns": 280205,
+      "self_ns": 80267
+    },
+    {
+      "function": "u64::From<i64>::from",
+      "calls": 28,
+      "inclusive_ns": 1805,
+      "self_ns": 1805
+    }
+  ],
+  "edges": [
+    {
+      "caller": null,
+      "callee": "main",
+      "calls": 1,
+      "inclusive_ns": 2278821
+    },
+    {
+      "caller": "<closure>",
+      "callee": "id",
+      "calls": 3,
+      "inclusive_ns": 22593
+    },
+    {
+      "caller": "<closure>",
+      "callee": "option_map",
+      "calls": 1,
+      "inclusive_ns": 22658
+    },
+    {
+      "caller": "<closure>",
+      "callee": "safe_div",
+      "calls": 2,
+      "inclusive_ns": 2188
+    },
+    {
+      "caller": "<closure>",
+      "callee": "string_len",
+      "calls": 1,
+      "inclusive_ns": 470
+    },
+    {
+      "caller": "count_where",
+      "callee": "<closure>",
+      "calls": 8,
+      "inclusive_ns": 13689
+    },
+    {
+      "caller": "find_first",
+      "callee": "<closure>",
+      "calls": 21,
+      "inclusive_ns": 33004
+    },
+    {
+      "caller": "find_first",
+      "callee": "Array::len",
+      "calls": 23,
+      "inclusive_ns": 1261
+    },
+    {
+      "caller": "find_first",
+      "callee": "u64::From<i64>::from",
+      "calls": 25,
+      "inclusive_ns": 1326
+    },
+    {
+      "caller": "main",
+      "callee": "<closure>",
+      "calls": 3,
+      "inclusive_ns": 6283
+    },
+    {
+      "caller": "main",
+      "callee": "Array::len",
+      "calls": 1,
+      "inclusive_ns": 94
+    },
+    {
+      "caller": "main",
+      "callee": "assert",
+      "calls": 54,
+      "inclusive_ns": 2964
+    },
+    {
+      "caller": "main",
+      "callee": "count_where",
+      "calls": 1,
+      "inclusive_ns": 76180
+    },
+    {
+      "caller": "main",
+      "callee": "find_first",
+      "calls": 3,
+      "inclusive_ns": 173629
+    },
+    {
+      "caller": "main",
+      "callee": "id",
+      "calls": 3,
+      "inclusive_ns": 32170
+    },
+    {
+      "caller": "main",
+      "callee": "map_array",
+      "calls": 3,
+      "inclusive_ns": 241385
+    },
+    {
+      "caller": "main",
+      "callee": "option_and_then",
+      "calls": 5,
+      "inclusive_ns": 150268
+    },
+    {
+      "caller": "main",
+      "callee": "option_filter",
+      "calls": 2,
+      "inclusive_ns": 42715
+    },
+    {
+      "caller": "main",
+      "callee": "option_is_some",
+      "calls": 11,
+      "inclusive_ns": 122332
+    },
+    {
+      "caller": "main",
+      "callee": "option_map",
+      "calls": 6,
+      "inclusive_ns": 137102
+    },
+    {
+      "caller": "main",
+      "callee": "option_or",
+      "calls": 18,
+      "inclusive_ns": 213729
+    },
+    {
+      "caller": "main",
+      "callee": "pair_map_first",
+      "calls": 1,
+      "inclusive_ns": 26499
+    },
+    {
+      "caller": "main",
+      "callee": "pair_map_second",
+      "calls": 2,
+      "inclusive_ns": 41287
+    },
+    {
+      "caller": "main",
+      "callee": "pair_swap",
+      "calls": 1,
+      "inclusive_ns": 11643
+    },
+    {
+      "caller": "main",
+      "callee": "safe_div",
+      "calls": 4,
+      "inclusive_ns": 4395
+    },
+    {
+      "caller": "main",
+      "callee": "safe_get_int",
+      "calls": 5,
+      "inclusive_ns": 15071
+    },
+    {
+      "caller": "main",
+      "callee": "table_get",
+      "calls": 3,
+      "inclusive_ns": 280205
+    },
+    {
+      "caller": "map_array",
+      "callee": "<closure>",
+      "calls": 19,
+      "inclusive_ns": 55843
+    },
+    {
+      "caller": "map_array",
+      "callee": "List::as_slice",
+      "calls": 3,
+      "inclusive_ns": 516
+    },
+    {
+      "caller": "map_array",
+      "callee": "List::new",
+      "calls": 3,
+      "inclusive_ns": 855
+    },
+    {
+      "caller": "map_array",
+      "callee": "List::push",
+      "calls": 19,
+      "inclusive_ns": 2903
+    },
+    {
+      "caller": "option_and_then",
+      "callee": "<closure>",
+      "calls": 4,
+      "inclusive_ns": 55476
+    },
+    {
+      "caller": "option_filter",
+      "callee": "<closure>",
+      "calls": 2,
+      "inclusive_ns": 2010
+    },
+    {
+      "caller": "option_map",
+      "callee": "<closure>",
+      "calls": 8,
+      "inclusive_ns": 13860
+    },
+    {
+      "caller": "pair_map_first",
+      "callee": "<closure>",
+      "calls": 1,
+      "inclusive_ns": 1521
+    },
+    {
+      "caller": "pair_map_second",
+      "callee": "<closure>",
+      "calls": 2,
+      "inclusive_ns": 2921
+    },
+    {
+      "caller": "safe_get_int",
+      "callee": "Array::len",
+      "calls": 4,
+      "inclusive_ns": 453
+    },
+    {
+      "caller": "safe_get_int",
+      "callee": "u64::From<i64>::from",
+      "calls": 3,
+      "inclusive_ns": 479
+    },
+    {
+      "caller": "table_get",
+      "callee": "find_first",
+      "calls": 3,
+      "inclusive_ns": 125636
+    },
+    {
+      "caller": "table_get",
+      "callee": "option_map",
+      "calls": 3,
+      "inclusive_ns": 74302
+    }
+  ]
+}

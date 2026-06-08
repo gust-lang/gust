@@ -1,8 +1,8 @@
-use std::collections::HashMap;
 use crate::ast::{Span, TypeExpr};
-use crate::error::{TypeErrorCode, MetelError};
+use crate::error::{MetelError, TypeErrorCode};
 use crate::typeinference::{InferType, Substitution, TypeVar};
 use crate::types::Type;
+use std::collections::HashMap;
 
 fn type_expr_to_infer_in_context(
     te: &TypeExpr,
@@ -23,47 +23,58 @@ fn type_expr_to_infer_in_context(
                     }
                 }
             }
-            let arg_tys: Vec<_> = args.iter()
+            let arg_tys: Vec<_> = args
+                .iter()
                 .map(|a| type_expr_to_infer_in_context(a, generics, self_ty_name))
                 .collect();
             match (name.as_str(), arg_tys.len()) {
                 ("i64", 0) => InferType::int(),
                 ("f64", 0) => InferType::float(),
-                ("boolean",   0) => InferType::bool(),
-                ("Char",   0) => InferType::Concrete(Type::Char),
+                ("boolean", 0) => InferType::bool(),
+                ("Char", 0) => InferType::Concrete(Type::Char),
                 ("String", 0) => InferType::str(),
-                ("Never",  0) => InferType::never(),
-                ("i8",  0) => InferType::Concrete(Type::I8),
+                ("Never", 0) => InferType::never(),
+                ("i8", 0) => InferType::Concrete(Type::I8),
                 ("i16", 0) => InferType::Concrete(Type::I16),
                 ("i32", 0) => InferType::Concrete(Type::I32),
-                ("u8",  0) => InferType::Concrete(Type::U8),
+                ("u8", 0) => InferType::Concrete(Type::U8),
                 ("u16", 0) => InferType::Concrete(Type::U16),
                 ("u32", 0) => InferType::Concrete(Type::U32),
                 ("u64", 0) => InferType::Concrete(Type::U64),
                 ("f32", 0) => InferType::Concrete(Type::F32),
-                ("Array",  1) => InferType::Array(Box::new(arg_tys.into_iter().next().unwrap())),
-                _             => InferType::Named(name.clone(), arg_tys),
+                ("Array", 1) => InferType::Array(Box::new(arg_tys.into_iter().next().unwrap())),
+                _ => InferType::Named(name.clone(), arg_tys),
             }
         }
         TypeExpr::Unit => InferType::unit(),
         TypeExpr::Tuple(ts) => InferType::Tuple(
-            ts.iter().map(|t| type_expr_to_infer_in_context(t, generics, self_ty_name)).collect(),
+            ts.iter()
+                .map(|t| type_expr_to_infer_in_context(t, generics, self_ty_name))
+                .collect(),
         ),
-        TypeExpr::Array(t) => InferType::Array(
-            Box::new(type_expr_to_infer_in_context(t, generics, self_ty_name)),
-        ),
+        TypeExpr::Array(t) => InferType::Array(Box::new(type_expr_to_infer_in_context(
+            t,
+            generics,
+            self_ty_name,
+        ))),
         TypeExpr::SizedArray(t, n) => InferType::SizedArray(
             Box::new(type_expr_to_infer_in_context(t, generics, self_ty_name)),
             *n,
         ),
-        TypeExpr::Pointer(t) => InferType::Pointer(
-            Box::new(type_expr_to_infer_in_context(t, generics, self_ty_name)),
-        ),
-        TypeExpr::MutPointer(t) => InferType::MutPointer(
-            Box::new(type_expr_to_infer_in_context(t, generics, self_ty_name)),
-        ),
+        TypeExpr::Pointer(t) => InferType::Pointer(Box::new(type_expr_to_infer_in_context(
+            t,
+            generics,
+            self_ty_name,
+        ))),
+        TypeExpr::MutPointer(t) => InferType::MutPointer(Box::new(type_expr_to_infer_in_context(
+            t,
+            generics,
+            self_ty_name,
+        ))),
         TypeExpr::Fun(ps, ret) => InferType::Fun(
-            ps.iter().map(|p| type_expr_to_infer_in_context(p, generics, self_ty_name)).collect(),
+            ps.iter()
+                .map(|p| type_expr_to_infer_in_context(p, generics, self_ty_name))
+                .collect(),
             Box::new(
                 ret.as_deref()
                     .map(|r| type_expr_to_infer_in_context(r, generics, self_ty_name))
@@ -72,8 +83,9 @@ fn type_expr_to_infer_in_context(
         ),
         // ImplAspect is removed by the lowering pass before inference runs.
         // If it reaches here, treat as the bound type (best-effort fallback).
-        TypeExpr::ImplAspect { bound, .. } =>
-            type_expr_to_infer_in_context(bound, generics, self_ty_name),
+        TypeExpr::ImplAspect { bound, .. } => {
+            type_expr_to_infer_in_context(bound, generics, self_ty_name)
+        }
     }
 }
 
@@ -100,10 +112,7 @@ pub(super) fn type_expr_to_infer(te: &TypeExpr) -> InferType {
     type_expr_to_infer_in_context(te, None, None)
 }
 
-pub(super) fn type_expr_to_infer_with_self(
-    te: &TypeExpr,
-    self_ty_name: &str,
-) -> InferType {
+pub(super) fn type_expr_to_infer_with_self(te: &TypeExpr, self_ty_name: &str) -> InferType {
     type_expr_to_infer_in_context(te, None, Some(self_ty_name))
 }
 
@@ -112,8 +121,8 @@ pub(super) fn type_expr_to_infer_with_self(
 pub(super) fn infer_type_to_type(ty: &InferType, span: &Span) -> Result<Type, MetelError> {
     match ty {
         InferType::Concrete(t) => Ok(t.clone()),
-        InferType::Never       => Ok(Type::Never),
-        InferType::Var(_)      => Err(MetelError::type_error(
+        InferType::Never => Ok(Type::Never),
+        InferType::Var(_) => Err(MetelError::type_error(
             TypeErrorCode::T0002,
             "cannot infer type; add a type annotation",
             span,
@@ -127,7 +136,9 @@ pub(super) fn infer_type_to_type(ty: &InferType, span: &Span) -> Result<Type, Me
             Ok(Type::Tuple(t?))
         }
         InferType::Array(t) => Ok(Type::Array(Box::new(infer_type_to_type(t, span)?))),
-        InferType::SizedArray(t, n) => Ok(Type::SizedArray(Box::new(infer_type_to_type(t, span)?), *n)),
+        InferType::SizedArray(t, n) => {
+            Ok(Type::SizedArray(Box::new(infer_type_to_type(t, span)?), *n))
+        }
         InferType::Pointer(t) => Ok(Type::Pointer(Box::new(infer_type_to_type(t, span)?))),
         InferType::MutPointer(t) => Ok(Type::MutPointer(Box::new(infer_type_to_type(t, span)?))),
         InferType::Named(name, args) => {
@@ -148,17 +159,19 @@ pub(super) fn resolved_to_type(
 
 pub(super) fn type_to_infer(ty: &Type) -> InferType {
     match ty {
-        Type::Never          => InferType::Never,
-        Type::Array(t)       => InferType::Array(Box::new(type_to_infer(t))),
+        Type::Never => InferType::Never,
+        Type::Array(t) => InferType::Array(Box::new(type_to_infer(t))),
         Type::SizedArray(t, n) => InferType::SizedArray(Box::new(type_to_infer(t)), *n),
-        Type::Tuple(ts)      => InferType::Tuple(ts.iter().map(type_to_infer).collect()),
-        Type::Pointer(t)     => InferType::Pointer(Box::new(type_to_infer(t))),
-        Type::MutPointer(t)  => InferType::MutPointer(Box::new(type_to_infer(t))),
-        Type::Fun(ps, ret)   => InferType::Fun(
+        Type::Tuple(ts) => InferType::Tuple(ts.iter().map(type_to_infer).collect()),
+        Type::Pointer(t) => InferType::Pointer(Box::new(type_to_infer(t))),
+        Type::MutPointer(t) => InferType::MutPointer(Box::new(type_to_infer(t))),
+        Type::Fun(ps, ret) => InferType::Fun(
             ps.iter().map(type_to_infer).collect(),
             Box::new(type_to_infer(ret)),
         ),
-        Type::Named(n, args) => InferType::Named(n.clone(), args.iter().map(type_to_infer).collect()),
-        other                => InferType::Concrete(other.clone()),
+        Type::Named(n, args) => {
+            InferType::Named(n.clone(), args.iter().map(type_to_infer).collect())
+        }
+        other => InferType::Concrete(other.clone()),
     }
 }

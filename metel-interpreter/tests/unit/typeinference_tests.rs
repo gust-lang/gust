@@ -67,7 +67,7 @@ mod phase_1_type_variables {
         let mut set = HashSet::new();
         set.insert(TypeVar(0));
         set.insert(TypeVar(1));
-        set.insert(TypeVar(0));  // Duplicate
+        set.insert(TypeVar(0)); // Duplicate
 
         assert_eq!(set.len(), 2);
         assert!(set.contains(&TypeVar(0)));
@@ -216,7 +216,10 @@ mod phase_3_substitution {
     #[test]
     fn test_apply_unbound_var_unchanged() {
         let s = Substitution::new();
-        assert_eq!(s.apply(&InferType::var(TypeVar(5))), InferType::var(TypeVar(5)));
+        assert_eq!(
+            s.apply(&InferType::var(TypeVar(5))),
+            InferType::var(TypeVar(5))
+        );
     }
 
     #[test]
@@ -256,7 +259,10 @@ mod phase_3_substitution {
         s.bind(TypeVar(0), InferType::int());
         s.bind(TypeVar(1), InferType::bool());
         let ty = InferType::Tuple(vec![InferType::var(TypeVar(0)), InferType::var(TypeVar(1))]);
-        assert_eq!(s.apply(&ty), InferType::Tuple(vec![InferType::int(), InferType::bool()]));
+        assert_eq!(
+            s.apply(&ty),
+            InferType::Tuple(vec![InferType::int(), InferType::bool()])
+        );
     }
 
     #[test]
@@ -264,7 +270,10 @@ mod phase_3_substitution {
         let mut s = Substitution::new();
         s.bind(TypeVar(0), InferType::int());
         let ty = InferType::Named("List".to_string(), vec![InferType::var(TypeVar(0))]);
-        assert_eq!(s.apply(&ty), InferType::Named("List".to_string(), vec![InferType::int()]));
+        assert_eq!(
+            s.apply(&ty),
+            InferType::Named("List".to_string(), vec![InferType::int()])
+        );
     }
 
     #[test]
@@ -277,8 +286,14 @@ mod phase_3_substitution {
         s2.bind(TypeVar(1), InferType::int());
 
         let composed = s1.compose(&s2);
-        assert_eq!(composed.apply(&InferType::var(TypeVar(0))), InferType::int());
-        assert_eq!(composed.apply(&InferType::var(TypeVar(1))), InferType::int());
+        assert_eq!(
+            composed.apply(&InferType::var(TypeVar(0))),
+            InferType::int()
+        );
+        assert_eq!(
+            composed.apply(&InferType::var(TypeVar(1))),
+            InferType::int()
+        );
     }
 
     #[test]
@@ -292,7 +307,10 @@ mod phase_3_substitution {
         s2.bind(TypeVar(0), InferType::bool());
 
         let composed = s1.compose(&s2);
-        assert_eq!(composed.apply(&InferType::var(TypeVar(0))), InferType::int());
+        assert_eq!(
+            composed.apply(&InferType::var(TypeVar(0))),
+            InferType::int()
+        );
     }
 }
 
@@ -337,7 +355,10 @@ mod phase_4_unification {
     fn test_unify_var_with_itself() {
         let s = unify(&InferType::var(TypeVar(0)), &InferType::var(TypeVar(0))).unwrap();
         // Empty substitution — no binding needed
-        assert_eq!(s.apply(&InferType::var(TypeVar(0))), InferType::var(TypeVar(0)));
+        assert_eq!(
+            s.apply(&InferType::var(TypeVar(0))),
+            InferType::var(TypeVar(0))
+        );
     }
 
     #[test]
@@ -427,11 +448,7 @@ mod phase_4_unification {
         assert!(unify(&a, &b).is_err());
 
         // Tuple vs Concrete
-        assert!(unify(
-            &InferType::Tuple(vec![InferType::int()]),
-            &InferType::int()
-        )
-        .is_err());
+        assert!(unify(&InferType::Tuple(vec![InferType::int()]), &InferType::int()).is_err());
     }
 
     #[test]
@@ -469,20 +486,26 @@ mod phase_4_unification {
 
 #[cfg(test)]
 mod phase_5_constraints {
-    use std::collections::HashSet;
-    use metel::typeinference::{solve_constraints, Constraint, InferType, TypeVar};
     use metel::ast::Span;
+    use metel::typeinference::{solve_constraints, Constraint, InferType, TypeVar};
+    use std::collections::HashSet;
 
     fn span() -> Span {
         Span::new(0, 1, "test")
     }
 
-    fn no_lit_vars() -> HashSet<TypeVar> { HashSet::new() }
+    fn no_lit_vars() -> HashSet<TypeVar> {
+        HashSet::new()
+    }
 
     #[test]
     fn test_single_constraint_var_concrete() {
         // ?t0 = i64  =>  { ?t0 → i64 }
-        let cs = vec![Constraint::new(InferType::var(TypeVar(0)), InferType::int(), span())];
+        let cs = vec![Constraint::new(
+            InferType::var(TypeVar(0)),
+            InferType::int(),
+            span(),
+        )];
         let s = solve_constraints(cs, &no_lit_vars(), &no_lit_vars()).unwrap();
         assert_eq!(s.apply(&InferType::var(TypeVar(0))), InferType::int());
     }
@@ -503,7 +526,11 @@ mod phase_5_constraints {
     fn test_transitive_constraints() {
         // ?t0 = ?t1, ?t1 = i64  =>  ?t0 resolves to i64
         let cs = vec![
-            Constraint::new(InferType::var(TypeVar(0)), InferType::var(TypeVar(1)), span()),
+            Constraint::new(
+                InferType::var(TypeVar(0)),
+                InferType::var(TypeVar(1)),
+                span(),
+            ),
             Constraint::new(InferType::var(TypeVar(1)), InferType::int(), span()),
         ];
         let s = solve_constraints(cs, &no_lit_vars(), &no_lit_vars()).unwrap();
@@ -524,7 +551,11 @@ mod phase_5_constraints {
     #[test]
     fn test_error_carries_span() {
         let bad_span = Span::new(10, 20, "myfile.mtl");
-        let cs = vec![Constraint::new(InferType::int(), InferType::bool(), bad_span)];
+        let cs = vec![Constraint::new(
+            InferType::int(),
+            InferType::bool(),
+            bad_span,
+        )];
         let err = solve_constraints(cs, &no_lit_vars(), &no_lit_vars()).unwrap_err();
         let msg = format!("{}", err);
         assert!(msg.contains("myfile.mtl"));
@@ -534,14 +565,21 @@ mod phase_5_constraints {
     fn test_empty_constraints() {
         let s = solve_constraints(vec![], &no_lit_vars(), &no_lit_vars()).unwrap();
         // Empty substitution — variables unchanged
-        assert_eq!(s.apply(&InferType::var(TypeVar(0))), InferType::var(TypeVar(0)));
+        assert_eq!(
+            s.apply(&InferType::var(TypeVar(0))),
+            InferType::var(TypeVar(0))
+        );
     }
 
     #[test]
     fn test_constraint_with_function_type() {
         // ?t0 = (i64) -> boolean
         let fun_ty = InferType::Fun(vec![InferType::int()], Box::new(InferType::bool()));
-        let cs = vec![Constraint::new(InferType::var(TypeVar(0)), fun_ty.clone(), span())];
+        let cs = vec![Constraint::new(
+            InferType::var(TypeVar(0)),
+            fun_ty.clone(),
+            span(),
+        )];
         let s = solve_constraints(cs, &no_lit_vars(), &no_lit_vars()).unwrap();
         assert_eq!(s.apply(&InferType::var(TypeVar(0))), fun_ty);
     }
@@ -552,8 +590,14 @@ mod phase_5_constraints {
         let cs = vec![
             Constraint::new(InferType::var(TypeVar(0)), InferType::int(), span()),
             Constraint::new(
-                InferType::Fun(vec![InferType::var(TypeVar(0))], Box::new(InferType::bool())),
-                InferType::Fun(vec![InferType::var(TypeVar(1))], Box::new(InferType::bool())),
+                InferType::Fun(
+                    vec![InferType::var(TypeVar(0))],
+                    Box::new(InferType::bool()),
+                ),
+                InferType::Fun(
+                    vec![InferType::var(TypeVar(1))],
+                    Box::new(InferType::bool()),
+                ),
                 span(),
             ),
         ];
@@ -564,10 +608,10 @@ mod phase_5_constraints {
 
 #[cfg(test)]
 mod phase_6_type_schemes {
-    use std::collections::HashSet;
     use metel::typeinference::{
         free_vars, generalize, instantiate, InferType, TypeScheme, TypeVar, TypeVarGenerator,
     };
+    use std::collections::HashSet;
 
     #[test]
     fn test_free_vars_concrete() {
@@ -655,7 +699,9 @@ mod phase_6_type_schemes {
         };
         let mut var_gen = TypeVarGenerator::new();
         // burn 0-4 so we can assert the exact fresh var
-        for _ in 0..5 { var_gen.fresh(); }
+        for _ in 0..5 {
+            var_gen.fresh();
+        }
 
         let result = instantiate(&scheme, &mut var_gen);
         let expected = InferType::Fun(
@@ -795,11 +841,14 @@ mod phase_7_infer_context {
         let mut ctx = InferContext::default();
         let v = ctx.fresh_var(); // TypeVar(0)
         ctx.bind_mono("f", InferType::int(), false);
-        ctx.bind_poly("f", TypeScheme {
-            quantified_vars: vec![TypeVar(0)],
-            param_names: vec![],
-            ty: v,
-        });
+        ctx.bind_poly(
+            "f",
+            TypeScheme {
+                quantified_vars: vec![TypeVar(0)],
+                param_names: vec![],
+                ty: v,
+            },
+        );
         // Poly env wins — result is a fresh Var, not i64
         let result = ctx.lookup("f").unwrap();
         assert!(matches!(result, InferType::Var(_)));
@@ -829,7 +878,7 @@ mod phase_7_infer_context {
         // Simulates: let id = (x) { x }; id(42)
         // Step 1: infer (x) { x } — give x a fresh var ?t0, body is also ?t0
         let mut ctx = InferContext::default();
-        let x_ty = ctx.fresh_var();           // ?t0
+        let x_ty = ctx.fresh_var(); // ?t0
         ctx.bind_mono("x", x_ty.clone(), false);
         let body_ty = ctx.lookup("x").unwrap(); // ?t0
 
@@ -841,8 +890,8 @@ mod phase_7_infer_context {
         ctx.bind_poly("id", scheme);
 
         // Step 3: call id(42) — instantiate id, unify with (i64) -> ?ret
-        let id_ty = ctx.lookup("id").unwrap();  // (?t1) -> ?t1
-        let ret_ty = ctx.fresh_var();           // ?t2
+        let id_ty = ctx.lookup("id").unwrap(); // (?t1) -> ?t1
+        let ret_ty = ctx.fresh_var(); // ?t2
         let call_ty = InferType::Fun(vec![InferType::int()], Box::new(ret_ty.clone()));
         ctx.add_constraint(id_ty, call_ty, span());
 
@@ -967,17 +1016,20 @@ mod phase_7_infer_context {
 
 #[cfg(test)]
 mod phase_8_known_limitations {
-    use std::collections::HashSet;
     use metel::ast::Span;
     use metel::typeinference::{
-        instantiate, solve_constraints, Constraint, InferType, TypeScheme, TypeVar, TypeVarGenerator,
+        instantiate, solve_constraints, Constraint, InferType, TypeScheme, TypeVar,
+        TypeVarGenerator,
     };
+    use std::collections::HashSet;
 
     fn span() -> Span {
         Span::new(0, 1, "test")
     }
 
-    fn no_lit_vars() -> HashSet<TypeVar> { HashSet::new() }
+    fn no_lit_vars() -> HashSet<TypeVar> {
+        HashSet::new()
+    }
 
     /// Rank-1 limitation: a function parameter is a monotype.
     ///
@@ -1002,7 +1054,10 @@ mod phase_8_known_limitations {
             ),
             Constraint::new(
                 InferType::var(TypeVar(0)),
-                InferType::Fun(vec![InferType::bool()], Box::new(InferType::var(TypeVar(2)))),
+                InferType::Fun(
+                    vec![InferType::bool()],
+                    Box::new(InferType::var(TypeVar(2))),
+                ),
                 span(),
             ),
         ];
@@ -1025,13 +1080,22 @@ mod phase_8_known_limitations {
         // identity(true) emits: Fun([?t0], ?t0) = Fun([boolean], ?t2) → i64 ≠ boolean → error
         let cs = vec![
             Constraint::new(
-                InferType::Fun(vec![InferType::var(TypeVar(0))], Box::new(InferType::var(TypeVar(0)))),
+                InferType::Fun(
+                    vec![InferType::var(TypeVar(0))],
+                    Box::new(InferType::var(TypeVar(0))),
+                ),
                 InferType::Fun(vec![InferType::int()], Box::new(InferType::var(TypeVar(1)))),
                 span(),
             ),
             Constraint::new(
-                InferType::Fun(vec![InferType::var(TypeVar(0))], Box::new(InferType::var(TypeVar(0)))),
-                InferType::Fun(vec![InferType::bool()], Box::new(InferType::var(TypeVar(2)))),
+                InferType::Fun(
+                    vec![InferType::var(TypeVar(0))],
+                    Box::new(InferType::var(TypeVar(0))),
+                ),
+                InferType::Fun(
+                    vec![InferType::bool()],
+                    Box::new(InferType::var(TypeVar(2))),
+                ),
                 span(),
             ),
         ];
@@ -1060,14 +1124,25 @@ mod phase_8_known_limitations {
 
         let inst1 = instantiate(&scheme, &mut var_gen); // (?t1) -> ?t1
         let inst2 = instantiate(&scheme, &mut var_gen); // (?t2) -> ?t2
-        let ret1 = InferType::Var(var_gen.fresh());     // ?t3
-        let ret2 = InferType::Var(var_gen.fresh());     // ?t4
+        let ret1 = InferType::Var(var_gen.fresh()); // ?t3
+        let ret2 = InferType::Var(var_gen.fresh()); // ?t4
 
         let cs = vec![
-            Constraint::new(inst1, InferType::Fun(vec![InferType::int()],  Box::new(ret1)), span()),
-            Constraint::new(inst2, InferType::Fun(vec![InferType::bool()], Box::new(ret2)), span()),
+            Constraint::new(
+                inst1,
+                InferType::Fun(vec![InferType::int()], Box::new(ret1)),
+                span(),
+            ),
+            Constraint::new(
+                inst2,
+                InferType::Fun(vec![InferType::bool()], Box::new(ret2)),
+                span(),
+            ),
         ];
-        assert!(solve_constraints(cs, &no_lit_vars(), &no_lit_vars()).is_ok(), "generalized scheme can be instantiated independently at i64 and boolean");
+        assert!(
+            solve_constraints(cs, &no_lit_vars(), &no_lit_vars()).is_ok(),
+            "generalized scheme can be instantiated independently at i64 and boolean"
+        );
     }
 
     /// Eager partial solve limitation: field access requires the receiver type
