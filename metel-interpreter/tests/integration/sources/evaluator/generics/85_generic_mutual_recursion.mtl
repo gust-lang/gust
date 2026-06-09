@@ -1,0 +1,21 @@
+fun ping<T>(n: i64, value: T) -> T {
+    if (n == 0) {
+        value
+    } else {
+        pong(n - 1, value)
+    }
+}
+
+fun pong<U>(n: i64, value: U) -> U {
+    if (n == 0) {
+        value
+    } else {
+        ping(n - 1, value)
+    }
+}
+
+fun main() {
+    assert(ping(4, 42) == 42);
+    assert(pong(3, "metel") == "metel");
+    assert(ping(5, true) == true);
+}

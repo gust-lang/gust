@@ -1,0 +1,17 @@
+// Positive: generic forward references and mutual recursion both type-check.
+
+fun ping<T>(n: i64, value: T) -> T {
+    if (n == 0) { value }
+    else { pong(n - 1, value) }
+}
+
+fun pong<U>(n: i64, value: U) -> U {
+    if (n == 0) { value }
+    else { ping(n - 1, value) }
+}
+
+fun use_generics() -> i64 {
+    let a: i64 = ping(4, 42);
+    let b: boolean = pong(3, true);
+    if (b) { a } else { 0 }
+}

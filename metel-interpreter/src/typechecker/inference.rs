@@ -35,9 +35,97 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                 // Also bind in poly_env so user declarations shadow any imported binding
                 // (poly_env lookup takes precedence over mono_env regardless of scope level).
                 ctx.bind_poly(&fun.name, TypeScheme::mono(fresh));
+            } else {
+                let generic_map = fun_generic_map(fun, ctx);
+                let type_var_bounds = collect_fun_type_var_bounds(fun, &generic_map);
+                if !type_var_bounds.is_empty() {
+                    ctx.register_fun_bounds(fun.name.clone(), type_var_bounds.clone());
+                }
+
+                let te_to_infer = |te: &TypeExpr| -> InferType {
+                    type_expr_to_infer_with_generics(te, &generic_map)
+                };
+
+                let param_types: Vec<InferType> = fun
+                    .params
+                    .iter()
+                    .map(|p| {
+                        if let Some(ann) = &p.type_ann {
+                            te_to_infer(ann)
+                        } else {
+                            ctx.fresh_var()
+                        }
+                    })
+                    .collect();
+
+                let ret_ty = if let Some(ann) = &fun.return_type {
+                    te_to_infer(ann)
+                } else {
+                    ctx.fresh_var()
+                };
+
+                let env_fvs = ctx.env_free_vars();
+                let provisional_fun_ty = InferType::Fun(param_types, Box::new(ret_ty));
+                let provisional_scheme = generalize(provisional_fun_ty, &env_fvs);
+                ctx.bind_poly(&fun.name, provisional_scheme);
             }
         }
     }
+}
+
+fn fun_generic_map(fun: &FunDecl, ctx: &mut InferContext) -> HashMap<String, TypeVar> {
+    fun.generics
+        .iter()
+        .map(|g| (g.name.clone(), ctx.fresh_type_var_raw()))
+        .collect()
+}
+
+fn collect_fun_type_var_bounds(
+    fun: &FunDecl,
+    generic_map: &HashMap<String, TypeVar>,
+) -> HashMap<TypeVar, Vec<String>> {
+    let mut map: HashMap<TypeVar, Vec<String>> = HashMap::new();
+    for gp in &fun.generics {
+        if let Some(&tv) = generic_map.get(&gp.name) {
+            let names: Vec<String> = gp
+                .bounds
+                .iter()
+                .filter_map(|b| {
+                    if let TypeExpr::Named(n, _) = b {
+                        Some(n.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            if !names.is_empty() {
+                map.entry(tv).or_default().extend(names);
+            }
+        }
+    }
+    if let Some(wc) = &fun.where_clause {
+        for (param_name, bounds) in &wc.constraints {
+            if let Some(&tv) = generic_map.get(param_name.as_str()) {
+                let names: Vec<String> = bounds
+                    .iter()
+                    .filter_map(|b| {
+                        if let TypeExpr::Named(n, _) = b {
+                            Some(n.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                for name in names {
+                    let entry = map.entry(tv).or_default();
+                    if !entry.contains(&name) {
+                        entry.push(name);
+                    }
+                }
+            }
+        }
+    }
+    map
 }
 
 pub(super) fn infer_program(
@@ -148,57 +236,10 @@ fn infer_fun_decl(
     fun_generalizations: &mut Vec<FunGeneralization>,
 ) -> Result<(), MetelError> {
     // For generic functions, create fresh type variables for each parameter name.
-    let generic_map: HashMap<String, TypeVar> = fun
-        .generics
-        .iter()
-        .map(|g| (g.name.clone(), ctx.fresh_type_var_raw()))
-        .collect();
+    let generic_map = fun_generic_map(fun, ctx);
 
     // Collect merged bounds (inline + where clause) per TypeVar, register for call-site checking.
-    let type_var_bounds: HashMap<TypeVar, Vec<String>> = {
-        let mut map: HashMap<TypeVar, Vec<String>> = HashMap::new();
-        for gp in &fun.generics {
-            if let Some(&tv) = generic_map.get(&gp.name) {
-                let names: Vec<String> = gp
-                    .bounds
-                    .iter()
-                    .filter_map(|b| {
-                        if let TypeExpr::Named(n, _) = b {
-                            Some(n.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                if !names.is_empty() {
-                    map.entry(tv).or_default().extend(names);
-                }
-            }
-        }
-        if let Some(wc) = &fun.where_clause {
-            for (param_name, bounds) in &wc.constraints {
-                if let Some(&tv) = generic_map.get(param_name.as_str()) {
-                    let names: Vec<String> = bounds
-                        .iter()
-                        .filter_map(|b| {
-                            if let TypeExpr::Named(n, _) = b {
-                                Some(n.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                    for name in names {
-                        let entry = map.entry(tv).or_default();
-                        if !entry.contains(&name) {
-                            entry.push(name);
-                        }
-                    }
-                }
-            }
-        }
-        map
-    };
+    let type_var_bounds = collect_fun_type_var_bounds(fun, &generic_map);
     if !type_var_bounds.is_empty() {
         ctx.register_fun_bounds(fun.name.clone(), type_var_bounds.clone());
     }

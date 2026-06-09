@@ -1,0 +1,18 @@
+// Positive: generic self-recursion is visible inside the function body.
+
+fun countdown<T>(n: i64, value: T) -> T {
+    if (n == 0) { value }
+    else { countdown(n - 1, value) }
+}
+
+fun bounce<T>(n: i64, _value: T) -> i64 {
+    if (n == 0) { 0 }
+    else { bounce(n - 1, 0) }
+}
+
+fun use_generics() -> i64 {
+    let n: i64 = countdown(3, 42);
+    let s: boolean = countdown(2, true);
+    let z: i64 = bounce(4, "metel");
+    n + z
+}
