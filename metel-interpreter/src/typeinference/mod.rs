@@ -241,6 +241,17 @@ impl Substitution {
         }
         result
     }
+
+    /// Update this substitution in place so it becomes equivalent to
+    /// `other ∘ self`, avoiding the temporary map allocation from `compose`.
+    pub fn compose_in_place(&mut self, other: &Substitution) {
+        for ty in self.bindings.values_mut() {
+            *ty = other.apply(ty);
+        }
+        for (var, ty) in &other.bindings {
+            self.bindings.entry(*var).or_insert_with(|| ty.clone());
+        }
+    }
 }
 
 // ── Phase 4: Unification ──────────────────────────────────────────────────────
@@ -310,10 +321,11 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             let mut subst = Substitution::new();
             for (p1, p2) in params1.iter().zip(params2.iter()) {
                 let s = unify(&subst.apply(p1), &subst.apply(p2))?;
-                subst = subst.compose(&s);
+                subst.compose_in_place(&s);
             }
             let s = unify(&subst.apply(ret1), &subst.apply(ret2))?;
-            Ok(subst.compose(&s))
+            subst.compose_in_place(&s);
+            Ok(subst)
         }
         (InferType::Tuple(ts1), InferType::Tuple(ts2)) => {
             if ts1.len() != ts2.len() {
@@ -325,7 +337,7 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             let mut subst = Substitution::new();
             for (t1, t2) in ts1.iter().zip(ts2.iter()) {
                 let s = unify(&subst.apply(t1), &subst.apply(t2))?;
-                subst = subst.compose(&s);
+                subst.compose_in_place(&s);
             }
             Ok(subst)
         }
@@ -356,7 +368,7 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             let mut subst = Substitution::new();
             for (a1, a2) in args1.iter().zip(args2.iter()) {
                 let s = unify(&subst.apply(a1), &subst.apply(a2))?;
-                subst = subst.compose(&s);
+                subst.compose_in_place(&s);
             }
             Ok(subst)
         }
@@ -431,7 +443,7 @@ fn apply_constraint(
             &constraint.span,
         )
     })?;
-    *subst = subst.compose(&solved);
+    subst.compose_in_place(&solved);
     validate_literal_bindings(
         subst,
         integer_literal_vars,
@@ -478,23 +490,34 @@ fn validate_literal_bindings(
 // ── Phase 6: Type Schemes ─────────────────────────────────────────────────────
 
 /// Collect all type variables that appear free in `ty`.
-pub fn free_vars(ty: &InferType) -> HashSet<TypeVar> {
+fn collect_free_vars(ty: &InferType, vars: &mut HashSet<TypeVar>) {
     match ty {
-        InferType::Concrete(_) | InferType::Never => HashSet::new(),
-        InferType::Var(v) => [*v].into(),
-        InferType::Fun(params, ret) => {
-            let mut vars = free_vars(ret);
-            for p in params {
-                vars.extend(free_vars(p));
-            }
-            vars
+        InferType::Concrete(_) | InferType::Never => {}
+        InferType::Var(v) => {
+            vars.insert(*v);
         }
-        InferType::Tuple(ts) => ts.iter().flat_map(free_vars).collect(),
-        InferType::Array(t) => free_vars(t),
-        InferType::SizedArray(t, _) => free_vars(t),
-        InferType::Pointer(t) | InferType::MutPointer(t) => free_vars(t),
-        InferType::Named(_, args) => args.iter().flat_map(free_vars).collect(),
+        InferType::Fun(params, ret) => {
+            for p in params {
+                collect_free_vars(p, vars);
+            }
+            collect_free_vars(ret, vars);
+        }
+        InferType::Tuple(ts) | InferType::Named(_, ts) => {
+            for t in ts {
+                collect_free_vars(t, vars);
+            }
+        }
+        InferType::Array(t)
+        | InferType::SizedArray(t, _)
+        | InferType::Pointer(t)
+        | InferType::MutPointer(t) => collect_free_vars(t, vars),
     }
+}
+
+pub fn free_vars(ty: &InferType) -> HashSet<TypeVar> {
+    let mut vars = HashSet::new();
+    collect_free_vars(ty, &mut vars);
+    vars
 }
 
 /// A universally quantified type: `∀ quantified_vars. ty`.
@@ -588,7 +611,7 @@ pub fn instantiate_with_renaming(
     scheme: &TypeScheme,
     gen: &mut TypeVarGenerator,
 ) -> (InferType, HashMap<TypeVar, TypeVar>) {
-    let mut renaming = HashMap::new();
+    let mut renaming = HashMap::with_capacity(scheme.quantified_vars.len());
     let mut subst = Substitution::new();
     for &var in &scheme.quantified_vars {
         let fresh = gen.fresh();
@@ -1399,11 +1422,13 @@ impl InferContext {
     /// Collect all type variables that appear free across all current mono scopes.
     /// Pass this to `generalize()` to avoid capturing variables still being solved.
     pub fn env_free_vars(&self) -> HashSet<TypeVar> {
-        self.mono_env
-            .iter()
-            .flat_map(|scope| scope.values())
-            .flat_map(|(ty, _)| free_vars(ty))
-            .collect()
+        let mut vars = HashSet::new();
+        for scope in &self.mono_env {
+            for (ty, _) in scope.values() {
+                collect_free_vars(ty, &mut vars);
+            }
+        }
+        vars
     }
 
     /// Record that `lhs` and `rhs` must unify, tagged with its source location.

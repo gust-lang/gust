@@ -3,92 +3,92 @@
     {
       "function": "Char::From<u32>::from",
       "calls": 16,
-      "inclusive_ns": 759,
-      "self_ns": 759
+      "inclusive_ns": 974,
+      "self_ns": 974
     },
     {
       "function": "Char::to_string",
       "calls": 2,
-      "inclusive_ns": 170,
-      "self_ns": 170
+      "inclusive_ns": 193,
+      "self_ns": 193
     },
     {
       "function": "List::as_slice",
       "calls": 5,
-      "inclusive_ns": 572,
-      "self_ns": 572
+      "inclusive_ns": 669,
+      "self_ns": 669
     },
     {
       "function": "List::get",
       "calls": 2,
-      "inclusive_ns": 742,
-      "self_ns": 742
+      "inclusive_ns": 807,
+      "self_ns": 807
     },
     {
       "function": "List::len",
       "calls": 2,
-      "inclusive_ns": 253,
-      "self_ns": 253
+      "inclusive_ns": 266,
+      "self_ns": 266
     },
     {
       "function": "List::new",
       "calls": 4,
-      "inclusive_ns": 732,
-      "self_ns": 732
+      "inclusive_ns": 725,
+      "self_ns": 725
     },
     {
       "function": "List::push",
       "calls": 20,
-      "inclusive_ns": 3072,
-      "self_ns": 3072
+      "inclusive_ns": 3382,
+      "self_ns": 3382
     },
     {
       "function": "assert",
       "calls": 28,
-      "inclusive_ns": 1208,
-      "self_ns": 1208
+      "inclusive_ns": 1239,
+      "self_ns": 1239
     },
     {
       "function": "count_uppercase",
       "calls": 3,
-      "inclusive_ns": 54096,
-      "self_ns": 37646
+      "inclusive_ns": 60727,
+      "self_ns": 42121
     },
     {
       "function": "is_lowercase",
       "calls": 9,
-      "inclusive_ns": 10498,
-      "self_ns": 10169
+      "inclusive_ns": 11705,
+      "self_ns": 11330
     },
     {
       "function": "is_uppercase",
       "calls": 24,
-      "inclusive_ns": 26547,
-      "self_ns": 25645
+      "inclusive_ns": 29414,
+      "self_ns": 28402
     },
     {
       "function": "main",
       "calls": 1,
-      "inclusive_ns": 250363,
-      "self_ns": 121085
+      "inclusive_ns": 295934,
+      "self_ns": 150597
     },
     {
       "function": "to_lower",
       "calls": 7,
-      "inclusive_ns": 31042,
-      "self_ns": 22684
+      "inclusive_ns": 35318,
+      "self_ns": 26150
     },
     {
       "function": "to_upper",
       "calls": 7,
-      "inclusive_ns": 30753,
-      "self_ns": 23042
+      "inclusive_ns": 35436,
+      "self_ns": 26343
     },
     {
       "function": "u32::From<Char>::from",
       "calls": 60,
-      "inclusive_ns": 2584,
-      "self_ns": 2584
+      "inclusive_ns": 2736,
+      "self_ns": 2736
     }
   ],
   "edges": [
@@ -96,151 +96,151 @@
       "caller": null,
       "callee": "main",
       "calls": 1,
-      "inclusive_ns": 250363
+      "inclusive_ns": 295934
     },
     {
       "caller": "count_uppercase",
       "callee": "List::as_slice",
       "calls": 3,
-      "inclusive_ns": 356
+      "inclusive_ns": 394
     },
     {
       "caller": "count_uppercase",
       "callee": "is_uppercase",
       "calls": 15,
-      "inclusive_ns": 16094
+      "inclusive_ns": 18212
     },
     {
       "caller": "is_lowercase",
       "callee": "u32::From<Char>::from",
       "calls": 9,
-      "inclusive_ns": 329
+      "inclusive_ns": 375
     },
     {
       "caller": "is_uppercase",
       "callee": "u32::From<Char>::from",
       "calls": 24,
-      "inclusive_ns": 902
+      "inclusive_ns": 1012
     },
     {
       "caller": "main",
       "callee": "Char::From<u32>::from",
       "calls": 7,
-      "inclusive_ns": 318
+      "inclusive_ns": 469
     },
     {
       "caller": "main",
       "callee": "Char::to_string",
       "calls": 2,
-      "inclusive_ns": 170
+      "inclusive_ns": 193
     },
     {
       "caller": "main",
       "callee": "List::as_slice",
       "calls": 2,
-      "inclusive_ns": 216
+      "inclusive_ns": 275
     },
     {
       "caller": "main",
       "callee": "List::get",
       "calls": 2,
-      "inclusive_ns": 742
+      "inclusive_ns": 807
     },
     {
       "caller": "main",
       "callee": "List::len",
       "calls": 2,
-      "inclusive_ns": 253
+      "inclusive_ns": 266
     },
     {
       "caller": "main",
       "callee": "List::new",
       "calls": 4,
-      "inclusive_ns": 732
+      "inclusive_ns": 725
     },
     {
       "caller": "main",
       "callee": "List::push",
       "calls": 20,
-      "inclusive_ns": 3072
+      "inclusive_ns": 3382
     },
     {
       "caller": "main",
       "callee": "assert",
       "calls": 28,
-      "inclusive_ns": 1208
+      "inclusive_ns": 1239
     },
     {
       "caller": "main",
       "callee": "count_uppercase",
       "calls": 3,
-      "inclusive_ns": 54096
+      "inclusive_ns": 60727
     },
     {
       "caller": "main",
       "callee": "is_lowercase",
       "calls": 2,
-      "inclusive_ns": 3221
+      "inclusive_ns": 3126
     },
     {
       "caller": "main",
       "callee": "is_uppercase",
       "calls": 2,
-      "inclusive_ns": 2686
+      "inclusive_ns": 2685
     },
     {
       "caller": "main",
       "callee": "to_lower",
       "calls": 7,
-      "inclusive_ns": 31042
+      "inclusive_ns": 35318
     },
     {
       "caller": "main",
       "callee": "to_upper",
       "calls": 7,
-      "inclusive_ns": 30753
+      "inclusive_ns": 35436
     },
     {
       "caller": "main",
       "callee": "u32::From<Char>::from",
       "calls": 13,
-      "inclusive_ns": 769
+      "inclusive_ns": 689
     },
     {
       "caller": "to_lower",
       "callee": "Char::From<u32>::from",
       "calls": 6,
-      "inclusive_ns": 281
+      "inclusive_ns": 321
     },
     {
       "caller": "to_lower",
       "callee": "is_uppercase",
       "calls": 7,
-      "inclusive_ns": 7767
+      "inclusive_ns": 8517
     },
     {
       "caller": "to_lower",
       "callee": "u32::From<Char>::from",
       "calls": 7,
-      "inclusive_ns": 310
+      "inclusive_ns": 330
     },
     {
       "caller": "to_upper",
       "callee": "Char::From<u32>::from",
       "calls": 3,
-      "inclusive_ns": 160
+      "inclusive_ns": 184
     },
     {
       "caller": "to_upper",
       "callee": "is_lowercase",
       "calls": 7,
-      "inclusive_ns": 7277
+      "inclusive_ns": 8579
     },
     {
       "caller": "to_upper",
       "callee": "u32::From<Char>::from",
       "calls": 7,
-      "inclusive_ns": 274
+      "inclusive_ns": 330
     }
   ]
 }

@@ -1,11 +1,11 @@
 digraph metel_callgraph {
   rankdir=LR;
   "assert" [label="assert\ncalls=4\ninclusive=0.000ms\nself=0.000ms"];
-  "classify" [label="classify\ncalls=1\ninclusive=0.001ms\nself=0.001ms"];
+  "classify" [label="classify\ncalls=1\ninclusive=0.002ms\nself=0.002ms"];
   "distance" [label="distance\ncalls=1\ninclusive=0.002ms\nself=0.002ms"];
-  "main" [label="main\ncalls=1\ninclusive=0.018ms\nself=0.014ms"];
-  "<entry>" -> "main" [label="calls=1\ninclusive=0.018ms"];
+  "main" [label="main\ncalls=1\ninclusive=0.022ms\nself=0.018ms"];
+  "<entry>" -> "main" [label="calls=1\ninclusive=0.022ms"];
   "main" -> "assert" [label="calls=4\ninclusive=0.000ms"];
-  "main" -> "classify" [label="calls=1\ninclusive=0.001ms"];
+  "main" -> "classify" [label="calls=1\ninclusive=0.002ms"];
   "main" -> "distance" [label="calls=1\ninclusive=0.002ms"];
 }

@@ -3,26 +3,26 @@
     {
       "function": "assert",
       "calls": 4,
-      "inclusive_ns": 253,
-      "self_ns": 253
+      "inclusive_ns": 276,
+      "self_ns": 276
     },
     {
       "function": "classify",
       "calls": 1,
-      "inclusive_ns": 1183,
-      "self_ns": 1183
+      "inclusive_ns": 2190,
+      "self_ns": 2190
     },
     {
       "function": "distance",
       "calls": 1,
-      "inclusive_ns": 2169,
-      "self_ns": 2169
+      "inclusive_ns": 2108,
+      "self_ns": 2108
     },
     {
       "function": "main",
       "calls": 1,
-      "inclusive_ns": 17785,
-      "self_ns": 14180
+      "inclusive_ns": 22440,
+      "self_ns": 17866
     }
   ],
   "edges": [
@@ -30,25 +30,25 @@
       "caller": null,
       "callee": "main",
       "calls": 1,
-      "inclusive_ns": 17785
+      "inclusive_ns": 22440
     },
     {
       "caller": "main",
       "callee": "assert",
       "calls": 4,
-      "inclusive_ns": 253
+      "inclusive_ns": 276
     },
     {
       "caller": "main",
       "callee": "classify",
       "calls": 1,
-      "inclusive_ns": 1183
+      "inclusive_ns": 2190
     },
     {
       "caller": "main",
       "callee": "distance",
       "calls": 1,
-      "inclusive_ns": 2169
+      "inclusive_ns": 2108
     }
   ]
 }

@@ -3,110 +3,110 @@
     {
       "function": "Array::len",
       "calls": 6,
-      "inclusive_ns": 534,
-      "self_ns": 534
+      "inclusive_ns": 340,
+      "self_ns": 340
     },
     {
       "function": "String::to_string",
       "calls": 3,
-      "inclusive_ns": 452,
-      "self_ns": 452
+      "inclusive_ns": 338,
+      "self_ns": 338
     },
     {
       "function": "assert",
       "calls": 33,
-      "inclusive_ns": 1483,
-      "self_ns": 1483
+      "inclusive_ns": 1596,
+      "self_ns": 1596
     },
     {
       "function": "boolean::to_string",
       "calls": 2,
-      "inclusive_ns": 271,
-      "self_ns": 271
+      "inclusive_ns": 183,
+      "self_ns": 183
     },
     {
       "function": "f64::to_string",
       "calls": 10,
-      "inclusive_ns": 3211,
-      "self_ns": 3211
+      "inclusive_ns": 2475,
+      "self_ns": 2475
     },
     {
       "function": "format",
       "calls": 7,
-      "inclusive_ns": 21492,
-      "self_ns": 18648
+      "inclusive_ns": 22183,
+      "self_ns": 19326
     },
     {
       "function": "from",
       "calls": 4,
-      "inclusive_ns": 3935,
-      "self_ns": 3823
+      "inclusive_ns": 3859,
+      "self_ns": 3749
     },
     {
       "function": "i64::to_string",
       "calls": 11,
-      "inclusive_ns": 1504,
-      "self_ns": 1504
+      "inclusive_ns": 1239,
+      "self_ns": 1239
     },
     {
       "function": "len",
       "calls": 1,
-      "inclusive_ns": 2226,
-      "self_ns": 1944
+      "inclusive_ns": 2310,
+      "self_ns": 2218
     },
     {
       "function": "main",
       "calls": 1,
-      "inclusive_ns": 242814,
-      "self_ns": 129508
+      "inclusive_ns": 265482,
+      "self_ns": 152192
     },
     {
       "function": "new",
       "calls": 2,
-      "inclusive_ns": 1586,
-      "self_ns": 1586
+      "inclusive_ns": 1603,
+      "self_ns": 1603
     },
     {
       "function": "next",
       "calls": 5,
-      "inclusive_ns": 15437,
-      "self_ns": 14894
+      "inclusive_ns": 15071,
+      "self_ns": 14621
     },
     {
       "function": "parse_score",
       "calls": 3,
-      "inclusive_ns": 4601,
-      "self_ns": 4460
+      "inclusive_ns": 4482,
+      "self_ns": 4354
     },
     {
       "function": "print",
       "calls": 4,
-      "inclusive_ns": 1867,
-      "self_ns": 1867
+      "inclusive_ns": 1238,
+      "self_ns": 1238
     },
     {
       "function": "println",
       "calls": 4,
-      "inclusive_ns": 27071,
-      "self_ns": 27071
+      "inclusive_ns": 25271,
+      "self_ns": 25271
     },
     {
       "function": "render_score",
       "calls": 3,
-      "inclusive_ns": 40827,
-      "self_ns": 28818
+      "inclusive_ns": 44138,
+      "self_ns": 32038
     },
     {
       "function": "string_concat",
       "calls": 21,
-      "inclusive_ns": 2449,
-      "self_ns": 2449
+      "inclusive_ns": 2499,
+      "self_ns": 2499
     },
     {
       "function": "u64::From<i64>::from",
       "calls": 3,
-      "inclusive_ns": 291,
-      "self_ns": 291
+      "inclusive_ns": 202,
+      "self_ns": 202
     }
   ],
   "edges": [
@@ -114,157 +114,157 @@
       "caller": null,
       "callee": "main",
       "calls": 1,
-      "inclusive_ns": 242814
+      "inclusive_ns": 265482
     },
     {
       "caller": "format",
       "callee": "f64::to_string",
       "calls": 2,
-      "inclusive_ns": 676
+      "inclusive_ns": 696
     },
     {
       "caller": "format",
       "callee": "i64::to_string",
       "calls": 5,
-      "inclusive_ns": 536
+      "inclusive_ns": 504
     },
     {
       "caller": "format",
       "callee": "string_concat",
       "calls": 14,
-      "inclusive_ns": 1632
+      "inclusive_ns": 1657
     },
     {
       "caller": "from",
       "callee": "string_concat",
       "calls": 1,
-      "inclusive_ns": 112
+      "inclusive_ns": 110
     },
     {
       "caller": "len",
       "callee": "Array::len",
       "calls": 1,
-      "inclusive_ns": 282
+      "inclusive_ns": 92
     },
     {
       "caller": "main",
       "callee": "String::to_string",
       "calls": 3,
-      "inclusive_ns": 452
+      "inclusive_ns": 338
     },
     {
       "caller": "main",
       "callee": "assert",
       "calls": 33,
-      "inclusive_ns": 1483
+      "inclusive_ns": 1596
     },
     {
       "caller": "main",
       "callee": "boolean::to_string",
       "calls": 2,
-      "inclusive_ns": 271
+      "inclusive_ns": 183
     },
     {
       "caller": "main",
       "callee": "f64::to_string",
       "calls": 8,
-      "inclusive_ns": 2535
+      "inclusive_ns": 1779
     },
     {
       "caller": "main",
       "callee": "format",
       "calls": 5,
-      "inclusive_ns": 15699
+      "inclusive_ns": 16206
     },
     {
       "caller": "main",
       "callee": "from",
       "calls": 3,
-      "inclusive_ns": 2320
+      "inclusive_ns": 2218
     },
     {
       "caller": "main",
       "callee": "i64::to_string",
       "calls": 6,
-      "inclusive_ns": 968
+      "inclusive_ns": 735
     },
     {
       "caller": "main",
       "callee": "len",
       "calls": 1,
-      "inclusive_ns": 2226
+      "inclusive_ns": 2310
     },
     {
       "caller": "main",
       "callee": "new",
       "calls": 2,
-      "inclusive_ns": 1586
+      "inclusive_ns": 1603
     },
     {
       "caller": "main",
       "callee": "next",
       "calls": 5,
-      "inclusive_ns": 15437
+      "inclusive_ns": 15071
     },
     {
       "caller": "main",
       "callee": "print",
       "calls": 4,
-      "inclusive_ns": 1867
+      "inclusive_ns": 1238
     },
     {
       "caller": "main",
       "callee": "println",
       "calls": 4,
-      "inclusive_ns": 27071
+      "inclusive_ns": 25271
     },
     {
       "caller": "main",
       "callee": "render_score",
       "calls": 3,
-      "inclusive_ns": 40827
+      "inclusive_ns": 44138
     },
     {
       "caller": "main",
       "callee": "string_concat",
       "calls": 5,
-      "inclusive_ns": 564
+      "inclusive_ns": 604
     },
     {
       "caller": "next",
       "callee": "Array::len",
       "calls": 5,
-      "inclusive_ns": 252
+      "inclusive_ns": 248
     },
     {
       "caller": "next",
       "callee": "u64::From<i64>::from",
       "calls": 3,
-      "inclusive_ns": 291
+      "inclusive_ns": 202
     },
     {
       "caller": "parse_score",
       "callee": "string_concat",
       "calls": 1,
-      "inclusive_ns": 141
+      "inclusive_ns": 128
     },
     {
       "caller": "render_score",
       "callee": "format",
       "calls": 2,
-      "inclusive_ns": 5793
+      "inclusive_ns": 5977
     },
     {
       "caller": "render_score",
       "callee": "from",
       "calls": 1,
-      "inclusive_ns": 1615
+      "inclusive_ns": 1641
     },
     {
       "caller": "render_score",
       "callee": "parse_score",
       "calls": 3,
-      "inclusive_ns": 4601
+      "inclusive_ns": 4482
     }
   ]
 }

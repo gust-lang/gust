@@ -3,86 +3,86 @@
     {
       "function": "<closure>",
       "calls": 18,
-      "inclusive_ns": 14487,
-      "self_ns": 13802
+      "inclusive_ns": 14216,
+      "self_ns": 13885
     },
     {
       "function": "Array::len",
       "calls": 1,
-      "inclusive_ns": 291,
-      "self_ns": 291
+      "inclusive_ns": 91,
+      "self_ns": 91
     },
     {
       "function": "List::get",
       "calls": 23,
-      "inclusive_ns": 5343,
-      "self_ns": 5343
+      "inclusive_ns": 5247,
+      "self_ns": 5247
     },
     {
       "function": "List::len",
       "calls": 12,
-      "inclusive_ns": 1352,
-      "self_ns": 1352
+      "inclusive_ns": 1347,
+      "self_ns": 1347
     },
     {
       "function": "List::new",
       "calls": 11,
-      "inclusive_ns": 1653,
-      "self_ns": 1653
+      "inclusive_ns": 1474,
+      "self_ns": 1474
     },
     {
       "function": "List::push",
       "calls": 39,
-      "inclusive_ns": 5364,
-      "self_ns": 5364
+      "inclusive_ns": 5134,
+      "self_ns": 5134
     },
     {
       "function": "all_positive_i32",
       "calls": 2,
-      "inclusive_ns": 15663,
-      "self_ns": 14244
+      "inclusive_ns": 16242,
+      "self_ns": 14775
     },
     {
       "function": "assert",
       "calls": 33,
-      "inclusive_ns": 1460,
-      "self_ns": 1460
+      "inclusive_ns": 1449,
+      "self_ns": 1449
     },
     {
       "function": "clamp",
       "calls": 8,
-      "inclusive_ns": 78839,
-      "self_ns": 78839
+      "inclusive_ns": 81052,
+      "self_ns": 81052
     },
     {
       "function": "i64::From<i32>::from",
       "calls": 5,
-      "inclusive_ns": 685,
-      "self_ns": 685
+      "inclusive_ns": 331,
+      "self_ns": 331
     },
     {
       "function": "i64::From<u8>::from",
       "calls": 5,
-      "inclusive_ns": 319,
-      "self_ns": 319
+      "inclusive_ns": 330,
+      "self_ns": 330
     },
     {
       "function": "main",
       "calls": 1,
-      "inclusive_ns": 457617,
-      "self_ns": 159291
+      "inclusive_ns": 450720,
+      "self_ns": 165654
     },
     {
       "function": "map_to_list",
       "calls": 4,
-      "inclusive_ns": 176699,
-      "self_ns": 158007
+      "inclusive_ns": 159902,
+      "self_ns": 142057
     },
     {
       "function": "zip_add_i32",
       "calls": 1,
-      "inclusive_ns": 19024,
-      "self_ns": 16967
+      "inclusive_ns": 19974,
+      "self_ns": 17894
     }
   ],
   "edges": [
@@ -90,133 +90,133 @@
       "caller": null,
       "callee": "main",
       "calls": 1,
-      "inclusive_ns": 457617
+      "inclusive_ns": 450720
     },
     {
       "caller": "<closure>",
       "callee": "i64::From<i32>::from",
       "calls": 5,
-      "inclusive_ns": 685
+      "inclusive_ns": 331
     },
     {
       "caller": "all_positive_i32",
       "callee": "List::get",
       "calls": 5,
-      "inclusive_ns": 1194
+      "inclusive_ns": 1238
     },
     {
       "caller": "all_positive_i32",
       "callee": "List::len",
       "calls": 2,
-      "inclusive_ns": 225
+      "inclusive_ns": 229
     },
     {
       "caller": "main",
       "callee": "Array::len",
       "calls": 1,
-      "inclusive_ns": 291
+      "inclusive_ns": 91
     },
     {
       "caller": "main",
       "callee": "List::get",
       "calls": 12,
-      "inclusive_ns": 2816
+      "inclusive_ns": 2688
     },
     {
       "caller": "main",
       "callee": "List::len",
       "calls": 7,
-      "inclusive_ns": 873
+      "inclusive_ns": 825
     },
     {
       "caller": "main",
       "callee": "List::new",
       "calls": 6,
-      "inclusive_ns": 555
+      "inclusive_ns": 586
     },
     {
       "caller": "main",
       "callee": "List::push",
       "calls": 18,
-      "inclusive_ns": 1787
+      "inclusive_ns": 1927
     },
     {
       "caller": "main",
       "callee": "all_positive_i32",
       "calls": 2,
-      "inclusive_ns": 15663
+      "inclusive_ns": 16242
     },
     {
       "caller": "main",
       "callee": "assert",
       "calls": 33,
-      "inclusive_ns": 1460
+      "inclusive_ns": 1449
     },
     {
       "caller": "main",
       "callee": "clamp",
       "calls": 8,
-      "inclusive_ns": 78839
+      "inclusive_ns": 81052
     },
     {
       "caller": "main",
       "callee": "i64::From<u8>::from",
       "calls": 5,
-      "inclusive_ns": 319
+      "inclusive_ns": 330
     },
     {
       "caller": "main",
       "callee": "map_to_list",
       "calls": 4,
-      "inclusive_ns": 176699
+      "inclusive_ns": 159902
     },
     {
       "caller": "main",
       "callee": "zip_add_i32",
       "calls": 1,
-      "inclusive_ns": 19024
+      "inclusive_ns": 19974
     },
     {
       "caller": "map_to_list",
       "callee": "<closure>",
       "calls": 18,
-      "inclusive_ns": 14487
+      "inclusive_ns": 14216
     },
     {
       "caller": "map_to_list",
       "callee": "List::new",
       "calls": 4,
-      "inclusive_ns": 929
+      "inclusive_ns": 751
     },
     {
       "caller": "map_to_list",
       "callee": "List::push",
       "calls": 18,
-      "inclusive_ns": 3276
+      "inclusive_ns": 2878
     },
     {
       "caller": "zip_add_i32",
       "callee": "List::get",
       "calls": 6,
-      "inclusive_ns": 1333
+      "inclusive_ns": 1321
     },
     {
       "caller": "zip_add_i32",
       "callee": "List::len",
       "calls": 3,
-      "inclusive_ns": 254
+      "inclusive_ns": 293
     },
     {
       "caller": "zip_add_i32",
       "callee": "List::new",
       "calls": 1,
-      "inclusive_ns": 169
+      "inclusive_ns": 137
     },
     {
       "caller": "zip_add_i32",
       "callee": "List::push",
       "calls": 3,
-      "inclusive_ns": 301
+      "inclusive_ns": 329
     }
   ]
 }

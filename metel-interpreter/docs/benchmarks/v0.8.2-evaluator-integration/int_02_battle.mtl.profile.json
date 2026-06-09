@@ -3,8 +3,8 @@
     {
       "function": "<closure>",
       "calls": 7,
-      "inclusive_ns": 19216,
-      "self_ns": 19216
+      "inclusive_ns": 21220,
+      "self_ns": 21220
     },
     {
       "function": "Array::len",
@@ -15,128 +15,128 @@
     {
       "function": "add_defense",
       "calls": 6,
-      "inclusive_ns": 17724,
-      "self_ns": 17724
+      "inclusive_ns": 19350,
+      "self_ns": 19350
     },
     {
       "function": "always_attack",
       "calls": 5,
-      "inclusive_ns": 7816,
-      "self_ns": 7816
+      "inclusive_ns": 8314,
+      "self_ns": 8314
     },
     {
       "function": "assert",
       "calls": 32,
-      "inclusive_ns": 1418,
-      "self_ns": 1418
+      "inclusive_ns": 1703,
+      "self_ns": 1703
     },
     {
       "function": "battle",
       "calls": 3,
-      "inclusive_ns": 431731,
-      "self_ns": 226209
+      "inclusive_ns": 526069,
+      "self_ns": 295537
     },
     {
       "function": "best_attacker_idx",
       "calls": 2,
-      "inclusive_ns": 12581,
-      "self_ns": 11901
+      "inclusive_ns": 12943,
+      "self_ns": 12117
     },
     {
       "function": "defender_strategy",
       "calls": 3,
-      "inclusive_ns": 5258,
-      "self_ns": 5258
+      "inclusive_ns": 5783,
+      "self_ns": 5783
     },
     {
       "function": "describe_action",
       "calls": 3,
-      "inclusive_ns": 6456,
-      "self_ns": 5692
+      "inclusive_ns": 6563,
+      "self_ns": 5775
     },
     {
       "function": "format_round",
       "calls": 1,
-      "inclusive_ns": 37478,
-      "self_ns": 21488
+      "inclusive_ns": 43670,
+      "self_ns": 26098
     },
     {
       "function": "heal",
       "calls": 7,
-      "inclusive_ns": 26644,
-      "self_ns": 26644
+      "inclusive_ns": 29938,
+      "self_ns": 29938
     },
     {
       "function": "i64::to_string",
       "calls": 6,
-      "inclusive_ns": 868,
-      "self_ns": 868
+      "inclusive_ns": 842,
+      "self_ns": 842
     },
     {
       "function": "is_alive",
       "calls": 18,
-      "inclusive_ns": 22465,
-      "self_ns": 22465
+      "inclusive_ns": 26464,
+      "self_ns": 26464
     },
     {
       "function": "main",
       "calls": 1,
-      "inclusive_ns": 1054079,
-      "self_ns": 389943
+      "inclusive_ns": 1232281,
+      "self_ns": 452374
     },
     {
       "function": "resolve",
       "calls": 20,
-      "inclusive_ns": 259154,
-      "self_ns": 183622
+      "inclusive_ns": 285385,
+      "self_ns": 201136
     },
     {
       "function": "simulate_rounds",
       "calls": 1,
-      "inclusive_ns": 34005,
-      "self_ns": 17772
+      "inclusive_ns": 36868,
+      "self_ns": 20102
     },
     {
       "function": "smart_healer",
       "calls": 6,
-      "inclusive_ns": 13204,
-      "self_ns": 13204
+      "inclusive_ns": 15775,
+      "self_ns": 15775
     },
     {
       "function": "string_concat",
       "calls": 16,
-      "inclusive_ns": 2238,
-      "self_ns": 2238
+      "inclusive_ns": 2283,
+      "self_ns": 2283
     },
     {
       "function": "string_len",
       "calls": 5,
-      "inclusive_ns": 1340,
-      "self_ns": 1340
+      "inclusive_ns": 816,
+      "self_ns": 816
     },
     {
       "function": "summary",
       "calls": 2,
-      "inclusive_ns": 15120,
-      "self_ns": 13648
+      "inclusive_ns": 16665,
+      "self_ns": 15235
     },
     {
       "function": "take_damage",
       "calls": 13,
-      "inclusive_ns": 58808,
-      "self_ns": 58808
+      "inclusive_ns": 63892,
+      "self_ns": 63892
     },
     {
       "function": "total_party_hp",
       "calls": 1,
-      "inclusive_ns": 6125,
-      "self_ns": 6125
+      "inclusive_ns": 6701,
+      "self_ns": 6701
     },
     {
       "function": "u64::From<i64>::from",
       "calls": 4,
-      "inclusive_ns": 322,
-      "self_ns": 322
+      "inclusive_ns": 468,
+      "self_ns": 468
     }
   ],
   "edges": [
@@ -144,37 +144,37 @@
       "caller": null,
       "callee": "main",
       "calls": 1,
-      "inclusive_ns": 1054079
+      "inclusive_ns": 1232281
     },
     {
       "caller": "battle",
       "callee": "<closure>",
       "calls": 5,
-      "inclusive_ns": 12864
+      "inclusive_ns": 14328
     },
     {
       "caller": "battle",
       "callee": "always_attack",
       "calls": 3,
-      "inclusive_ns": 4512
+      "inclusive_ns": 4812
     },
     {
       "caller": "battle",
       "callee": "is_alive",
       "calls": 12,
-      "inclusive_ns": 15197
+      "inclusive_ns": 18306
     },
     {
       "caller": "battle",
       "callee": "resolve",
       "calls": 12,
-      "inclusive_ns": 164785
+      "inclusive_ns": 183856
     },
     {
       "caller": "battle",
       "callee": "smart_healer",
       "calls": 4,
-      "inclusive_ns": 8164
+      "inclusive_ns": 9230
     },
     {
       "caller": "best_attacker_idx",
@@ -186,181 +186,181 @@
       "caller": "best_attacker_idx",
       "callee": "u64::From<i64>::from",
       "calls": 4,
-      "inclusive_ns": 322
+      "inclusive_ns": 468
     },
     {
       "caller": "describe_action",
       "callee": "i64::to_string",
       "calls": 1,
-      "inclusive_ns": 453
+      "inclusive_ns": 431
     },
     {
       "caller": "describe_action",
       "callee": "string_concat",
       "calls": 1,
-      "inclusive_ns": 311
+      "inclusive_ns": 357
     },
     {
       "caller": "format_round",
       "callee": "i64::to_string",
       "calls": 1,
-      "inclusive_ns": 104
+      "inclusive_ns": 110
     },
     {
       "caller": "format_round",
       "callee": "string_concat",
       "calls": 5,
-      "inclusive_ns": 766
+      "inclusive_ns": 797
     },
     {
       "caller": "format_round",
       "callee": "summary",
       "calls": 2,
-      "inclusive_ns": 15120
+      "inclusive_ns": 16665
     },
     {
       "caller": "main",
       "callee": "<closure>",
       "calls": 2,
-      "inclusive_ns": 6352
+      "inclusive_ns": 6892
     },
     {
       "caller": "main",
       "callee": "add_defense",
       "calls": 1,
-      "inclusive_ns": 3171
+      "inclusive_ns": 3419
     },
     {
       "caller": "main",
       "callee": "always_attack",
       "calls": 1,
-      "inclusive_ns": 1850
+      "inclusive_ns": 1944
     },
     {
       "caller": "main",
       "callee": "assert",
       "calls": 32,
-      "inclusive_ns": 1418
+      "inclusive_ns": 1703
     },
     {
       "caller": "main",
       "callee": "battle",
       "calls": 3,
-      "inclusive_ns": 431731
+      "inclusive_ns": 526069
     },
     {
       "caller": "main",
       "callee": "best_attacker_idx",
       "calls": 2,
-      "inclusive_ns": 12581
+      "inclusive_ns": 12943
     },
     {
       "caller": "main",
       "callee": "defender_strategy",
       "calls": 3,
-      "inclusive_ns": 5258
+      "inclusive_ns": 5783
     },
     {
       "caller": "main",
       "callee": "describe_action",
       "calls": 3,
-      "inclusive_ns": 6456
+      "inclusive_ns": 6563
     },
     {
       "caller": "main",
       "callee": "format_round",
       "calls": 1,
-      "inclusive_ns": 37478
+      "inclusive_ns": 43670
     },
     {
       "caller": "main",
       "callee": "heal",
       "calls": 2,
-      "inclusive_ns": 8098
+      "inclusive_ns": 9085
     },
     {
       "caller": "main",
       "callee": "is_alive",
       "calls": 6,
-      "inclusive_ns": 7268
+      "inclusive_ns": 8158
     },
     {
       "caller": "main",
       "callee": "resolve",
       "calls": 7,
-      "inclusive_ns": 79590
+      "inclusive_ns": 86321
     },
     {
       "caller": "main",
       "callee": "simulate_rounds",
       "calls": 1,
-      "inclusive_ns": 34005
+      "inclusive_ns": 36868
     },
     {
       "caller": "main",
       "callee": "smart_healer",
       "calls": 2,
-      "inclusive_ns": 5040
+      "inclusive_ns": 6545
     },
     {
       "caller": "main",
       "callee": "string_len",
       "calls": 5,
-      "inclusive_ns": 1340
+      "inclusive_ns": 816
     },
     {
       "caller": "main",
       "callee": "take_damage",
       "calls": 3,
-      "inclusive_ns": 16375
+      "inclusive_ns": 16427
     },
     {
       "caller": "main",
       "callee": "total_party_hp",
       "calls": 1,
-      "inclusive_ns": 6125
+      "inclusive_ns": 6701
     },
     {
       "caller": "resolve",
       "callee": "add_defense",
       "calls": 5,
-      "inclusive_ns": 14553
+      "inclusive_ns": 15931
     },
     {
       "caller": "resolve",
       "callee": "heal",
       "calls": 5,
-      "inclusive_ns": 18546
+      "inclusive_ns": 20853
     },
     {
       "caller": "resolve",
       "callee": "take_damage",
       "calls": 10,
-      "inclusive_ns": 42433
+      "inclusive_ns": 47465
     },
     {
       "caller": "simulate_rounds",
       "callee": "always_attack",
       "calls": 1,
-      "inclusive_ns": 1454
+      "inclusive_ns": 1558
     },
     {
       "caller": "simulate_rounds",
       "callee": "resolve",
       "calls": 1,
-      "inclusive_ns": 14779
+      "inclusive_ns": 15208
     },
     {
       "caller": "summary",
       "callee": "i64::to_string",
       "calls": 4,
-      "inclusive_ns": 311
+      "inclusive_ns": 301
     },
     {
       "caller": "summary",
       "callee": "string_concat",
       "calls": 10,
-      "inclusive_ns": 1161
+      "inclusive_ns": 1129
     }
   ]
 }

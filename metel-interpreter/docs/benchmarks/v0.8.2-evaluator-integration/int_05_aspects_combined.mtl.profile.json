@@ -3,80 +3,80 @@
     {
       "function": "assert",
       "calls": 18,
-      "inclusive_ns": 848,
-      "self_ns": 848
+      "inclusive_ns": 953,
+      "self_ns": 953
     },
     {
       "function": "boolean::to_string",
       "calls": 4,
-      "inclusive_ns": 498,
-      "self_ns": 498
+      "inclusive_ns": 458,
+      "self_ns": 458
     },
     {
       "function": "describe",
       "calls": 2,
-      "inclusive_ns": 9690,
-      "self_ns": 8479
+      "inclusive_ns": 9672,
+      "self_ns": 8507
     },
     {
       "function": "from",
       "calls": 2,
-      "inclusive_ns": 3230,
-      "self_ns": 2939
+      "inclusive_ns": 3904,
+      "self_ns": 3564
     },
     {
       "function": "i64::to_string",
       "calls": 2,
-      "inclusive_ns": 611,
-      "self_ns": 611
+      "inclusive_ns": 330,
+      "self_ns": 330
     },
     {
       "function": "load_config",
       "calls": 4,
-      "inclusive_ns": 6046,
-      "self_ns": 5718
+      "inclusive_ns": 6279,
+      "self_ns": 5902
     },
     {
       "function": "main",
       "calls": 1,
-      "inclusive_ns": 248852,
-      "self_ns": 158992
+      "inclusive_ns": 287830,
+      "self_ns": 191673
     },
     {
       "function": "new",
       "calls": 8,
-      "inclusive_ns": 3477,
-      "self_ns": 3477
+      "inclusive_ns": 3878,
+      "self_ns": 3878
     },
     {
       "function": "next",
       "calls": 28,
-      "inclusive_ns": 29663,
-      "self_ns": 29663
+      "inclusive_ns": 32778,
+      "self_ns": 32778
     },
     {
       "function": "require_config",
       "calls": 2,
-      "inclusive_ns": 16424,
-      "self_ns": 13438
+      "inclusive_ns": 17682,
+      "self_ns": 14538
     },
     {
       "function": "run",
       "calls": 2,
-      "inclusive_ns": 6366,
-      "self_ns": 5756
+      "inclusive_ns": 5335,
+      "self_ns": 4924
     },
     {
       "function": "run_with_config",
       "calls": 2,
-      "inclusive_ns": 21222,
-      "self_ns": 16237
+      "inclusive_ns": 23192,
+      "self_ns": 18124
     },
     {
       "function": "string_concat",
       "calls": 15,
-      "inclusive_ns": 2196,
-      "self_ns": 2196
+      "inclusive_ns": 2201,
+      "self_ns": 2201
     }
   ],
   "edges": [
@@ -84,121 +84,121 @@
       "caller": null,
       "callee": "main",
       "calls": 1,
-      "inclusive_ns": 248852
+      "inclusive_ns": 287830
     },
     {
       "caller": "describe",
       "callee": "boolean::to_string",
       "calls": 2,
-      "inclusive_ns": 366
+      "inclusive_ns": 266
     },
     {
       "caller": "describe",
       "callee": "string_concat",
       "calls": 8,
-      "inclusive_ns": 845
+      "inclusive_ns": 899
     },
     {
       "caller": "from",
       "callee": "string_concat",
       "calls": 2,
-      "inclusive_ns": 291
+      "inclusive_ns": 340
     },
     {
       "caller": "load_config",
       "callee": "string_concat",
       "calls": 2,
-      "inclusive_ns": 328
+      "inclusive_ns": 377
     },
     {
       "caller": "main",
       "callee": "assert",
       "calls": 18,
-      "inclusive_ns": 848
+      "inclusive_ns": 953
     },
     {
       "caller": "main",
       "callee": "boolean::to_string",
       "calls": 2,
-      "inclusive_ns": 132
+      "inclusive_ns": 192
     },
     {
       "caller": "main",
       "callee": "describe",
       "calls": 2,
-      "inclusive_ns": 9690
+      "inclusive_ns": 9672
     },
     {
       "caller": "main",
       "callee": "from",
       "calls": 1,
-      "inclusive_ns": 1427
+      "inclusive_ns": 2145
     },
     {
       "caller": "main",
       "callee": "i64::to_string",
       "calls": 2,
-      "inclusive_ns": 611
+      "inclusive_ns": 330
     },
     {
       "caller": "main",
       "callee": "new",
       "calls": 8,
-      "inclusive_ns": 3477
+      "inclusive_ns": 3878
     },
     {
       "caller": "main",
       "callee": "next",
       "calls": 28,
-      "inclusive_ns": 29663
+      "inclusive_ns": 32778
     },
     {
       "caller": "main",
       "callee": "require_config",
       "calls": 2,
-      "inclusive_ns": 16424
+      "inclusive_ns": 17682
     },
     {
       "caller": "main",
       "callee": "run",
       "calls": 2,
-      "inclusive_ns": 6366
+      "inclusive_ns": 5335
     },
     {
       "caller": "main",
       "callee": "run_with_config",
       "calls": 2,
-      "inclusive_ns": 21222
+      "inclusive_ns": 23192
     },
     {
       "caller": "require_config",
       "callee": "load_config",
       "calls": 2,
-      "inclusive_ns": 2986
+      "inclusive_ns": 3144
     },
     {
       "caller": "run",
       "callee": "string_concat",
       "calls": 2,
-      "inclusive_ns": 610
+      "inclusive_ns": 411
     },
     {
       "caller": "run_with_config",
       "callee": "from",
       "calls": 1,
-      "inclusive_ns": 1803
+      "inclusive_ns": 1759
     },
     {
       "caller": "run_with_config",
       "callee": "load_config",
       "calls": 2,
-      "inclusive_ns": 3060
+      "inclusive_ns": 3135
     },
     {
       "caller": "run_with_config",
       "callee": "string_concat",
       "calls": 1,
-      "inclusive_ns": 122
+      "inclusive_ns": 174
     }
   ]
 }

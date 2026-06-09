@@ -3,146 +3,146 @@
     {
       "function": "<closure>",
       "calls": 68,
-      "inclusive_ns": 184607,
-      "self_ns": 136698
+      "inclusive_ns": 239557,
+      "self_ns": 189627
     },
     {
       "function": "Array::len",
       "calls": 28,
-      "inclusive_ns": 1808,
-      "self_ns": 1808
+      "inclusive_ns": 1941,
+      "self_ns": 1941
     },
     {
       "function": "List::as_slice",
       "calls": 3,
-      "inclusive_ns": 516,
-      "self_ns": 516
+      "inclusive_ns": 523,
+      "self_ns": 523
     },
     {
       "function": "List::new",
       "calls": 3,
-      "inclusive_ns": 855,
-      "self_ns": 855
+      "inclusive_ns": 623,
+      "self_ns": 623
     },
     {
       "function": "List::push",
       "calls": 19,
-      "inclusive_ns": 2903,
-      "self_ns": 2903
+      "inclusive_ns": 3284,
+      "self_ns": 3284
     },
     {
       "function": "assert",
       "calls": 54,
-      "inclusive_ns": 2964,
-      "self_ns": 2964
+      "inclusive_ns": 2963,
+      "self_ns": 2963
     },
     {
       "function": "count_where",
       "calls": 1,
-      "inclusive_ns": 76180,
-      "self_ns": 62491
+      "inclusive_ns": 74350,
+      "self_ns": 60701
     },
     {
       "function": "find_first",
       "calls": 6,
-      "inclusive_ns": 299265,
-      "self_ns": 263674
+      "inclusive_ns": 368771,
+      "self_ns": 288131
     },
     {
       "function": "id",
       "calls": 6,
-      "inclusive_ns": 54763,
-      "self_ns": 54763
+      "inclusive_ns": 56420,
+      "self_ns": 56420
     },
     {
       "function": "main",
       "calls": 1,
-      "inclusive_ns": 2278821,
-      "self_ns": 700870
+      "inclusive_ns": 2655262,
+      "self_ns": 870919
     },
     {
       "function": "map_array",
       "calls": 3,
-      "inclusive_ns": 241385,
-      "self_ns": 181268
+      "inclusive_ns": 272037,
+      "self_ns": 206761
     },
     {
       "function": "option_and_then",
       "calls": 5,
-      "inclusive_ns": 150268,
-      "self_ns": 94792
+      "inclusive_ns": 158297,
+      "self_ns": 99557
     },
     {
       "function": "option_filter",
       "calls": 2,
-      "inclusive_ns": 42715,
-      "self_ns": 40705
+      "inclusive_ns": 46851,
+      "self_ns": 44669
     },
     {
       "function": "option_is_some",
       "calls": 11,
-      "inclusive_ns": 122332,
-      "self_ns": 122332
+      "inclusive_ns": 140220,
+      "self_ns": 140220
     },
     {
       "function": "option_map",
       "calls": 10,
-      "inclusive_ns": 234062,
-      "self_ns": 220202
+      "inclusive_ns": 259652,
+      "self_ns": 245085
     },
     {
       "function": "option_or",
       "calls": 18,
-      "inclusive_ns": 213729,
-      "self_ns": 213729
+      "inclusive_ns": 252579,
+      "self_ns": 252579
     },
     {
       "function": "pair_map_first",
       "calls": 1,
-      "inclusive_ns": 26499,
-      "self_ns": 24978
+      "inclusive_ns": 24017,
+      "self_ns": 22422
     },
     {
       "function": "pair_map_second",
       "calls": 2,
-      "inclusive_ns": 41287,
-      "self_ns": 38366
+      "inclusive_ns": 44055,
+      "self_ns": 40728
     },
     {
       "function": "pair_swap",
       "calls": 1,
-      "inclusive_ns": 11643,
-      "self_ns": 11643
+      "inclusive_ns": 13145,
+      "self_ns": 13145
     },
     {
       "function": "safe_div",
       "calls": 6,
-      "inclusive_ns": 6583,
-      "self_ns": 6583
+      "inclusive_ns": 7333,
+      "self_ns": 7333
     },
     {
       "function": "safe_get_int",
       "calls": 5,
-      "inclusive_ns": 15071,
-      "self_ns": 14139
+      "inclusive_ns": 18232,
+      "self_ns": 17562
     },
     {
       "function": "string_len",
       "calls": 1,
-      "inclusive_ns": 470,
-      "self_ns": 470
+      "inclusive_ns": 257,
+      "self_ns": 257
     },
     {
       "function": "table_get",
       "calls": 3,
-      "inclusive_ns": 280205,
-      "self_ns": 80267
+      "inclusive_ns": 284054,
+      "self_ns": 88311
     },
     {
       "function": "u64::From<i64>::from",
       "calls": 28,
-      "inclusive_ns": 1805,
-      "self_ns": 1805
+      "inclusive_ns": 1501,
+      "self_ns": 1501
     }
   ],
   "edges": [
@@ -150,241 +150,241 @@
       "caller": null,
       "callee": "main",
       "calls": 1,
-      "inclusive_ns": 2278821
+      "inclusive_ns": 2655262
     },
     {
       "caller": "<closure>",
       "callee": "id",
       "calls": 3,
-      "inclusive_ns": 22593
+      "inclusive_ns": 24164
     },
     {
       "caller": "<closure>",
       "callee": "option_map",
       "calls": 1,
-      "inclusive_ns": 22658
+      "inclusive_ns": 22998
     },
     {
       "caller": "<closure>",
       "callee": "safe_div",
       "calls": 2,
-      "inclusive_ns": 2188
+      "inclusive_ns": 2511
     },
     {
       "caller": "<closure>",
       "callee": "string_len",
       "calls": 1,
-      "inclusive_ns": 470
+      "inclusive_ns": 257
     },
     {
       "caller": "count_where",
       "callee": "<closure>",
       "calls": 8,
-      "inclusive_ns": 13689
+      "inclusive_ns": 13649
     },
     {
       "caller": "find_first",
       "callee": "<closure>",
       "calls": 21,
-      "inclusive_ns": 33004
+      "inclusive_ns": 77932
     },
     {
       "caller": "find_first",
       "callee": "Array::len",
       "calls": 23,
-      "inclusive_ns": 1261
+      "inclusive_ns": 1491
     },
     {
       "caller": "find_first",
       "callee": "u64::From<i64>::from",
       "calls": 25,
-      "inclusive_ns": 1326
+      "inclusive_ns": 1217
     },
     {
       "caller": "main",
       "callee": "<closure>",
       "calls": 3,
-      "inclusive_ns": 6283
+      "inclusive_ns": 6719
     },
     {
       "caller": "main",
       "callee": "Array::len",
       "calls": 1,
-      "inclusive_ns": 94
+      "inclusive_ns": 64
     },
     {
       "caller": "main",
       "callee": "assert",
       "calls": 54,
-      "inclusive_ns": 2964
+      "inclusive_ns": 2963
     },
     {
       "caller": "main",
       "callee": "count_where",
       "calls": 1,
-      "inclusive_ns": 76180
+      "inclusive_ns": 74350
     },
     {
       "caller": "main",
       "callee": "find_first",
       "calls": 3,
-      "inclusive_ns": 173629
+      "inclusive_ns": 249010
     },
     {
       "caller": "main",
       "callee": "id",
       "calls": 3,
-      "inclusive_ns": 32170
+      "inclusive_ns": 32256
     },
     {
       "caller": "main",
       "callee": "map_array",
       "calls": 3,
-      "inclusive_ns": 241385
+      "inclusive_ns": 272037
     },
     {
       "caller": "main",
       "callee": "option_and_then",
       "calls": 5,
-      "inclusive_ns": 150268
+      "inclusive_ns": 158297
     },
     {
       "caller": "main",
       "callee": "option_filter",
       "calls": 2,
-      "inclusive_ns": 42715
+      "inclusive_ns": 46851
     },
     {
       "caller": "main",
       "callee": "option_is_some",
       "calls": 11,
-      "inclusive_ns": 122332
+      "inclusive_ns": 140220
     },
     {
       "caller": "main",
       "callee": "option_map",
       "calls": 6,
-      "inclusive_ns": 137102
+      "inclusive_ns": 160672
     },
     {
       "caller": "main",
       "callee": "option_or",
       "calls": 18,
-      "inclusive_ns": 213729
+      "inclusive_ns": 252579
     },
     {
       "caller": "main",
       "callee": "pair_map_first",
       "calls": 1,
-      "inclusive_ns": 26499
+      "inclusive_ns": 24017
     },
     {
       "caller": "main",
       "callee": "pair_map_second",
       "calls": 2,
-      "inclusive_ns": 41287
+      "inclusive_ns": 44055
     },
     {
       "caller": "main",
       "callee": "pair_swap",
       "calls": 1,
-      "inclusive_ns": 11643
+      "inclusive_ns": 13145
     },
     {
       "caller": "main",
       "callee": "safe_div",
       "calls": 4,
-      "inclusive_ns": 4395
+      "inclusive_ns": 4822
     },
     {
       "caller": "main",
       "callee": "safe_get_int",
       "calls": 5,
-      "inclusive_ns": 15071
+      "inclusive_ns": 18232
     },
     {
       "caller": "main",
       "callee": "table_get",
       "calls": 3,
-      "inclusive_ns": 280205
+      "inclusive_ns": 284054
     },
     {
       "caller": "map_array",
       "callee": "<closure>",
       "calls": 19,
-      "inclusive_ns": 55843
+      "inclusive_ns": 60846
     },
     {
       "caller": "map_array",
       "callee": "List::as_slice",
       "calls": 3,
-      "inclusive_ns": 516
+      "inclusive_ns": 523
     },
     {
       "caller": "map_array",
       "callee": "List::new",
       "calls": 3,
-      "inclusive_ns": 855
+      "inclusive_ns": 623
     },
     {
       "caller": "map_array",
       "callee": "List::push",
       "calls": 19,
-      "inclusive_ns": 2903
+      "inclusive_ns": 3284
     },
     {
       "caller": "option_and_then",
       "callee": "<closure>",
       "calls": 4,
-      "inclusive_ns": 55476
+      "inclusive_ns": 58740
     },
     {
       "caller": "option_filter",
       "callee": "<closure>",
       "calls": 2,
-      "inclusive_ns": 2010
+      "inclusive_ns": 2182
     },
     {
       "caller": "option_map",
       "callee": "<closure>",
       "calls": 8,
-      "inclusive_ns": 13860
+      "inclusive_ns": 14567
     },
     {
       "caller": "pair_map_first",
       "callee": "<closure>",
       "calls": 1,
-      "inclusive_ns": 1521
+      "inclusive_ns": 1595
     },
     {
       "caller": "pair_map_second",
       "callee": "<closure>",
       "calls": 2,
-      "inclusive_ns": 2921
+      "inclusive_ns": 3327
     },
     {
       "caller": "safe_get_int",
       "callee": "Array::len",
       "calls": 4,
-      "inclusive_ns": 453
+      "inclusive_ns": 386
     },
     {
       "caller": "safe_get_int",
       "callee": "u64::From<i64>::from",
       "calls": 3,
-      "inclusive_ns": 479
+      "inclusive_ns": 284
     },
     {
       "caller": "table_get",
       "callee": "find_first",
       "calls": 3,
-      "inclusive_ns": 125636
+      "inclusive_ns": 119761
     },
     {
       "caller": "table_get",
       "callee": "option_map",
       "calls": 3,
-      "inclusive_ns": 74302
+      "inclusive_ns": 75982
     }
   ]
 }

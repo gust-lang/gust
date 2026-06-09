@@ -3,110 +3,110 @@
     {
       "function": "Array::len",
       "calls": 1,
-      "inclusive_ns": 131,
-      "self_ns": 131
+      "inclusive_ns": 91,
+      "self_ns": 91
     },
     {
       "function": "List::as_slice",
       "calls": 3,
-      "inclusive_ns": 384,
-      "self_ns": 384
+      "inclusive_ns": 441,
+      "self_ns": 441
     },
     {
       "function": "List::get",
       "calls": 3,
-      "inclusive_ns": 1136,
-      "self_ns": 1136
+      "inclusive_ns": 1320,
+      "self_ns": 1320
     },
     {
       "function": "List::len",
       "calls": 2,
-      "inclusive_ns": 244,
-      "self_ns": 244
+      "inclusive_ns": 302,
+      "self_ns": 302
     },
     {
       "function": "List::new",
       "calls": 3,
-      "inclusive_ns": 581,
-      "self_ns": 581
+      "inclusive_ns": 640,
+      "self_ns": 640
     },
     {
       "function": "List::push",
       "calls": 14,
-      "inclusive_ns": 2844,
-      "self_ns": 2844
+      "inclusive_ns": 3155,
+      "self_ns": 3155
     },
     {
       "function": "assert",
       "calls": 21,
-      "inclusive_ns": 806,
-      "self_ns": 806
+      "inclusive_ns": 934,
+      "self_ns": 934
     },
     {
       "function": "bucket_of",
       "calls": 5,
-      "inclusive_ns": 5417,
-      "self_ns": 5030
+      "inclusive_ns": 5892,
+      "self_ns": 5489
     },
     {
       "function": "f32::From<i16>::from",
       "calls": 5,
-      "inclusive_ns": 338,
-      "self_ns": 338
+      "inclusive_ns": 340,
+      "self_ns": 340
     },
     {
       "function": "f32::From<i64>::from",
       "calls": 1,
-      "inclusive_ns": 122,
-      "self_ns": 122
+      "inclusive_ns": 137,
+      "self_ns": 137
     },
     {
       "function": "i32::From<i16>::from",
       "calls": 1,
-      "inclusive_ns": 94,
-      "self_ns": 94
+      "inclusive_ns": 101,
+      "self_ns": 101
     },
     {
       "function": "i64::From<i32>::from",
       "calls": 5,
-      "inclusive_ns": 330,
-      "self_ns": 330
+      "inclusive_ns": 291,
+      "self_ns": 291
     },
     {
       "function": "main",
       "calls": 1,
-      "inclusive_ns": 117703,
-      "self_ns": 85548
+      "inclusive_ns": 127745,
+      "self_ns": 93283
     },
     {
       "function": "mean_f32",
       "calls": 1,
-      "inclusive_ns": 6592,
-      "self_ns": 6273
+      "inclusive_ns": 7342,
+      "self_ns": 6948
     },
     {
       "function": "scale",
       "calls": 5,
-      "inclusive_ns": 6742,
-      "self_ns": 6404
+      "inclusive_ns": 7095,
+      "self_ns": 6755
     },
     {
       "function": "sum_i32",
       "calls": 1,
-      "inclusive_ns": 7240,
-      "self_ns": 6948
+      "inclusive_ns": 7315,
+      "self_ns": 7005
     },
     {
       "function": "u8::From<f32>::from",
       "calls": 5,
-      "inclusive_ns": 387,
-      "self_ns": 387
+      "inclusive_ns": 403,
+      "self_ns": 403
     },
     {
       "function": "u8::From<i64>::from",
       "calls": 1,
-      "inclusive_ns": 103,
-      "self_ns": 103
+      "inclusive_ns": 110,
+      "self_ns": 110
     }
   ],
   "edges": [
@@ -114,133 +114,133 @@
       "caller": null,
       "callee": "main",
       "calls": 1,
-      "inclusive_ns": 117703
+      "inclusive_ns": 127745
     },
     {
       "caller": "bucket_of",
       "callee": "u8::From<f32>::from",
       "calls": 5,
-      "inclusive_ns": 387
+      "inclusive_ns": 403
     },
     {
       "caller": "main",
       "callee": "Array::len",
       "calls": 1,
-      "inclusive_ns": 131
+      "inclusive_ns": 91
     },
     {
       "caller": "main",
       "callee": "List::as_slice",
       "calls": 1,
-      "inclusive_ns": 178
+      "inclusive_ns": 193
     },
     {
       "caller": "main",
       "callee": "List::get",
       "calls": 3,
-      "inclusive_ns": 1136
+      "inclusive_ns": 1320
     },
     {
       "caller": "main",
       "callee": "List::len",
       "calls": 1,
-      "inclusive_ns": 150
+      "inclusive_ns": 174
     },
     {
       "caller": "main",
       "callee": "List::new",
       "calls": 3,
-      "inclusive_ns": 581
+      "inclusive_ns": 640
     },
     {
       "caller": "main",
       "callee": "List::push",
       "calls": 14,
-      "inclusive_ns": 2844
+      "inclusive_ns": 3155
     },
     {
       "caller": "main",
       "callee": "assert",
       "calls": 21,
-      "inclusive_ns": 806
+      "inclusive_ns": 934
     },
     {
       "caller": "main",
       "callee": "bucket_of",
       "calls": 5,
-      "inclusive_ns": 5417
+      "inclusive_ns": 5892
     },
     {
       "caller": "main",
       "callee": "i32::From<i16>::from",
       "calls": 1,
-      "inclusive_ns": 94
+      "inclusive_ns": 101
     },
     {
       "caller": "main",
       "callee": "i64::From<i32>::from",
       "calls": 1,
-      "inclusive_ns": 141
+      "inclusive_ns": 100
     },
     {
       "caller": "main",
       "callee": "mean_f32",
       "calls": 1,
-      "inclusive_ns": 6592
+      "inclusive_ns": 7342
     },
     {
       "caller": "main",
       "callee": "scale",
       "calls": 5,
-      "inclusive_ns": 6742
+      "inclusive_ns": 7095
     },
     {
       "caller": "main",
       "callee": "sum_i32",
       "calls": 1,
-      "inclusive_ns": 7240
+      "inclusive_ns": 7315
     },
     {
       "caller": "main",
       "callee": "u8::From<i64>::from",
       "calls": 1,
-      "inclusive_ns": 103
+      "inclusive_ns": 110
     },
     {
       "caller": "mean_f32",
       "callee": "List::as_slice",
       "calls": 1,
-      "inclusive_ns": 103
+      "inclusive_ns": 129
     },
     {
       "caller": "mean_f32",
       "callee": "List::len",
       "calls": 1,
-      "inclusive_ns": 94
+      "inclusive_ns": 128
     },
     {
       "caller": "mean_f32",
       "callee": "f32::From<i64>::from",
       "calls": 1,
-      "inclusive_ns": 122
+      "inclusive_ns": 137
     },
     {
       "caller": "scale",
       "callee": "f32::From<i16>::from",
       "calls": 5,
-      "inclusive_ns": 338
+      "inclusive_ns": 340
     },
     {
       "caller": "sum_i32",
       "callee": "List::as_slice",
       "calls": 1,
-      "inclusive_ns": 103
+      "inclusive_ns": 119
     },
     {
       "caller": "sum_i32",
       "callee": "i64::From<i32>::from",
       "calls": 4,
-      "inclusive_ns": 189
+      "inclusive_ns": 191
     }
   ]
 }

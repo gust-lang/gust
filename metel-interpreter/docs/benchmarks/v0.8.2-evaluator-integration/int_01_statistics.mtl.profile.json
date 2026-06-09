@@ -3,188 +3,188 @@
     {
       "function": "<closure>",
       "calls": 34,
-      "inclusive_ns": 40188,
-      "self_ns": 40188
+      "inclusive_ns": 41092,
+      "self_ns": 41092
     },
     {
       "function": "Array::len",
       "calls": 20,
-      "inclusive_ns": 1315,
-      "self_ns": 1315
+      "inclusive_ns": 1299,
+      "self_ns": 1299
     },
     {
       "function": "List::as_slice",
       "calls": 8,
-      "inclusive_ns": 1265,
-      "self_ns": 1265
+      "inclusive_ns": 1328,
+      "self_ns": 1328
     },
     {
       "function": "List::from",
       "calls": 3,
-      "inclusive_ns": 1227,
-      "self_ns": 1227
+      "inclusive_ns": 1357,
+      "self_ns": 1357
     },
     {
       "function": "List::new",
       "calls": 5,
-      "inclusive_ns": 917,
-      "self_ns": 917
+      "inclusive_ns": 924,
+      "self_ns": 924
     },
     {
       "function": "List::push",
       "calls": 29,
-      "inclusive_ns": 3784,
-      "self_ns": 3784
+      "inclusive_ns": 4189,
+      "self_ns": 4189
     },
     {
       "function": "abs_float",
       "calls": 8,
-      "inclusive_ns": 12232,
-      "self_ns": 12232
+      "inclusive_ns": 7232,
+      "self_ns": 7232
     },
     {
       "function": "assert",
       "calls": 47,
-      "inclusive_ns": 2147,
-      "self_ns": 2147
+      "inclusive_ns": 2266,
+      "self_ns": 2266
     },
     {
       "function": "binary_search",
       "calls": 3,
-      "inclusive_ns": 141079,
-      "self_ns": 70856
+      "inclusive_ns": 84497,
+      "self_ns": 50570
     },
     {
       "function": "compute_stats",
       "calls": 7,
-      "inclusive_ns": 110300,
-      "self_ns": 107121
+      "inclusive_ns": 143879,
+      "self_ns": 140428
     },
     {
       "function": "count_if",
       "calls": 2,
-      "inclusive_ns": 63782,
-      "self_ns": 47464
+      "inclusive_ns": 74322,
+      "self_ns": 57447
     },
     {
       "function": "f64::From<i64>::from",
       "calls": 10,
-      "inclusive_ns": 829,
-      "self_ns": 829
+      "inclusive_ns": 724,
+      "self_ns": 724
     },
     {
       "function": "f64::to_string",
       "calls": 2,
-      "inclusive_ns": 1548,
-      "self_ns": 1548
+      "inclusive_ns": 715,
+      "self_ns": 715
     },
     {
       "function": "filter_floats",
       "calls": 1,
-      "inclusive_ns": 41697,
-      "self_ns": 31644
+      "inclusive_ns": 47446,
+      "self_ns": 37181
     },
     {
       "function": "float_eq",
       "calls": 8,
-      "inclusive_ns": 74374,
-      "self_ns": 62142
+      "inclusive_ns": 38802,
+      "self_ns": 31570
     },
     {
       "function": "i64::to_string",
       "calls": 1,
-      "inclusive_ns": 482,
-      "self_ns": 482
+      "inclusive_ns": 366,
+      "self_ns": 366
     },
     {
       "function": "main",
       "calls": 1,
-      "inclusive_ns": 1128978,
-      "self_ns": 385743
+      "inclusive_ns": 1232317,
+      "self_ns": 438527
     },
     {
       "function": "map_floats",
       "calls": 2,
-      "inclusive_ns": 76334,
-      "self_ns": 59267
+      "inclusive_ns": 86349,
+      "self_ns": 68978
     },
     {
       "function": "median",
       "calls": 3,
-      "inclusive_ns": 84187,
-      "self_ns": 30288
+      "inclusive_ns": 113565,
+      "self_ns": 50012
     },
     {
       "function": "range",
       "calls": 2,
-      "inclusive_ns": 4964,
-      "self_ns": 4964
+      "inclusive_ns": 5436,
+      "self_ns": 5436
     },
     {
       "function": "running_sums",
       "calls": 1,
-      "inclusive_ns": 13062,
-      "self_ns": 11950
+      "inclusive_ns": 14190,
+      "self_ns": 12973
     },
     {
       "function": "sort_floats",
       "calls": 3,
-      "inclusive_ns": 141117,
-      "self_ns": 133246
+      "inclusive_ns": 151644,
+      "self_ns": 143661
     },
     {
       "function": "sqrt_approx",
       "calls": 2,
-      "inclusive_ns": 22463,
-      "self_ns": 22463
+      "inclusive_ns": 23806,
+      "self_ns": 23806
     },
     {
       "function": "squares_up_to",
       "calls": 1,
-      "inclusive_ns": 10174,
-      "self_ns": 9306
+      "inclusive_ns": 11220,
+      "self_ns": 10203
     },
     {
       "function": "std_dev",
       "calls": 2,
-      "inclusive_ns": 38648,
-      "self_ns": 16185
+      "inclusive_ns": 42551,
+      "self_ns": 18745
     },
     {
       "function": "string_concat",
       "calls": 5,
-      "inclusive_ns": 945,
-      "self_ns": 945
+      "inclusive_ns": 862,
+      "self_ns": 862
     },
     {
       "function": "string_len",
       "calls": 2,
-      "inclusive_ns": 631,
-      "self_ns": 631
+      "inclusive_ns": 402,
+      "self_ns": 402
     },
     {
       "function": "sum_floats",
       "calls": 2,
-      "inclusive_ns": 6720,
-      "self_ns": 6720
+      "inclusive_ns": 7682,
+      "self_ns": 7682
     },
     {
       "function": "to_str",
       "calls": 1,
-      "inclusive_ns": 15007,
-      "self_ns": 12032
+      "inclusive_ns": 15602,
+      "self_ns": 13659
     },
     {
       "function": "u64::From<i64>::from",
       "calls": 200,
-      "inclusive_ns": 8530,
-      "self_ns": 8530
+      "inclusive_ns": 8597,
+      "self_ns": 8597
     },
     {
       "function": "z_score",
       "calls": 2,
-      "inclusive_ns": 88575,
-      "self_ns": 41547
+      "inclusive_ns": 101620,
+      "self_ns": 50086
     }
   ],
   "edges": [
@@ -192,325 +192,325 @@
       "caller": null,
       "callee": "main",
       "calls": 1,
-      "inclusive_ns": 1128978
+      "inclusive_ns": 1232317
     },
     {
       "caller": "binary_search",
       "callee": "Array::len",
       "calls": 5,
-      "inclusive_ns": 350
+      "inclusive_ns": 275
     },
     {
       "caller": "binary_search",
       "callee": "float_eq",
       "calls": 7,
-      "inclusive_ns": 69023
+      "inclusive_ns": 33055
     },
     {
       "caller": "binary_search",
       "callee": "u64::From<i64>::from",
       "calls": 13,
-      "inclusive_ns": 850
+      "inclusive_ns": 597
     },
     {
       "caller": "compute_stats",
       "callee": "Array::len",
       "calls": 7,
-      "inclusive_ns": 416
+      "inclusive_ns": 420
     },
     {
       "caller": "compute_stats",
       "callee": "f64::From<i64>::from",
       "calls": 10,
-      "inclusive_ns": 829
+      "inclusive_ns": 724
     },
     {
       "caller": "compute_stats",
       "callee": "u64::From<i64>::from",
       "calls": 48,
-      "inclusive_ns": 1934
+      "inclusive_ns": 2307
     },
     {
       "caller": "count_if",
       "callee": "<closure>",
       "calls": 13,
-      "inclusive_ns": 16318
+      "inclusive_ns": 16875
     },
     {
       "caller": "filter_floats",
       "callee": "<closure>",
       "calls": 8,
-      "inclusive_ns": 9458
+      "inclusive_ns": 9597
     },
     {
       "caller": "filter_floats",
       "callee": "List::as_slice",
       "calls": 1,
-      "inclusive_ns": 104
+      "inclusive_ns": 101
     },
     {
       "caller": "filter_floats",
       "callee": "List::new",
       "calls": 1,
-      "inclusive_ns": 133
+      "inclusive_ns": 192
     },
     {
       "caller": "filter_floats",
       "callee": "List::push",
       "calls": 3,
-      "inclusive_ns": 358
+      "inclusive_ns": 375
     },
     {
       "caller": "float_eq",
       "callee": "abs_float",
       "calls": 8,
-      "inclusive_ns": 12232
+      "inclusive_ns": 7232
     },
     {
       "caller": "main",
       "callee": "Array::len",
       "calls": 2,
-      "inclusive_ns": 124
+      "inclusive_ns": 138
     },
     {
       "caller": "main",
       "callee": "assert",
       "calls": 47,
-      "inclusive_ns": 2147
+      "inclusive_ns": 2266
     },
     {
       "caller": "main",
       "callee": "binary_search",
       "calls": 3,
-      "inclusive_ns": 141079
+      "inclusive_ns": 84497
     },
     {
       "caller": "main",
       "callee": "compute_stats",
       "calls": 5,
-      "inclusive_ns": 87395
+      "inclusive_ns": 118579
     },
     {
       "caller": "main",
       "callee": "count_if",
       "calls": 2,
-      "inclusive_ns": 63782
+      "inclusive_ns": 74322
     },
     {
       "caller": "main",
       "callee": "filter_floats",
       "calls": 1,
-      "inclusive_ns": 41697
+      "inclusive_ns": 47446
     },
     {
       "caller": "main",
       "callee": "map_floats",
       "calls": 2,
-      "inclusive_ns": 76334
+      "inclusive_ns": 86349
     },
     {
       "caller": "main",
       "callee": "median",
       "calls": 3,
-      "inclusive_ns": 84187
+      "inclusive_ns": 113565
     },
     {
       "caller": "main",
       "callee": "range",
       "calls": 2,
-      "inclusive_ns": 4964
+      "inclusive_ns": 5436
     },
     {
       "caller": "main",
       "callee": "running_sums",
       "calls": 1,
-      "inclusive_ns": 13062
+      "inclusive_ns": 14190
     },
     {
       "caller": "main",
       "callee": "sort_floats",
       "calls": 1,
-      "inclusive_ns": 87481
+      "inclusive_ns": 88412
     },
     {
       "caller": "main",
       "callee": "squares_up_to",
       "calls": 1,
-      "inclusive_ns": 10174
+      "inclusive_ns": 11220
     },
     {
       "caller": "main",
       "callee": "std_dev",
       "calls": 1,
-      "inclusive_ns": 19876
+      "inclusive_ns": 22064
     },
     {
       "caller": "main",
       "callee": "string_len",
       "calls": 2,
-      "inclusive_ns": 631
+      "inclusive_ns": 402
     },
     {
       "caller": "main",
       "callee": "sum_floats",
       "calls": 2,
-      "inclusive_ns": 6720
+      "inclusive_ns": 7682
     },
     {
       "caller": "main",
       "callee": "to_str",
       "calls": 1,
-      "inclusive_ns": 15007
+      "inclusive_ns": 15602
     },
     {
       "caller": "main",
       "callee": "z_score",
       "calls": 2,
-      "inclusive_ns": 88575
+      "inclusive_ns": 101620
     },
     {
       "caller": "map_floats",
       "callee": "<closure>",
       "calls": 13,
-      "inclusive_ns": 14412
+      "inclusive_ns": 14620
     },
     {
       "caller": "map_floats",
       "callee": "List::as_slice",
       "calls": 2,
-      "inclusive_ns": 236
+      "inclusive_ns": 247
     },
     {
       "caller": "map_floats",
       "callee": "List::new",
       "calls": 2,
-      "inclusive_ns": 482
+      "inclusive_ns": 412
     },
     {
       "caller": "map_floats",
       "callee": "List::push",
       "calls": 13,
-      "inclusive_ns": 1937
+      "inclusive_ns": 2092
     },
     {
       "caller": "median",
       "callee": "Array::len",
       "calls": 3,
-      "inclusive_ns": 151
+      "inclusive_ns": 183
     },
     {
       "caller": "median",
       "callee": "sort_floats",
       "calls": 2,
-      "inclusive_ns": 53636
+      "inclusive_ns": 63232
     },
     {
       "caller": "median",
       "callee": "u64::From<i64>::from",
       "calls": 3,
-      "inclusive_ns": 112
+      "inclusive_ns": 138
     },
     {
       "caller": "running_sums",
       "callee": "List::as_slice",
       "calls": 1,
-      "inclusive_ns": 85
+      "inclusive_ns": 91
     },
     {
       "caller": "running_sums",
       "callee": "List::new",
       "calls": 1,
-      "inclusive_ns": 151
+      "inclusive_ns": 146
     },
     {
       "caller": "running_sums",
       "callee": "List::push",
       "calls": 8,
-      "inclusive_ns": 876
+      "inclusive_ns": 980
     },
     {
       "caller": "sort_floats",
       "callee": "Array::len",
       "calls": 3,
-      "inclusive_ns": 274
+      "inclusive_ns": 283
     },
     {
       "caller": "sort_floats",
       "callee": "List::as_slice",
       "calls": 3,
-      "inclusive_ns": 736
+      "inclusive_ns": 788
     },
     {
       "caller": "sort_floats",
       "callee": "List::from",
       "calls": 3,
-      "inclusive_ns": 1227
+      "inclusive_ns": 1357
     },
     {
       "caller": "sort_floats",
       "callee": "u64::From<i64>::from",
       "calls": 136,
-      "inclusive_ns": 5634
+      "inclusive_ns": 5555
     },
     {
       "caller": "squares_up_to",
       "callee": "List::as_slice",
       "calls": 1,
-      "inclusive_ns": 104
+      "inclusive_ns": 101
     },
     {
       "caller": "squares_up_to",
       "callee": "List::new",
       "calls": 1,
-      "inclusive_ns": 151
+      "inclusive_ns": 174
     },
     {
       "caller": "squares_up_to",
       "callee": "List::push",
       "calls": 5,
-      "inclusive_ns": 613
+      "inclusive_ns": 742
     },
     {
       "caller": "std_dev",
       "callee": "sqrt_approx",
       "calls": 2,
-      "inclusive_ns": 22463
+      "inclusive_ns": 23806
     },
     {
       "caller": "to_str",
       "callee": "f64::to_string",
       "calls": 2,
-      "inclusive_ns": 1548
+      "inclusive_ns": 715
     },
     {
       "caller": "to_str",
       "callee": "i64::to_string",
       "calls": 1,
-      "inclusive_ns": 482
+      "inclusive_ns": 366
     },
     {
       "caller": "to_str",
       "callee": "string_concat",
       "calls": 5,
-      "inclusive_ns": 945
+      "inclusive_ns": 862
     },
     {
       "caller": "z_score",
       "callee": "compute_stats",
       "calls": 2,
-      "inclusive_ns": 22905
+      "inclusive_ns": 25300
     },
     {
       "caller": "z_score",
       "callee": "float_eq",
       "calls": 1,
-      "inclusive_ns": 5351
+      "inclusive_ns": 5747
     },
     {
       "caller": "z_score",
       "callee": "std_dev",
       "calls": 1,
-      "inclusive_ns": 18772
+      "inclusive_ns": 20487
     }
   ]
 }

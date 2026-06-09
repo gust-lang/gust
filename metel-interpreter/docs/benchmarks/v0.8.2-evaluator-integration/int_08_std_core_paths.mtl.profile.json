@@ -3,74 +3,74 @@
     {
       "function": "Array::len",
       "calls": 21,
-      "inclusive_ns": 1126,
-      "self_ns": 1126
+      "inclusive_ns": 1018,
+      "self_ns": 1018
     },
     {
       "function": "add_parsed",
       "calls": 3,
-      "inclusive_ns": 57343,
-      "self_ns": 44733
+      "inclusive_ns": 53725,
+      "self_ns": 42596
     },
     {
       "function": "assert",
       "calls": 16,
-      "inclusive_ns": 1227,
-      "self_ns": 1227
+      "inclusive_ns": 795,
+      "self_ns": 795
     },
     {
       "function": "double_parsed",
       "calls": 2,
-      "inclusive_ns": 19794,
-      "self_ns": 16066
+      "inclusive_ns": 20524,
+      "self_ns": 16894
     },
     {
       "function": "find_in",
       "calls": 5,
-      "inclusive_ns": 38094,
-      "self_ns": 35852
+      "inclusive_ns": 37418,
+      "self_ns": 35574
     },
     {
       "function": "from",
       "calls": 2,
-      "inclusive_ns": 3868,
-      "self_ns": 3642
+      "inclusive_ns": 3611,
+      "self_ns": 3363
     },
     {
       "function": "main",
       "calls": 1,
-      "inclusive_ns": 308675,
-      "self_ns": 173099
+      "inclusive_ns": 279342,
+      "self_ns": 149737
     },
     {
       "function": "map_some",
       "calls": 3,
-      "inclusive_ns": 4873,
-      "self_ns": 4873
+      "inclusive_ns": 5069,
+      "self_ns": 5069
     },
     {
       "function": "parse_positive",
       "calls": 9,
-      "inclusive_ns": 21053,
-      "self_ns": 19937
+      "inclusive_ns": 17198,
+      "self_ns": 16493
     },
     {
       "function": "perhaps_to_result",
       "calls": 4,
-      "inclusive_ns": 5662,
-      "self_ns": 5662
+      "inclusive_ns": 6024,
+      "self_ns": 6024
     },
     {
       "function": "string_concat",
       "calls": 6,
-      "inclusive_ns": 1342,
-      "self_ns": 1342
+      "inclusive_ns": 953,
+      "self_ns": 953
     },
     {
       "function": "u64::From<i64>::from",
       "calls": 19,
-      "inclusive_ns": 1116,
-      "self_ns": 1116
+      "inclusive_ns": 826,
+      "self_ns": 826
     }
   ],
   "edges": [
@@ -78,91 +78,91 @@
       "caller": null,
       "callee": "main",
       "calls": 1,
-      "inclusive_ns": 308675
+      "inclusive_ns": 279342
     },
     {
       "caller": "add_parsed",
       "callee": "from",
       "calls": 2,
-      "inclusive_ns": 3868
+      "inclusive_ns": 3611
     },
     {
       "caller": "add_parsed",
       "callee": "parse_positive",
       "calls": 5,
-      "inclusive_ns": 8742
+      "inclusive_ns": 7518
     },
     {
       "caller": "double_parsed",
       "callee": "parse_positive",
       "calls": 2,
-      "inclusive_ns": 3728
+      "inclusive_ns": 3630
     },
     {
       "caller": "find_in",
       "callee": "Array::len",
       "calls": 21,
-      "inclusive_ns": 1126
+      "inclusive_ns": 1018
     },
     {
       "caller": "find_in",
       "callee": "u64::From<i64>::from",
       "calls": 19,
-      "inclusive_ns": 1116
+      "inclusive_ns": 826
     },
     {
       "caller": "from",
       "callee": "string_concat",
       "calls": 2,
-      "inclusive_ns": 226
+      "inclusive_ns": 248
     },
     {
       "caller": "main",
       "callee": "add_parsed",
       "calls": 3,
-      "inclusive_ns": 57343
+      "inclusive_ns": 53725
     },
     {
       "caller": "main",
       "callee": "assert",
       "calls": 16,
-      "inclusive_ns": 1227
+      "inclusive_ns": 795
     },
     {
       "caller": "main",
       "callee": "double_parsed",
       "calls": 2,
-      "inclusive_ns": 19794
+      "inclusive_ns": 20524
     },
     {
       "caller": "main",
       "callee": "find_in",
       "calls": 5,
-      "inclusive_ns": 38094
+      "inclusive_ns": 37418
     },
     {
       "caller": "main",
       "callee": "map_some",
       "calls": 3,
-      "inclusive_ns": 4873
+      "inclusive_ns": 5069
     },
     {
       "caller": "main",
       "callee": "parse_positive",
       "calls": 2,
-      "inclusive_ns": 8583
+      "inclusive_ns": 6050
     },
     {
       "caller": "main",
       "callee": "perhaps_to_result",
       "calls": 4,
-      "inclusive_ns": 5662
+      "inclusive_ns": 6024
     },
     {
       "caller": "parse_positive",
       "callee": "string_concat",
       "calls": 4,
-      "inclusive_ns": 1116
+      "inclusive_ns": 705
     }
   ]
 }
