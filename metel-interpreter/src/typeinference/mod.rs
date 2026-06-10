@@ -191,7 +191,15 @@ impl Substitution {
     }
 
     /// Record that `var` maps to `ty`.
+    ///
+    /// An identity binding (`?v → ?v`) is a semantic no-op and is dropped: it can
+    /// arise when `compose` resolves a chain back to its own key (e.g. composing
+    /// `{a→b}` with `{b→a}`), and storing it would make `apply` recurse forever.
     pub fn bind(&mut self, var: TypeVar, ty: InferType) {
+        if matches!(ty, InferType::Var(v) if v == var) {
+            self.bindings.remove(&var);
+            return;
+        }
         self.bindings.insert(var, ty);
     }
 
@@ -248,6 +256,10 @@ impl Substitution {
         for ty in self.bindings.values_mut() {
             *ty = other.apply(ty);
         }
+        // Drop identity bindings (`?v → ?v`) that composition may have produced;
+        // they are no-ops and would make `apply` recurse forever. See `bind`.
+        self.bindings
+            .retain(|var, ty| !matches!(ty, InferType::Var(v) if v == var));
         for (var, ty) in &other.bindings {
             self.bindings.entry(*var).or_insert_with(|| ty.clone());
         }

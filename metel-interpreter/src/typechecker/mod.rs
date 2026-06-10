@@ -161,6 +161,30 @@ impl GlobalExports {
     }
 }
 
+/// Alpha-rename a scheme's quantified vars (and their occurrences in the body)
+/// into the dedicated export TypeVar range. Sound for the closed schemes that
+/// cross module boundaries (T0010 guarantees pub functions are fully annotated;
+/// native signatures are annotation-derived). See `export_gen` in `check_graph`.
+fn refresh_scheme_for_export(
+    scheme: &TypeScheme,
+    gen: &mut TypeVarGenerator,
+) -> TypeScheme {
+    if scheme.quantified_vars.is_empty() {
+        return scheme.clone();
+    }
+    let (ty, renaming) = crate::typeinference::instantiate_with_renaming(scheme, gen);
+    let quantified_vars = scheme
+        .quantified_vars
+        .iter()
+        .map(|v| renaming[v])
+        .collect();
+    TypeScheme {
+        quantified_vars,
+        param_names: scheme.param_names.clone(),
+        ty,
+    }
+}
+
 // ── check_pub_annotations ─────────────────────────────────────────────────────
 
 /// Enforce T0010: every `pub` function must have explicit return type and
@@ -253,6 +277,13 @@ pub fn check_graph_with_report(
     // See ADR-0032.
     let mut type_registry = TypeDefinitionRegistry::new();
     let mut timings = TypecheckPhaseTimings::default();
+    // Exported schemes are alpha-renamed into a dedicated high TypeVar range so
+    // their ids can never collide with any module's local generator (which
+    // restarts near 0 per module). Without this, an imported scheme whose
+    // quantified var id matches a live local var can produce a cyclic
+    // substitution and hang `Substitution::apply` (METEL-181; see ADR-0027 for
+    // the 10000-offset precedent and construct_generic_body's 1_000_000 range).
+    let mut export_gen = TypeVarGenerator::with_counter(2_000_000);
 
     for loaded in graph.modules() {
         check_pub_annotations(loaded, names)?;
@@ -273,6 +304,10 @@ pub fn check_graph_with_report(
         // Export pub names from this module's scheme_env, plus re-exported names
         // pulled from their source modules in GlobalExports (#178).
         let pub_schemes = filter_pub_schemes(&report.scheme_env, loaded, names, &global_exports);
+        let pub_schemes = pub_schemes
+            .into_iter()
+            .map(|(name, scheme)| (name, refresh_scheme_for_export(&scheme, &mut export_gen)))
+            .collect();
         global_exports.insert(loaded.module_path.clone(), ModuleExports { pub_schemes });
 
         // Populate imported_names: local_name → (source_module, canonical_name).
