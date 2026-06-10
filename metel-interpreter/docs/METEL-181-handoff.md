@@ -69,16 +69,14 @@ order, expecting a red tree until the end:
   `to_string` / numeric `from` when those impls move into `core.mtl`.
 - **Generic native functions** (`List::new<T>`). ✅ DONE — `native_fun_ty` now
   builds a generic type-var map.
-- **Impl blocks on primitive types.** ❌ BLOCKER (newly confirmed). Today
-  `impl SomeAspect for i64` fails: `cannot unify (i64) -> i64 with (i64) -> ?t`.
-  Root cause is the `inference.rs` TODO (~line 452, now in `infer_impl_method`):
-  the self type for a primitive impl target is built as `Named("i64", [])` but
-  call sites produce `Concrete(Type::I64)`, and the unifier has no Named↔Concrete
-  bridge. **The full cutover cannot move the `Display`/`From`/`to_string` impls
-  for primitives into `core.mtl` until this is fixed** (use
-  `type_expr_to_infer(Named(target,[]))` so primitives resolve to `Concrete`, or
-  add a Named↔Concrete unification case for primitive names). Verify with a
-  `impl Aspect for i64` smoke test before relying on it.
+- **Impl blocks on primitive types.** ✅ DONE. `primitive_type_from_name` is the
+  inverse of `primitive_type_name`; the four self-type sites
+  (`infer_impl_method` / `infer_default_aspect_method` / `construct_impl_method`
+  / `construct_default_aspect_method`) now build `self` as `Concrete(prim)` for
+  primitive targets. `impl Aspect for i64` typechecks and runs (fixture
+  `evaluator/functions/75_impl_aspect_for_primitive.mtl`).
+
+**All prerequisites are now complete.** What remains is the pure cutover.
 
 ## Recommended cutover sequencing (given the blocker)
 
