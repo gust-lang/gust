@@ -47,6 +47,110 @@ fn numeric_as_f64_val(v: &Value) -> Option<f64> {
     }
 }
 
+// ── Native host implementations (METEL-182) ────────────────────────────────
+// Each stdlib `native(@…)` function dispatches to the matching host fn here,
+// selected by its `NativeKey`. These mirror the legacy `register_core!`
+// builtins and replace them once `std::core` is a real module (METEL-181).
+
+use crate::native_keys::NativeKey;
+
+fn native_print(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let v = args
+        .first()
+        .ok_or_else(|| MetelError::internal("print: expected one argument"))?;
+    let s = value_to_display_string(v).ok_or_else(|| {
+        MetelError::panic(
+            RuntimeErrorCode::R0009,
+            "print: value does not implement Display",
+            span,
+        )
+    })?;
+    print!("{s}");
+    Ok(Value::Unit)
+}
+
+fn native_println(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let v = args
+        .first()
+        .ok_or_else(|| MetelError::internal("println: expected one argument"))?;
+    let s = value_to_display_string(v).ok_or_else(|| {
+        MetelError::panic(
+            RuntimeErrorCode::R0009,
+            "println: value does not implement Display",
+            span,
+        )
+    })?;
+    println!("{s}");
+    Ok(Value::Unit)
+}
+
+fn native_dbg(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    match args.first() {
+        Some(val) => {
+            eprintln!("[dbg] {}", format_value(val));
+            Ok(val.clone())
+        }
+        None => Err(MetelError::internal("dbg: expected one argument")),
+    }
+}
+
+fn native_assert(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
+    match args.first() {
+        Some(Value::Boolean(true)) => Ok(Value::Unit),
+        Some(Value::Boolean(false)) => Err(MetelError::panic(
+            RuntimeErrorCode::R0013,
+            "assertion failed",
+            span,
+        )),
+        _ => Err(MetelError::internal("assert: expected boolean argument")),
+    }
+}
+
+fn native_assert_msg(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
+    match (args.first(), args.get(1)) {
+        (Some(Value::Boolean(true)), _) => Ok(Value::Unit),
+        (Some(Value::Boolean(false)), Some(Value::Str(msg))) => {
+            Err(MetelError::panic(RuntimeErrorCode::R0013, msg.clone(), span))
+        }
+        (Some(Value::Boolean(false)), _) => Err(MetelError::panic(
+            RuntimeErrorCode::R0013,
+            "assertion failed",
+            span,
+        )),
+        _ => Err(MetelError::internal(
+            "assert_msg: expected (boolean, String) arguments",
+        )),
+    }
+}
+
+fn native_clock(_args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    Ok(Value::I64(ms))
+}
+
+/// The host implementation for a stdlib `native` function, looked up by its
+/// lowered [`NativeKey`]. Total over the closed enum — every variant maps to a
+/// host fn (enforced by the coverage test).
+pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
+    let (label, fun): (&str, fn(Vec<Value>, &crate::ast::Span) -> Result<Value, MetelError>) =
+        match key {
+            NativeKey::StdCorePrint => ("std::core::print", native_print),
+            NativeKey::StdCorePrintln => ("std::core::println", native_println),
+            NativeKey::StdCoreDbg => ("std::core::dbg", native_dbg),
+            NativeKey::StdCoreAssert => ("std::core::assert", native_assert),
+            NativeKey::StdCoreAssertMsg => ("std::core::assert_msg", native_assert_msg),
+            NativeKey::StdCoreClock => ("std::core::clock", native_clock),
+        };
+    RuntimeCallable::Intrinsic {
+        label: label.to_string(),
+        fun,
+    }
+}
+
 /// The free-function builtin names registered by this module.
 /// Must stay in sync with `StdPrelude::schemes()`. See METEL-5 / ADR-0027.
 #[allow(dead_code)] // called by the parity test in typechecker::tests
@@ -786,4 +890,25 @@ pub(super) fn runtime_registry() -> RuntimeRegistry {
     let mut runtime = RuntimeRegistry::new();
     register_builtins(&mut runtime);
     runtime
+}
+
+#[cfg(test)]
+mod native_tests {
+    use super::*;
+
+    #[test]
+    fn every_native_key_has_a_host_impl() {
+        // Coverage: each NativeKey must resolve to a registered host
+        // implementation. This replaces the old free_function_names() parity
+        // check as the single source of truth for native dispatch (METEL-182).
+        for key in NativeKey::ALL {
+            let callable = native_host_impl(*key);
+            match callable {
+                RuntimeCallable::Intrinsic { label, .. } => {
+                    assert!(!label.is_empty(), "native impl for {key:?} has empty label");
+                }
+                _ => panic!("native impl for {key:?} is not an intrinsic"),
+            }
+        }
+    }
 }

@@ -1,0 +1,6 @@
+// The `native(@…)` host-binding syntax parses: a bodyless function with a
+// dotted host key. (Stdlib-only enforcement happens at type-check, not parse.)
+native(@std.core.print) fun print_one(x: String);
+native(@std.core.clock) fun now() -> i64;
+
+fun main() {}

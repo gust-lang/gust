@@ -576,6 +576,7 @@ mod tests {
                     where_clause: None,
                     params: vec![],
                     return_type: None,
+                    native: None,
                     body: Block {
                         stmts: vec![],
                         tail: None,

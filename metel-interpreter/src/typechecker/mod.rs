@@ -539,6 +539,39 @@ fn filter_pub_schemes(
 }
 
 /// Run the type checker over an untyped AST, producing a fully typed AST.
+/// `native` declarations may appear only in standard-library modules (those
+/// whose path begins with `std`). Reject them anywhere else (METEL-182).
+fn enforce_native_stdlib_only(
+    program: &Program,
+    module_path: &[String],
+) -> Result<(), MetelError> {
+    if module_path.first().map(String::as_str) == Some("std") {
+        return Ok(());
+    }
+    fn check_fun(fun: &crate::ast::FunDecl) -> Result<(), MetelError> {
+        match &fun.native {
+            Some(binding) => Err(MetelError::type_error(
+                TypeErrorCode::T0003,
+                "`native` functions are only allowed in standard-library modules",
+                &binding.span,
+            )),
+            None => Ok(()),
+        }
+    }
+    for decl in &program.decls {
+        match decl {
+            crate::ast::Decl::Fun(fun) => check_fun(fun)?,
+            crate::ast::Decl::Impl(ib) => {
+                for m in &ib.methods {
+                    check_fun(m)?;
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 #[allow(dead_code)] // public API used by single-file test harness
 pub fn check(program: Program) -> Result<TypedProgram, MetelError> {
     let report = check_impl_with_report(
@@ -643,6 +676,9 @@ fn check_impl_with_report(
     current_module_path: &[String],
     symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
 ) -> Result<CheckImplReport, MetelError> {
+    // `native` declarations are stdlib-only: reject them outside `std::…`.
+    enforce_native_stdlib_only(program, current_module_path)?;
+
     // Lowering pass: desugar `impl Aspect` params to fresh anonymous type params.
     let program = inference::lower_impl_aspects_in_program(program.clone());
     let program = &program;

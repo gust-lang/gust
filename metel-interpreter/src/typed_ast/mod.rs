@@ -114,6 +114,9 @@ pub struct TypedMutDecl {
 pub enum FunBody {
     Typed(TypedBlock),
     Generic(Block),
+    /// A stdlib `native(@…)` function: no Metel body. The evaluator dispatches
+    /// to the host implementation registered for this [`NativeKey`] (METEL-182).
+    Native(crate::native_keys::NativeKey),
 }
 
 #[derive(Debug, Clone)]

@@ -26,9 +26,50 @@ fn ann_to_infer(te: &TypeExpr, ctx: &InferContext) -> InferType {
 
 /// Register the names of all direct `FunDecl`s in `decls` with fresh type
 /// variables so that forward references and mutual recursion work.
+/// The function type of a `native` declaration, built from its annotations.
+/// Native functions must be non-generic and fully annotated.
+fn native_fun_ty(fun: &FunDecl) -> Result<InferType, MetelError> {
+    if !fun.generics.is_empty() {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0002,
+            format!("native function `{}` cannot be generic", fun.name),
+            &fun.span,
+        ));
+    }
+    let mut param_types = Vec::with_capacity(fun.params.len());
+    for p in &fun.params {
+        let ann = p.type_ann.as_ref().ok_or_else(|| {
+            MetelError::type_error(
+                TypeErrorCode::T0002,
+                format!(
+                    "native function `{}` requires a type annotation on every parameter",
+                    fun.name
+                ),
+                &p.span,
+            )
+        })?;
+        param_types.push(type_expr_to_infer(ann));
+    }
+    let ret_ty = match &fun.return_type {
+        Some(te) => type_expr_to_infer(te),
+        None => InferType::unit(),
+    };
+    Ok(InferType::Fun(param_types, Box::new(ret_ty)))
+}
+
 pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
     for decl in decls {
         if let Decl::Fun(fun) = decl {
+            // Native functions have a concrete annotated signature and no body;
+            // bind it eagerly so forward references resolve. Errors here surface
+            // again (deterministically) in infer_fun_decl.
+            if fun.native.is_some() {
+                if let Ok(fun_ty) = native_fun_ty(fun) {
+                    let env_fvs = ctx.env_free_vars();
+                    ctx.bind_poly(&fun.name, generalize(fun_ty, &env_fvs));
+                }
+                continue;
+            }
             // Overloaded names are not bound to a single shared type — each
             // definition is checked independently and dispatched by mangled name
             // (METEL-180). Binding here would unify their distinct signatures.
@@ -241,6 +282,21 @@ fn infer_fun_decl(
     ctx: &mut InferContext,
     fun_generalizations: &mut Vec<FunGeneralization>,
 ) -> Result<(), MetelError> {
+    // Native functions have no Metel body to infer. Validate and record their
+    // annotated signature for the construction pass; dispatch is by NativeKey.
+    if fun.native.is_some() {
+        let fun_ty = native_fun_ty(fun)?;
+        let env_fvs = ctx.env_free_vars();
+        ctx.bind_poly(&fun.name, generalize(fun_ty.clone(), &env_fvs));
+        fun_generalizations.push(FunGeneralization {
+            name: fun.name.clone(),
+            fun_ty,
+            env_fvs,
+            name_map: HashMap::new(),
+        });
+        return Ok(());
+    }
+
     // For generic functions, create fresh type variables for each parameter name.
     let generic_map = fun_generic_map(fun, ctx);
 
@@ -2169,6 +2225,7 @@ pub(super) fn lower_impl_aspect(fun: &FunDecl, counter: &mut usize) -> FunDecl {
         where_clause: fun.where_clause.clone(),
         params: new_params,
         return_type: fun.return_type.clone(),
+        native: fun.native.clone(),
         body: fun.body.clone(),
         span: fun.span.clone(),
     }

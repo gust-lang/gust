@@ -134,7 +134,19 @@ pub struct FunDecl {
     pub where_clause: Option<WhereClause>,
     pub params: Vec<Param>,
     pub return_type: Option<TypeExpr>,
+    /// Host binding for stdlib-only `native(@…)` functions (METEL-182). When
+    /// present, `body` is an empty placeholder and the function dispatches to a
+    /// host implementation keyed by the lowered [`NativeKey`].
+    pub native: Option<NativeBinding>,
     pub body: Block,
+    pub span: Span,
+}
+
+/// A `native(@std.core.print)` host-binding attribute on a stdlib function.
+#[derive(Debug, Clone)]
+pub struct NativeBinding {
+    /// Dotted surface id segments, e.g. `["std", "core", "print"]`.
+    pub key_path: Vec<String>,
     pub span: Span,
 }
 

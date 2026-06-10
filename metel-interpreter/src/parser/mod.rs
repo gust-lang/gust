@@ -277,7 +277,24 @@ fn parse_fun_decl(
     filename: &str,
 ) -> Result<FunDecl, MetelError> {
     let span = Span::of(&pair, filename);
-    let mut inner = pair.into_inner();
+    let mut inner = pair.into_inner().peekable();
+
+    // Optional `native(@…)` host-binding attribute.
+    let mut native = None;
+    if inner.peek().map(|p| p.as_rule()) == Some(Rule::native_attr) {
+        let attr = inner.next().unwrap();
+        let attr_span = Span::of(&attr, filename);
+        let path_pair = attr
+            .into_inner()
+            .find(|p| p.as_rule() == Rule::native_path)
+            .ok_or_else(|| MetelError::internal("native_attr: expected native_path"))?;
+        let key_path = path_pair.as_str().split('.').map(str::to_string).collect();
+        native = Some(NativeBinding {
+            key_path,
+            span: attr_span,
+        });
+    }
+
     let first = inner
         .next()
         .ok_or_else(|| MetelError::internal("fun_decl: expected function name"))?;
@@ -306,6 +323,27 @@ fn parse_fun_decl(
             _ => {}
         }
     }
+
+    // A native function has no block body (`;`); other functions require one.
+    let body = match (native.is_some(), body) {
+        (true, Some(_)) => {
+            return Err(MetelError::parse(
+                ParseErrorCode::P0001,
+                "a `native` function must not have a body block",
+                &span,
+            ))
+        }
+        (true, None) => empty_block(&span),
+        (false, Some(b)) => b,
+        (false, None) => {
+            return Err(MetelError::parse(
+                ParseErrorCode::P0001,
+                "function requires a body block",
+                &span,
+            ))
+        }
+    };
+
     Ok(FunDecl {
         visibility,
         name,
@@ -313,9 +351,19 @@ fn parse_fun_decl(
         where_clause,
         params,
         return_type,
-        body: body.ok_or_else(|| MetelError::internal("fun_decl: missing body block"))?,
+        native,
+        body,
         span,
     })
+}
+
+/// An empty placeholder block for `native` functions, which have no body.
+fn empty_block(span: &Span) -> Block {
+    Block {
+        stmts: vec![],
+        tail: None,
+        span: span.clone(),
+    }
 }
 
 fn parse_struct_decl(

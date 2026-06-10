@@ -1,0 +1,5 @@
+// `native` is a stdlib-only construct; declaring one in a user module (any
+// module whose path does not begin with `std`) is rejected.
+native(@std.core.println) fun shout(x: String); // ERROR[T0003]
+
+fun main() {}

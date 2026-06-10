@@ -57,7 +57,14 @@ decl = {
 let_decl     = { "let" ~ !mut_kw ~ ident ~ (":" ~ type_expr)? ~ "=" ~ expr ~ ";" }
 let_mut_decl = { "let" ~ mut_kw ~ ident ~ (":" ~ type_expr)? ~ "=" ~ expr ~ ";" }
 
-fun_decl    = { pub_kw? ~ "fun" ~ ident ~ generic_params? ~ "(" ~ param_list? ~ ")" ~ ("->" ~ type_expr)? ~ where_clause? ~ block }
+fun_decl    = { native_attr? ~ pub_kw? ~ "fun" ~ ident ~ generic_params? ~ "(" ~ param_list? ~ ")" ~ ("->" ~ type_expr)? ~ where_clause? ~ (block | ";") }
+// Stdlib-only host-binding attribute: `native(@std.core.print) fun print(...);`
+// The stdlib-only restriction is enforced after parsing (name resolution), not here.
+native_attr = { "native" ~ "(" ~ "@" ~ native_path ~ ")" }
+// Raw dotted path; segments may be keywords (e.g. `std`), so this does not
+// reuse `ident` (which excludes keywords).
+native_path = @{ native_seg ~ ("." ~ native_seg)* }
+native_seg  = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 
 struct_decl = { pub_kw? ~ "struct" ~ ident ~ generic_params? ~ where_clause? ~ "{" ~ struct_fields ~ "}" }
 struct_fields = { (struct_field ~ ",")* ~ struct_field? }

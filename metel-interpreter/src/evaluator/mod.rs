@@ -1315,9 +1315,18 @@ fn run_passes(
     for decl in decls {
         match decl {
             TypedDecl::Fun(f) => {
+                // Native functions bind directly to their host implementation.
+                if let FunBody::Native(key) = &f.body {
+                    env.set(
+                        &f.name,
+                        Value::Callable(crate::evaluator::builtins::native_host_impl(*key)),
+                    );
+                    continue;
+                }
                 let (body, ctx) = match &f.body {
                     FunBody::Typed(b) => (ClosureBody::Typed(b.clone()), None),
                     FunBody::Generic(b) => (ClosureBody::Untyped(b.clone()), env.type_ctx.clone()),
+                    FunBody::Native(_) => unreachable!("native handled above"),
                 };
                 let captured = env.clone();
                 env.set(
@@ -1340,6 +1349,9 @@ fn run_passes(
                             FunBody::Generic(b) => {
                                 (ClosureBody::Untyped(b.clone()), env.type_ctx.clone())
                             }
+                            // Native impl methods are not supported yet (free
+                            // functions only in this pass); skip registration.
+                            FunBody::Native(_) => continue,
                         };
                         let captured = env.clone();
                         let closure = RuntimeCallable::Closure(Rc::new(ClosureValue {
@@ -1514,6 +1526,13 @@ fn eval_decl(
             let (body, ctx) = match &f.body {
                 FunBody::Typed(b) => (ClosureBody::Typed(b.clone()), None),
                 FunBody::Generic(b) => (ClosureBody::Untyped(b.clone()), env.type_ctx.clone()),
+                // `native` functions are stdlib-only and top-level; they cannot
+                // appear as a nested declaration.
+                FunBody::Native(_) => {
+                    return Err(MetelError::internal(
+                        "native function in nested declaration position",
+                    ))
+                }
             };
             // Define a placeholder first so the closure can see itself via shared Rc
             // (enables self-recursion for functions defined inside other functions).

@@ -401,6 +401,29 @@ fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<TypedDecl, Mete
 }
 
 fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl, MetelError> {
+    // Native functions carry no Metel body; lower the host binding to a NativeKey
+    // and emit a Native body for the evaluator to dispatch (METEL-182).
+    if let Some(binding) = &fun.native {
+        let key = crate::native_keys::NativeKey::from_path(&binding.key_path).ok_or_else(|| {
+            MetelError::type_error(
+                TypeErrorCode::T0003,
+                format!(
+                    "unknown native binding `@{}`; no host implementation is registered for it",
+                    binding.key_path.join(".")
+                ),
+                &binding.span,
+            )
+        })?;
+        return Ok(TypedDecl::Fun(TypedFunDecl {
+            name: fun.name.clone(),
+            generics: fun.generics.clone(),
+            params: fun.params.clone(),
+            return_type: fun.return_type.clone(),
+            body: FunBody::Native(key),
+            span: fun.span.clone(),
+        }));
+    }
+
     // Overloaded functions are stored under a unique mangled name (METEL-180);
     // single-definition functions keep their original name.
     let mangled = super::overload::mangled_for_decl(ctx.overloads, fun);
