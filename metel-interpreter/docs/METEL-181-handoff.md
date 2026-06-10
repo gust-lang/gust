@@ -58,17 +58,43 @@ order, expecting a red tree until the end:
      — these are impls on *builtin primitive* types, which the RFC-0060 orphan
      rule will say only `std::core` may write. They need native methods.
 
-## Prerequisites this needs that aren't built yet
+## Prerequisites — status
 
-- **Native methods.** METEL-182 implemented native *free functions* only. The
-  evaluator's impl-method path currently `continue`s on `FunBody::Native` (see
-  `evaluator/mod.rs`, the `TypedDecl::Impl` arm). To host `List`/`to_string`/`From`
-  you must register native impl methods into the runtime registry by NativeKey.
-- **New `NativeKey` variants + host impls** for every List method / `to_string` /
-  numeric `from`. Add to `native_keys.rs` + `builtins.rs`. (The free-function
-  keys, incl. `string_len`/`string_concat`, are already done.)
-- **Generic native functions** (`List::new<T>`): native signature handling in the
-  typechecker currently assumes non-generic (`native_fun_ty` rejects generics).
+- **Native methods.** ✅ DONE. `construct_impl_method` lowers `native(@…)`
+  methods to `FunBody::Native`; `infer_impl_method` skips body inference and
+  registers the signature; the evaluator registers native impl methods to their
+  host impl. (Additive, green.)
+- **`NativeKey` variants + host impls** for the free-function surface. ✅ DONE
+  (incl. `string_len`/`string_concat`). Still TODO: keys for each List method /
+  `to_string` / numeric `from` when those impls move into `core.mtl`.
+- **Generic native functions** (`List::new<T>`). ✅ DONE — `native_fun_ty` now
+  builds a generic type-var map.
+- **Impl blocks on primitive types.** ❌ BLOCKER (newly confirmed). Today
+  `impl SomeAspect for i64` fails: `cannot unify (i64) -> i64 with (i64) -> ?t`.
+  Root cause is the `inference.rs` TODO (~line 452, now in `infer_impl_method`):
+  the self type for a primitive impl target is built as `Named("i64", [])` but
+  call sites produce `Concrete(Type::I64)`, and the unifier has no Named↔Concrete
+  bridge. **The full cutover cannot move the `Display`/`From`/`to_string` impls
+  for primitives into `core.mtl` until this is fixed** (use
+  `type_expr_to_infer(Named(target,[]))` so primitives resolve to `Concrete`, or
+  add a Named↔Concrete unification case for primitive names). Verify with a
+  `impl Aspect for i64` smoke test before relying on it.
+
+## Recommended cutover sequencing (given the blocker)
+
+The primitive-impl blocker splits the migration cleanly:
+
+- **Movable to `core.mtl` now**: the free functions (native), `Perhaps`,
+  `Result` (plain enums), and `List<T>` (struct + native generic methods, since
+  generic structs use the `method_scheme` path, not primitive impls).
+- **Blocked until the primitive-impl fix**: `Display`/`From`/`Iterable` impls on
+  primitive types, `to_string`, the numeric `From` cross-product. Keep these in
+  `build_registry`/`register_builtins` until the fix lands, OR fix primitive
+  impls first (preferred — it's a contained typechecker change and unblocks the
+  whole types/aspects migration).
+
+So a realistic order: (1) fix primitive impls; (2) write the full `core.mtl`;
+(3) do the multi-layer wiring/deletion described above.
 
 ## Bundled decision (from sprint 22): callable SymbolId dispatch
 
