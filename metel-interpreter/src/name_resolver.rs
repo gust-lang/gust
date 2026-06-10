@@ -70,6 +70,10 @@ pub struct ResolvedNames {
     /// Every `ImportBinding` carries an id drawn from this table; two bindings with the
     /// same id refer to the same declaration.
     pub symbols: HashMap<(Vec<String>, String), SymbolId>,
+    /// Maps each top-level declared `SymbolId` to the span of its declaration.
+    /// Used by diagnostics and tooling (e.g. LSP goto-definition) to locate the
+    /// definition site of any resolved symbol. See RFC-0059.
+    pub definitions: HashMap<SymbolId, Span>,
 }
 
 // ── Symbol interning ──────────────────────────────────────────────────────────
@@ -148,11 +152,16 @@ pub fn resolve(graph: &ModuleGraph) -> Result<ResolvedNames, MetelError> {
     // Assign SymbolIds to all top-level declarations in their home modules.
     // This ensures every declaration has a stable id even if it is never imported.
     // The intern call is idempotent, so import-site ids (assigned below) will match.
+    // While interning, record each declaration's definition span (RFC-0059).
     let mut sym = SymbolTable::new();
+    let mut definitions: HashMap<SymbolId, Span> = HashMap::new();
     for loaded in &graph.modules {
         for decl in &loaded.program.decls {
             if let Some(name) = decl_any_name(decl) {
-                sym.intern(&loaded.module_path, &name);
+                let id = sym.intern(&loaded.module_path, &name);
+                if let Some(span) = decl_span(decl) {
+                    definitions.entry(id).or_insert_with(|| span.clone());
+                }
             }
         }
     }
@@ -194,7 +203,22 @@ pub fn resolve(graph: &ModuleGraph) -> Result<ResolvedNames, MetelError> {
         pub_surface,
         declared_names,
         symbols: sym.map,
+        definitions,
     })
+}
+
+/// Returns the declaration span for a named top-level declaration, if it has one.
+/// Used to populate the [`ResolvedNames::definitions`] index (RFC-0059).
+fn decl_span(decl: &Decl) -> Option<&Span> {
+    match decl {
+        Decl::Fun(d) => Some(&d.span),
+        Decl::Struct(d) => Some(&d.span),
+        Decl::Enum(d) => Some(&d.span),
+        Decl::Aspect(d) => Some(&d.span),
+        Decl::Let(d) => Some(&d.span),
+        Decl::Mut(d) => Some(&d.span),
+        Decl::Impl(_) | Decl::Stmt(_) => None,
+    }
 }
 
 /// Returns the name of a declaration if it is public.
@@ -1170,6 +1194,41 @@ mod tests {
             token_id, ast_id,
             "distinct declarations must have distinct SymbolIds"
         );
+    }
+
+    #[test]
+    fn definitions_index_maps_symbol_to_declaration_span() {
+        // A module with a public function `foo`. Its SymbolId must map to a
+        // definition span in ResolvedNames.definitions (RFC-0059).
+        let graph = make_graph(vec![(
+            vec!["lib".into()],
+            make_program_with_pubs(vec![], &["foo"]),
+        )]);
+
+        let names = resolve(&graph).unwrap();
+        let foo_id = names.symbols[&(vec!["lib".to_string()], "foo".to_string())];
+        assert!(
+            names.definitions.contains_key(&foo_id),
+            "definitions should contain the SymbolId of `foo`"
+        );
+    }
+
+    #[test]
+    fn definitions_index_covers_every_declared_symbol() {
+        // Every top-level declared name in a module should have a definition span.
+        let graph = make_graph(vec![(
+            vec!["lib".into()],
+            make_program_with_pubs(vec![], &["a", "b", "c"]),
+        )]);
+
+        let names = resolve(&graph).unwrap();
+        for name in ["a", "b", "c"] {
+            let id = names.symbols[&(vec!["lib".to_string()], name.to_string())];
+            assert!(
+                names.definitions.contains_key(&id),
+                "definitions should contain `{name}`"
+            );
+        }
     }
 
     #[test]

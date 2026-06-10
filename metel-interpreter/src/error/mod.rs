@@ -81,11 +81,9 @@ pub enum MetelError {
     ParseError {
         code: ParseErrorCode,
         message: String,
-        /// Raw byte offsets from the pest span. Not used by the current display
-        /// but kept for future IDE/LSP span mapping (see v0.4.3, #133).
-        #[allow(dead_code)]
+        /// Raw byte offsets from the pest span. Exposed via [`MetelError::primary_span`]
+        /// for IDE/LSP span mapping (see RFC-0059).
         start: usize,
-        #[allow(dead_code)]
         end: usize,
         filename: String,
         line: u32,
@@ -96,11 +94,9 @@ pub enum MetelError {
     TypeError {
         code: TypeErrorCode,
         message: String,
-        /// Raw byte offsets from the pest span. Not used by the current display
-        /// but kept for future IDE/LSP span mapping (see v0.4.3, #133).
-        #[allow(dead_code)]
+        /// Raw byte offsets from the pest span. Exposed via [`MetelError::primary_span`]
+        /// for IDE/LSP span mapping (see RFC-0059).
         start: usize,
-        #[allow(dead_code)]
         end: usize,
         filename: String,
         line: u32,
@@ -196,6 +192,48 @@ impl std::fmt::Display for MetelError {
 
 impl std::error::Error for MetelError {}
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn span() -> Span {
+        Span {
+            start: 10,
+            end: 20,
+            filename: "test.mtl".into(),
+            line: 3,
+            col: 5,
+        }
+    }
+
+    #[test]
+    fn primary_span_recovers_parse_error_location() {
+        let err = MetelError::parse(ParseErrorCode::P0001, "boom", &span());
+        let recovered = err.primary_span().expect("parse error has a span");
+        assert_eq!(recovered, span());
+    }
+
+    #[test]
+    fn primary_span_recovers_type_error_location() {
+        let err = MetelError::type_error(TypeErrorCode::T0001, "boom", &span());
+        let recovered = err.primary_span().expect("type error has a span");
+        assert_eq!(recovered, span());
+    }
+
+    #[test]
+    fn primary_span_recovers_runtime_panic_location() {
+        let err = MetelError::panic(RuntimeErrorCode::R0004, "boom", &span());
+        let recovered = err.primary_span().expect("runtime panic has a span");
+        assert_eq!(recovered, span());
+    }
+
+    #[test]
+    fn primary_span_is_none_for_internal_errors() {
+        assert!(MetelError::internal("bug").primary_span().is_none());
+        assert!(MetelError::not_implemented("todo").primary_span().is_none());
+    }
+}
+
 // ── Constructor helpers ───────────────────────────────────────────────────────
 
 impl MetelError {
@@ -276,6 +314,48 @@ impl MetelError {
         Self::Internal {
             code: InternalErrorCode::I0002,
             message: msg.into(),
+        }
+    }
+
+    /// The primary source span this error refers to, if it carries location data.
+    ///
+    /// Returns `None` for `Internal` errors, which are interpreter bugs not tied
+    /// to a source location. Provides a uniform accessor over the per-variant
+    /// `start`/`end`/`filename`/`line`/`col` fields so consumers (diagnostics,
+    /// tooling) do not need to match every variant. See RFC-0059.
+    pub fn primary_span(&self) -> Option<Span> {
+        match self {
+            Self::ParseError {
+                start,
+                end,
+                filename,
+                line,
+                col,
+                ..
+            }
+            | Self::TypeError {
+                start,
+                end,
+                filename,
+                line,
+                col,
+                ..
+            }
+            | Self::RuntimePanic {
+                start,
+                end,
+                filename,
+                line,
+                col,
+                ..
+            } => Some(Span {
+                start: *start,
+                end: *end,
+                filename: filename.clone(),
+                line: *line,
+                col: *col,
+            }),
+            Self::Internal { .. } => None,
         }
     }
 }
