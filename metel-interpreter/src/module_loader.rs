@@ -36,10 +36,7 @@ impl SourceProvider for FsSourceProvider {
 
 /// Serves `std::…` modules from the binary-embedded stdlib sources, falling
 /// through to the filesystem for everything else (RFC-0058 / METEL-181).
-///
-/// NOT YET WIRED as the default provider — that switch is part of removing the
-/// virtual `std::core` (see the METEL-181 handoff note). Used today only by the
-/// embedded-stdlib unit tests.
+/// This is the default provider used by [`load_root`].
 #[derive(Debug, Default, Clone, Copy)]
 pub struct EmbeddedStdlibProvider {
     inner: FsSourceProvider,
@@ -73,9 +70,10 @@ pub struct ModuleGraph {
     pub path_aliases: HashMap<Vec<String>, Vec<String>>,
 }
 
-/// Load a module graph from `path` using the default filesystem provider.
+/// Load a module graph from `path` using the default provider: embedded stdlib
+/// for `std::…` modules, filesystem for everything else (RFC-0058 / METEL-181).
 pub fn load_root(path: impl AsRef<Path>) -> Result<ModuleGraph, MetelError> {
-    load_root_with(path, &FsSourceProvider)
+    load_root_with(path, &EmbeddedStdlibProvider::default())
 }
 
 /// Load a module graph from `path`, reading source through `provider` (RFC-0058).
@@ -142,13 +140,27 @@ impl Loader<'_> {
     /// Parse the binary-embedded std:: sources and add them to the graph as real
     /// modules (METEL-181). Their `module_path` is the logical path (e.g.
     /// `["std","core"]`); the synthetic `file_path` is for diagnostics only.
+    /// Source is read through the provider so overlays (e.g. an LSP buffer
+    /// shadowing a stdlib module in tests) keep working per RFC-0058.
     fn load_embedded_stdlib(&mut self) -> Result<(), MetelError> {
         for module_path in crate::stdlib::module_paths() {
-            let Some(source) = crate::stdlib::lookup(&module_path) else {
-                continue;
-            };
             let filename = format!("<embedded {}>", module_path.join("::"));
-            let program = parser::parse(source, &filename)?;
+            let source = self
+                .provider
+                .read(&module_path, Path::new(&filename))
+                .or_else(|_| {
+                    // A pure-filesystem provider cannot serve embedded paths;
+                    // fall back to the compiled-in source.
+                    crate::stdlib::lookup(&module_path)
+                        .map(str::to_string)
+                        .ok_or_else(|| {
+                            MetelError::internal(format!(
+                                "embedded stdlib module {} missing",
+                                module_path.join("::")
+                            ))
+                        })
+                })?;
+            let program = parser::parse(&source, &filename)?;
             let file_path = PathBuf::from(&filename);
             self.visited.insert(file_path.clone());
             self.file_to_path
@@ -269,6 +281,11 @@ fn resolve_import_module(
     let parent_dir = parent_file.parent().unwrap_or_else(|| Path::new("."));
 
     match root {
+        // `std::` modules are never filesystem files: every embedded stdlib
+        // module is synthesized into the graph up front (load_embedded_stdlib),
+        // so a std:: import never resolves to a file. An import of a
+        // non-existent std module is reported by name resolution against the
+        // (real) std module surfaces, not by file lookup.
         PathRoot::Std => Ok(None),
 
         PathRoot::Root => {
