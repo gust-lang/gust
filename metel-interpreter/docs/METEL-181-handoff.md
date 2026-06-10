@@ -13,6 +13,9 @@ exists and is still the active mechanism:
 - `src/stdlib.rs` — `lookup(module_path)` / `module_paths()` over the table.
 - `module_loader::EmbeddedStdlibProvider` — embed first, filesystem fallthrough.
   **Not yet wired** as the default provider.
+- `NativeKey` now covers the whole free-function surface, including
+  `string_len` / `string_concat` (+ host impls), so `stdlib/core.mtl` lowers
+  fully. The coverage test (`NativeKey::ALL`) guards this.
 
 ## The remaining cutover (the atomic big-bang)
 
@@ -61,9 +64,9 @@ order, expecting a red tree until the end:
   evaluator's impl-method path currently `continue`s on `FunBody::Native` (see
   `evaluator/mod.rs`, the `TypedDecl::Impl` arm). To host `List`/`to_string`/`From`
   you must register native impl methods into the runtime registry by NativeKey.
-- **New `NativeKey` variants + host impls** for: `string_len`, `string_concat`
-  (free fns already in `stdlib/core.mtl` but not yet in the enum), and every List
-  method / `to_string` / numeric `from`. Add to `native_keys.rs` + `builtins.rs`.
+- **New `NativeKey` variants + host impls** for every List method / `to_string` /
+  numeric `from`. Add to `native_keys.rs` + `builtins.rs`. (The free-function
+  keys, incl. `string_len`/`string_concat`, are already done.)
 - **Generic native functions** (`List::new<T>`): native signature handling in the
   typechecker currently assumes non-generic (`native_fun_ty` rejects generics).
 
