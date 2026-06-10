@@ -6,8 +6,8 @@ use crate::typeinference::*;
 use crate::types::Type;
 
 use super::conversions::{
-    type_expr_to_infer, type_expr_to_infer_with_generics,
-    type_expr_to_infer_with_generics_and_self, type_expr_to_infer_with_self,
+    infer_type_to_type, type_expr_to_infer, type_expr_to_infer_with_generics,
+    type_expr_to_infer_with_generics_and_self, type_expr_to_infer_with_self, type_to_infer,
 };
 use super::FunGeneralization;
 
@@ -29,6 +29,12 @@ fn ann_to_infer(te: &TypeExpr, ctx: &InferContext) -> InferType {
 pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
     for decl in decls {
         if let Decl::Fun(fun) = decl {
+            // Overloaded names are not bound to a single shared type — each
+            // definition is checked independently and dispatched by mangled name
+            // (METEL-180). Binding here would unify their distinct signatures.
+            if ctx.is_overloaded(&fun.name) {
+                continue;
+            }
             if fun.generics.is_empty() {
                 let fresh = ctx.fresh_var();
                 ctx.bind_mono(&fun.name, fresh.clone(), false);
@@ -294,8 +300,15 @@ fn infer_fun_decl(
 
     let fun_ty = InferType::Fun(param_types, Box::new(ret_ty));
 
-    if let Some(pre_reg) = ctx.lookup(&fun.name) {
-        ctx.add_constraint(pre_reg, fun_ty.clone(), fun.span.clone());
+    // Overloaded functions have no single shared binding to constrain; each
+    // definition stands alone and is registered under its mangled name below.
+    let overload_mangled = super::overload::mangled_for_decl_in_ctx(ctx, fun);
+    let is_overloaded = overload_mangled.is_some();
+
+    if !is_overloaded {
+        if let Some(pre_reg) = ctx.lookup(&fun.name) {
+            ctx.add_constraint(pre_reg, fun_ty.clone(), fun.span.clone());
+        }
     }
 
     // Inline solve-and-generalize: future call sites look up this function via the
@@ -305,7 +318,10 @@ fn infer_fun_decl(
     let partial_subst = ctx.default_literal_vars(&solved);
     let resolved_ty = partial_subst.apply(&fun_ty);
     let scheme = generalize(resolved_ty.clone(), &env_fvs);
-    ctx.bind_poly(&fun.name, scheme);
+    // Register under the mangled name when overloaded so distinct signatures do
+    // not collide in the scheme environment; otherwise under the plain name.
+    let scheme_name = overload_mangled.clone().unwrap_or_else(|| fun.name.clone());
+    ctx.bind_poly(scheme_name.clone(), scheme);
 
     // After solving, the original TypeVars may have been unified with others.
     // Remap name_map through partial_subst so quantified_vars (which are in the
@@ -322,7 +338,7 @@ fn infer_fun_decl(
     // Store resolved_ty (post-solve) so the re-generalization in check_impl uses the
     // already-solved type and is not perturbed by a now-empty final substitution.
     fun_generalizations.push(FunGeneralization {
-        name: fun.name.clone(),
+        name: scheme_name,
         fun_ty: resolved_ty,
         env_fvs,
         name_map,
@@ -795,6 +811,44 @@ fn infer_expr(
         Expr::Call {
             callee, args, span, ..
         } => {
+            // Overloaded free-function call (METEL-180): infer argument types,
+            // select the exact-match candidate, and yield its return type. The
+            // mangled callee is resolved in the construction pass.
+            if let Some(name) = super::overload::callee_name(callee) {
+                if ctx.is_overloaded(name) {
+                    let arg_infer: Vec<InferType> = args
+                        .iter()
+                        .map(|a| infer_expr(a, ctx, fun_generalizations))
+                        .collect::<Result<_, _>>()?;
+                    let solved = ctx.solve()?;
+                    let arg_types: Vec<Type> = arg_infer
+                        .iter()
+                        .map(|t| infer_type_to_type(&solved.apply(t), span))
+                        .collect::<Result<_, _>>()
+                        .map_err(|_| {
+                            MetelError::type_error(
+                                TypeErrorCode::T0002,
+                                format!(
+                                    "cannot resolve argument types for overloaded call to `{name}`; \
+                                     add type annotations"
+                                ),
+                                span,
+                            )
+                        })?;
+                    let entries = ctx.overload_candidates(name).unwrap();
+                    let ret = match super::overload::select(entries, &arg_types) {
+                        Some(entry) => entry.ret.clone(),
+                        None => {
+                            return Err(super::overload::no_match_error(
+                                name, &arg_types, entries, span,
+                            ))
+                        }
+                    };
+                    let ret_var = ctx.fresh_var();
+                    ctx.add_constraint(ret_var.clone(), type_to_infer(&ret), span.clone());
+                    return Ok(ret_var);
+                }
+            }
             let callee_ty = infer_expr(callee, ctx, fun_generalizations)?;
             // Auto-deref: *(() -> T) and *mut (() -> T) are callable directly.
             let callee_ty = match ctx.solve()?.apply(&callee_ty) {

@@ -1,0 +1,6 @@
+// Two definitions of `g` with identical parameter types are a duplicate
+// definition: overloads must differ in their parameter types.
+fun g(x: i32) -> i32 { x }
+fun g(y: i32) -> i32 { y } // ERROR[T0011]
+
+fun main() {}

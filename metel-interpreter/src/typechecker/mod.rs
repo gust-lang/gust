@@ -16,6 +16,7 @@ use crate::typeinference::*;
 mod construction;
 mod conversions;
 mod inference;
+mod overload;
 mod registry;
 
 type SchemeEnv = HashMap<String, TypeScheme>;
@@ -654,8 +655,12 @@ fn check_impl_with_report(
     let mut ctx = InferContext::new(reg, gen, imported_schemes, current_module_path.to_vec());
     ctx.seed_glob_conflicts(deferred_conflicts);
 
-    // Pre-pass: register built-in value bindings and hoist function names.
+    // Pre-pass: register built-in value bindings, build the overload table, and
+    // hoist function names. The overload table must be installed before hoisting
+    // so hoisting can skip overloaded names (they are handled by mangled names).
     registry::register_primitive_type_bindings(&mut ctx, std_prelude);
+    let overloads = overload::build_overload_table(&program.decls)?;
+    ctx.set_overloads(overloads.clone());
     inference::hoist_fun_decls(&program.decls, &mut ctx);
     let registry_ns = elapsed_ns(started);
 
@@ -708,6 +713,7 @@ fn check_impl_with_report(
         ctx.registry(),
         gen,
         symbols,
+        &overloads,
     )?;
     let construction_ns = elapsed_ns(started);
 

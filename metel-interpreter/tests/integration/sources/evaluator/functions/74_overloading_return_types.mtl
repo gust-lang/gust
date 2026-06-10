@@ -1,0 +1,20 @@
+// Free-function overloading by argument type, dispatching to the correct
+// definition at runtime — including distinct return values and a String
+// overload. (METEL-180)
+fun describe(x: i32) -> String { "int32" }
+fun describe(x: i64) -> String { "int64" }
+fun describe(x: String) -> String { "string" }
+fun describe(x: boolean) -> String { "bool" }
+
+fun area(w: i64, h: i64) -> i64 { w * h }
+fun area(s: i64) -> i64 { s * s }
+
+fun main() {
+	println(describe(1i32));
+	println(describe(1i64));
+	println(describe("x"));
+	println(describe(true));
+	// Overloading also distinguishes by arity.
+	println(area(3i64, 4i64).to_string());
+	println(area(5i64).to_string());
+}

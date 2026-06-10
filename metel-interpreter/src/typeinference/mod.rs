@@ -1059,6 +1059,9 @@ pub struct InferContext {
     cached_subst: Substitution,
     solved_constraint_count: usize,
     solve_stats: SolveStats,
+    /// Free-function overload sets for the current module (METEL-180). Names with
+    /// a single definition never appear here. Built by `typechecker::overload`.
+    overloads: OverloadTable,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -1067,6 +1070,22 @@ pub struct SolveStats {
     pub constraints_processed: u64,
     pub solve_ns: u64,
 }
+
+/// One concrete signature within a free-function overload set (METEL-180).
+/// Pure data over [`Type`]; the build/selection logic lives in
+/// `typechecker::overload`.
+#[derive(Debug, Clone)]
+pub struct OverloadEntry {
+    pub params: Vec<Type>,
+    pub ret: Type,
+    /// Unique runtime name for this definition, e.g. `print$i32`.
+    pub mangled: String,
+}
+
+/// Maps a function name to its overload candidates. Only names with more than
+/// one free `fun` declaration appear; single-definition functions are never
+/// mangled and follow the ordinary pipeline unchanged.
+pub type OverloadTable = std::collections::HashMap<String, Vec<OverloadEntry>>;
 
 impl InferContext {
     /// Create a new inference context with a pre-built registry, a generator
@@ -1096,6 +1115,7 @@ impl InferContext {
             cached_subst: Substitution::new(),
             solved_constraint_count: 0,
             solve_stats: SolveStats::default(),
+            overloads: OverloadTable::new(),
         };
         for (name, scheme) in imported_schemes {
             ctx.bind_poly(name, scheme.clone());
@@ -1358,6 +1378,21 @@ impl InferContext {
             .last_mut()
             .unwrap()
             .insert(name.into(), (ty, is_mutable));
+    }
+
+    /// Install the module's free-function overload table (METEL-180).
+    pub fn set_overloads(&mut self, overloads: OverloadTable) {
+        self.overloads = overloads;
+    }
+
+    /// Whether `name` has more than one free-function definition in this module.
+    pub fn is_overloaded(&self, name: &str) -> bool {
+        self.overloads.contains_key(name)
+    }
+
+    /// The overload candidates for `name`, or `None` if it is not overloaded.
+    pub fn overload_candidates(&self, name: &str) -> Option<&[OverloadEntry]> {
+        self.overloads.get(name).map(|v| v.as_slice())
     }
 
     /// Bind a name to a polymorphic type scheme in the current scope.

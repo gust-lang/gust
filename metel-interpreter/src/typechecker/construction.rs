@@ -99,6 +99,9 @@ struct ConstructCtx<'a> {
     /// Symbol intern table from the name resolver; used to populate `TypedImplBlock::aspect_id`.
     /// `None` for single-module pipelines that don't go through `check_graph`.
     symbols: Option<&'a HashMap<(Vec<String>, String), SymbolId>>,
+    /// Free-function overload table for the current module (METEL-180). Used to
+    /// mangle overloaded declaration names and resolve overloaded call sites.
+    overloads: &'a crate::typeinference::OverloadTable,
 }
 
 impl<'a> ConstructCtx<'a> {
@@ -108,6 +111,7 @@ impl<'a> ConstructCtx<'a> {
         registry: &'a TypeDefinitionRegistry,
         gen: TypeVarGenerator,
         symbols: Option<&'a HashMap<(Vec<String>, String), SymbolId>>,
+        overloads: &'a crate::typeinference::OverloadTable,
     ) -> Result<Self, MetelError> {
         let concrete_struct_env = build_concrete_struct_env(registry, subst)?;
         let method_env = build_concrete_method_env(registry, subst)?;
@@ -123,6 +127,7 @@ impl<'a> ConstructCtx<'a> {
             current_break_ty: None,
             generic_params: HashMap::new(),
             symbols,
+            overloads,
         };
         // Derive concrete types for all monomorphic entries in scheme_env.
         // Both builtins and user functions are populated here — no second registration site.
@@ -252,7 +257,17 @@ pub(super) fn construct_generic_body(
 
     let ret_ty = infer_type_to_type(&subst.apply(&ret_infertype), span).ok();
 
-    let mut ctx = ConstructCtx::new(&subst, &type_ctx.scheme_env, &type_ctx.registry, gen, None)?;
+    // Generic bodies are constructed at call time; overloaded functions are never
+    // generic, so there is no overload table to consult here.
+    let empty_overloads = crate::typeinference::OverloadTable::new();
+    let mut ctx = ConstructCtx::new(
+        &subst,
+        &type_ctx.scheme_env,
+        &type_ctx.registry,
+        gen,
+        None,
+        &empty_overloads,
+    )?;
 
     // Build name → fresh TypeVar mapping so type annotations like `T[]` in the body
     // resolve to concrete types. scheme.param_names[i] corresponds to quantified_vars[i],
@@ -288,8 +303,9 @@ pub(super) fn construct_program(
     registry: &TypeDefinitionRegistry,
     gen: TypeVarGenerator,
     symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
+    overloads: &crate::typeinference::OverloadTable,
 ) -> Result<TypedProgram, MetelError> {
-    let mut ctx = ConstructCtx::new(subst, scheme_env, registry, gen, symbols)?;
+    let mut ctx = ConstructCtx::new(subst, scheme_env, registry, gen, symbols, overloads)?;
 
     let mut out = vec![];
     for decl in &program.decls {
@@ -385,10 +401,14 @@ fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<TypedDecl, Mete
 }
 
 fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl, MetelError> {
+    // Overloaded functions are stored under a unique mangled name (METEL-180);
+    // single-definition functions keep their original name.
+    let mangled = super::overload::mangled_for_decl(ctx.overloads, fun);
+    let lookup_name = mangled.as_deref().unwrap_or(fun.name.as_str());
     let scheme = ctx
         .scheme_env
-        .get(&fun.name)
-        .ok_or_else(|| MetelError::internal(format!("missing type for fn `{}`", fun.name)))?
+        .get(lookup_name)
+        .ok_or_else(|| MetelError::internal(format!("missing type for fn `{lookup_name}`")))?
         .clone();
 
     let body = if scheme.quantified_vars.is_empty() {
@@ -422,7 +442,7 @@ fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl
     };
 
     Ok(TypedDecl::Fun(TypedFunDecl {
-        name: fun.name.clone(),
+        name: lookup_name.to_string(),
         generics: fun.generics.clone(),
         params: fun.params.clone(),
         return_type: fun.return_type.clone(),
@@ -1896,6 +1916,31 @@ fn construct_call(
     expected_ty: Option<&Type>,
     ctx: &mut ConstructCtx,
 ) -> Result<TypedExpr, MetelError> {
+    // Overloaded free-function call (METEL-180): select the candidate whose
+    // parameter types exactly match the argument types, then dispatch to the
+    // mangled name. No implicit coercion participates in selection.
+    if let Some(name) = super::overload::callee_name(callee) {
+        if ctx.overloads.contains_key(name) {
+            let typed_args: Vec<TypedExpr> = args
+                .iter()
+                .map(|a| construct_expr(a, None, ctx))
+                .collect::<Result<_, _>>()?;
+            let arg_types: Vec<Type> = typed_args.iter().map(|a| a.ty().clone()).collect();
+            let entries = &ctx.overloads[name];
+            let entry = super::overload::select(entries, &arg_types).ok_or_else(|| {
+                super::overload::no_match_error(name, &arg_types, entries, span)
+            })?;
+            let fun_ty = Type::Fun(entry.params.clone(), Box::new(entry.ret.clone()));
+            let typed_callee =
+                TypedExpr::Ident(entry.mangled.clone(), fun_ty, callee.span().clone());
+            return Ok(TypedExpr::Call {
+                callee: Box::new(typed_callee),
+                args: typed_args,
+                ty: entry.ret.clone(),
+                span: span.clone(),
+            });
+        }
+    }
     // For monomorphic callee identifiers already in scope, extract param types as hints so
     // inherently ambiguous args (bare `[]`, `None`) can resolve without requiring ascription.
     // Generic (scheme-based) callees need arg types first for instantiation — no hints there.
