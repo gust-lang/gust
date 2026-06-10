@@ -13,6 +13,13 @@
 //! declaration name and every call site to the mangled name, so the rest of the
 //! pipeline — the elaborator, the runtime environment, and call dispatch — needs
 //! no overload-specific logic: mangled names are simply distinct names.
+//!
+//! NOTE (intermediate design): name mangling is a v1 mechanism. The intended end
+//! state is `SymbolId`-based dispatch for all calls. When that lands (folded into
+//! METEL-181, where builtins also gain `SymbolId`s), the *selection* logic here
+//! ([`build_overload_table`], [`select`]) is retained but repointed to yield a
+//! `SymbolId`/`CalleeId`, and the string [`mangle`] machinery plus the
+//! construction-time name rewriting are deleted.
 
 use std::collections::HashMap;
 
