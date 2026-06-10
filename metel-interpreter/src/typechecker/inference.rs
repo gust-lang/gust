@@ -28,14 +28,17 @@ fn ann_to_infer(te: &TypeExpr, ctx: &InferContext) -> InferType {
 /// variables so that forward references and mutual recursion work.
 /// The function type of a `native` declaration, built from its annotations.
 /// Native functions must be non-generic and fully annotated.
-fn native_fun_ty(fun: &FunDecl) -> Result<InferType, MetelError> {
-    if !fun.generics.is_empty() {
-        return Err(MetelError::type_error(
-            TypeErrorCode::T0002,
-            format!("native function `{}` cannot be generic", fun.name),
-            &fun.span,
-        ));
-    }
+fn native_fun_ty(fun: &FunDecl, ctx: &mut InferContext) -> Result<InferType, MetelError> {
+    // Generic native functions (e.g. `List::new<T>`) map each type parameter to a
+    // fresh TypeVar; the caller generalizes the result into a polymorphic scheme.
+    let generic_map = fun_generic_map(fun, ctx);
+    let te_to_infer = |te: &TypeExpr| -> InferType {
+        if generic_map.is_empty() {
+            type_expr_to_infer(te)
+        } else {
+            type_expr_to_infer_with_generics(te, &generic_map)
+        }
+    };
     let mut param_types = Vec::with_capacity(fun.params.len());
     for p in &fun.params {
         let ann = p.type_ann.as_ref().ok_or_else(|| {
@@ -48,10 +51,10 @@ fn native_fun_ty(fun: &FunDecl) -> Result<InferType, MetelError> {
                 &p.span,
             )
         })?;
-        param_types.push(type_expr_to_infer(ann));
+        param_types.push(te_to_infer(ann));
     }
     let ret_ty = match &fun.return_type {
-        Some(te) => type_expr_to_infer(te),
+        Some(te) => te_to_infer(te),
         None => InferType::unit(),
     };
     Ok(InferType::Fun(param_types, Box::new(ret_ty)))
@@ -64,7 +67,7 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
             // bind it eagerly so forward references resolve. Errors here surface
             // again (deterministically) in infer_fun_decl.
             if fun.native.is_some() {
-                if let Ok(fun_ty) = native_fun_ty(fun) {
+                if let Ok(fun_ty) = native_fun_ty(fun, ctx) {
                     let env_fvs = ctx.env_free_vars();
                     ctx.bind_poly(&fun.name, generalize(fun_ty, &env_fvs));
                 }
@@ -285,7 +288,7 @@ fn infer_fun_decl(
     // Native functions have no Metel body to infer. Validate and record their
     // annotated signature for the construction pass; dispatch is by NativeKey.
     if fun.native.is_some() {
-        let fun_ty = native_fun_ty(fun)?;
+        let fun_ty = native_fun_ty(fun, ctx)?;
         let env_fvs = ctx.env_free_vars();
         ctx.bind_poly(&fun.name, generalize(fun_ty.clone(), &env_fvs));
         fun_generalizations.push(FunGeneralization {
