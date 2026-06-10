@@ -1,10 +1,19 @@
 use crate::error::{MetelError, RuntimeErrorCode};
 
-use super::display::{format_float, format_value, value_to_display_string};
+use super::display::{format_value, value_to_display_string};
 use super::{
     RuntimeCallable, RuntimeMethod, RuntimeRegistry, RuntimeSignature, RuntimeTypePattern,
     RuntimeTypeRef, Value,
 };
+
+/// Built-in primitive type names that implement `Display` (expose `to_string`).
+/// The runtime formats all of these via `value_to_display_string`. Mirrors the
+/// typechecker-side list in `typechecker::registry`; the two are unified when
+/// `std::core` becomes a real module (METEL-181).
+const DISPLAYABLE_PRIMITIVE_NAMES: &[&str] = &[
+    "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "boolean", "Char",
+    "String",
+];
 
 fn numeric_as_i128(v: &Value) -> Option<i128> {
     match v {
@@ -173,99 +182,40 @@ pub(super) fn register_builtins(runtime: &mut RuntimeRegistry) {
         })
     );
 
-    // to_string() methods for built-in Display types.
-    register_aspect!(
-        "i64",
-        "Display",
-        [],
-        "to_string",
-        method(
-            "i64::to_string",
-            Some(crate::ast::ReceiverKind::Value),
-            &[],
-            Some("String"),
-            builtin_value("i64::to_string", |args, _span| {
-                match args.first() {
-                    Some(Value::I64(n)) => Ok(Value::Str(n.to_string())),
-                    _ => Err(MetelError::internal("i64::to_string: expected i64")),
-                }
+    // to_string() methods for built-in Display types. Every Displayable
+    // primitive (all numeric types plus boolean/Char/String) uses the same
+    // runtime formatter, so register them with one shared body. The runtime
+    // type name of the receiver (runtime_type_name) selects the right entry.
+    fn display_to_string(
+        args: Vec<Value>,
+        span: &crate::ast::Span,
+    ) -> Result<Value, MetelError> {
+        match args.first() {
+            Some(v) => value_to_display_string(v).map(Value::Str).ok_or_else(|| {
+                MetelError::panic(
+                    RuntimeErrorCode::R0009,
+                    "to_string: value does not implement Display",
+                    span,
+                )
             }),
-        )
-    );
-    register_aspect!(
-        "f64",
-        "Display",
-        [],
-        "to_string",
-        method(
-            "f64::to_string",
-            Some(crate::ast::ReceiverKind::Value),
-            &[],
-            Some("String"),
-            builtin_value("f64::to_string", |args, _span| {
-                match args.first() {
-                    Some(Value::F64(f)) => Ok(Value::Str(format_float(*f))),
-                    _ => Err(MetelError::internal("f64::to_string: expected f64")),
-                }
-            }),
-        )
-    );
-    register_aspect!(
-        "boolean",
-        "Display",
-        [],
-        "to_string",
-        method(
-            "boolean::to_string",
-            Some(crate::ast::ReceiverKind::Value),
-            &[],
-            Some("String"),
-            builtin_value("boolean::to_string", |args, _span| {
-                match args.first() {
-                    Some(Value::Boolean(b)) => {
-                        Ok(Value::Str(if *b { "true" } else { "false" }.to_string()))
-                    }
-                    _ => Err(MetelError::internal("boolean::to_string: expected boolean")),
-                }
-            }),
-        )
-    );
-    register_aspect!(
-        "Char",
-        "Display",
-        [],
-        "to_string",
-        method(
-            "Char::to_string",
-            Some(crate::ast::ReceiverKind::Value),
-            &[],
-            Some("String"),
-            builtin_value("Char::to_string", |args, _span| {
-                match args.first() {
-                    Some(Value::Char(c)) => Ok(Value::Str(c.to_string())),
-                    _ => Err(MetelError::internal("Char::to_string: expected Char")),
-                }
-            }),
-        )
-    );
-    register_aspect!(
-        "String",
-        "Display",
-        [],
-        "to_string",
-        method(
-            "String::to_string",
-            Some(crate::ast::ReceiverKind::Value),
-            &[],
-            Some("String"),
-            builtin_value("String::to_string", |args, _span| {
-                match args.first() {
-                    Some(Value::Str(s)) => Ok(Value::Str(s.clone())),
-                    _ => Err(MetelError::internal("String::to_string: expected String")),
-                }
-            }),
-        )
-    );
+            None => Err(MetelError::internal("to_string: expected a receiver")),
+        }
+    }
+    for type_name in DISPLAYABLE_PRIMITIVE_NAMES {
+        register_aspect!(
+            *type_name,
+            "Display",
+            [],
+            "to_string",
+            method(
+                "Display::to_string",
+                Some(crate::ast::ReceiverKind::Value),
+                &[],
+                Some("String"),
+                builtin_value("Display::to_string", display_to_string),
+            )
+        );
+    }
 
     register_pattern!(
         RuntimeTypePattern::Str,

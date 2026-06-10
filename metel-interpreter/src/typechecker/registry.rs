@@ -91,6 +91,15 @@ fn print_scheme(t: TypeVar) -> TypeScheme {
     }
 }
 
+/// Built-in primitive type names that implement `Display` (and therefore expose
+/// `to_string`). Every numeric primitive plus `boolean`, `Char`, and `String`.
+/// The runtime can format all of these — see
+/// `evaluator::display::value_to_display_string`.
+pub(super) const DISPLAYABLE_PRIMITIVE_NAMES: &[&str] = &[
+    "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "boolean", "Char",
+    "String",
+];
+
 fn register_builtin_aspect_impls(registry: &mut TypeDefinitionRegistry) {
     use crate::types::Type;
     // Iterable impls for built-in sequence types
@@ -120,12 +129,12 @@ fn register_builtin_aspect_impls(registry: &mut TypeDefinitionRegistry) {
             }
         }
     }
-    // Display impls for built-in types (used by to_string method dispatch)
-    registry.register_aspect_impl("i64".into(), "Display".into(), vec![]);
-    registry.register_aspect_impl("f64".into(), "Display".into(), vec![]);
-    registry.register_aspect_impl("boolean".into(), "Display".into(), vec![]);
-    registry.register_aspect_impl("Char".into(), "Display".into(), vec![]);
-    registry.register_aspect_impl("String".into(), "Display".into(), vec![]);
+    // Display impls for built-in types (used by to_string method dispatch).
+    // Every numeric primitive is Displayable, not just i64/f64 — the runtime
+    // formats all of them (see evaluator::display::value_to_display_string).
+    for name in DISPLAYABLE_PRIMITIVE_NAMES {
+        registry.register_aspect_impl((*name).into(), "Display".into(), vec![]);
+    }
     // Char ↔ u32 (Unicode code point) conversions
     registry.register_aspect_impl("u32".into(), "From".into(), vec![Type::Char]);
     registry.register_aspect_impl("Char".into(), "From".into(), vec![Type::U32]);
@@ -544,7 +553,6 @@ pub(super) fn register_primitive_type_bindings(
 ) {
     let str_ty = InferType::str();
     let int_ty = InferType::int();
-    let float_ty = InferType::float();
     let bool_ty = InferType::bool();
 
     // Free-function builtins all come from StdPrelude — no separate list needed.
@@ -553,15 +561,25 @@ pub(super) fn register_primitive_type_bindings(
     }
 
     // Methods are not free functions; they're not in StdPrelude::schemes.
-    let char_ty = InferType::Concrete(Type::Char);
-    for type_name in &["i64", "f64", "boolean", "Char", "String"] {
+    // Every Displayable primitive exposes `to_string`. The self type is the
+    // concrete primitive itself (e.g. i32 → Concrete(I32)), so dispatch on a
+    // sized-integer receiver resolves correctly.
+    for type_name in DISPLAYABLE_PRIMITIVE_NAMES {
         let self_ty = match *type_name {
-            "i64" => int_ty.clone(),
-            "f64" => float_ty.clone(),
             "boolean" => bool_ty.clone(),
-            "Char" => char_ty.clone(),
+            "Char" => InferType::Concrete(Type::Char),
             "String" => str_ty.clone(),
-            _ => unreachable!(),
+            "i8" => InferType::Concrete(Type::I8),
+            "i16" => InferType::Concrete(Type::I16),
+            "i32" => InferType::Concrete(Type::I32),
+            "i64" => InferType::Concrete(Type::I64),
+            "u8" => InferType::Concrete(Type::U8),
+            "u16" => InferType::Concrete(Type::U16),
+            "u32" => InferType::Concrete(Type::U32),
+            "u64" => InferType::Concrete(Type::U64),
+            "f32" => InferType::Concrete(Type::F32),
+            "f64" => InferType::Concrete(Type::F64),
+            other => unreachable!("unexpected displayable primitive `{other}`"),
         };
         ctx.register_method(
             type_name.to_string(),

@@ -1074,27 +1074,28 @@ fn construct_expr(
                 Type::Named(name, targs) => (name.clone(), targs.clone()),
                 Type::Pointer(inner) | Type::MutPointer(inner) => match inner.as_ref() {
                     Type::Named(name, targs) => (name.clone(), targs.clone()),
-                    t => {
-                        return Err(MetelError::internal(format!(
-                            "method call on non-struct pointer target {t}"
-                        )))
-                    }
+                    t => match super::inference::primitive_type_name(t) {
+                        Some(name) => (name, vec![]),
+                        None => {
+                            return Err(MetelError::internal(format!(
+                                "method call on non-struct pointer target {t}"
+                            )))
+                        }
+                    },
                 },
-                Type::Str => ("String".to_string(), vec![]),
-                Type::I64 => ("i64".to_string(), vec![]),
-                Type::F64 => ("f64".to_string(), vec![]),
-                Type::Boolean => ("boolean".to_string(), vec![]),
-                Type::Char => ("Char".to_string(), vec![]),
                 Type::Array(_) | Type::SizedArray(_, _) => {
                     return Err(MetelError::internal(
                         "array pattern methods handled before nominal lookup",
                     ))
                 }
-                t => {
-                    return Err(MetelError::internal(format!(
-                        "method call on non-struct type {t}"
-                    )))
-                }
+                t => match super::inference::primitive_type_name(t) {
+                    Some(name) => (name, vec![]),
+                    None => {
+                        return Err(MetelError::internal(format!(
+                            "method call on non-struct type {t}"
+                        )))
+                    }
+                },
             };
 
             // Resolve explicit method type args once.

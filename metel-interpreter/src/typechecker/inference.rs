@@ -1449,13 +1449,33 @@ fn named_type_name(ty: &InferType) -> Option<String> {
     match ty {
         InferType::Named(name, _) => Some(name.clone()),
         InferType::Pointer(inner) | InferType::MutPointer(inner) => named_type_name(inner),
-        InferType::Concrete(Type::Str) => Some("String".to_string()),
-        InferType::Concrete(Type::I64) => Some("i64".to_string()),
-        InferType::Concrete(Type::F64) => Some("f64".to_string()),
-        InferType::Concrete(Type::Boolean) => Some("boolean".to_string()),
-        InferType::Concrete(Type::Char) => Some("Char".to_string()),
+        InferType::Concrete(c) => primitive_type_name(c),
         _ => None,
     }
+}
+
+/// Canonical registry name for a primitive [`Type`], or `None` for non-primitive
+/// types (tuples, arrays, functions, …). This is the single source of truth for
+/// mapping a concrete primitive to the string key used in method and aspect-impl
+/// registries.
+pub(super) fn primitive_type_name(ty: &Type) -> Option<String> {
+    let name = match ty {
+        Type::Str => "String",
+        Type::Boolean => "boolean",
+        Type::Char => "Char",
+        Type::I8 => "i8",
+        Type::I16 => "i16",
+        Type::I32 => "i32",
+        Type::I64 => "i64",
+        Type::U8 => "u8",
+        Type::U16 => "u16",
+        Type::U32 => "u32",
+        Type::U64 => "u64",
+        Type::F32 => "f32",
+        Type::F64 => "f64",
+        _ => return None,
+    };
+    Some(name.to_string())
 }
 
 fn builtin_pattern_method_type(
