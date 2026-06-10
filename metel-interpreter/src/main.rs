@@ -10,6 +10,7 @@ mod module_loader;
 mod module_paths;
 mod name_resolver;
 mod native_keys;
+mod stdlib;
 mod parser;
 mod path_normalizer;
 mod pipeline;

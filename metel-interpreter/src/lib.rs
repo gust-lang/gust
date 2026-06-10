@@ -9,6 +9,7 @@ pub mod module_loader;
 pub mod module_paths;
 pub mod name_resolver;
 pub mod native_keys;
+pub mod stdlib;
 pub mod parser;
 pub mod path_normalizer;
 pub mod pipeline;

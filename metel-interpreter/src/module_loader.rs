@@ -34,6 +34,26 @@ impl SourceProvider for FsSourceProvider {
     }
 }
 
+/// Serves `std::…` modules from the binary-embedded stdlib sources, falling
+/// through to the filesystem for everything else (RFC-0058 / METEL-181).
+///
+/// NOT YET WIRED as the default provider — that switch is part of removing the
+/// virtual `std::core` (see the METEL-181 handoff note). Used today only by the
+/// embedded-stdlib unit tests.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct EmbeddedStdlibProvider {
+    inner: FsSourceProvider,
+}
+
+impl SourceProvider for EmbeddedStdlibProvider {
+    fn read(&self, module_path: &[String], file_path: &Path) -> Result<String, MetelError> {
+        if let Some(src) = crate::stdlib::lookup(module_path) {
+            return Ok(src.to_string());
+        }
+        self.inner.read(module_path, file_path)
+    }
+}
+
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct LoadedModule {

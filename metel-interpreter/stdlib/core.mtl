@@ -1,0 +1,33 @@
+// std::core — the always-available standard library prelude (METEL-181, WIP).
+//
+// This module is compiled into the interpreter binary (see build.rs) and loaded
+// as a real module ahead of user code, replacing the virtual `std::core` that
+// was previously seeded across StdPrelude / build_registry / register_builtins /
+// the name-resolver injection.
+//
+// Host-backed items use `native(@std.core.<id>)`, binding to a Rust host
+// implementation selected by NativeKey. Everything else is ordinary Metel.
+//
+// ── MIGRATION STATUS ────────────────────────────────────────────────────────
+// DONE here: the free-function surface as native declarations.
+// TODO (next session) — these still live in Rust (build_registry / register_
+// builtins) and must move here to fully delete the virtual std::core:
+//   * enum Perhaps<T> { Some { value: T }, None {} }
+//   * enum Result<T, E> { Ok { value: T }, Err { error: E } }
+//   * struct List<T> { … } with native methods (push/pop/get/len/…)
+//   * aspect Display { fun to_string(&self) -> String; }
+//   * aspect From<S>  { fun from(x: S) -> Self; }
+//   * aspect Iterable<T> { fun next(&mut self) -> Perhaps<T>; }
+//   * the numeric From cross-product + Display impls for primitives + to_string
+// Moving these requires: native methods inside impl blocks (extend FunBody::
+// Native handling in the evaluator's impl-method path), generic native funcs
+// (List::new<T>), and aspect declarations flowing through the normal pipeline.
+
+native(@std.core.print)      pub fun print(x: String);
+native(@std.core.println)    pub fun println(x: String);
+native(@std.core.dbg)        pub fun dbg(x: String) -> String;
+native(@std.core.assert)     pub fun assert(cond: boolean);
+native(@std.core.assert_msg) pub fun assert_msg(cond: boolean, msg: String);
+native(@std.core.clock)      pub fun clock() -> i64;
+native(@std.core.string_len)    pub fun string_len(s: String) -> i64;
+native(@std.core.string_concat) pub fun string_concat(a: String, b: String) -> String;
