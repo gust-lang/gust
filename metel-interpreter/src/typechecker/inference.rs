@@ -452,12 +452,12 @@ fn infer_impl_method(
     };
 
     // Include struct TypeVars in self type so call-site unification resolves correctly.
-    // TODO(named-concrete): For primitive types (i64, f64, ...) this produces Named("i64",[])
-    // but call sites produce Concrete(Type::I64). The unifier has no Named↔Concrete case, so
-    // impl blocks on primitive types parsed from source would fail to typecheck. Fix: use
-    // type_expr_to_infer(TypeExpr::Named(target_name,[])) here so primitives get Concrete.
-    // Deferred until the synthetic stdlib refactor requires impl blocks on primitives.
-    let self_ty = if struct_tvars_ordered.is_empty() {
+    // For a primitive target (`impl Display for i64`) the self type must be the
+    // concrete primitive, since call sites produce `Concrete(Type::I64)` and the
+    // unifier has no Named↔Concrete bridge (METEL-181).
+    let self_ty = if let Some(prim) = primitive_type_from_name(target_name) {
+        InferType::Concrete(prim)
+    } else if struct_tvars_ordered.is_empty() {
         InferType::Named(target_name.to_string(), vec![])
     } else {
         InferType::Named(
@@ -560,7 +560,10 @@ fn infer_default_aspect_method(
     };
 
     // TODO(named-concrete): same issue as infer_impl_method — see comment there.
-    let self_ty = InferType::Named(target_name.to_string(), vec![]);
+    let self_ty = match primitive_type_from_name(target_name) {
+        Some(prim) => InferType::Concrete(prim),
+        None => InferType::Named(target_name.to_string(), vec![]),
+    };
     let param_types: Vec<InferType> = method
         .params
         .iter()
@@ -1595,6 +1598,31 @@ pub(super) fn primitive_type_name(ty: &Type) -> Option<String> {
         _ => return None,
     };
     Some(name.to_string())
+}
+
+/// Inverse of [`primitive_type_name`]: the concrete primitive [`Type`] for a
+/// registry name, or `None` if the name is not a primitive. Used so that an
+/// `impl` whose target is a primitive (e.g. `impl Display for i64`) builds its
+/// `self` type as `Concrete(I64)` — matching what call sites produce — rather
+/// than `Named("i64", [])`, which the unifier cannot bridge.
+pub(super) fn primitive_type_from_name(name: &str) -> Option<Type> {
+    let ty = match name {
+        "String" => Type::Str,
+        "boolean" => Type::Boolean,
+        "Char" => Type::Char,
+        "i8" => Type::I8,
+        "i16" => Type::I16,
+        "i32" => Type::I32,
+        "i64" => Type::I64,
+        "u8" => Type::U8,
+        "u16" => Type::U16,
+        "u32" => Type::U32,
+        "u64" => Type::U64,
+        "f32" => Type::F32,
+        "f64" => Type::F64,
+        _ => return None,
+    };
+    Some(ty)
 }
 
 fn builtin_pattern_method_type(

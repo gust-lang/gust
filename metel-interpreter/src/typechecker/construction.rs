@@ -554,7 +554,8 @@ fn construct_impl_method(
         });
     }
 
-    let self_ty = Type::Named(target_name.to_string(), vec![]);
+    let self_ty = super::inference::primitive_type_from_name(target_name)
+        .unwrap_or_else(|| Type::Named(target_name.to_string(), vec![]));
     let te_to_infer = |te: &TypeExpr| type_expr_to_infer_with_self(te, target_name);
     let param_types: Vec<Type> = method
         .params
@@ -628,7 +629,8 @@ fn construct_default_aspect_method(
     target_name: &str,
     ctx: &mut ConstructCtx,
 ) -> Result<TypedFunDecl, MetelError> {
-    let self_ty = Type::Named(target_name.to_string(), vec![]);
+    let self_ty = super::inference::primitive_type_from_name(target_name)
+        .unwrap_or_else(|| Type::Named(target_name.to_string(), vec![]));
     let te_to_infer = |te: &TypeExpr| type_expr_to_infer_with_self(te, target_name);
     let param_types: Vec<Type> = method
         .params

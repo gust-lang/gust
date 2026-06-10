@@ -1,0 +1,17 @@
+// An aspect may be implemented for a primitive type. The method's `self` type
+// must resolve as the concrete primitive so call sites unify (METEL-181 fix).
+aspect Doubler {
+	fun doubled(&self) -> i64;
+}
+
+impl Doubler for i64 {
+	fun doubled(&self) -> i64 {
+		self + self
+	}
+}
+
+fun main() {
+	let x = 21i64;
+	let y = x.doubled();
+	println("${y}");
+}
