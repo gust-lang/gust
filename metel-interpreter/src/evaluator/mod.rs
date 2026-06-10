@@ -1344,28 +1344,33 @@ fn run_passes(
             TypedDecl::Impl(impl_block) => {
                 if let crate::ast::TypeExpr::Named(type_name, _) = &impl_block.target_type {
                     for method in &impl_block.methods {
-                        let (body, ctx) = match &method.body {
-                            FunBody::Typed(b) => (ClosureBody::Typed(b.clone()), None),
-                            FunBody::Generic(b) => {
-                                (ClosureBody::Untyped(b.clone()), env.type_ctx.clone())
+                        // Native methods bind to their host implementation;
+                        // others wrap their (typed/generic) body in a closure.
+                        let body_callable = match &method.body {
+                            FunBody::Native(key) => {
+                                crate::evaluator::builtins::native_host_impl(*key)
                             }
-                            // Native impl methods are not supported yet (free
-                            // functions only in this pass); skip registration.
-                            FunBody::Native(_) => continue,
+                            FunBody::Typed(b) => RuntimeCallable::Closure(Rc::new(ClosureValue {
+                                name: Some(method.name.clone()),
+                                params: method.params.clone(),
+                                body: ClosureBody::Typed(b.clone()),
+                                captured: env.clone(),
+                                type_ctx: None,
+                                fun_type: None,
+                            })),
+                            FunBody::Generic(b) => RuntimeCallable::Closure(Rc::new(ClosureValue {
+                                name: Some(method.name.clone()),
+                                params: method.params.clone(),
+                                body: ClosureBody::Untyped(b.clone()),
+                                captured: env.clone(),
+                                type_ctx: env.type_ctx.clone(),
+                                fun_type: None,
+                            })),
                         };
-                        let captured = env.clone();
-                        let closure = RuntimeCallable::Closure(Rc::new(ClosureValue {
-                            name: Some(method.name.clone()),
-                            params: method.params.clone(),
-                            body,
-                            captured,
-                            type_ctx: ctx,
-                            fun_type: None,
-                        }));
                         let runtime_method = runtime_method_from_decl(
                             format!("{type_name}::{}", method.name),
                             method,
-                            closure,
+                            body_callable,
                         );
                         if let Some(aspect_name) = &impl_block.aspect_name {
                             let aspect_type_args = impl_block

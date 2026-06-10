@@ -484,20 +484,26 @@ fn infer_impl_method(
         .map(te_to_infer)
         .unwrap_or_else(InferType::unit);
 
-    ctx.push_scope();
-    for (p, pt) in method.params.iter().zip(param_types.iter()) {
-        let is_mutable = p.mutable || matches!(p.receiver, Some(crate::ast::ReceiverKind::RefMut));
-        ctx.bind_mono(&p.name, pt.clone(), is_mutable);
+    // Native methods have no Metel body; their signature comes entirely from
+    // annotations (METEL-181). Skip body inference but still register the
+    // method scheme below so call sites resolve.
+    if method.native.is_none() {
+        ctx.push_scope();
+        for (p, pt) in method.params.iter().zip(param_types.iter()) {
+            let is_mutable =
+                p.mutable || matches!(p.receiver, Some(crate::ast::ReceiverKind::RefMut));
+            ctx.bind_mono(&p.name, pt.clone(), is_mutable);
+        }
+        let saved_type_params = ctx.swap_type_params(generic_map);
+        let saved_tp_bounds = ctx.swap_type_param_bounds(struct_bounds);
+        let saved_ret = ctx.push_return_type(ret_ty.clone());
+        let body_ty = infer_block(&method.body, ctx, fun_generalizations)?;
+        ctx.add_constraint(body_ty, ret_ty.clone(), method.body.span.clone());
+        ctx.pop_return_type(saved_ret);
+        ctx.swap_type_param_bounds(saved_tp_bounds);
+        ctx.swap_type_params(saved_type_params);
+        ctx.pop_scope();
     }
-    let saved_type_params = ctx.swap_type_params(generic_map);
-    let saved_tp_bounds = ctx.swap_type_param_bounds(struct_bounds);
-    let saved_ret = ctx.push_return_type(ret_ty.clone());
-    let body_ty = infer_block(&method.body, ctx, fun_generalizations)?;
-    ctx.add_constraint(body_ty, ret_ty.clone(), method.body.span.clone());
-    ctx.pop_return_type(saved_ret);
-    ctx.swap_type_param_bounds(saved_tp_bounds);
-    ctx.swap_type_params(saved_type_params);
-    ctx.pop_scope();
 
     let solved = ctx.solve()?;
     let partial_subst = ctx.default_literal_vars(&solved);

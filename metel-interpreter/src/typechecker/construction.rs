@@ -513,6 +513,29 @@ fn construct_impl_method(
     target_name: &str,
     ctx: &mut ConstructCtx,
 ) -> Result<TypedFunDecl, MetelError> {
+    // Native method: no Metel body; lower the host binding to a NativeKey
+    // (METEL-181). Dispatched at runtime by the evaluator's impl-method path.
+    if let Some(binding) = &method.native {
+        let key = crate::native_keys::NativeKey::from_path(&binding.key_path).ok_or_else(|| {
+            MetelError::type_error(
+                TypeErrorCode::T0003,
+                format!(
+                    "unknown native binding `@{}`; no host implementation is registered for it",
+                    binding.key_path.join(".")
+                ),
+                &binding.span,
+            )
+        })?;
+        return Ok(TypedFunDecl {
+            name: method.name.clone(),
+            generics: method.generics.clone(),
+            params: method.params.clone(),
+            return_type: method.return_type.clone(),
+            body: FunBody::Native(key),
+            span: method.span.clone(),
+        });
+    }
+
     // Methods on generic structs have T-typed params that can't be resolved to concrete
     // types in Pass 2 without call-site type args. Store the body as Generic (untyped)
     // so the evaluator handles dispatch at runtime — same pattern as top-level generic fns.
