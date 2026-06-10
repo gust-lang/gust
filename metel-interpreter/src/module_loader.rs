@@ -7,6 +7,33 @@ use crate::error::{MetelError, ParseErrorCode};
 use crate::module_paths::resolve_path_root;
 use crate::parser;
 
+/// Supplies module source text to the loader (RFC-0058).
+///
+/// Abstracts the read step so the loader can serve source from the filesystem
+/// (default), from compiled-in stdlib data, or from an in-memory overlay (LSP
+/// unsaved buffers). Implementations receive both the logical module path (for
+/// keyed lookups, e.g. embedded stdlib) and the resolved filesystem path (for
+/// disk reads); a given implementation uses whichever it needs.
+pub trait SourceProvider {
+    fn read(&self, module_path: &[String], file_path: &Path) -> Result<String, MetelError>;
+}
+
+/// The default provider: reads module source from the filesystem. Behaviour is
+/// identical to the loader's previous direct `fs::read_to_string` calls.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct FsSourceProvider;
+
+impl SourceProvider for FsSourceProvider {
+    fn read(&self, _module_path: &[String], file_path: &Path) -> Result<String, MetelError> {
+        fs::read_to_string(file_path).map_err(|e| {
+            module_error(
+                format!("failed to read module '{}': {e}", file_path.display()),
+                file_path,
+            )
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct LoadedModule {
@@ -26,13 +53,22 @@ pub struct ModuleGraph {
     pub path_aliases: HashMap<Vec<String>, Vec<String>>,
 }
 
+/// Load a module graph from `path` using the default filesystem provider.
 pub fn load_root(path: impl AsRef<Path>) -> Result<ModuleGraph, MetelError> {
+    load_root_with(path, &FsSourceProvider)
+}
+
+/// Load a module graph from `path`, reading source through `provider` (RFC-0058).
+pub fn load_root_with<P: SourceProvider>(
+    path: impl AsRef<Path>,
+    provider: &P,
+) -> Result<ModuleGraph, MetelError> {
     let root = canonicalize_existing(path.as_ref())?;
     let root_dir = root
         .parent()
         .unwrap_or_else(|| Path::new("."))
         .to_path_buf();
-    let mut loader = Loader::new(root_dir);
+    let mut loader = Loader::new(root_dir, provider);
     loader.load_module(root.clone(), Vec::new())?;
     Ok(ModuleGraph {
         root,
@@ -52,7 +88,7 @@ pub fn load_program(path: impl AsRef<Path>) -> Result<Program, MetelError> {
     crate::parser::parse(&source, &filename)
 }
 
-struct Loader {
+struct Loader<'a> {
     modules: Vec<LoadedModule>,
     visited: HashSet<PathBuf>,
     /// Maps each file's canonical path to the module path assigned on first visit.
@@ -61,10 +97,11 @@ struct Loader {
     path_aliases: HashMap<Vec<String>, Vec<String>>,
     stack: Vec<PathBuf>,
     root_dir: PathBuf,
+    provider: &'a dyn SourceProvider,
 }
 
-impl Loader {
-    fn new(root_dir: PathBuf) -> Self {
+impl<'a> Loader<'a> {
+    fn new(root_dir: PathBuf, provider: &'a dyn SourceProvider) -> Self {
         Self {
             modules: Vec::new(),
             visited: HashSet::new(),
@@ -72,11 +109,12 @@ impl Loader {
             path_aliases: HashMap::new(),
             stack: Vec::new(),
             root_dir,
+            provider,
         }
     }
 }
 
-impl Loader {
+impl Loader<'_> {
     fn load_module(
         &mut self,
         file_path: PathBuf,
@@ -106,12 +144,11 @@ impl Loader {
             return Ok(());
         }
 
-        let source = fs::read_to_string(&file_path).map_err(|e| {
-            module_error(
-                format!("failed to read module '{}': {e}", file_path.display()),
-                &file_path,
-            )
-        })?;
+        // `std` is reserved for the standard library; a user module may not occupy
+        // that namespace. See RFC-0058 and the spec's "Reserved namespaces".
+        validate_std_namespace(&module_path, &file_path)?;
+
+        let source = self.provider.read(&module_path, &file_path)?;
         let filename = file_path.display().to_string();
         let program = parser::parse(&source, &filename)?;
 
@@ -263,6 +300,19 @@ fn find_module_file(base_dir: &Path, segs: &[String]) -> Option<(Vec<String>, Pa
     None
 }
 
+/// Reject any user module whose path begins with `std`. The `std` namespace is
+/// reserved for the standard library; enforcing it here (the file-discovery
+/// layer) matches the `std` keyword reservation in the grammar. See RFC-0058.
+fn validate_std_namespace(module_path: &[String], file_path: &Path) -> Result<(), MetelError> {
+    if module_path.first().map(String::as_str) == Some("std") {
+        return Err(module_error(
+            "module path `std::…` is reserved for the standard library",
+            file_path,
+        ));
+    }
+    Ok(())
+}
+
 fn validate_super_root(
     program: &Program,
     module_path: &[String],
@@ -302,5 +352,50 @@ fn module_error(message: impl Into<String>, path: &Path) -> MetelError {
         line: 1,
         col: 1,
         source_line: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn std_namespace_is_reserved_for_user_modules() {
+        let path = Path::new("std.mtl");
+        let err = validate_std_namespace(&["std".to_string()], path)
+            .expect_err("a user module named `std` must be rejected");
+        assert!(
+            err.to_string().contains("reserved for the standard library"),
+            "got: {err}"
+        );
+        // Nested under std is also rejected.
+        assert!(validate_std_namespace(&["std".to_string(), "io".to_string()], path).is_err());
+    }
+
+    #[test]
+    fn non_std_module_paths_are_allowed() {
+        let path = Path::new("foo.mtl");
+        assert!(validate_std_namespace(&[], path).is_ok());
+        assert!(validate_std_namespace(&["foo".to_string()], path).is_ok());
+        // `standard` is a different name, not the reserved `std` segment.
+        assert!(validate_std_namespace(&["standard".to_string()], path).is_ok());
+    }
+
+    #[test]
+    fn source_provider_overlay_supplies_in_memory_source() {
+        // Proves the SourceProvider abstraction supports an in-memory overlay
+        // (the LSP unsaved-buffer use case) without touching disk.
+        struct Overlay;
+        impl SourceProvider for Overlay {
+            fn read(&self, module_path: &[String], _file: &Path) -> Result<String, MetelError> {
+                assert_eq!(module_path, &["greeter".to_string()]);
+                Ok("pub fun hi() {}".to_string())
+            }
+        }
+        let provider = Overlay;
+        let src = provider
+            .read(&["greeter".to_string()], Path::new("ignored.mtl"))
+            .unwrap();
+        assert!(src.contains("fun hi"));
     }
 }
