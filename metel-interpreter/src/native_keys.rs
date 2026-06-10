@@ -26,6 +26,10 @@ pub enum NativeKey {
     StdCoreAssertMsg,
     /// `std::core::clock` — milliseconds since the Unix epoch.
     StdCoreClock,
+    /// `std::core::string_len` — number of characters in a string.
+    StdCoreStringLen,
+    /// `std::core::string_concat` — concatenate two strings.
+    StdCoreStringConcat,
 }
 
 impl NativeKey {
@@ -41,6 +45,8 @@ impl NativeKey {
             ["std", "core", "assert"] => NativeKey::StdCoreAssert,
             ["std", "core", "assert_msg"] => NativeKey::StdCoreAssertMsg,
             ["std", "core", "clock"] => NativeKey::StdCoreClock,
+            ["std", "core", "string_len"] => NativeKey::StdCoreStringLen,
+            ["std", "core", "string_concat"] => NativeKey::StdCoreStringConcat,
             _ => return None,
         };
         Some(key)
@@ -55,6 +61,8 @@ impl NativeKey {
             NativeKey::StdCoreAssert => "@std.core.assert",
             NativeKey::StdCoreAssertMsg => "@std.core.assert_msg",
             NativeKey::StdCoreClock => "@std.core.clock",
+            NativeKey::StdCoreStringLen => "@std.core.string_len",
+            NativeKey::StdCoreStringConcat => "@std.core.string_concat",
         }
     }
 
@@ -67,6 +75,8 @@ impl NativeKey {
         NativeKey::StdCoreAssert,
         NativeKey::StdCoreAssertMsg,
         NativeKey::StdCoreClock,
+        NativeKey::StdCoreStringLen,
+        NativeKey::StdCoreStringConcat,
     ];
 }
 

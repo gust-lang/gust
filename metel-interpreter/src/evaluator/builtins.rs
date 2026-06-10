@@ -132,6 +132,22 @@ fn native_clock(_args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, Me
     Ok(Value::I64(ms))
 }
 
+fn native_string_len(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    match args.first() {
+        Some(Value::Str(s)) => Ok(Value::I64(s.chars().count() as i64)),
+        _ => Err(MetelError::internal("string_len: expected String argument")),
+    }
+}
+
+fn native_string_concat(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    match (args.first(), args.get(1)) {
+        (Some(Value::Str(a)), Some(Value::Str(b))) => Ok(Value::Str(a.clone() + b)),
+        _ => Err(MetelError::internal(
+            "string_concat: expected two String arguments",
+        )),
+    }
+}
+
 /// The host implementation for a stdlib `native` function, looked up by its
 /// lowered [`NativeKey`]. Total over the closed enum — every variant maps to a
 /// host fn (enforced by the coverage test).
@@ -144,6 +160,10 @@ pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
             NativeKey::StdCoreAssert => ("std::core::assert", native_assert),
             NativeKey::StdCoreAssertMsg => ("std::core::assert_msg", native_assert_msg),
             NativeKey::StdCoreClock => ("std::core::clock", native_clock),
+            NativeKey::StdCoreStringLen => ("std::core::string_len", native_string_len),
+            NativeKey::StdCoreStringConcat => {
+                ("std::core::string_concat", native_string_concat)
+            }
         };
     RuntimeCallable::Intrinsic {
         label: label.to_string(),
