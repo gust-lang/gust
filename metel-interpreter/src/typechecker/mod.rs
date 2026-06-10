@@ -854,27 +854,33 @@ fn top_level_value_names(program: &Program) -> HashSet<String> {
 mod tests {
     use super::*;
 
-    /// Assert that StdPrelude::schemes() and evaluator::builtins::free_function_names()
-    /// contain exactly the same keys. A divergence means a builtin either passes
-    /// typechecking but fails at runtime ("undefined name") or vice versa.
-    /// See METEL-5 / ADR-0027.
+    /// The prelude's free-function schemes are derived from the embedded
+    /// std::core source (METEL-181); this asserts the derivation covers every
+    /// `native` declaration in core.mtl, so a new stdlib function can never
+    /// typecheck differently between the graph path (real module) and the
+    /// single-program path (prelude). Replaces the old hand-list parity test —
+    /// there is no longer a duplicated set to keep in sync.
     #[test]
-    fn stdprelude_and_evaluator_builtins_parity() {
+    fn prelude_schemes_cover_embedded_core_natives() {
         let prelude = StdPrelude::default();
-        let prelude_names: std::collections::HashSet<&str> =
-            prelude.schemes().keys().map(|s| s.as_str()).collect();
-        let evaluator_names = crate::evaluator::builtins::free_function_names();
+        let core_path = ["std".to_string(), "core".to_string()];
+        let source = crate::stdlib::lookup(&core_path).expect("std::core is embedded");
+        let program =
+            crate::parser::parse(source, "<embedded std::core>").expect("core.mtl parses");
 
-        let only_in_prelude: Vec<&&str> = prelude_names.difference(&evaluator_names).collect();
-        let only_in_evaluator: Vec<&&str> = evaluator_names.difference(&prelude_names).collect();
-
-        assert!(
-            only_in_prelude.is_empty() && only_in_evaluator.is_empty(),
-            "StdPrelude and evaluator builtin free-function sets diverged.\n\
-             Only in StdPrelude (typechecks but fails at runtime): {:?}\n\
-             Only in evaluator (available at runtime but rejected by typechecker): {:?}",
-            only_in_prelude,
-            only_in_evaluator,
-        );
+        let mut native_count = 0usize;
+        for decl in &program.decls {
+            if let Decl::Fun(fun) = decl {
+                if fun.native.is_some() {
+                    native_count += 1;
+                    assert!(
+                        prelude.contains(&fun.name),
+                        "prelude is missing a scheme for std::core native `{}`",
+                        fun.name
+                    );
+                }
+            }
+        }
+        assert!(native_count > 0, "core.mtl should declare native functions");
     }
 }

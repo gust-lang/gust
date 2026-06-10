@@ -53,14 +53,6 @@ fn collect_type_param_bounds(
         .collect()
 }
 
-fn dbg_scheme(t: TypeVar) -> TypeScheme {
-    TypeScheme {
-        quantified_vars: vec![t],
-        param_names: vec![],
-        ty: InferType::Fun(vec![InferType::Var(t)], Box::new(InferType::Var(t))),
-    }
-}
-
 fn list_new_scheme(t: TypeVar) -> TypeScheme {
     TypeScheme {
         quantified_vars: vec![t],
@@ -83,11 +75,53 @@ fn list_from_scheme(t: TypeVar) -> TypeScheme {
     }
 }
 
-fn print_scheme(t: TypeVar) -> TypeScheme {
-    TypeScheme {
-        quantified_vars: vec![t],
-        param_names: vec![],
-        ty: InferType::Fun(vec![InferType::Var(t)], Box::new(InferType::unit())),
+/// Derive the free-function schemes for the prelude by parsing the embedded
+/// `std::core` source and reading each `native` declaration's annotated
+/// signature (METEL-181). `stdlib/core.mtl` + the `NativeKey` enum are the
+/// single source of truth — there is no hand-maintained scheme list to keep in
+/// sync. Used by `StdPrelude::default()` so the single-program pipeline (which
+/// performs no module loading) sees the same surface as the module graph path.
+fn populate_schemes_from_embedded_core(
+    map: &mut HashMap<String, TypeScheme>,
+    gen: &mut TypeVarGenerator,
+) {
+    let core_path = ["std".to_string(), "core".to_string()];
+    let Some(source) = crate::stdlib::lookup(&core_path) else {
+        return;
+    };
+    let program = crate::parser::parse(source, "<embedded std::core>")
+        .expect("embedded std::core must parse; it is compiled into the binary");
+    for decl in &program.decls {
+        let Decl::Fun(fun) = decl else { continue };
+        if fun.native.is_none() {
+            continue;
+        }
+        let generic_map: HashMap<String, TypeVar> = fun
+            .generics
+            .iter()
+            .map(|g| (g.name.clone(), gen.fresh()))
+            .collect();
+        let te = |t: &TypeExpr| -> InferType {
+            if generic_map.is_empty() {
+                type_expr_to_infer(t)
+            } else {
+                type_expr_to_infer_with_generics(t, &generic_map)
+            }
+        };
+        let params: Vec<InferType> = fun
+            .params
+            .iter()
+            .map(|p| {
+                p.type_ann
+                    .as_ref()
+                    .map(&te)
+                    .expect("native declarations are fully annotated (enforced by native_fun_ty)")
+            })
+            .collect();
+        let ret = fun.return_type.as_ref().map(&te).unwrap_or_else(InferType::unit);
+        let fun_ty = InferType::Fun(params, Box::new(ret));
+        let scheme = crate::typeinference::generalize(fun_ty, &Default::default());
+        map.insert(fun.name.clone(), scheme);
     }
 }
 
@@ -628,39 +662,13 @@ pub(super) fn populate_std_schemes(
     map: &mut HashMap<String, TypeScheme>,
     gen: &mut TypeVarGenerator,
 ) {
-    let mono = |params: Vec<InferType>, ret: InferType| {
-        TypeScheme::mono(InferType::Fun(params, Box::new(ret)))
-    };
-    let str_ty = InferType::str();
-    let int_ty = InferType::int();
-    let bool_ty = InferType::bool();
-    let unit_ty = InferType::unit();
-
-    // Polymorphic builtins.
-    let t = gen.fresh();
-    map.insert("print".into(), print_scheme(t));
-    let t = gen.fresh();
-    map.insert("println".into(), print_scheme(t));
+    // Free-function schemes are derived from the embedded std::core source
+    // (single source of truth, METEL-181). Only the List<T> static constructors
+    // remain hand-written, because the List type itself still lives in the type
+    // registry rather than in std::core.mtl.
+    populate_schemes_from_embedded_core(map, gen);
     let t = gen.fresh();
     map.insert("List::new".into(), list_new_scheme(t));
     let t = gen.fresh();
     map.insert("List::from".into(), list_from_scheme(t));
-    let t = gen.fresh();
-    map.insert("dbg".into(), dbg_scheme(t));
-
-    // Monomorphic builtins.
-    map.insert(
-        "string_len".into(),
-        mono(vec![str_ty.clone()], int_ty.clone()),
-    );
-    map.insert(
-        "string_concat".into(),
-        mono(vec![str_ty.clone(), str_ty.clone()], str_ty.clone()),
-    );
-    map.insert("clock".into(), mono(vec![], int_ty.clone()));
-    map.insert(
-        "assert".into(),
-        mono(vec![bool_ty.clone()], unit_ty.clone()),
-    );
-    map.insert("assert_msg".into(), mono(vec![bool_ty, str_ty], unit_ty));
 }

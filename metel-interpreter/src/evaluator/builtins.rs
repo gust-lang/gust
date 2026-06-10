@@ -171,24 +171,33 @@ pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
     }
 }
 
-/// The free-function builtin names registered by this module.
-/// Must stay in sync with `StdPrelude::schemes()`. See METEL-5 / ADR-0027.
-#[allow(dead_code)] // called by the parity test in typechecker::tests
-pub(crate) fn free_function_names() -> std::collections::HashSet<&'static str> {
-    [
-        "print",
-        "println",
-        "string_len",
-        "string_concat",
-        "List::new",
-        "List::from",
-        "clock",
-        "assert",
-        "assert_msg",
-        "dbg",
-    ]
-    .into_iter()
-    .collect()
+/// Register the std::core free functions by parsing the embedded core.mtl and
+/// binding each `native` declaration to its host implementation (METEL-181).
+/// `stdlib/core.mtl` + the `NativeKey` enum are the single source of truth;
+/// there is no hand-maintained list to keep in sync with the typechecker (the
+/// prelude derives its schemes from the same source). This serves the
+/// single-program pipeline; the module-graph pipeline additionally evaluates
+/// std::core as a real module.
+fn register_core_natives_from_embedded(runtime: &mut RuntimeRegistry) {
+    let core_path = ["std".to_string(), "core".to_string()];
+    let Some(source) = crate::stdlib::lookup(&core_path) else {
+        return;
+    };
+    let program = crate::parser::parse(source, "<embedded std::core>")
+        .expect("embedded std::core must parse; it is compiled into the binary");
+    for decl in &program.decls {
+        let crate::ast::Decl::Fun(fun) = decl else {
+            continue;
+        };
+        let Some(binding) = &fun.native else { continue };
+        let key = NativeKey::from_path(&binding.key_path).unwrap_or_else(|| {
+            panic!(
+                "embedded std::core declares unknown native binding @{}",
+                binding.key_path.join(".")
+            )
+        });
+        runtime.register_std_core_value(fun.name.clone(), Value::Callable(native_host_impl(key)));
+    }
 }
 
 pub(super) fn register_builtins(runtime: &mut RuntimeRegistry) {
@@ -231,11 +240,6 @@ pub(super) fn register_builtins(runtime: &mut RuntimeRegistry) {
         intrinsic(label, fun)
     }
 
-    macro_rules! register_core {
-        ($name:expr, $value:expr) => {
-            runtime.register_std_core_value($name.to_string(), Value::Callable($value));
-        };
-    }
     macro_rules! register_type_value {
         ($type_name:expr, $method_name:expr, $value:expr) => {
             runtime.register_type_value($type_name, $method_name, $value);
@@ -269,42 +273,9 @@ pub(super) fn register_builtins(runtime: &mut RuntimeRegistry) {
         };
     }
 
-    // print/println dispatch through Display (to_string) for any type.
-    register_core!(
-        "print",
-        builtin_value("print", |args, span| {
-            let s = match args.first() {
-                Some(v) => value_to_display_string(v).ok_or_else(|| {
-                    MetelError::panic(
-                        RuntimeErrorCode::R0009,
-                        "print: value does not implement Display",
-                        span,
-                    )
-                })?,
-                None => return Err(MetelError::internal("print: expected one argument")),
-            };
-            print!("{s}");
-            Ok(Value::Unit)
-        })
-    );
-
-    register_core!(
-        "println",
-        builtin_value("println", |args, span| {
-            let s = match args.first() {
-                Some(v) => value_to_display_string(v).ok_or_else(|| {
-                    MetelError::panic(
-                        RuntimeErrorCode::R0009,
-                        "println: value does not implement Display",
-                        span,
-                    )
-                })?,
-                None => return Err(MetelError::internal("println: expected one argument")),
-            };
-            println!("{s}");
-            Ok(Value::Unit)
-        })
-    );
+    // std::core free functions (print/println/dbg/assert/assert_msg/clock/
+    // string_len/string_concat) — derived from the embedded core.mtl natives.
+    register_core_natives_from_embedded(runtime);
 
     // to_string() methods for built-in Display types. Every Displayable
     // primitive (all numeric types plus boolean/Char/String) uses the same
@@ -608,29 +579,6 @@ pub(super) fn register_builtins(runtime: &mut RuntimeRegistry) {
         )
     );
 
-    register_core!(
-        "string_len",
-        builtin_value("string_len", |args, _span| {
-            if let Some(Value::Str(s)) = args.first() {
-                Ok(Value::I64(s.chars().count() as i64))
-            } else {
-                Err(MetelError::internal("string_len: expected String argument"))
-            }
-        })
-    );
-
-    register_core!(
-        "string_concat",
-        builtin_value("string_concat", |args, _span| {
-            match (args.first(), args.get(1)) {
-                (Some(Value::Str(a)), Some(Value::Str(b))) => Ok(Value::Str(a.clone() + b)),
-                _ => Err(MetelError::internal(
-                    "string_concat: expected two String arguments",
-                )),
-            }
-        })
-    );
-
     // ── List<T> constructors ──────────────────────────────────────────────────
 
     // Helper: build a List Value from a backing Rc array.
@@ -844,66 +792,8 @@ pub(super) fn register_builtins(runtime: &mut RuntimeRegistry) {
         )
     );
 
-    register_core!(
-        "clock",
-        builtin_value("clock", |_args, _span| {
-            use std::time::{SystemTime, UNIX_EPOCH};
-            let ms = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as i64;
-            Ok(Value::I64(ms))
-        })
-    );
-
-    register_core!(
-        "assert",
-        builtin_value("assert", |args, span| {
-            match args.first() {
-                Some(Value::Boolean(true)) => Ok(Value::Unit),
-                Some(Value::Boolean(false)) => Err(MetelError::panic(
-                    RuntimeErrorCode::R0013,
-                    "assertion failed",
-                    span,
-                )),
-                _ => Err(MetelError::internal("assert: expected boolean argument")),
-            }
-        })
-    );
-
-    register_core!(
-        "assert_msg",
-        builtin_value("assert_msg", |args, span| {
-            match (args.first(), args.get(1)) {
-                (Some(Value::Boolean(true)), _) => Ok(Value::Unit),
-                (Some(Value::Boolean(false)), Some(Value::Str(msg))) => Err(MetelError::panic(
-                    RuntimeErrorCode::R0013,
-                    msg.clone(),
-                    span,
-                )),
-                (Some(Value::Boolean(false)), _) => Err(MetelError::panic(
-                    RuntimeErrorCode::R0013,
-                    "assertion failed",
-                    span,
-                )),
-                _ => Err(MetelError::internal(
-                    "assert_msg: expected (boolean, String) arguments",
-                )),
-            }
-        })
-    );
-
-    register_core!(
-        "dbg",
-        builtin_value("dbg", |args, _span| {
-            if let Some(val) = args.first() {
-                eprintln!("[dbg] {}", format_value(val));
-                Ok(val.clone())
-            } else {
-                Err(MetelError::internal("dbg: expected one argument"))
-            }
-        })
-    );
+    // clock / assert / assert_msg / dbg are registered by
+    // register_core_natives_from_embedded above.
 }
 
 pub(super) fn runtime_registry() -> RuntimeRegistry {
