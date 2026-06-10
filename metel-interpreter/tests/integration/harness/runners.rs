@@ -240,9 +240,15 @@ fn assert_graph_checks(
     checks: &GraphChecks,
 ) {
     if let Some(expected) = checks.module_count {
+        // Count user modules only; the binary-embedded std:: modules (METEL-181)
+        // are always present and are not what these fixtures assert about.
+        let user_modules = graph
+            .modules
+            .iter()
+            .filter(|m| m.module_path.first().map(String::as_str) != Some("std"))
+            .count();
         assert_eq!(
-            graph.modules.len(),
-            expected,
+            user_modules, expected,
             "wrong module count for {}",
             path.display()
         );

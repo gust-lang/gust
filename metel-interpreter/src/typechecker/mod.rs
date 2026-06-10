@@ -179,6 +179,12 @@ fn check_pub_annotations(loaded: &LoadedModule, names: &ResolvedNames) -> Result
                 if !pub_surface.contains(fd.name.as_str()) {
                     continue;
                 }
+                // Native (stdlib host-backed) functions are exempt: their
+                // signature is validated by `native_fun_ty` (which requires
+                // parameter annotations), and an omitted return type is unit.
+                if fd.native.is_some() {
+                    continue;
+                }
                 if fd.return_type.is_none() {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0010,

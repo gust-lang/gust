@@ -89,6 +89,10 @@ pub fn load_root_with<P: SourceProvider>(
         .unwrap_or_else(|| Path::new("."))
         .to_path_buf();
     let mut loader = Loader::new(root_dir, provider);
+    // Synthesize the binary-embedded std:: modules into the graph ahead of user
+    // code, so std::core is a real module flowing through the normal pipeline
+    // (METEL-181) rather than a virtual injection.
+    loader.load_embedded_stdlib()?;
     loader.load_module(root.clone(), Vec::new())?;
     Ok(ModuleGraph {
         root,
@@ -135,6 +139,29 @@ impl<'a> Loader<'a> {
 }
 
 impl Loader<'_> {
+    /// Parse the binary-embedded std:: sources and add them to the graph as real
+    /// modules (METEL-181). Their `module_path` is the logical path (e.g.
+    /// `["std","core"]`); the synthetic `file_path` is for diagnostics only.
+    fn load_embedded_stdlib(&mut self) -> Result<(), MetelError> {
+        for module_path in crate::stdlib::module_paths() {
+            let Some(source) = crate::stdlib::lookup(&module_path) else {
+                continue;
+            };
+            let filename = format!("<embedded {}>", module_path.join("::"));
+            let program = parser::parse(source, &filename)?;
+            let file_path = PathBuf::from(&filename);
+            self.visited.insert(file_path.clone());
+            self.file_to_path
+                .insert(file_path.clone(), module_path.clone());
+            self.modules.push(LoadedModule {
+                module_path,
+                file_path,
+                program,
+            });
+        }
+        Ok(())
+    }
+
     fn load_module(
         &mut self,
         file_path: PathBuf,

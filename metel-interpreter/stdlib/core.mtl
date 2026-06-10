@@ -23,9 +23,10 @@
 // Native handling in the evaluator's impl-method path), generic native funcs
 // (List::new<T>), and aspect declarations flowing through the normal pipeline.
 
-native(@std.core.print)      pub fun print(x: String);
-native(@std.core.println)    pub fun println(x: String);
-native(@std.core.dbg)        pub fun dbg(x: String) -> String;
+// print/println/dbg are generic over any Displayable value (the host formats it).
+native(@std.core.print)      pub fun print<T>(x: T);
+native(@std.core.println)    pub fun println<T>(x: T);
+native(@std.core.dbg)        pub fun dbg<T>(x: T) -> T;
 native(@std.core.assert)     pub fun assert(cond: boolean);
 native(@std.core.assert_msg) pub fun assert_msg(cond: boolean, msg: String);
 native(@std.core.clock)      pub fun clock() -> i64;

@@ -184,19 +184,21 @@ pub fn resolve(graph: &ModuleGraph) -> Result<ResolvedNames, MetelError> {
         scopes.insert(loaded.module_path.clone(), scope);
     }
 
-    // Inject the std::core virtual module into pub_surface so that
-    // `import std::core::Perhaps` and similar are recognized as valid imports.
-    // (std::core has no physical file; these names are registered in the type registry.)
-    // See ADR-0027 for the virtual-module design and its migration path.
-    let std_core_surface: HashSet<String> =
-        ["Perhaps", "Result", "Display", "Iterable", "From", "List"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-    pub_surface.insert(
-        vec!["std".to_string(), "core".to_string()],
-        std_core_surface,
-    );
+    // The std::core free-function surface (print, println, …) now comes from the
+    // real embedded std::core module (METEL-181). The core TYPES/ASPECTS are still
+    // registered in the type registry, not yet expressed in std::core.mtl, so
+    // their names are injected into std::core's public surface here — EXTENDING
+    // the real module's computed surface rather than replacing it.
+    // TODO(METEL-181): once Perhaps/Result/List/aspects move into std::core.mtl,
+    // delete this injection entirely.
+    pub_surface
+        .entry(vec!["std".to_string(), "core".to_string()])
+        .or_default()
+        .extend(
+            ["Perhaps", "Result", "Display", "Iterable", "From", "List"]
+                .iter()
+                .map(|s| s.to_string()),
+        );
 
     Ok(ResolvedNames {
         scopes,
