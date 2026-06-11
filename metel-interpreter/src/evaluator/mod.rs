@@ -1331,11 +1331,16 @@ fn run_passes(
         match decl {
             TypedDecl::Fun(f) => {
                 // Native functions bind directly to their host implementation.
+                // Overloaded ones (symbol_id set) go to the symbol registry.
                 if let FunBody::Native(key) = &f.body {
-                    env.set(
-                        &f.name,
-                        Value::Callable(crate::evaluator::builtins::native_host_impl(*key)),
-                    );
+                    let value =
+                        Value::Callable(crate::evaluator::builtins::native_host_impl(*key));
+                    match f.symbol_id {
+                        Some(id) => runtime.register_symbol_value(id, value),
+                        None => {
+                            env.set(&f.name, value);
+                        }
+                    }
                     continue;
                 }
                 let (body, ctx) = match &f.body {

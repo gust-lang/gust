@@ -75,10 +75,10 @@ impl Fighter {
 
     // Short string representation: "Name[hp/max_hp]".
     fun summary(self) -> String {
-        let part1 = string_concat(self.name, "[");
-        let part2 = string_concat(self.hp.to_string(), "/");
-        let part3 = string_concat(self.max_hp.to_string(), "]");
-        string_concat(part1, string_concat(part2, part3))
+        let part1 = self.name + "[";
+        let part2 = self.hp.to_string() + "/";
+        let part3 = self.max_hp.to_string() + "]";
+        part1 + part2 + part3
     }
 }
 
@@ -110,7 +110,7 @@ fun describe_action(action: Action) -> String {
         Action::Attack          => "attacks",
         Action::Defend          => "defends",
         Action::Heal { amount } => {
-            string_concat("heals for ", amount.to_string())
+            "heals for " + amount.to_string()
         },
     }
 }
@@ -144,9 +144,9 @@ fun defender_strategy(actor: Fighter, target: Fighter) -> Action {
 
 // "R<n> | <f1 summary> vs <f2 summary>"
 fun format_round(round: i64, f1: Fighter, f2: Fighter) -> String {
-    let prefix = string_concat("R", round.to_string());
-    let mid    = string_concat(f1.summary(), " vs ");
-    string_concat(string_concat(prefix, " | "), string_concat(mid, f2.summary()))
+    let prefix = "R" + round.to_string();
+    let mid    = f1.summary() + " vs ";
+    prefix + " | " + mid + f2.summary()
 }
 
 // Sum of HP across all fighters in the party.
@@ -284,16 +284,16 @@ fun main() {
     let desc_atk  = describe_action(Action::Attack);
     let desc_def  = describe_action(Action::Defend);
     let desc_heal = describe_action(Action::Heal { amount: 15 });
-    assert(string_len(desc_atk)  > 0);
-    assert(string_len(desc_def)  > 0);
-    assert(string_len(desc_heal) > 0);
+    assert(desc_atk.len()  > 0);
+    assert(desc_def.len()  > 0);
+    assert(desc_heal.len() > 0);
 
     // 9. always_attack: must return Attack variant.
     let a_atk = always_attack(knight, goblin);
     match a_atk {
         Action::Attack          => (),
-        Action::Defend          => assert_msg(false, "expected Attack"),
-        Action::Heal { amount } => assert_msg(false, "expected Attack"),
+        Action::Defend          => assert(false, "expected Attack"),
+        Action::Heal { amount } => assert(false, "expected Attack"),
     };
 
     // 10. smart_healer: heals when below half HP, attacks when ok.
@@ -301,24 +301,24 @@ fun main() {
     let heal_choice = smart_healer(low_hp, goblin);  // 10*2=20 < 50 → Heal
     match heal_choice {
         Action::Heal { amount } => assert(amount == 20),
-        Action::Attack          => assert_msg(false, "expected Heal"),
-        Action::Defend          => assert_msg(false, "expected Heal"),
+        Action::Attack          => assert(false, "expected Heal"),
+        Action::Defend          => assert(false, "expected Heal"),
     };
     let ok_hp      = Fighter { name: "Ok", hp: 40, max_hp: 50, attack: 10, defense: 5 };
     let atk_choice  = smart_healer(ok_hp, goblin);  // 40*2=80 > 50 → Attack
     match atk_choice {
         Action::Attack          => (),
-        Action::Defend          => assert_msg(false, "expected Attack"),
-        Action::Heal { amount } => assert_msg(false, "expected Attack"),
+        Action::Defend          => assert(false, "expected Attack"),
+        Action::Heal { amount } => assert(false, "expected Attack"),
     };
 
     // 11. defender_strategy: defends when defense < 8, attacks otherwise.
     let def_action  = defender_strategy(goblin, knight);   // goblin.def=2 < 8 → Defend
     let def_action2 = defender_strategy(knight, goblin);   // knight.def=5 < 8 → Defend
     let def_action3 = defender_strategy(buffed, goblin);   // buffed.def=8, not < 8 → Attack
-    match def_action  { Action::Defend => (), Action::Attack => assert_msg(false, "expected Defend"), Action::Heal { amount } => assert_msg(false, "expected Defend"), };
-    match def_action2 { Action::Defend => (), Action::Attack => assert_msg(false, "expected Defend"), Action::Heal { amount } => assert_msg(false, "expected Defend"), };
-    match def_action3 { Action::Attack => (), Action::Defend => assert_msg(false, "expected Attack"), Action::Heal { amount } => assert_msg(false, "expected Attack"), };
+    match def_action  { Action::Defend => (), Action::Attack => assert(false, "expected Defend"), Action::Heal { amount } => assert(false, "expected Defend"), };
+    match def_action2 { Action::Defend => (), Action::Attack => assert(false, "expected Defend"), Action::Heal { amount } => assert(false, "expected Defend"), };
+    match def_action3 { Action::Attack => (), Action::Defend => assert(false, "expected Attack"), Action::Heal { amount } => assert(false, "expected Attack"), };
 
     // 12. simulate_rounds: 1 round where Knight attacks Goblin.
     // After 1 round: Goblin hp = 30 - (25-2) = 7.  Knight unchanged.
@@ -328,20 +328,20 @@ fun main() {
 
     // 13. format_round returns a non-empty string.
     let round_str = format_round(3, knight, goblin);
-    assert(string_len(round_str) > 0);
+    assert(round_str.len() > 0);
 
     // 14. Battle: Knight (aggressive) vs Goblin (aggressive) — Knight wins.
     //   Round 1: Knight hits Goblin for 23 → hp=7; Goblin hits Knight for 3 → hp=97.
     //   Round 2: Knight hits Goblin for 23 → hp=0.  Knight wins.
     let result1 = battle(knight, always_attack, goblin, always_attack, 10);
     match result1 {
-        Perhaps::Some { value } => assert(string_len(value) > 0),
-        None => assert_msg(false, "expected Some"),
+        Perhaps::Some { value } => assert(value.len() > 0),
+        None => assert(false, "expected Some"),
     };
 
     // 15. Battle: draw when max_rounds = 0 (no rounds fought).
     let draw = battle(knight, always_attack, goblin, always_attack, 0);
-    match draw { Perhaps::Some { value } => assert_msg(false, "expected None"), None => (), };
+    match draw { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
 
     // 16. Battle with inline closure strategy and named-function strategy.
     //   Mage (atk=30, def=1) always attacks; Healer uses smart_healer.
@@ -356,7 +356,7 @@ fun main() {
     );
     match result2 {
         Perhaps::Some { value } => (),
-        None => assert_msg(false, "expected Some"),
+        None => assert(false, "expected Some"),
     };
 
     // 17. Closure capturing an outer variable (hp threshold for heal decision).
@@ -370,13 +370,13 @@ fun main() {
     };
     // Knight hp=100 ≥ 25 → Attack.
     let tc1 = threshold_healer(knight, goblin);
-    match tc1 { Action::Attack => (), Action::Defend => assert_msg(false, "expected Attack"), Action::Heal { amount } => assert_msg(false, "expected Attack"), };
+    match tc1 { Action::Attack => (), Action::Defend => assert(false, "expected Attack"), Action::Heal { amount } => assert(false, "expected Attack"), };
     // low_hp hp=10 < 25 → Heal { amount: 10 }.
     let tc2 = threshold_healer(low_hp, goblin);
     match tc2 {
         Action::Heal { amount } => assert(amount == 10),
-        Action::Attack          => assert_msg(false, "expected Heal"),
-        Action::Defend          => assert_msg(false, "expected Heal"),
+        Action::Attack          => assert(false, "expected Heal"),
+        Action::Defend          => assert(false, "expected Heal"),
     };
 
     // 18. Array of fighters: total HP and best attacker index.
@@ -391,12 +391,12 @@ fun main() {
     let best_idx = best_attacker_idx(party);
     match best_idx {
         Perhaps::Some { value } => assert(value == 1),
-        None => assert_msg(false, "expected Some"),
+        None => assert(false, "expected Some"),
     };
     // Empty party returns None.
     let empty_party: Fighter[] = [];
     let no_best = best_attacker_idx(empty_party);
-    match no_best { Perhaps::Some { value } => assert_msg(false, "expected None"), None => (), };
+    match no_best { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
 
     // 19. Count alive fighters in party via for-in (all have hp > 0).
     let mut alive_count = 0;

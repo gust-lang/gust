@@ -34,13 +34,13 @@ impl Rectangle {
 
 impl Describable for Circle {
     fun describe(self) -> String {
-        return string_concat("Circle(r=", string_concat(self.radius.to_string(), ")"));
+        return "Circle(r=" + self.radius.to_string() + ")";
     }
 }
 
 impl Describable for Rectangle {
     fun describe(self) -> String {
-        return string_concat("Rect(", string_concat(self.width.to_string(), string_concat("x", string_concat(self.height.to_string(), ")"))));
+        return "Rect(" + self.width.to_string() + "x" + self.height.to_string() + ")";
     }
 }
 

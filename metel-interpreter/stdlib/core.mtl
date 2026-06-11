@@ -56,17 +56,23 @@ impl List<T> {
     native(@std.core.list_as_slice) fun as_slice(self) -> T[];
 }
 
+// ── String methods ──────────────────────────────────────────────────────────
+
+impl String {
+    // Number of characters (Unicode scalar values), not bytes.
+    native(@std.core.string_len) fun len(self) -> i64;
+}
+
 // ── Free functions ──────────────────────────────────────────────────────────
 
 // print/println/dbg are generic over any Displayable value (the host formats it).
 native(@std.core.print)      pub fun print<T>(x: T);
 native(@std.core.println)    pub fun println<T>(x: T);
 native(@std.core.dbg)        pub fun dbg<T>(x: T) -> T;
+// assert is overloaded: with and without a panic message.
 native(@std.core.assert)     pub fun assert(cond: boolean);
-native(@std.core.assert_msg) pub fun assert_msg(cond: boolean, msg: String);
+native(@std.core.assert_msg) pub fun assert(cond: boolean, msg: String);
 native(@std.core.clock)      pub fun clock() -> i64;
-native(@std.core.string_len)    pub fun string_len(s: String) -> i64;
-native(@std.core.string_concat) pub fun string_concat(a: String, b: String) -> String;
 
 // ── Display impls for the primitive types ──────────────────────────────────
 // One shared host implementation formats any displayable value, so every

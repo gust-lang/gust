@@ -7,21 +7,21 @@ fun main() {
     assert(0.0.to_string()   == "0");
     assert(true.to_string()  == "true");
     assert(false.to_string() == "false");
-    // string_len
-    assert(string_len("")        == 0);
-    assert(string_len("hello")   == 5);
-    assert(string_len("abc")     == 3);
-    // string_concat
-    assert(string_concat("foo", "bar") == "foobar");
-    assert(string_concat("", "xyz")    == "xyz");
-    assert(string_concat("abc", "")    == "abc");
+    // String::len
+    assert("".len()        == 0);
+    assert("hello".len()   == 5);
+    assert("abc".len()     == 3);
+    // string concatenation
+    assert("foo" + "bar" == "foobar");
+    assert("" + "xyz"    == "xyz");
+    assert("abc" + ""    == "abc");
     assert("hello" + ", " + "world" == "hello, world");
     let who = "world";
     assert("hello, ${who}" == "hello, world");
     assert("n=${42}" == "n=42");
     assert("flag=${true}" == "flag=true");
     assert("value=${\"x\"}" == "value=x");
-    assert("pair=${string_concat(\"x\", \"y\")}" == "pair=xy");
+    assert("pair=${\"x\" + \"y\"}" == "pair=xy");
     assert("\${value}" == "\${value}");
     assert("$5" == "$5");
     // List<T>: new, push, len, get, pop, as_slice, from

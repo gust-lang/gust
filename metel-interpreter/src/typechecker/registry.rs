@@ -69,6 +69,11 @@ fn populate_schemes_from_embedded_core(
                 if fun.native.is_none() {
                     continue;
                 }
+                // Overloaded std::core natives (the assert pair) are dispatched
+                // by SymbolId via the seeded overload table, never by name.
+                if super::overload::core_overload_table().contains_key(&fun.name) {
+                    continue;
+                }
                 let generic_map: HashMap<String, TypeVar> = fun
                     .generics
                     .iter()
@@ -532,9 +537,6 @@ pub(super) fn register_primitive_type_bindings(
     ctx: &mut InferContext,
     prelude: &super::CorePrelude,
 ) {
-    let str_ty = InferType::str();
-    let int_ty = InferType::int();
-
     // Free-function builtins all come from CorePrelude — no separate list needed.
     for (name, scheme) in prelude.schemes() {
         ctx.bind_poly_if_absent(name, scheme.clone());
@@ -543,11 +545,8 @@ pub(super) fn register_primitive_type_bindings(
     // The primitive Display/From impls (to_string, the numeric From
     // cross-product, Char ↔ u32) are declared in the embedded std::core source
     // and registered by build_registry's impl-decl pass (METEL-181).
-    ctx.register_method(
-        "String".to_string(),
-        "len".to_string(),
-        InferType::Fun(vec![str_ty.clone()], Box::new(int_ty.clone())),
-    );
+    // String::len is declared in the embedded std::core source (`impl String`)
+    // and registered by build_registry's impl-decl pass.
     // T[]::len — handled as a special case in the typechecker; no TypeVar needed here.
 
     // The core aspects (Display/Iterable/From) are declared in the embedded

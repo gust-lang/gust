@@ -14,14 +14,13 @@ pub struct Rectangle { pub width: i64, pub height: i64 }
 
 impl Describable for Circle {
     fun describe(self) -> String {
-        string_concat("Circle(r=", string_concat(self.radius.to_string(), ")"))
+        "Circle(r=" + self.radius.to_string() + ")"
     }
 }
 
 impl Describable for Rectangle {
     fun describe(self) -> String {
-        string_concat("Rect(", string_concat(self.width.to_string(),
-            string_concat("x", string_concat(self.height.to_string(), ")"))))
+        "Rect(" + self.width.to_string() + "x" + self.height.to_string() + ")"
     }
 }
 

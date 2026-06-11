@@ -100,10 +100,10 @@ impl Stats {
     }
 
     fun to_str(self) -> String {
-        let part1 = string_concat("n=",     self.count.to_string());
-        let part2 = string_concat(" mean=", self.mean.to_string());
-        let part3 = string_concat(" min=",  self.min.to_string());
-        string_concat(string_concat(part1, part2), part3)
+        let part1 = "n=" + self.count.to_string();
+        let part2 = " mean=" + self.mean.to_string();
+        let part3 = " min=" + self.min.to_string();
+        part1 + part2 + part3
     }
 }
 
@@ -233,14 +233,14 @@ fun main() {
     let fnd = binary_search(srt, 4.0);
     match fnd {
         Perhaps::Some { value } => assert(value == 4),
-        None => assert_msg(false, "expected Some"),
+        None => assert(false, "expected Some"),
     };
     let miss = binary_search(srt, 7.0);
-    match miss { Perhaps::Some { value } => assert_msg(false, "expected None"), None => (), };
+    match miss { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
     // Searching an empty array returns None.
     let empty_f: f64[] = [];
     let empty_srch = binary_search(empty_f, 1.0);
-    match empty_srch { Perhaps::Some { value } => assert_msg(false, "expected None"), None => (), };
+    match empty_srch { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
 
     // 3. Descriptive statistics — match with blocks (RFC-0018).
     let d5: f64[] = [1.0, 2.0, 3.0, 4.0, 5.0];
@@ -258,7 +258,7 @@ fun main() {
             let sd = value.std_dev();
             assert(sd > 1.41 && sd < 1.42);
         },
-        Result::Err { error } => assert_msg(false, "expected Ok"),
+        Result::Err { error } => assert(false, "expected Ok"),
     };
 
     // 4. Error case: empty input returns Err (RFC-0019 constructs Err with
@@ -266,24 +266,24 @@ fun main() {
     let empty: f64[] = [];
     let rerr = compute_stats(empty);
     match rerr {
-        Result::Ok  { value } => assert_msg(false, "expected Err"),
-        Result::Err { error } => assert(string_len(error) > 0),
+        Result::Ok  { value } => assert(false, "expected Err"),
+        Result::Err { error } => assert(error.len() > 0),
     };
 
     // 5. Median — odd and even lengths, and empty.
     let med5 = median(d5);
     match med5 {
         Perhaps::Some { value } => assert(value == 3.0),
-        None => assert_msg(false, "expected Some"),
+        None => assert(false, "expected Some"),
     };
     let d4: f64[] = [4.0, 1.0, 3.0, 2.0];
     let med4 = median(d4);
     match med4 {
         Perhaps::Some { value } => assert(value == 2.5),
-        None => assert_msg(false, "expected Some"),
+        None => assert(false, "expected Some"),
     };
     let med_e = median(empty);
-    match med_e { Perhaps::Some { value } => assert_msg(false, "expected None"), None => (), };
+    match med_e { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
 
     // 6. Error propagation with ?
     let zr = z_score(d5, 5.0);
@@ -292,12 +292,12 @@ fun main() {
         Result::Ok { value } => {
             assert(value > 1.4 && value < 1.5);
         },
-        Result::Err { error } => assert_msg(false, "expected Ok"),
+        Result::Err { error } => assert(false, "expected Ok"),
     };
     // ? on empty array propagates Err.
     let zerr = z_score(empty, 0.0);
     match zerr {
-        Result::Ok  { value } => assert_msg(false, "expected Err"),
+        Result::Ok  { value } => assert(false, "expected Err"),
         Result::Err { error } => (),
     };
 
@@ -341,7 +341,7 @@ fun main() {
             assert(value.max == 64.0);
             assert(value.mean == 25.5);
         },
-        Result::Err { error } => assert_msg(false, "expected Ok"),
+        Result::Err { error } => assert(false, "expected Ok"),
     };
 
     // 10. Tuple: capture (min, max) of the sorted array as a pair.
@@ -370,7 +370,7 @@ fun main() {
         Result::Ok  { value } => value.to_str(),
         Result::Err { error } => "error",
     };
-    assert(string_len(desc) > 0);
+    assert(desc.len() > 0);
 
     // 15. Single-element dataset: mean == value, variance == 0, range == 0.
     let single: f64[] = [42.0];
@@ -382,6 +382,6 @@ fun main() {
             assert(value.variance == 0.0);
             assert(value.range() == 0.0);
         },
-        Result::Err { error } => assert_msg(false, "expected Ok"),
+        Result::Err { error } => assert(false, "expected Ok"),
     };
 }

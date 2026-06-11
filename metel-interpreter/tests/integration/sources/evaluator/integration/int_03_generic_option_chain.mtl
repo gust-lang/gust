@@ -172,7 +172,7 @@ fun main() {
     let some_str: Option<String> = Option::Some { value: "hello" };
     let none_str: Option<String> = Option::None;
 
-    let upper_len = option_map(some_str, (s: String) -> i64 { string_len(s) });
+    let upper_len = option_map(some_str, (s: String) -> i64 { s.len() });
     assert(option_or(upper_len, 0) == 5);
     assert(option_or(none_str, "default") == "default");
 

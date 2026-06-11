@@ -63,6 +63,13 @@ fn native_fun_ty(fun: &FunDecl, ctx: &mut InferContext) -> Result<InferType, Met
 pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
     for decl in decls {
         if let Decl::Fun(fun) = decl {
+            // Overloaded names are not bound to a single shared type — each
+            // definition is checked independently and dispatched by SymbolId
+            // (METEL-180). Binding here would unify their distinct signatures.
+            // This applies to native overloads too (std::core's assert pair).
+            if ctx.is_overloaded(&fun.name) {
+                continue;
+            }
             // Native functions have a concrete annotated signature and no body;
             // bind it eagerly so forward references resolve. Errors here surface
             // again (deterministically) in infer_fun_decl.
@@ -71,12 +78,6 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                     let env_fvs = ctx.env_free_vars();
                     ctx.bind_poly(&fun.name, generalize(fun_ty, &env_fvs));
                 }
-                continue;
-            }
-            // Overloaded names are not bound to a single shared type — each
-            // definition is checked independently and dispatched by SymbolId
-            // (METEL-180). Binding here would unify their distinct signatures.
-            if ctx.is_overloaded(&fun.name) {
                 continue;
             }
             if fun.generics.is_empty() {
@@ -289,6 +290,11 @@ fn infer_fun_decl(
     // annotated signature for the construction pass; dispatch is by NativeKey.
     if fun.native.is_some() {
         let fun_ty = native_fun_ty(fun, ctx)?;
+        // Overloaded native definitions (std::core's assert pair) are
+        // dispatched by SymbolId and never enter the name-keyed scheme env.
+        if ctx.is_overloaded(&fun.name) {
+            return Ok(());
+        }
         let env_fvs = ctx.env_free_vars();
         ctx.bind_poly(&fun.name, generalize(fun_ty.clone(), &env_fvs));
         fun_generalizations.push(FunGeneralization {
@@ -893,7 +899,11 @@ fn infer_expr(
                         .iter()
                         .map(|a| infer_expr(a, ctx, fun_generalizations))
                         .collect::<Result<_, _>>()?;
+                    // Default unresolved literal vars (a bare `42` is i64, a bare
+                    // float literal is f64) so literals participate in selection
+                    // the same way they type everywhere else.
                     let solved = ctx.solve()?;
+                    let solved = ctx.default_literal_vars(&solved);
                     let arg_types: Vec<Type> = arg_infer
                         .iter()
                         .map(|t| infer_type_to_type(&solved.apply(t), span))
@@ -909,16 +919,22 @@ fn infer_expr(
                             )
                         })?;
                     let entries = ctx.overload_candidates(name).unwrap();
-                    let ret = match super::overload::select(entries, &arg_types) {
-                        Some(entry) => entry.ret.clone(),
+                    let entry = match super::overload::select(entries, &arg_types) {
+                        Some(entry) => entry.clone(),
                         None => {
                             return Err(super::overload::no_match_error(
                                 name, &arg_types, entries, span,
                             ))
                         }
                     };
+                    // Commit the selection: constrain each argument to the chosen
+                    // candidate's parameter type so defaulted literal vars resolve
+                    // to what selection assumed.
+                    for (arg_ty, param) in arg_infer.iter().zip(&entry.params) {
+                        ctx.add_constraint(arg_ty.clone(), type_to_infer(param), span.clone());
+                    }
                     let ret_var = ctx.fresh_var();
-                    ctx.add_constraint(ret_var.clone(), type_to_infer(&ret), span.clone());
+                    ctx.add_constraint(ret_var.clone(), type_to_infer(&entry.ret), span.clone());
                     return Ok(ret_var);
                 }
             }

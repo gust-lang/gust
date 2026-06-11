@@ -130,15 +130,6 @@ fn native_string_len(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value
     }
 }
 
-fn native_string_concat(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    match (args.first(), args.get(1)) {
-        (Some(Value::Str(a)), Some(Value::Str(b))) => Ok(Value::Str(a.clone() + b)),
-        _ => Err(MetelError::internal(
-            "string_concat: expected two String arguments",
-        )),
-    }
-}
-
 // `Display::to_string` for every displayable primitive: one host fn formats the
 // receiver by its runtime value, so all 13 std::core impls share one NativeKey.
 fn native_to_string(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
@@ -335,10 +326,7 @@ pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
             NativeKey::StdCoreAssert => ("std::core::assert", native_assert),
             NativeKey::StdCoreAssertMsg => ("std::core::assert_msg", native_assert_msg),
             NativeKey::StdCoreClock => ("std::core::clock", native_clock),
-            NativeKey::StdCoreStringLen => ("std::core::string_len", native_string_len),
-            NativeKey::StdCoreStringConcat => {
-                ("std::core::string_concat", native_string_concat)
-            }
+            NativeKey::StdCoreStringLen => ("String::len", native_string_len),
             NativeKey::StdCoreToString => ("Display::to_string", native_to_string),
             NativeKey::StdCoreI8From => ("i8::from", native_i8_from),
             NativeKey::StdCoreI16From => ("i16::from", native_i16_from),
@@ -392,10 +380,14 @@ fn register_core_natives_from_embedded(runtime: &mut RuntimeRegistry) {
             crate::ast::Decl::Fun(fun) => {
                 let Some(binding) = &fun.native else { continue };
                 let key = key_for(binding);
-                runtime.register_std_core_value(
-                    fun.name.clone(),
-                    Value::Callable(native_host_impl(key)),
-                );
+                let value = Value::Callable(native_host_impl(key));
+                // Overloaded std::core definitions (the assert pair) register
+                // under their canonical overload SymbolId — the same id the
+                // typechecker stamps into call sites in every module.
+                match crate::typechecker::core_native_symbol(fun) {
+                    Some(id) => runtime.register_symbol_value(id, value),
+                    None => runtime.register_std_core_value(fun.name.clone(), value),
+                }
             }
             crate::ast::Decl::Impl(ib) => {
                 let crate::ast::TypeExpr::Named(target_name, _) = &ib.target_type else {
@@ -503,22 +495,8 @@ pub(super) fn register_builtins(runtime: &mut RuntimeRegistry) {
     // Char ↔ u32) — all derived from the embedded core.mtl declarations.
     register_core_natives_from_embedded(runtime);
 
-    register_pattern!(
-        RuntimeTypePattern::Str,
-        "len",
-        method(
-            "String::len",
-            Some(crate::ast::ReceiverKind::Value),
-            &[],
-            Some("i64"),
-            builtin_value("String::len", |args, _span| {
-                match args.first() {
-                    Some(Value::Str(s)) => Ok(Value::I64(s.chars().count() as i64)),
-                    _ => Err(MetelError::internal("String::len: expected String")),
-                }
-            }),
-        )
-    );
+    // String::len is declared in core.mtl (`impl String`) and registered by
+    // the embedded derivation above / the std::core module evaluation.
 
     register_pattern!(
         RuntimeTypePattern::Array,
@@ -537,7 +515,7 @@ pub(super) fn register_builtins(runtime: &mut RuntimeRegistry) {
         )
     );
 
-    // clock / assert / assert_msg / dbg are registered by
+    // clock / assert (both overloads) / dbg are registered by
     // register_core_natives_from_embedded above.
 }
 

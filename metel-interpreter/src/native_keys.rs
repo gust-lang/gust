@@ -22,14 +22,13 @@ pub enum NativeKey {
     StdCoreDbg,
     /// `std::core::assert` — panic if the condition is false.
     StdCoreAssert,
-    /// `std::core::assert_msg` — panic with a message if the condition is false.
+    /// `std::core::assert(boolean, String)` — the message-carrying assert
+    /// overload; panics with the message if the condition is false.
     StdCoreAssertMsg,
     /// `std::core::clock` — milliseconds since the Unix epoch.
     StdCoreClock,
-    /// `std::core::string_len` — number of characters in a string.
+    /// `String::len` — number of characters in a string.
     StdCoreStringLen,
-    /// `std::core::string_concat` — concatenate two strings.
-    StdCoreStringConcat,
     /// `Display::to_string` for every displayable primitive — the host formats
     /// the receiver by its runtime value, so one key serves all 13 impls.
     StdCoreToString,
@@ -86,7 +85,6 @@ impl NativeKey {
             ["std", "core", "assert_msg"] => NativeKey::StdCoreAssertMsg,
             ["std", "core", "clock"] => NativeKey::StdCoreClock,
             ["std", "core", "string_len"] => NativeKey::StdCoreStringLen,
-            ["std", "core", "string_concat"] => NativeKey::StdCoreStringConcat,
             ["std", "core", "to_string"] => NativeKey::StdCoreToString,
             ["std", "core", "i8_from"] => NativeKey::StdCoreI8From,
             ["std", "core", "i16_from"] => NativeKey::StdCoreI16From,
@@ -121,7 +119,6 @@ impl NativeKey {
             NativeKey::StdCoreAssertMsg => "@std.core.assert_msg",
             NativeKey::StdCoreClock => "@std.core.clock",
             NativeKey::StdCoreStringLen => "@std.core.string_len",
-            NativeKey::StdCoreStringConcat => "@std.core.string_concat",
             NativeKey::StdCoreToString => "@std.core.to_string",
             NativeKey::StdCoreI8From => "@std.core.i8_from",
             NativeKey::StdCoreI16From => "@std.core.i16_from",
@@ -154,7 +151,6 @@ impl NativeKey {
         NativeKey::StdCoreAssertMsg,
         NativeKey::StdCoreClock,
         NativeKey::StdCoreStringLen,
-        NativeKey::StdCoreStringConcat,
         NativeKey::StdCoreToString,
         NativeKey::StdCoreI8From,
         NativeKey::StdCoreI16From,

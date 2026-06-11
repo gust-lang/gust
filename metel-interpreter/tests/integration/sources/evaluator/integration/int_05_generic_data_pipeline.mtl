@@ -169,7 +169,7 @@ fun main() {
 
     // ── Maybe<String> ─────────────────────────────────────────────────────────
     let j_str: Maybe<String> = Maybe::Just { val: "hello" };
-    let len_m = maybe_map(j_str, (s: String) -> i64 { string_len(s) });
+    let len_m = maybe_map(j_str, (s: String) -> i64 { s.len() });
     assert(maybe_get_or(len_m, 0) == 5);
 
     // ── Record<String, i64> ───────────────────────────────────────────────────

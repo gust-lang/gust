@@ -35,11 +35,74 @@ fn next_overload_symbol() -> SymbolId {
     SymbolId(NEXT_OVERLOAD_SYM.fetch_add(1, Ordering::Relaxed))
 }
 
-/// Build the overload table for a module's top-level declarations.
+/// The overload table for the embedded std::core declarations, built once per
+/// process so every module (and the single-program path) sees the SAME
+/// `SymbolId` for each std::core overload — call sites in any module and the
+/// runtime registration must agree on the id.
+pub(super) fn core_overload_table() -> &'static OverloadTable {
+    use std::sync::OnceLock;
+    static CORE: OnceLock<OverloadTable> = OnceLock::new();
+    CORE.get_or_init(|| {
+        build_table_from_decls(&crate::stdlib::core_program().decls)
+            .expect("embedded std::core overloads must validate; they are compiled in")
+    })
+}
+
+/// The `SymbolId` of an embedded std::core overloaded definition, or `None`
+/// if the declaration's name is not overloaded in std::core. Used by the
+/// evaluator's embedded-core seeding to register host impls under the same
+/// ids the typechecker stamps into call sites.
+pub(crate) fn core_native_symbol(fun: &FunDecl) -> Option<SymbolId> {
+    entry_for_decl(core_overload_table(), fun).map(|e| e.symbol_id)
+}
+
+/// Build the overload table for a module: the module's own overload groups,
+/// plus the std::core groups (so `assert(cond)` / `assert(cond, msg)` resolve
+/// everywhere) — except where the module declares its own `fun` with the same
+/// name, which shadows the std::core group entirely.
+///
+/// A module group whose signatures exactly match a std::core group (i.e. the
+/// std::core module checking its own decls) reuses the canonical core entries
+/// so the SymbolIds agree across the whole graph.
+pub(super) fn build_overload_table(decls: &[Decl]) -> Result<OverloadTable, MetelError> {
+    let mut table = build_table_from_decls(decls)?;
+    let core = core_overload_table();
+
+    for (name, entries) in table.iter_mut() {
+        if let Some(core_entries) = core.get(name) {
+            let same_signatures = entries.len() == core_entries.len()
+                && entries
+                    .iter()
+                    .all(|e| core_entries.iter().any(|c| c.params == e.params));
+            if same_signatures {
+                *entries = core_entries.clone();
+            }
+        }
+    }
+
+    let local_fun_names: std::collections::HashSet<&str> = decls
+        .iter()
+        .filter_map(|d| match d {
+            Decl::Fun(f) => Some(f.name.as_str()),
+            _ => None,
+        })
+        .collect();
+    for (name, entries) in core {
+        if !local_fun_names.contains(name.as_str()) {
+            table
+                .entry(name.clone())
+                .or_insert_with(|| entries.clone());
+        }
+    }
+    Ok(table)
+}
+
+/// Group a declaration list's same-name `fun`s into validated overload
+/// entries, allocating a fresh `SymbolId` per definition.
 ///
 /// Errors if an overloaded function is generic, has an unannotated parameter, or
 /// collides with another overload on identical parameter types.
-pub(super) fn build_overload_table(decls: &[Decl]) -> Result<OverloadTable, MetelError> {
+fn build_table_from_decls(decls: &[Decl]) -> Result<OverloadTable, MetelError> {
     let mut groups: HashMap<&str, Vec<&FunDecl>> = HashMap::new();
     for decl in decls {
         if let Decl::Fun(f) = decl {

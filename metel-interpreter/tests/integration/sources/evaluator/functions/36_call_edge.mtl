@@ -13,7 +13,7 @@ fun sign(n: i64) -> i64 {
 }
 // Function that calls a builtin.
 fun greet(name: String) -> String {
-    string_concat("hello ", name)
+    "hello " + name
 }
 // Function stored in a variable and called through it.
 fun double(x: i64) -> i64 { x * 2 }

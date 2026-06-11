@@ -295,7 +295,7 @@ fun main() {
     assert(big[0] == 8);
 
     let strs: String[] = ["apple", "banana", "cherry", "date"];
-    let long_words = filter(strs, (s: String) -> boolean { string_len(s) > 5 });
+    let long_words = filter(strs, (s: String) -> boolean { s.len() > 5 });
     assert(long_words.len() == 2);
 
     // ── map_arr ───────────────────────────────────────────────────────────────
@@ -329,7 +329,7 @@ fun main() {
 
     // fold to build a string
     let words: String[] = ["hello", " ", "world"];
-    let joined = fold(words, "", (acc: String, s: String) -> String { string_concat(acc, s) });
+    let joined = fold(words, "", (acc: String, s: String) -> String { acc + s });
     assert(joined == "hello world");
 
     // ── zip_with ──────────────────────────────────────────────────────────────
@@ -404,7 +404,7 @@ fun main() {
     assert(!perhaps_is_some(none_found));
 
     // find in string array
-    let first_long = find_first(strs, (s: String) -> boolean { string_len(s) >= 6 });
+    let first_long = find_first(strs, (s: String) -> boolean { s.len() >= 6 });
     assert(perhaps_is_some(first_long));
     assert(perhaps_or(first_long, "") == "banana");
 

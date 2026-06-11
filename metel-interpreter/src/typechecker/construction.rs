@@ -415,13 +415,17 @@ fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl
                 &binding.span,
             )
         })?;
+        // Overloaded native definitions (std::core's assert pair) carry their
+        // overload SymbolId like any overloaded decl.
+        let symbol_id =
+            super::overload::entry_for_decl(ctx.overloads, fun).map(|e| e.symbol_id);
         return Ok(TypedDecl::Fun(TypedFunDecl {
             name: fun.name.clone(),
             generics: fun.generics.clone(),
             params: fun.params.clone(),
             return_type: fun.return_type.clone(),
             body: FunBody::Native(key),
-            symbol_id: None,
+            symbol_id,
             span: fun.span.clone(),
         }));
     }

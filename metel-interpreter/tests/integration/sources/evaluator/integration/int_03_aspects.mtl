@@ -59,7 +59,7 @@ impl Measurable for Circle {
 
 impl Describable for Circle {
     fun describe(self) -> String {
-        string_concat("Circle(r=", string_concat(self.radius.to_string(), ")"))
+        "Circle(r=" + self.radius.to_string() + ")"
     }
 }
 
@@ -74,8 +74,7 @@ impl Measurable for Rectangle {
 
 impl Describable for Rectangle {
     fun describe(self) -> String {
-        string_concat("Rect(", string_concat(self.width.to_string(),
-            string_concat("x", string_concat(self.height.to_string(), ")"))))
+        "Rect(" + self.width.to_string() + "x" + self.height.to_string() + ")"
     }
 }
 
@@ -124,7 +123,7 @@ struct ShapeError { msg: String }
 
 impl From<ParseError> for ShapeError {
     fun from(value: ParseError) -> ShapeError {
-        ShapeError { msg: string_concat("parse error: ", value.msg) }
+        ShapeError { msg: "parse error: " + value.msg }
     }
 }
 
@@ -134,7 +133,7 @@ fun parse_radius(s: String) -> Result<i64, ParseError> {
     } else if (s == "10") {
         Result::Ok { value: 10 }
     } else {
-        Result::Err { error: ParseError { msg: string_concat("bad radius: ", s) } }
+        Result::Err { error: ParseError { msg: "bad radius: " + s } }
     }
 }
 

@@ -17,6 +17,7 @@ mod construction;
 mod conversions;
 mod inference;
 mod overload;
+pub(crate) use overload::core_native_symbol;
 mod registry;
 
 type SchemeEnv = HashMap<String, TypeScheme>;
@@ -868,6 +869,22 @@ mod tests {
             if let Decl::Fun(fun) = decl {
                 if fun.native.is_some() {
                     native_count += 1;
+                    // Overloaded core natives (the assert pair) are dispatched
+                    // by SymbolId via the seeded overload table — they must
+                    // NOT appear in the name-keyed prelude.
+                    if overload::core_overload_table().contains_key(&fun.name) {
+                        assert!(
+                            !prelude.contains(&fun.name),
+                            "overloaded std::core native `{}` must not be name-keyed in the prelude",
+                            fun.name
+                        );
+                        assert!(
+                            overload::core_native_symbol(fun).is_some(),
+                            "overloaded std::core native `{}` must have a canonical SymbolId",
+                            fun.name
+                        );
+                        continue;
+                    }
                     assert!(
                         prelude.contains(&fun.name),
                         "prelude is missing a scheme for std::core native `{}`",

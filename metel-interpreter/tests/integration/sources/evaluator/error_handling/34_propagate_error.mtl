@@ -17,12 +17,12 @@ fun main() {
     let r1 = try_div(10, 2);
     match r1 {
         Result::Ok  { value } => assert(value == 6),
-        Result::Err { error } => assert_msg(false, "expected Ok"),
+        Result::Err { error } => assert(false, "expected Ok"),
     };
     // ? on Err: propagates, try_div returns Err(-1).
     let r2 = try_div(10, 0);
     match r2 {
-        Result::Ok  { value } => assert_msg(false, "expected Err"),
+        Result::Ok  { value } => assert(false, "expected Err"),
         Result::Err { error } => assert(error == -1),
     };
 }

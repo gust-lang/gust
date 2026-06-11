@@ -34,7 +34,7 @@ fun main() {
     // 2. Validation errors from tasks module
     let bad_empty = validate_task("", Priority::High, Status::Open, 5);
     match bad_empty {
-        Result::Err { error } => assert(string_len(error.message) > 0),
+        Result::Err { error } => assert(error.message.len() > 0),
         Result::Ok  { value } => assert(false),
     };
     let bad_effort = validate_task("T", Priority::Low, Status::Open, -1);

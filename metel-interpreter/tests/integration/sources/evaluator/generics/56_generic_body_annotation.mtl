@@ -29,7 +29,7 @@ fun main() {
     assert(evens_arr[0] == 2);
 
     let strs: String[] = ["a", "bb", "ccc", "dddd"];
-    let long = collect_matching(strs, (s: String) -> boolean { string_len(s) > 2 });
+    let long = collect_matching(strs, (s: String) -> boolean { s.len() > 2 });
     assert(long.len() == 2);
 
     let squares = map_to(nums, (x: i64) -> i64 { x * x });

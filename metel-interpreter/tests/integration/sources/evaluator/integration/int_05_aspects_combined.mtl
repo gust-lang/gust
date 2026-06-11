@@ -35,7 +35,7 @@ struct RunError    { msg: String }
 
 impl From<ConfigError> for RunError {
     fun from(value: ConfigError) -> RunError {
-        RunError { msg: string_concat("config: ", value.msg) }
+        RunError { msg: "config: " + value.msg }
     }
 }
 
@@ -46,17 +46,16 @@ struct Task { name: String, enabled: boolean }
 impl Runnable for Task {
     fun run(self) -> String {
         if (self.enabled) {
-            string_concat(self.name, ":ok")
+            self.name + ":ok"
         } else {
-            string_concat(self.name, ":skip")
+            self.name + ":skip"
         }
     }
 }
 
 impl Describable for Task {
     fun describe(self) -> String {
-        string_concat("Task[", string_concat(self.name, string_concat(", enabled=",
-            string_concat(self.enabled.to_string(), "]"))))
+        "Task[" + self.name + ", enabled=" + self.enabled.to_string() + "]"
     }
 }
 
@@ -85,7 +84,7 @@ impl Iterable<i64> for Countdown {
 fun load_config(key: String) -> Result<String, ConfigError> {
     if (key == "timeout") { Result::Ok { value: "30" } }
     else if (key == "mode") { Result::Ok { value: "fast" } }
-    else { Result::Err { error: ConfigError { msg: string_concat("unknown key: ", key) } } }
+    else { Result::Err { error: ConfigError { msg: "unknown key: " + key } } }
 }
 
 // same-type ? (ConfigError → ConfigError, no From needed)
@@ -100,7 +99,7 @@ fun run_with_config(key: String) -> Result<String, RunError> {
         Result::Ok { value } => value,
         Result::Err { error } => { return Result::Err { error: error as RunError }; },
     };
-    Result::Ok { value: string_concat("ran:", v) }
+    Result::Ok { value: "ran:" + v }
 }
 
 // ── main ───────────────────────────────────────────────────────────────────────

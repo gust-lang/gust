@@ -24,20 +24,20 @@ struct AppError    { msg: String }
 
 impl From<IoError> for AppError {
     fun from(value: IoError) -> AppError {
-        AppError { msg: string_concat("io: ", value.msg) }
+        AppError { msg: "io: " + value.msg }
     }
 }
 
 impl From<ParseError> for AppError {
     fun from(value: ParseError) -> AppError {
-        AppError { msg: string_concat("parse: ", value.msg) }
+        AppError { msg: "parse: " + value.msg }
     }
 }
 
 // IoError → ParseError (for multi-level chain test)
 impl From<IoError> for ParseError {
     fun from(value: IoError) -> ParseError {
-        ParseError { msg: string_concat("from_io: ", value.msg) }
+        ParseError { msg: "from_io: " + value.msg }
     }
 }
 
@@ -45,13 +45,13 @@ impl From<IoError> for ParseError {
 
 fun read_file(path: String) -> Result<String, IoError> {
     if (path == "data.txt") { Result::Ok  { value: "42" } }
-    else { Result::Err { error: IoError { msg: string_concat("no file: ", path) } } }
+    else { Result::Err { error: IoError { msg: "no file: " + path } } }
 }
 
 fun parse_int(s: String) -> Result<i64, ParseError> {
     if (s == "42") { Result::Ok  { value: 42 } }
     else if (s == "0") { Result::Ok { value: 0 } }
-    else { Result::Err { error: ParseError { msg: string_concat("bad int: ", s) } } }
+    else { Result::Err { error: ParseError { msg: "bad int: " + s } } }
 }
 
 // same-type ?: ParseError stays ParseError

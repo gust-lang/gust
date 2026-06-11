@@ -14,7 +14,7 @@ struct AppError {
 
 impl From<ParseError> for AppError {
     fun from(value: ParseError) -> AppError {
-        return AppError { msg: string_concat("parse error: ", value.msg) };
+        return AppError { msg: "parse error: " + value.msg };
     }
 }
 

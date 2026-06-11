@@ -7,7 +7,7 @@
 //   user aspect Printable with format() method,
 //   From<i64> for Score — user-defined wrap,
 //   From<f64> for Temperature — user-defined wrap,
-//   string_concat in combination with to_string,
+//   string concatenation (+) in combination with to_string,
 //   Iterable<String> (StringBag) — walk labels,
 //   ? with From in a display-building context.
 
@@ -40,13 +40,13 @@ impl From<f64> for Temperature {
 
 impl Printable for Score {
     fun format(self) -> String {
-        string_concat("Score(", string_concat(self.points.to_string(), ")"))
+        "Score(" + self.points.to_string() + ")"
     }
 }
 
 impl Printable for Temperature {
     fun format(self) -> String {
-        string_concat("Temp(", string_concat(self.celsius.to_string(), ")"))
+        "Temp(" + self.celsius.to_string() + ")"
     }
 }
 
@@ -78,14 +78,14 @@ struct RenderError { msg: String }
 
 impl From<FormatError> for RenderError {
     fun from(value: FormatError) -> RenderError {
-        RenderError { msg: string_concat("fmt: ", value.msg) }
+        RenderError { msg: "fmt: " + value.msg }
     }
 }
 
 fun parse_score(s: String) -> Result<Score, FormatError> {
     if (s == "100") { Result::Ok { value: Score { points: 100 } } }
     else if (s == "0") { Result::Ok { value: Score { points: 0 } } }
-    else { Result::Err { error: FormatError { msg: string_concat("bad score: ", s) } } }
+    else { Result::Err { error: FormatError { msg: "bad score: " + s } } }
 }
 
 fun render_score(s: String) -> Result<String, RenderError> {
@@ -165,7 +165,7 @@ fun main() {
     assert(bag.len() == 3);
     let mut result = "";
     for (let label in bag) {
-        result = string_concat(result, label);
+        result = result + label;
     }
     assert(result == "abc");
 
@@ -196,12 +196,12 @@ fun main() {
         Result::Err { error } => assert(error.msg == "fmt: bad score: bad"),
     };
 
-    // string_concat + to_string composition
+    // string + to_string composition
     let n: i64 = 99;
-    let composed = string_concat("value=", n.to_string());
+    let composed = "value=" + n.to_string();
     assert(composed == "value=99");
 
     let f: f64 = 1.5;
-    let composed2 = string_concat("f=", f.to_string());
+    let composed2 = "f=" + f.to_string();
     assert(composed2 == "f=1.5");
 }

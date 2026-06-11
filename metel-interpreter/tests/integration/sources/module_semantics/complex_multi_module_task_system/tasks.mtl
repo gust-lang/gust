@@ -3,7 +3,7 @@ import types::*;
 import utils::*;
 
 pub fun validate_task(title: String, priority: Priority, status: Status, effort: i64) -> Result<Task, ValidationError> {
-    if (string_len(title) == 0) {
+    if (title.len() == 0) {
         return Result::Err { error: ValidationError { message: "title cannot be empty" } };
     }
     if (effort < 0) {

@@ -25,8 +25,7 @@ impl Counter {
 impl Printable for Counter {
     // Aspect method — must not conflict with the inherent `value` method above.
     fun summary(self) -> String {
-        string_concat("Counter(", string_concat(self.value.to_string(),
-            string_concat(", step=", string_concat(self.step.to_string(), ")"))))
+        "Counter(" + self.value.to_string() + ", step=" + self.step.to_string() + ")"
     }
 }
 

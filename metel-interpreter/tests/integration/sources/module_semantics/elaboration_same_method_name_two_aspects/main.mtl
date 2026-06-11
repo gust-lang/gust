@@ -16,13 +16,13 @@ struct Dog { name: String }
 struct Cat { name: String }
 
 impl Sayable for Dog {
-    fun label(self) -> String { string_concat("dog:", self.name) }
-    fun greet(self) -> String { string_concat("woof from ", self.name) }
+    fun label(self) -> String { "dog:" + self.name }
+    fun greet(self) -> String { "woof from " + self.name }
 }
 
 impl Greetable for Cat {
-    fun label(self) -> String { string_concat("cat:", self.name) }
-    fun farewell(self) -> String { string_concat("purr from ", self.name) }
+    fun label(self) -> String { "cat:" + self.name }
+    fun farewell(self) -> String { "purr from " + self.name }
 }
 
 fun main() {

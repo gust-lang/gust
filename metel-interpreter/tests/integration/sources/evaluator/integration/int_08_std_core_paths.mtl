@@ -14,7 +14,7 @@ struct MathError  { msg: String }
 
 impl From<ParseError> for MathError {
     fun from(value: ParseError) -> MathError {
-        MathError { msg: string_concat("parse: ", value.msg) }
+        MathError { msg: "parse: " + value.msg }
     }
 }
 
@@ -23,7 +23,7 @@ fun parse_positive(s: String) -> Result<i64, ParseError> {
     else if (s == "2") { Result::Ok { value: 2 } }
     else if (s == "10") { Result::Ok { value: 10 } }
     else if (s == "42") { Result::Ok { value: 42 } }
-    else { Result::Err { error: ParseError { msg: string_concat("bad input: ", s) } } }
+    else { Result::Err { error: ParseError { msg: "bad input: " + s } } }
 }
 
 fun double_parsed(s: String) -> Result<i64, ParseError> {

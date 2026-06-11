@@ -1,5 +1,5 @@
-// Stage 8: assert and assert_msg builtins.
+// Stage 8: the assert builtin and its message-carrying overload.
 
 assert(true);
-assert_msg(true, "should not fire");
-assert_msg(1 == 1, "one equals one");
+assert(true, "should not fire");
+assert(1 == 1, "one equals one");

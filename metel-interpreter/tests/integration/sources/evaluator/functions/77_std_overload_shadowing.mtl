@@ -1,0 +1,14 @@
+// std::core's overloaded functions (the assert pair) are seeded into every
+// module's overload table — but a module declaring its own `fun` with the
+// same name shadows the std::core group entirely (METEL-181).
+
+fun assert(x: i64) -> i64 {
+    x * 2
+}
+
+fun main() {
+    // The local single-definition `assert` shadows BOTH std::core overloads:
+    // it takes an i64 and returns a value, which the std assert never could.
+    let doubled = assert(21);
+    println(doubled);
+}
