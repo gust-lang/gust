@@ -48,6 +48,12 @@ impl Display for i64 {
 - Native functions are exempt from the T0010 pub-annotation lint; their
   signatures are validated by `native_fun_ty` (parameters must be annotated;
   omitted return type means unit).
+- Generic natives carry aspect bounds (`print<T: Display>`): `TypeScheme`
+  has a positional `bounds` field that survives prelude derivation and export
+  alpha-renaming, and construction enforces it at scheme-instantiating call
+  sites — `println` of a type without a Display impl is a compile-time T0012,
+  not a runtime panic. Structural types (arrays, tuples, closures) have no
+  named impls and skip the static check; the runtime stays the backstop there.
 - Keys are deliberately coarse where the host can be value-driven: all 13
   primitive `Display` impls share one `@std.core.to_string` key (the host
   formats by runtime value), and the numeric `From` cross-product uses one

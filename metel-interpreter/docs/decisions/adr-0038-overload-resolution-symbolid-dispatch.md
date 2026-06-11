@@ -47,6 +47,15 @@ and the selected candidate's parameter types are constrained back onto the
 arguments — so literals participate in selection the same way they type
 everywhere else, and a no-match call reports the full candidate list.
 
+**Fallback to outer bindings.** A local overload set EXTENDS a non-overload
+binding of the same name from an outer source (prelude/imports) rather than
+replacing it: exact-match candidates win; when none matches, the call falls
+back to the outer binding (e.g. a module overloading `print(i32)`/`print(i64)`
+still reaches the generic std::core `print<T>` for an `i8`). A name with no
+outer binding reports the candidate list. Note the asymmetry with single
+declarations: a lone local `fun print(...)` shadows the outer binding fully
+(normal scoping); only *overload sets* get fallback dispatch.
+
 **std::core exception (seeding, not export).** std::core declares the first
 overloaded stdlib function (`assert(cond)` / `assert(cond, msg)`), and every
 module must see it. Since overload sets do not flow through
