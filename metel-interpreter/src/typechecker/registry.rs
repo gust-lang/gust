@@ -332,7 +332,7 @@ fn register_program_decls(
                 .map(|names| !names.is_empty())
                 .unwrap_or(false);
             if is_generic_target {
-                register_generic_native_impl_methods(ib, &target_name, registry);
+                register_generic_impl_method_schemes(ib, &target_name, gen, registry);
             } else {
                 register_impl_methods(ib.methods.iter(), &target_name, gen, registry);
                 register_default_aspect_methods(ib, &target_name, gen, registry);
@@ -378,21 +378,40 @@ fn register_aspect_decl(
 /// over the struct's registered type params. Metel-bodied methods are handled
 /// by infer_impl_method instead; static native methods (no receiver) are
 /// exposed as joined-key prelude schemes (`List::new`), not method schemes.
-fn register_generic_native_impl_methods(
+/// Register polymorphic method schemes for instance methods on a generic struct
+/// or enum, derived from their (fully required) parameter/return annotations.
+///
+/// This covers both native methods (which have no body to infer) and Metel-bodied
+/// methods. Deriving the scheme from annotations is what lets the single-program
+/// path (`check_with_ctx`, no module loading) resolve std::core's bodied generic
+/// methods like `Perhaps::map` / `List::filter` — there is no separate std::core
+/// module check there to run `infer_impl_method`. In the graph path the inferred
+/// scheme later overwrites this one for std::core's own module; downstream modules
+/// use this annotation-derived scheme directly. Static methods (no receiver) are
+/// handled as joined-key schemes elsewhere and skipped here.
+fn register_generic_impl_method_schemes(
     ib: &crate::ast::ImplBlock,
     target_name: &str,
+    gen: &mut TypeVarGenerator,
     registry: &mut TypeDefinitionRegistry,
 ) {
-    if !ib.methods.iter().any(|m| m.native.is_some()) {
-        return;
-    }
-    let Some(type_params) = registry.raw_struct_type_params().get(target_name).cloned() else {
+    // Type params for the generic target — a struct or an enum.
+    let type_params: Vec<TypeVar> = if let Some(tps) =
+        registry.raw_struct_type_params().get(target_name).cloned()
+    {
+        tps
+    } else if let Some(info) = registry.enum_info(target_name) {
+        info.type_params.clone()
+    } else {
         return;
     };
+    if type_params.is_empty() {
+        return;
+    }
     let Some(generic_names) = registry.struct_generic_names_for(target_name).cloned() else {
         return;
     };
-    let gen_map: HashMap<String, TypeVar> = generic_names
+    let type_gen_map: HashMap<String, TypeVar> = generic_names
         .iter()
         .cloned()
         .zip(type_params.iter().copied())
@@ -402,18 +421,26 @@ fn register_generic_native_impl_methods(
         type_params.iter().map(|tv| InferType::Var(*tv)).collect(),
     );
     for method in &ib.methods {
-        if method.native.is_none() {
-            continue;
-        }
+        // Only instance methods (those with a receiver) dispatch through the
+        // method scheme env; static methods become joined-key schemes elsewhere.
         let Some(receiver) = method.params.first().and_then(|p| p.receiver.clone()) else {
             continue;
         };
+        // Method-level generics (e.g. `U` in `fun map<U>`) get their own fresh
+        // quantified vars in addition to the type's params.
+        let mut gen_map = type_gen_map.clone();
+        let mut quantified = type_params.clone();
+        for g in &method.generics {
+            let tv = gen.fresh();
+            gen_map.insert(g.name.clone(), tv);
+            quantified.push(tv);
+        }
         let mut param_types = vec![self_ty.clone()];
         for p in method.params.iter().filter(|p| p.receiver.is_none()) {
             let ann = p
                 .type_ann
                 .as_ref()
-                .expect("native declarations are fully annotated (enforced by native_fun_ty)");
+                .expect("declarations on generic types are fully annotated");
             param_types.push(type_expr_to_infer_with_generics(ann, &gen_map));
         }
         let ret_ty = method
@@ -425,11 +452,13 @@ fn register_generic_native_impl_methods(
             target_name.to_string(),
             method.name.clone(),
             TypeScheme {
-                quantified_vars: type_params.clone(),
+                quantified_vars: quantified,
                 param_names: vec![],
                 bounds: vec![],
                 ty: InferType::Fun(param_types, Box::new(ret_ty)),
             },
+            // struct_tvars: only the type's params are pinned from the receiver;
+            // method-level generics are recovered from the arguments at the call site.
             type_params.clone(),
         );
         registry.register_method_receiver(target_name.to_string(), method.name.clone(), receiver);

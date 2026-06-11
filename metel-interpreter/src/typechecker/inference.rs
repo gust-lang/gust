@@ -1488,6 +1488,21 @@ fn infer_expr(
                 if let Some(ty) = ctx.lookup(&joined) {
                     return Ok(ty);
                 }
+                // Static method on a generic struct/enum registered as a polymorphic
+                // method scheme (e.g. native `List::new`). Resolving it here — from the
+                // method scheme env rather than the prelude's joined-key schemes — lets
+                // std::core reference its own static methods (e.g. `List::new()` inside
+                // `List::map`) regardless of how the prelude is seeded.
+                if let Some((scheme, _)) = ctx
+                    .method_scheme_for(type_name, member_name)
+                    .map(|(s, t)| (s.clone(), t.clone()))
+                {
+                    let mut inst = Substitution::new();
+                    for &qv in &scheme.quantified_vars {
+                        inst.bind(qv, InferType::Var(ctx.fresh_type_var_raw()));
+                    }
+                    return Ok(inst.apply(&scheme.ty));
+                }
                 if let Some(info) = ctx.get_enum(type_name).cloned() {
                     if let Some(variant) = info.variants.iter().find(|v| v.name == *member_name) {
                         if variant.fields.is_empty() {

@@ -20,22 +20,46 @@ pub enum Perhaps<T> {
 }
 
 impl Perhaps<T> {
+    // True when this is `Some`.
     pub fun is_some(self) -> boolean {
         match self {
             Perhaps::Some { value } => true,
             _ => false,
         }
     }
+    // True when this is `None`.
+    pub fun is_none(self) -> boolean {
+        match self {
+            Perhaps::Some { value } => false,
+            _ => true,
+        }
+    }
+    // Transform the contained value, leaving `None` untouched.
     pub fun map<U>(self, f: (T) -> U) -> Perhaps<U> {
         match self {
             Perhaps::Some { value } => Perhaps::Some { value: f(value) },
             _ => Perhaps::None,
         }
     }
+    // Chain a computation that itself returns a `Perhaps`.
+    pub fun and_then<U>(self, f: (T) -> Perhaps<U>) -> Perhaps<U> {
+        match self {
+            Perhaps::Some { value } => f(value),
+            _ => Perhaps::None,
+        }
+    }
+    // The contained value, or `fallback` when `None`.
     pub fun unwrap_or(self, fallback: T) -> T {
         match self {
             Perhaps::Some { value } => value,
             _ => fallback,
+        }
+    }
+    // The contained value, or the result of `f()` when `None`.
+    pub fun unwrap_or_else(self, f: () -> T) -> T {
+        match self {
+            Perhaps::Some { value } => value,
+            _ => f(),
         }
     }
 }
@@ -43,6 +67,51 @@ impl Perhaps<T> {
 pub enum Result<T, E> {
     Ok { pub value: T },
     Err { pub error: E },
+}
+
+impl Result<T, E> {
+    // True when this is `Ok`.
+    pub fun is_ok(self) -> boolean {
+        match self {
+            Result::Ok { value } => true,
+            _ => false,
+        }
+    }
+    // True when this is `Err`.
+    pub fun is_err(self) -> boolean {
+        match self {
+            Result::Ok { value } => false,
+            _ => true,
+        }
+    }
+    // Transform the success value, leaving `Err` untouched.
+    pub fun map<U>(self, f: (T) -> U) -> Result<U, E> {
+        match self {
+            Result::Ok { value } => Result::Ok { value: f(value) },
+            Result::Err { error } => Result::Err { error: error },
+        }
+    }
+    // Chain a computation that itself returns a `Result`.
+    pub fun and_then<U>(self, f: (T) -> Result<U, E>) -> Result<U, E> {
+        match self {
+            Result::Ok { value } => f(value),
+            Result::Err { error } => Result::Err { error: error },
+        }
+    }
+    // The success value, or `fallback` when `Err`.
+    pub fun unwrap_or(self, fallback: T) -> T {
+        match self {
+            Result::Ok { value } => value,
+            _ => fallback,
+        }
+    }
+    // The success value, or the result of `f()` when `Err`.
+    pub fun unwrap_or_else(self, f: () -> T) -> T {
+        match self {
+            Result::Ok { value } => value,
+            _ => f(),
+        }
+    }
 }
 
 // ── Core aspects ────────────────────────────────────────────────────────────
@@ -75,6 +144,58 @@ impl List<T> {
     native(@std.core.list_len)      fun len(self) -> i64;
     native(@std.core.list_get)      fun get(self, i: i64) -> Perhaps<T>;
     native(@std.core.list_as_slice) fun as_slice(self) -> T[];
+
+    // ── Ergonomics (METEL-160) ──────────────────────────────────────────────
+    // Eager transforms over the backing array. A lazy iterator layer is a
+    // deferred follow-up (RFC-0057); these favour usefulness over a final
+    // iterator architecture.
+
+    // Apply `f` to each element, collecting the results into a new list.
+    pub fun map<U>(self, f: (T) -> U) -> List<U> {
+        let mut out: List<U> = List::new();
+        for (let x in self.as_slice()) {
+            out.push(f(x));
+        }
+        out
+    }
+    // Keep only the elements for which `pred` holds.
+    pub fun filter(self, pred: (T) -> boolean) -> List<T> {
+        let mut out: List<T> = List::new();
+        for (let x in self.as_slice()) {
+            if (pred(x)) {
+                out.push(x);
+            }
+        }
+        out
+    }
+    // Reduce the list to a single value, left to right.
+    pub fun fold<A>(self, init: A, f: (A, T) -> A) -> A {
+        let mut acc = init;
+        for (let x in self.as_slice()) {
+            acc = f(acc, x);
+        }
+        acc
+    }
+    // The first element satisfying `pred`, or `None`.
+    pub fun find(self, pred: (T) -> boolean) -> Perhaps<T> {
+        for (let x in self.as_slice()) {
+            if (pred(x)) {
+                return Perhaps::Some { value: x };
+            }
+        }
+        Perhaps::None
+    }
+    // A new list with this list's elements followed by `other`'s.
+    pub fun concat(self, other: List<T>) -> List<T> {
+        let mut out: List<T> = List::new();
+        for (let x in self.as_slice()) {
+            out.push(x);
+        }
+        for (let y in other.as_slice()) {
+            out.push(y);
+        }
+        out
+    }
 }
 
 // ── String methods ──────────────────────────────────────────────────────────

@@ -994,9 +994,17 @@ impl TypeDefinitionRegistry {
                 .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.method_scheme_env {
-            self.method_scheme_env
-                .entry(k.clone())
-                .or_insert_with(|| v.clone());
+            // Merge per-method, not per-type: a type may already have some method
+            // schemes here (e.g. List's native methods registered into this
+            // module's registry) while `other` carries that type's bodied methods
+            // (List::map/filter/... checked in std::core). A type-level or_insert
+            // would drop the latter entirely.
+            let entry = self.method_scheme_env.entry(k.clone()).or_default();
+            for (method_name, scheme) in v {
+                entry
+                    .entry(method_name.clone())
+                    .or_insert_with(|| scheme.clone());
+            }
         }
         for (k, v) in &other.type_param_bounds {
             self.type_param_bounds

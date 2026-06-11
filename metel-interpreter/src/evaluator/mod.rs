@@ -1276,6 +1276,79 @@ pub fn evaluate_with_ctx(program: TypedProgram, ctx: TypeCtx) -> Result<(), Mete
     evaluate_with_ctx_and_options(program, ctx, EvaluationOptions::default()).map(|_| ())
 }
 
+/// Seed std::core's Metel-bodied generic methods (Perhaps/Result/List ergonomics)
+/// into the runtime for the single-program path.
+///
+/// The graph path registers these when std::core is evaluated as a module; the
+/// single-program path (`evaluate_with_ctx`) never loads std::core as a module, so
+/// `register_core_natives_from_embedded` (which only handles native methods) leaves
+/// the bodied ones unregistered. Here each bodied core method is registered as an
+/// untyped closure carrying the program's `type_ctx`, so it is constructed at call
+/// time exactly like a generic method in a user module. Method bodies reference
+/// static methods and enum constructors through the runtime registry, not a lexical
+/// environment, so a fresh captured environment suffices.
+fn seed_core_bodied_methods(runtime: &mut RuntimeRegistry, type_ctx: &std::rc::Rc<TypeCtx>) {
+    let core_path = ["std".to_string(), "core".to_string()];
+    let Some(source) = crate::stdlib::lookup(&core_path) else {
+        return;
+    };
+    let program = crate::parser::parse(source, "<embedded std::core>")
+        .expect("embedded std::core must parse; it is compiled into the binary");
+    for decl in &program.decls {
+        let crate::ast::Decl::Impl(ib) = decl else {
+            continue;
+        };
+        let crate::ast::TypeExpr::Named(target_name, _) = &ib.target_type else {
+            continue;
+        };
+        for method in &ib.methods {
+            // Native methods are seeded by register_core_natives_from_embedded.
+            if method.native.is_some() {
+                continue;
+            }
+            let receiver = method.params.first().and_then(|p| p.receiver.clone());
+            let params: Vec<RuntimeTypeRef> = method
+                .params
+                .iter()
+                .filter(|p| p.receiver.is_none())
+                .filter_map(|p| p.type_ann.as_ref().map(runtime_type_ref))
+                .collect();
+            let body = RuntimeCallable::Closure(Rc::new(ClosureValue {
+                name: Some(method.name.clone()),
+                params: method.params.clone(),
+                body: ClosureBody::Untyped(method.body.clone()),
+                captured: Environment::new(),
+                type_ctx: Some(type_ctx.clone()),
+                fun_type: None,
+            }));
+            let runtime_method = RuntimeMethod {
+                label: format!("{target_name}::{}", method.name),
+                receiver,
+                signature: RuntimeSignature {
+                    params,
+                    ret: method.return_type.as_ref().map(runtime_type_ref),
+                },
+                body,
+            };
+            if let Some(aspect_name) = &ib.aspect_name {
+                let type_args = ib.aspect_type_args.iter().map(runtime_type_key).collect();
+                runtime.register_aspect_method(
+                    target_name,
+                    aspect_name,
+                    None,
+                    type_args,
+                    &method.name,
+                    runtime_method,
+                );
+            } else if runtime_method.receiver.is_none() {
+                runtime.register_type_value(target_name, &method.name, runtime_method);
+            } else {
+                runtime.register_inherent_method(target_name, &method.name, runtime_method);
+            }
+        }
+    }
+}
+
 pub fn evaluate_with_ctx_and_options(
     program: TypedProgram,
     ctx: TypeCtx,
@@ -1285,6 +1358,7 @@ pub fn evaluate_with_ctx_and_options(
     let mut runtime = builtins::runtime_registry();
     let mut env = Environment::new();
     let type_ctx_rc = std::rc::Rc::new(ctx);
+    seed_core_bodied_methods(&mut runtime, &type_ctx_rc);
     run_passes(
         &program,
         &std::collections::HashMap::new(),
