@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::ast::{
-    AspectDecl, AspectMethod, Decl, GenericParam, Program, Span, TypeExpr, WhereClause,
+    AspectDecl, AspectMethod, Decl, GenericParam, Program, TypeExpr, WhereClause,
 };
 use crate::typeinference::{
     EnumInfo, FieldEntry, InferContext, InferType, TypeDefinitionRegistry, TypeScheme, TypeVar,
@@ -51,31 +51,10 @@ fn collect_type_param_bounds(
         .collect()
 }
 
-fn list_new_scheme(t: TypeVar) -> TypeScheme {
-    TypeScheme {
-        quantified_vars: vec![t],
-        param_names: vec![],
-        ty: InferType::Fun(
-            vec![],
-            Box::new(InferType::Named("List".into(), vec![InferType::Var(t)])),
-        ),
-    }
-}
-
-fn list_from_scheme(t: TypeVar) -> TypeScheme {
-    TypeScheme {
-        quantified_vars: vec![t],
-        param_names: vec![],
-        ty: InferType::Fun(
-            vec![InferType::Array(Box::new(InferType::Var(t)))],
-            Box::new(InferType::Named("List".into(), vec![InferType::Var(t)])),
-        ),
-    }
-}
-
-/// Derive the free-function schemes for the prelude by parsing the embedded
-/// `std::core` source and reading each `native` declaration's annotated
-/// signature (METEL-181). `stdlib/core.mtl` + the `NativeKey` enum are the
+/// Derive the prelude schemes by parsing the embedded `std::core` source:
+/// free `native` functions by name, plus static native methods on generic
+/// structs as joined-key schemes (`List::new`) quantified over the struct's
+/// type params (METEL-181). `stdlib/core.mtl` + the `NativeKey` enum are the
 /// single source of truth — there is no hand-maintained scheme list to keep in
 /// sync. Used by `StdPrelude::default()` so the single-program pipeline (which
 /// performs no module loading) sees the same surface as the module graph path.
@@ -83,43 +62,91 @@ fn populate_schemes_from_embedded_core(
     map: &mut HashMap<String, TypeScheme>,
     gen: &mut TypeVarGenerator,
 ) {
-    let core_path = ["std".to_string(), "core".to_string()];
-    let Some(source) = crate::stdlib::lookup(&core_path) else {
-        return;
-    };
-    let program = crate::parser::parse(source, "<embedded std::core>")
-        .expect("embedded std::core must parse; it is compiled into the binary");
+    let program = crate::stdlib::core_program();
     for decl in &program.decls {
-        let Decl::Fun(fun) = decl else { continue };
-        if fun.native.is_none() {
-            continue;
-        }
-        let generic_map: HashMap<String, TypeVar> = fun
-            .generics
-            .iter()
-            .map(|g| (g.name.clone(), gen.fresh()))
-            .collect();
-        let te = |t: &TypeExpr| -> InferType {
-            if generic_map.is_empty() {
-                type_expr_to_infer(t)
-            } else {
-                type_expr_to_infer_with_generics(t, &generic_map)
-            }
-        };
-        let params: Vec<InferType> = fun
-            .params
-            .iter()
-            .map(|p| {
-                p.type_ann
+        match decl {
+            Decl::Fun(fun) => {
+                if fun.native.is_none() {
+                    continue;
+                }
+                let generic_map: HashMap<String, TypeVar> = fun
+                    .generics
+                    .iter()
+                    .map(|g| (g.name.clone(), gen.fresh()))
+                    .collect();
+                let te = |t: &TypeExpr| -> InferType {
+                    if generic_map.is_empty() {
+                        type_expr_to_infer(t)
+                    } else {
+                        type_expr_to_infer_with_generics(t, &generic_map)
+                    }
+                };
+                let params: Vec<InferType> = fun
+                    .params
+                    .iter()
+                    .map(|p| {
+                        p.type_ann.as_ref().map(&te).expect(
+                            "native declarations are fully annotated (enforced by native_fun_ty)",
+                        )
+                    })
+                    .collect();
+                let ret = fun
+                    .return_type
                     .as_ref()
                     .map(&te)
-                    .expect("native declarations are fully annotated (enforced by native_fun_ty)")
-            })
-            .collect();
-        let ret = fun.return_type.as_ref().map(&te).unwrap_or_else(InferType::unit);
-        let fun_ty = InferType::Fun(params, Box::new(ret));
-        let scheme = crate::typeinference::generalize(fun_ty, &Default::default());
-        map.insert(fun.name.clone(), scheme);
+                    .unwrap_or_else(InferType::unit);
+                let fun_ty = InferType::Fun(params, Box::new(ret));
+                let scheme = crate::typeinference::generalize(fun_ty, &Default::default());
+                map.insert(fun.name.clone(), scheme);
+            }
+            Decl::Impl(ib) => {
+                // Static native methods on generic structs become joined-key
+                // schemes ("List::new") quantified over the struct's params.
+                let TypeExpr::Named(target_name, target_args) = &ib.target_type else {
+                    continue;
+                };
+                let generic_map: HashMap<String, TypeVar> = target_args
+                    .iter()
+                    .filter_map(|te| match te {
+                        TypeExpr::Named(n, args) if args.is_empty() => {
+                            Some((n.clone(), gen.fresh()))
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                if generic_map.is_empty() {
+                    continue;
+                }
+                for method in &ib.methods {
+                    if method.native.is_none()
+                        || method.params.first().is_some_and(|p| p.receiver.is_some())
+                    {
+                        continue;
+                    }
+                    let params: Vec<InferType> = method
+                        .params
+                        .iter()
+                        .map(|p| {
+                            p.type_ann
+                                .as_ref()
+                                .map(|ann| type_expr_to_infer_with_generics(ann, &generic_map))
+                                .expect(
+                                "native declarations are fully annotated (enforced by native_fun_ty)",
+                            )
+                        })
+                        .collect();
+                    let ret = method
+                        .return_type
+                        .as_ref()
+                        .map(|ann| type_expr_to_infer_with_generics(ann, &generic_map))
+                        .unwrap_or_else(InferType::unit);
+                    let fun_ty = InferType::Fun(params, Box::new(ret));
+                    let scheme = crate::typeinference::generalize(fun_ty, &Default::default());
+                    map.insert(format!("{target_name}::{}", method.name), scheme);
+                }
+            }
+            _ => {}
+        }
     }
 }
 
@@ -144,14 +171,11 @@ pub(super) fn build_registry(
     let mut registry = TypeDefinitionRegistry::new();
     register_builtin_aspect_impls(&mut registry);
 
-    // Built-in List uses a synthetic span (no source file).
-    let builtin_span = Span::new(0, 0, "<builtin>");
-
-    // Builtin types and aspects (Perhaps, Result, Display, From, Iterable) are
-    // declared in the embedded std::core source and registered through the same
-    // machinery as user declarations (METEL-181). When the module being checked
-    // IS std::core, its own decl pass below covers them; deriving again here
-    // would double-register.
+    // Builtin types and aspects (Perhaps, Result, List, Display, From,
+    // Iterable) are declared in the embedded std::core source and registered
+    // through the same machinery as user declarations (METEL-181). When the
+    // module being checked IS std::core, its own decl pass below covers them;
+    // deriving again here would double-register.
     let std_core_path = ["std".to_string(), "core".to_string()];
     if current_module_path != std_core_path {
         register_program_decls(
@@ -161,90 +185,6 @@ pub(super) fn build_registry(
             &mut registry,
         );
     }
-
-    // Register built-in generic struct List<T>.
-    let t = gen.fresh();
-    registry.register_struct_fields(
-        "List".into(),
-        vec![FieldEntry {
-            name: "inner".into(),
-            ty: InferType::Array(Box::new(InferType::Var(t))),
-            span: builtin_span.clone(),
-            visibility: crate::ast::Visibility::Private,
-        }],
-        vec!["std".into(), "core".into()],
-    );
-    registry.register_struct_type_params("List".into(), vec![t]);
-    registry.register_struct_generic_names("List".into(), vec!["T".into()]);
-    // List method schemes (all reference struct type param t).
-    let list_self = || InferType::Named("List".into(), vec![InferType::Var(t)]);
-    let perhaps_t = || InferType::Named("Perhaps".into(), vec![InferType::Var(t)]);
-    registry.register_method_scheme(
-        "List".into(),
-        "push".into(),
-        TypeScheme {
-            quantified_vars: vec![t],
-            param_names: vec![],
-            ty: InferType::Fun(
-                vec![list_self(), InferType::Var(t)],
-                Box::new(InferType::unit()),
-            ),
-        },
-        vec![t],
-    );
-    registry.register_method_receiver(
-        "List".into(),
-        "push".into(),
-        crate::ast::ReceiverKind::RefMut,
-    );
-    registry.register_method_scheme(
-        "List".into(),
-        "pop".into(),
-        TypeScheme {
-            quantified_vars: vec![t],
-            param_names: vec![],
-            ty: InferType::Fun(vec![list_self()], Box::new(perhaps_t())),
-        },
-        vec![t],
-    );
-    registry.register_method_receiver(
-        "List".into(),
-        "pop".into(),
-        crate::ast::ReceiverKind::RefMut,
-    );
-    registry.register_method_scheme(
-        "List".into(),
-        "len".into(),
-        TypeScheme {
-            quantified_vars: vec![t],
-            param_names: vec![],
-            ty: InferType::Fun(vec![list_self()], Box::new(InferType::int())),
-        },
-        vec![t],
-    );
-    registry.register_method_scheme(
-        "List".into(),
-        "get".into(),
-        TypeScheme {
-            quantified_vars: vec![t],
-            param_names: vec![],
-            ty: InferType::Fun(vec![list_self(), InferType::int()], Box::new(perhaps_t())),
-        },
-        vec![t],
-    );
-    registry.register_method_scheme(
-        "List".into(),
-        "as_slice".into(),
-        TypeScheme {
-            quantified_vars: vec![t],
-            param_names: vec![],
-            ty: InferType::Fun(
-                vec![list_self()],
-                Box::new(InferType::Array(Box::new(InferType::Var(t)))),
-            ),
-        },
-        vec![t],
-    );
 
     register_program_decls(&program.decls, current_module_path, gen, &mut registry);
 
@@ -376,8 +316,12 @@ fn register_program_decls(
                 .raw_struct_type_params()
                 .contains_key(target_name.as_str())
             {
-                // Generic struct — method bodies inferred by infer_impl_method with TypeVars.
-                // Only register aspect membership; skip method type registration.
+                // Generic struct — Metel method bodies are inferred by
+                // infer_impl_method with TypeVars, so skip them here. NATIVE
+                // methods have no body and are never inferred, so their
+                // annotated signatures are registered as polymorphic schemes
+                // over the struct's type params (List<T> in std::core).
+                register_generic_native_impl_methods(ib, &target_name, registry);
             } else {
                 register_impl_methods(ib.methods.iter(), &target_name, gen, registry);
                 register_default_aspect_methods(ib, &target_name, gen, registry);
@@ -416,6 +360,68 @@ fn register_aspect_decl(
     registry.register_aspect(ad.name.clone(), method_names);
     registry.register_aspect_method_defs(ad.name.clone(), ad.methods.clone());
     registry.register_aspect_declaring_module(ad.name.clone(), declaring_module.to_vec());
+}
+
+/// Register the annotated signatures of NATIVE methods in an impl block on a
+/// generic struct (e.g. `impl List<T>` in std::core) as polymorphic schemes
+/// over the struct's registered type params. Metel-bodied methods are handled
+/// by infer_impl_method instead; static native methods (no receiver) are
+/// exposed as joined-key prelude schemes (`List::new`), not method schemes.
+fn register_generic_native_impl_methods(
+    ib: &crate::ast::ImplBlock,
+    target_name: &str,
+    registry: &mut TypeDefinitionRegistry,
+) {
+    if !ib.methods.iter().any(|m| m.native.is_some()) {
+        return;
+    }
+    let Some(type_params) = registry.raw_struct_type_params().get(target_name).cloned() else {
+        return;
+    };
+    let Some(generic_names) = registry.struct_generic_names_for(target_name).cloned() else {
+        return;
+    };
+    let gen_map: HashMap<String, TypeVar> = generic_names
+        .iter()
+        .cloned()
+        .zip(type_params.iter().copied())
+        .collect();
+    let self_ty = InferType::Named(
+        target_name.to_string(),
+        type_params.iter().map(|tv| InferType::Var(*tv)).collect(),
+    );
+    for method in &ib.methods {
+        if method.native.is_none() {
+            continue;
+        }
+        let Some(receiver) = method.params.first().and_then(|p| p.receiver.clone()) else {
+            continue;
+        };
+        let mut param_types = vec![self_ty.clone()];
+        for p in method.params.iter().filter(|p| p.receiver.is_none()) {
+            let ann = p
+                .type_ann
+                .as_ref()
+                .expect("native declarations are fully annotated (enforced by native_fun_ty)");
+            param_types.push(type_expr_to_infer_with_generics(ann, &gen_map));
+        }
+        let ret_ty = method
+            .return_type
+            .as_ref()
+            .map(|ann| type_expr_to_infer_with_generics(ann, &gen_map))
+            .unwrap_or_else(InferType::unit);
+        registry.register_method_scheme(
+            target_name.to_string(),
+            method.name.clone(),
+            TypeScheme {
+                quantified_vars: type_params.clone(),
+                param_names: vec![],
+                ty: InferType::Fun(param_types, Box::new(ret_ty)),
+            },
+            type_params.clone(),
+        );
+        registry.register_method_receiver(target_name.to_string(), method.name.clone(), receiver);
+    }
 }
 
 fn register_impl_methods<'a>(
@@ -567,13 +573,8 @@ pub(super) fn populate_std_schemes(
     map: &mut HashMap<String, TypeScheme>,
     gen: &mut TypeVarGenerator,
 ) {
-    // Free-function schemes are derived from the embedded std::core source
-    // (single source of truth, METEL-181). Only the List<T> static constructors
-    // remain hand-written, because the List type itself still lives in the type
-    // registry rather than in std::core.mtl.
+    // All schemes — free functions and the List<T> static constructors — are
+    // derived from the embedded std::core source (single source of truth,
+    // METEL-181).
     populate_schemes_from_embedded_core(map, gen);
-    let t = gen.fresh();
-    map.insert("List::new".into(), list_new_scheme(t));
-    let t = gen.fresh();
-    map.insert("List::from".into(), list_from_scheme(t));
 }

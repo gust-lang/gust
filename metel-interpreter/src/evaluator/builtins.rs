@@ -221,6 +221,108 @@ fn native_char_from(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, 
     }
 }
 
+// ── List<T> host implementations ────────────────────────────────────────────
+// List<T> is represented as Value::Struct { name: "List", fields: { "inner":
+// Value::Array(rc) } }; the methods operate on the shared backing array.
+
+fn list_value(backing: Vec<Value>) -> Value {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    let mut fields = std::collections::HashMap::new();
+    fields.insert(
+        "inner".to_string(),
+        Value::Array(Rc::new(RefCell::new(backing))),
+    );
+    Value::Struct {
+        name: "List".to_string(),
+        fields,
+    }
+}
+
+fn perhaps_value(v: Option<Value>) -> Value {
+    match v {
+        Some(val) => {
+            let mut f = std::collections::HashMap::new();
+            f.insert("value".to_string(), val);
+            Value::Enum {
+                name: "Perhaps".to_string(),
+                variant: "Some".to_string(),
+                fields: f,
+            }
+        }
+        None => Value::Enum {
+            name: "Perhaps".to_string(),
+            variant: "None".to_string(),
+            fields: std::collections::HashMap::new(),
+        },
+    }
+}
+
+fn list_inner(
+    args: &[Value],
+    label: &str,
+) -> Result<std::rc::Rc<std::cell::RefCell<Vec<Value>>>, MetelError> {
+    match args.first() {
+        Some(Value::Struct { name, fields }) if name == "List" => match fields.get("inner") {
+            Some(Value::Array(arr)) => Ok(arr.clone()),
+            _ => Err(MetelError::internal(format!(
+                "{label}: missing inner field"
+            ))),
+        },
+        _ => Err(MetelError::internal(format!("{label}: expected List"))),
+    }
+}
+
+fn native_list_new(_args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    Ok(list_value(vec![]))
+}
+
+fn native_list_from(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    match args.first() {
+        Some(Value::Array(src)) => Ok(list_value(src.borrow().clone())),
+        _ => Err(MetelError::internal("List::from: expected array argument")),
+    }
+}
+
+fn native_list_push(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let inner = list_inner(&args, "List::push")?;
+    match args.get(1) {
+        Some(val) => {
+            inner.borrow_mut().push(val.clone());
+            Ok(Value::Unit)
+        }
+        None => Err(MetelError::internal("List::push: expected (List, T)")),
+    }
+}
+
+fn native_list_pop(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let inner = list_inner(&args, "List::pop")?;
+    let popped = inner.borrow_mut().pop();
+    Ok(perhaps_value(popped))
+}
+
+fn native_list_len(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let inner = list_inner(&args, "List::len")?;
+    let len = inner.borrow().len() as i64;
+    Ok(Value::I64(len))
+}
+
+fn native_list_get(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let inner = list_inner(&args, "List::get")?;
+    match args.get(1) {
+        Some(Value::I64(idx)) => {
+            let got = inner.borrow().get(*idx as usize).cloned();
+            Ok(perhaps_value(got))
+        }
+        _ => Err(MetelError::internal("List::get: expected (List, i64)")),
+    }
+}
+
+fn native_list_as_slice(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let inner = list_inner(&args, "List::as_slice")?;
+    Ok(Value::Array(inner))
+}
+
 /// The host implementation for a stdlib `native` function, looked up by its
 /// lowered [`NativeKey`]. Total over the closed enum — every variant maps to a
 /// host fn (enforced by the coverage test).
@@ -249,6 +351,13 @@ pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
             NativeKey::StdCoreF32From => ("f32::from", native_f32_from),
             NativeKey::StdCoreF64From => ("f64::from", native_f64_from),
             NativeKey::StdCoreCharFrom => ("Char::from", native_char_from),
+            NativeKey::StdCoreListNew => ("List::new", native_list_new),
+            NativeKey::StdCoreListFrom => ("List::from", native_list_from),
+            NativeKey::StdCoreListPush => ("List::push", native_list_push),
+            NativeKey::StdCoreListPop => ("List::pop", native_list_pop),
+            NativeKey::StdCoreListLen => ("List::len", native_list_len),
+            NativeKey::StdCoreListGet => ("List::get", native_list_get),
+            NativeKey::StdCoreListAsSlice => ("List::as_slice", native_list_as_slice),
         };
     RuntimeCallable::Intrinsic {
         label: label.to_string(),
@@ -384,16 +493,6 @@ pub(super) fn register_builtins(runtime: &mut RuntimeRegistry) {
         intrinsic(label, fun)
     }
 
-    macro_rules! register_type_value {
-        ($type_name:expr, $method_name:expr, $value:expr) => {
-            runtime.register_type_value($type_name, $method_name, $value);
-        };
-    }
-    macro_rules! register_inherent {
-        ($type_name:expr, $method_name:expr, $value:expr) => {
-            runtime.register_inherent_method($type_name, $method_name, $value);
-        };
-    }
     macro_rules! register_pattern {
         ($pattern:expr, $method_name:expr, $value:expr) => {
             runtime.register_pattern_method($pattern, $method_name, $value);
@@ -433,219 +532,6 @@ pub(super) fn register_builtins(runtime: &mut RuntimeRegistry) {
                 match args.first() {
                     Some(Value::Array(arr)) => Ok(Value::I64(arr.borrow().len() as i64)),
                     _ => Err(MetelError::internal("Array::len: expected array")),
-                }
-            }),
-        )
-    );
-
-    // ── List<T> constructors ──────────────────────────────────────────────────
-
-    // Helper: build a List Value from a backing Rc array.
-    // List<T> is represented as Value::Struct { name: "List", fields: { "inner": Value::Array(rc) } }
-
-    register_type_value!(
-        "List",
-        "new",
-        method(
-            "List::new",
-            None,
-            &[],
-            Some("List<T>"),
-            builtin_value("List::new", |_args, _span| {
-                use std::cell::RefCell;
-                use std::rc::Rc;
-                let mut fields = std::collections::HashMap::new();
-                fields.insert(
-                    "inner".to_string(),
-                    Value::Array(Rc::new(RefCell::new(vec![]))),
-                );
-                Ok(Value::Struct {
-                    name: "List".to_string(),
-                    fields,
-                })
-            }),
-        )
-    );
-
-    register_type_value!(
-        "List",
-        "from",
-        method(
-            "List::from",
-            None,
-            &["T[]"],
-            Some("List<T>"),
-            builtin_value("List::from", |args, _span| {
-                use std::cell::RefCell;
-                use std::rc::Rc;
-                match args.first() {
-                    Some(Value::Array(src)) => {
-                        let copy = src.borrow().clone();
-                        let mut fields = std::collections::HashMap::new();
-                        fields.insert(
-                            "inner".to_string(),
-                            Value::Array(Rc::new(RefCell::new(copy))),
-                        );
-                        Ok(Value::Struct {
-                            name: "List".to_string(),
-                            fields,
-                        })
-                    }
-                    _ => Err(MetelError::internal("List::from: expected array argument")),
-                }
-            }),
-        )
-    );
-
-    // ── List<T> instance methods (keyed as "List::method") ───────────────────
-
-    register_inherent!(
-        "List",
-        "push",
-        method(
-            "List::push",
-            Some(crate::ast::ReceiverKind::RefMut),
-            &["T"],
-            Some("()"),
-            builtin_value("List::push", |args, _span| {
-                match (args.first(), args.get(1)) {
-                    (Some(Value::Struct { name, fields }), Some(val)) if name == "List" => {
-                        if let Some(Value::Array(arr)) = fields.get("inner") {
-                            arr.borrow_mut().push(val.clone());
-                            Ok(Value::Unit)
-                        } else {
-                            Err(MetelError::internal("List::push: missing inner field"))
-                        }
-                    }
-                    _ => Err(MetelError::internal("List::push: expected (List, T)")),
-                }
-            }),
-        )
-    );
-
-    register_inherent!(
-        "List",
-        "pop",
-        method(
-            "List::pop",
-            Some(crate::ast::ReceiverKind::RefMut),
-            &[],
-            Some("Perhaps<T>"),
-            builtin_value("List::pop", |args, span| {
-                match args.first() {
-                    Some(Value::Struct { name, fields }) if name == "List" => {
-                        if let Some(Value::Array(arr)) = fields.get("inner") {
-                            match arr.borrow_mut().pop() {
-                                Some(val) => {
-                                    let mut f = std::collections::HashMap::new();
-                                    f.insert("value".to_string(), val);
-                                    Ok(Value::Enum {
-                                        name: "Perhaps".to_string(),
-                                        variant: "Some".to_string(),
-                                        fields: f,
-                                    })
-                                }
-                                None => Ok(Value::Enum {
-                                    name: "Perhaps".to_string(),
-                                    variant: "None".to_string(),
-                                    fields: std::collections::HashMap::new(),
-                                }),
-                            }
-                        } else {
-                            Err(MetelError::internal("List::pop: missing inner field"))
-                        }
-                    }
-                    _ => Err(MetelError::panic(
-                        RuntimeErrorCode::R0009,
-                        "List::pop: expected List",
-                        span,
-                    )),
-                }
-            }),
-        )
-    );
-
-    register_inherent!(
-        "List",
-        "len",
-        method(
-            "List::len",
-            Some(crate::ast::ReceiverKind::Value),
-            &[],
-            Some("i64"),
-            builtin_value("List::len", |args, _span| {
-                match args.first() {
-                    Some(Value::Struct { name, fields }) if name == "List" => {
-                        if let Some(Value::Array(arr)) = fields.get("inner") {
-                            Ok(Value::I64(arr.borrow().len() as i64))
-                        } else {
-                            Err(MetelError::internal("List::len: missing inner field"))
-                        }
-                    }
-                    _ => Err(MetelError::internal("List::len: expected List")),
-                }
-            }),
-        )
-    );
-
-    register_inherent!(
-        "List",
-        "get",
-        method(
-            "List::get",
-            Some(crate::ast::ReceiverKind::Value),
-            &["i64"],
-            Some("Perhaps<T>"),
-            builtin_value("List::get", |args, _span| {
-                match (args.first(), args.get(1)) {
-                    (Some(Value::Struct { name, fields }), Some(Value::I64(idx)))
-                        if name == "List" =>
-                    {
-                        if let Some(Value::Array(arr)) = fields.get("inner") {
-                            match arr.borrow().get(*idx as usize).cloned() {
-                                Some(val) => {
-                                    let mut f = std::collections::HashMap::new();
-                                    f.insert("value".to_string(), val);
-                                    Ok(Value::Enum {
-                                        name: "Perhaps".to_string(),
-                                        variant: "Some".to_string(),
-                                        fields: f,
-                                    })
-                                }
-                                None => Ok(Value::Enum {
-                                    name: "Perhaps".to_string(),
-                                    variant: "None".to_string(),
-                                    fields: std::collections::HashMap::new(),
-                                }),
-                            }
-                        } else {
-                            Err(MetelError::internal("List::get: missing inner field"))
-                        }
-                    }
-                    _ => Err(MetelError::internal("List::get: expected (List, i64)")),
-                }
-            }),
-        )
-    );
-
-    register_inherent!(
-        "List",
-        "as_slice",
-        method(
-            "List::as_slice",
-            Some(crate::ast::ReceiverKind::Value),
-            &[],
-            Some("T[]"),
-            builtin_value("List::as_slice", |args, _span| {
-                match args.first() {
-                    Some(Value::Struct { name, fields }) if name == "List" => {
-                        if let Some(arr) = fields.get("inner") {
-                            Ok(arr.clone())
-                        } else {
-                            Err(MetelError::internal("List::as_slice: missing inner field"))
-                        }
-                    }
-                    _ => Err(MetelError::internal("List::as_slice: expected List")),
                 }
             }),
         )

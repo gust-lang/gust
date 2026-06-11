@@ -56,6 +56,20 @@ pub enum NativeKey {
     StdCoreF64From,
     /// `Char::from(u32)` — code point to Char; panics on invalid scalars.
     StdCoreCharFrom,
+    /// `List::new()` — empty list.
+    StdCoreListNew,
+    /// `List::from(T[])` — list with a copy of the array's elements.
+    StdCoreListFrom,
+    /// `List::push(&mut self, T)` — append an element.
+    StdCoreListPush,
+    /// `List::pop(&mut self) -> Perhaps<T>` — remove and return the last element.
+    StdCoreListPop,
+    /// `List::len(self) -> i64` — number of elements.
+    StdCoreListLen,
+    /// `List::get(self, i64) -> Perhaps<T>` — element at an index.
+    StdCoreListGet,
+    /// `List::as_slice(self) -> T[]` — the backing array.
+    StdCoreListAsSlice,
 }
 
 impl NativeKey {
@@ -85,6 +99,13 @@ impl NativeKey {
             ["std", "core", "f32_from"] => NativeKey::StdCoreF32From,
             ["std", "core", "f64_from"] => NativeKey::StdCoreF64From,
             ["std", "core", "char_from"] => NativeKey::StdCoreCharFrom,
+            ["std", "core", "list_new"] => NativeKey::StdCoreListNew,
+            ["std", "core", "list_from"] => NativeKey::StdCoreListFrom,
+            ["std", "core", "list_push"] => NativeKey::StdCoreListPush,
+            ["std", "core", "list_pop"] => NativeKey::StdCoreListPop,
+            ["std", "core", "list_len"] => NativeKey::StdCoreListLen,
+            ["std", "core", "list_get"] => NativeKey::StdCoreListGet,
+            ["std", "core", "list_as_slice"] => NativeKey::StdCoreListAsSlice,
             _ => return None,
         };
         Some(key)
@@ -113,6 +134,13 @@ impl NativeKey {
             NativeKey::StdCoreF32From => "@std.core.f32_from",
             NativeKey::StdCoreF64From => "@std.core.f64_from",
             NativeKey::StdCoreCharFrom => "@std.core.char_from",
+            NativeKey::StdCoreListNew => "@std.core.list_new",
+            NativeKey::StdCoreListFrom => "@std.core.list_from",
+            NativeKey::StdCoreListPush => "@std.core.list_push",
+            NativeKey::StdCoreListPop => "@std.core.list_pop",
+            NativeKey::StdCoreListLen => "@std.core.list_len",
+            NativeKey::StdCoreListGet => "@std.core.list_get",
+            NativeKey::StdCoreListAsSlice => "@std.core.list_as_slice",
         }
     }
 
@@ -139,6 +167,13 @@ impl NativeKey {
         NativeKey::StdCoreF32From,
         NativeKey::StdCoreF64From,
         NativeKey::StdCoreCharFrom,
+        NativeKey::StdCoreListNew,
+        NativeKey::StdCoreListFrom,
+        NativeKey::StdCoreListPush,
+        NativeKey::StdCoreListPop,
+        NativeKey::StdCoreListLen,
+        NativeKey::StdCoreListGet,
+        NativeKey::StdCoreListAsSlice,
     ];
 }
 

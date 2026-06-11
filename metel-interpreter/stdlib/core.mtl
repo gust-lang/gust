@@ -9,9 +9,8 @@
 // implementation selected by NativeKey. Everything else is ordinary Metel.
 //
 // Still hand-registered in Rust (build_registry / register_builtins):
-//   * struct List<T> + its methods (constructor typechecking relies on
-//     joined-key schemes; see the METEL-181 handoff)
 //   * Iterable impls for Range/RangeInclusive (runtime ranges are intrinsic)
+//   * String::len / T[]::len pattern methods (receiver shapes, not named types)
 
 // ── Core sum types ──────────────────────────────────────────────────────────
 
@@ -37,6 +36,24 @@ pub aspect From<S> {
 
 pub aspect Iterable<T> {
     fun next(&mut self) -> Perhaps<T>;
+}
+
+// ── List<T> ─────────────────────────────────────────────────────────────────
+// The growable collection type. `inner` is private: the backing array is an
+// implementation detail of the host representation.
+
+pub struct List<T> {
+    inner: T[],
+}
+
+impl List<T> {
+    native(@std.core.list_new)      fun new() -> List<T>;
+    native(@std.core.list_from)     fun from(src: T[]) -> List<T>;
+    native(@std.core.list_push)     fun push(&mut self, x: T);
+    native(@std.core.list_pop)      fun pop(&mut self) -> Perhaps<T>;
+    native(@std.core.list_len)      fun len(self) -> i64;
+    native(@std.core.list_get)      fun get(self, i: i64) -> Perhaps<T>;
+    native(@std.core.list_as_slice) fun as_slice(self) -> T[];
 }
 
 // ── Free functions ──────────────────────────────────────────────────────────

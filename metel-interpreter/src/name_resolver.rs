@@ -184,17 +184,6 @@ pub fn resolve(graph: &ModuleGraph) -> Result<ResolvedNames, MetelError> {
         scopes.insert(loaded.module_path.clone(), scope);
     }
 
-    // The std::core surface (free functions, Perhaps/Result, the core aspects)
-    // now comes from the real embedded std::core module (METEL-181). Only
-    // `List` is still registry-based (joined-key constructor schemes; see the
-    // METEL-181 handoff), so its name is injected here — EXTENDING the real
-    // module's computed surface rather than replacing it.
-    // TODO(METEL-181): once List moves into std::core.mtl, delete this.
-    pub_surface
-        .entry(vec!["std".to_string(), "core".to_string()])
-        .or_default()
-        .insert("List".to_string());
-
     Ok(ResolvedNames {
         scopes,
         pub_surface,
