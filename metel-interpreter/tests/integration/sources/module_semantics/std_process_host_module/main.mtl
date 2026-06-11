@@ -1,0 +1,28 @@
+// std::process host module (METEL-166): argv and shell-free subprocess run.
+// Uses POSIX `true`/`false` for deterministic exit statuses.
+import std::process::{args, run, ProcessOutput};
+
+fun status_of(r: Result<ProcessOutput, OsError>) -> i64 {
+    match r {
+        Result::Ok { value } => value.status,
+        Result::Err { error } => -999,
+    }
+}
+
+fun main() {
+    // argv is always non-empty (at least the interpreter path).
+    assert(args().len() > 0);
+
+    // A successful command exits 0; a failing one exits non-zero — both are Ok
+    // (a non-zero status is a result, not an error).
+    assert(status_of(run("true", [])) == 0);
+    assert(status_of(run("false", [])) != 0);
+
+    // A command that cannot be launched is an Err carrying an OsError message.
+    match run("metel_no_such_command_z9", []) {
+        Result::Ok { value } => assert(false),
+        Result::Err { error } => assert(error.message().len() > 0),
+    }
+
+    println("ok");
+}

@@ -465,6 +465,63 @@ fn native_fs_remove_dir_all(
     Ok(io_result(std::fs::remove_dir_all(&path).map(|_| Value::Unit)))
 }
 
+// ── std::process host implementations ──────────────────────────────────────
+
+/// Build a std::process `ProcessOutput { status, stdout, stderr }` value.
+fn process_output_value(status: i64, stdout: String, stderr: String) -> Value {
+    let mut fields = std::collections::HashMap::new();
+    fields.insert("status".to_string(), Value::I64(status));
+    fields.insert("stdout".to_string(), Value::Str(stdout));
+    fields.insert("stderr".to_string(), Value::Str(stderr));
+    Value::Struct {
+        name: "ProcessOutput".to_string(),
+        fields,
+    }
+}
+
+fn native_process_args(_args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    let argv: Vec<Value> = std::env::args().map(Value::Str).collect();
+    Ok(Value::Array(Rc::new(RefCell::new(argv))))
+}
+
+fn native_process_run(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let command = str_at(&args, 0, "std::process::run")?;
+    // The second argument is a String[] of arguments; the API is shell-free —
+    // the command and its arguments are passed directly, with no shell parsing.
+    let cmd_args: Vec<String> = match args.get(1) {
+        Some(Value::Array(arr)) => arr
+            .borrow()
+            .iter()
+            .map(|v| match v {
+                Value::Str(s) => Ok(s.clone()),
+                _ => Err(MetelError::internal(
+                    "std::process::run: args array must contain Strings",
+                )),
+            })
+            .collect::<Result<_, _>>()?,
+        _ => {
+            return Err(MetelError::internal(
+                "std::process::run: expected (String, String[])",
+            ))
+        }
+    };
+    let output = std::process::Command::new(&command)
+        .args(&cmd_args)
+        .output();
+    Ok(result_value(
+        output
+            .map(|out| {
+                let status = out.status.code().map(|c| c as i64).unwrap_or(-1);
+                let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+                let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+                process_output_value(status, stdout, stderr)
+            })
+            .map_err(|e| os_error_value(e.to_string())),
+    ))
+}
+
 /// The host implementation for a stdlib `native` function, looked up by its
 /// lowered [`NativeKey`]. Total over the closed enum — every variant maps to a
 /// host fn (enforced by the coverage test).
@@ -517,6 +574,8 @@ pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
             NativeKey::StdFsRemoveDirAll => {
                 ("std::fs::remove_dir_all", native_fs_remove_dir_all)
             }
+            NativeKey::StdProcessArgs => ("std::process::args", native_process_args),
+            NativeKey::StdProcessRun => ("std::process::run", native_process_run),
         };
     RuntimeCallable::Intrinsic {
         label: label.to_string(),

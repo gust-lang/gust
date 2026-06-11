@@ -97,6 +97,12 @@ pub enum NativeKey {
     StdFsRemoveDir,
     /// `fs::remove_dir_all(String) -> Result<(), OsError>`.
     StdFsRemoveDirAll,
+
+    // ── std::process ────────────────────────────────────────────────────────
+    /// `process::args() -> String[]` — the process command-line arguments.
+    StdProcessArgs,
+    /// `process::run(String, String[]) -> Result<ProcessOutput, OsError>`.
+    StdProcessRun,
 }
 
 impl NativeKey {
@@ -144,6 +150,8 @@ impl NativeKey {
             ["std", "fs", "remove_file"] => NativeKey::StdFsRemoveFile,
             ["std", "fs", "remove_dir"] => NativeKey::StdFsRemoveDir,
             ["std", "fs", "remove_dir_all"] => NativeKey::StdFsRemoveDirAll,
+            ["std", "process", "args"] => NativeKey::StdProcessArgs,
+            ["std", "process", "run"] => NativeKey::StdProcessRun,
             _ => return None,
         };
         Some(key)
@@ -190,6 +198,8 @@ impl NativeKey {
             NativeKey::StdFsRemoveFile => "@std.fs.remove_file",
             NativeKey::StdFsRemoveDir => "@std.fs.remove_dir",
             NativeKey::StdFsRemoveDirAll => "@std.fs.remove_dir_all",
+            NativeKey::StdProcessArgs => "@std.process.args",
+            NativeKey::StdProcessRun => "@std.process.run",
         }
     }
 
@@ -234,6 +244,8 @@ impl NativeKey {
         NativeKey::StdFsRemoveFile,
         NativeKey::StdFsRemoveDir,
         NativeKey::StdFsRemoveDirAll,
+        NativeKey::StdProcessArgs,
+        NativeKey::StdProcessRun,
     ];
 }
 
