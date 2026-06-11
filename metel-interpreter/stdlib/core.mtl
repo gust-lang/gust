@@ -1,27 +1,45 @@
-// std::core — the always-available standard library prelude (METEL-181, WIP).
+// std::core — the always-available standard library prelude (METEL-181).
 //
 // This module is compiled into the interpreter binary (see build.rs) and loaded
-// as a real module ahead of user code, replacing the virtual `std::core` that
-// was previously seeded across StdPrelude / build_registry / register_builtins /
-// the name-resolver injection.
+// as a real module ahead of user code. It is the single source of truth for the
+// core surface: the typechecker registry, the prelude, and the runtime all
+// derive from this file (via stdlib::core_program()).
 //
 // Host-backed items use `native(@std.core.<id>)`, binding to a Rust host
 // implementation selected by NativeKey. Everything else is ordinary Metel.
 //
-// ── MIGRATION STATUS ────────────────────────────────────────────────────────
-// DONE here: the free-function surface as native declarations.
-// TODO (next session) — these still live in Rust (build_registry / register_
-// builtins) and must move here to fully delete the virtual std::core:
-//   * enum Perhaps<T> { Some { value: T }, None {} }
-//   * enum Result<T, E> { Ok { value: T }, Err { error: E } }
-//   * struct List<T> { … } with native methods (push/pop/get/len/…)
-//   * aspect Display { fun to_string(&self) -> String; }
-//   * aspect From<S>  { fun from(x: S) -> Self; }
-//   * aspect Iterable<T> { fun next(&mut self) -> Perhaps<T>; }
-//   * the numeric From cross-product + Display impls for primitives + to_string
-// Moving these requires: native methods inside impl blocks (extend FunBody::
-// Native handling in the evaluator's impl-method path), generic native funcs
-// (List::new<T>), and aspect declarations flowing through the normal pipeline.
+// Still hand-registered in Rust (build_registry / register_builtins):
+//   * struct List<T> + its methods (constructor typechecking relies on
+//     joined-key schemes; see the METEL-181 handoff)
+//   * Iterable impls for Range/RangeInclusive (runtime ranges are intrinsic)
+
+// ── Core sum types ──────────────────────────────────────────────────────────
+
+pub enum Perhaps<T> {
+    Some { pub value: T },
+    None,
+}
+
+pub enum Result<T, E> {
+    Ok { pub value: T },
+    Err { pub error: E },
+}
+
+// ── Core aspects ────────────────────────────────────────────────────────────
+
+pub aspect Display {
+    fun to_string(&self) -> String;
+}
+
+pub aspect From<S> {
+    fun from(x: S) -> Self;
+}
+
+pub aspect Iterable<T> {
+    fun next(&mut self) -> Perhaps<T>;
+}
+
+// ── Free functions ──────────────────────────────────────────────────────────
 
 // print/println/dbg are generic over any Displayable value (the host formats it).
 native(@std.core.print)      pub fun print<T>(x: T);

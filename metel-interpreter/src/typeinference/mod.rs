@@ -1228,10 +1228,6 @@ impl InferContext {
         &self.current_module_path
     }
 
-    pub fn registry_mut(&mut self) -> &mut TypeDefinitionRegistry {
-        &mut self.registry
-    }
-
     /// Consume the context and return its registry. Used by `check_graph` to extract
     /// accumulated type definitions after a module is checked. See ADR-0032.
     pub fn into_registry(self) -> TypeDefinitionRegistry {

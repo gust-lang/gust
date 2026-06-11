@@ -27,6 +27,21 @@ pub fn module_paths() -> Vec<Vec<String>> {
         .collect()
 }
 
+/// The parsed `std::core` program, cached for the lifetime of the process.
+/// Consumed by the typechecker registry (builtin type/aspect registration),
+/// the prelude (free-function schemes), and the runtime (host bindings) —
+/// `stdlib/core.mtl` is the single source of truth for the core surface.
+pub fn core_program() -> &'static crate::ast::Program {
+    use std::sync::OnceLock;
+    static CORE: OnceLock<crate::ast::Program> = OnceLock::new();
+    CORE.get_or_init(|| {
+        let core_path = ["std".to_string(), "core".to_string()];
+        let source = lookup(&core_path).expect("std::core is embedded in the binary");
+        crate::parser::parse(source, "<embedded std::core>")
+            .expect("embedded std::core must parse; it is compiled into the binary")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

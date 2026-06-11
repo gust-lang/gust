@@ -185,62 +185,23 @@ pub(super) fn build_registry(
     let mut registry = TypeDefinitionRegistry::new();
     register_builtin_aspect_impls(&mut registry);
 
-    // Built-in generic enums use a synthetic span (no source file).
+    // Built-in List uses a synthetic span (no source file).
     let builtin_span = Span::new(0, 0, "<builtin>");
 
-    // Register built-in generic enums.
-    let t = gen.fresh();
-    registry.register_enum(
-        "Perhaps".into(),
-        EnumInfo {
-            type_params: vec![t],
-            variants: vec![
-                VariantInfo {
-                    name: "Some".into(),
-                    fields: vec![FieldEntry {
-                        name: "value".into(),
-                        ty: InferType::Var(t),
-                        span: builtin_span.clone(),
-                        visibility: crate::ast::Visibility::Public,
-                    }],
-                },
-                VariantInfo {
-                    name: "None".into(),
-                    fields: vec![],
-                },
-            ],
-        },
-        vec!["std".into(), "core".into()],
-    );
-    let t = gen.fresh();
-    let e = gen.fresh();
-    registry.register_enum(
-        "Result".into(),
-        EnumInfo {
-            type_params: vec![t, e],
-            variants: vec![
-                VariantInfo {
-                    name: "Ok".into(),
-                    fields: vec![FieldEntry {
-                        name: "value".into(),
-                        ty: InferType::Var(t),
-                        span: builtin_span.clone(),
-                        visibility: crate::ast::Visibility::Public,
-                    }],
-                },
-                VariantInfo {
-                    name: "Err".into(),
-                    fields: vec![FieldEntry {
-                        name: "error".into(),
-                        ty: InferType::Var(e),
-                        span: builtin_span.clone(),
-                        visibility: crate::ast::Visibility::Public,
-                    }],
-                },
-            ],
-        },
-        vec!["std".into(), "core".into()],
-    );
+    // Builtin types and aspects (Perhaps, Result, Display, From, Iterable) are
+    // declared in the embedded std::core source and registered through the same
+    // machinery as user declarations (METEL-181). When the module being checked
+    // IS std::core, its own decl pass below covers them; deriving again here
+    // would double-register.
+    let std_core_path = ["std".to_string(), "core".to_string()];
+    if current_module_path != std_core_path {
+        register_program_decls(
+            &crate::stdlib::core_program().decls,
+            &std_core_path,
+            gen,
+            &mut registry,
+        );
+    }
 
     // Register built-in generic struct List<T>.
     let t = gen.fresh();
@@ -326,8 +287,22 @@ pub(super) fn build_registry(
         vec![t],
     );
 
-    // Pass 1: register user-defined structs, enums, and aspects.
-    for decl in &program.decls {
+    register_program_decls(&program.decls, current_module_path, gen, &mut registry);
+
+    registry
+}
+
+/// Register a program's type-level declarations (structs, enums, aspects, impl
+/// signatures) into the registry. Used both for the module being checked and
+/// for the embedded std::core decls, which seed every module's registry.
+fn register_program_decls(
+    decls: &[Decl],
+    current_module_path: &[String],
+    gen: &mut TypeVarGenerator,
+    registry: &mut TypeDefinitionRegistry,
+) {
+    // Pass 1: register structs, enums, and aspects.
+    for decl in decls {
         match decl {
             Decl::Struct(sd) if sd.generics.is_empty() => {
                 let fields: Vec<FieldEntry> = sd
@@ -422,7 +397,7 @@ pub(super) fn build_registry(
                 }
             }
             Decl::Aspect(ad) => {
-                register_aspect_decl(ad, current_module_path, &mut registry);
+                register_aspect_decl(ad, current_module_path, registry);
             }
             _ => {}
         }
@@ -432,7 +407,7 @@ pub(super) fn build_registry(
     // Methods on generic structs (where the target type has registered type params) are
     // skipped here — they contain T-typed params that need TypeVars, not Named("T",[]).
     // infer_impl_method in inference.rs registers them correctly as polymorphic schemes.
-    for decl in &program.decls {
+    for decl in decls {
         if let Decl::Impl(ib) = decl {
             let target_name = match &ib.target_type {
                 TypeExpr::Named(name, _) => name.clone(),
@@ -445,8 +420,8 @@ pub(super) fn build_registry(
                 // Generic struct — method bodies inferred by infer_impl_method with TypeVars.
                 // Only register aspect membership; skip method type registration.
             } else {
-                register_impl_methods(ib.methods.iter(), &target_name, gen, &mut registry);
-                register_default_aspect_methods(ib, &target_name, gen, &mut registry);
+                register_impl_methods(ib.methods.iter(), &target_name, gen, registry);
+                register_default_aspect_methods(ib, &target_name, gen, registry);
             }
             // Track which aspects this type implements (with concrete type args).
             // TODO(generic-impl): Once impl<T> syntax is added, type args that are generic
@@ -471,8 +446,6 @@ pub(super) fn build_registry(
             }
         }
     }
-
-    registry
 }
 
 fn register_aspect_decl(
@@ -628,19 +601,8 @@ pub(super) fn register_primitive_type_bindings(
     );
     // T[]::len — handled as a special case in the typechecker; no TypeVar needed here.
 
-    let std_core = vec!["std".to_string(), "core".to_string()];
-    ctx.registry_mut()
-        .register_aspect("Display".into(), vec!["to_string".into()]);
-    ctx.registry_mut()
-        .register_aspect("Iterable".into(), vec!["next".into()]);
-    ctx.registry_mut()
-        .register_aspect("From".into(), vec!["from".into()]);
-    ctx.registry_mut()
-        .register_aspect_declaring_module("Display".into(), std_core.clone());
-    ctx.registry_mut()
-        .register_aspect_declaring_module("Iterable".into(), std_core.clone());
-    ctx.registry_mut()
-        .register_aspect_declaring_module("From".into(), std_core);
+    // The core aspects (Display/Iterable/From) are declared in the embedded
+    // std::core source and registered by build_registry's decl pass (METEL-181).
 }
 
 /// Add all built-in function schemes from `StdPrelude` to `scheme_env`.
