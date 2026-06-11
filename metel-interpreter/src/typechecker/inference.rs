@@ -543,10 +543,23 @@ fn infer_impl_method(
     let fun_ty = InferType::Fun(param_types, Box::new(ret_ty));
     let resolved_fun_ty = partial_subst.apply(&fun_ty);
 
+    // Map each struct type-param TypeVar through the solution: body inference
+    // (e.g. a `self.value` field access) may have unified the original param var
+    // with a fresh representative, so `struct_tvars_ordered` can be stale. The
+    // scheme is generalized from `resolved_fun_ty`, so its quantified vars and the
+    // `struct_tvars` we hand to the call site must use the *resolved* representatives.
+    let struct_tvars_resolved: Vec<TypeVar> = struct_tvars_ordered
+        .iter()
+        .map(|&tv| match partial_subst.apply(&InferType::Var(tv)) {
+            InferType::Var(v) => v,
+            _ => tv,
+        })
+        .collect();
+
     // If the resolved method type still has free TypeVars from the struct's generic params,
     // store it as a polymorphic scheme so Pass 2 can instantiate it per call site.
     let struct_tvars_free: std::collections::HashSet<TypeVar> =
-        struct_tvars_ordered.iter().copied().collect();
+        struct_tvars_resolved.iter().copied().collect();
     if !struct_tvars_free.is_empty()
         && free_vars(&resolved_fun_ty)
             .iter()
@@ -557,7 +570,7 @@ fn infer_impl_method(
             target_name.to_string(),
             method.name.clone(),
             scheme,
-            struct_tvars_ordered,
+            struct_tvars_resolved,
         );
     } else {
         ctx.register_method(
@@ -1238,15 +1251,33 @@ fn infer_expr(
                 let method_ty = if let Some(ty) = ctx.get_method_type(&struct_name, method).cloned()
                 {
                     ty
-                } else if let Some((scheme, struct_tvars)) =
-                    ctx.method_scheme_for(&struct_name, method)
+                } else if let Some((scheme, struct_tvars)) = ctx
+                    .method_scheme_for(&struct_name, method)
+                    .map(|(s, t)| (s.clone(), t.clone()))
                 {
-                    // Instantiate the scheme using the receiver's concrete type args.
-                    let mut subst = Substitution::new();
-                    for (&tv, arg) in struct_tvars.iter().zip(recv_type_args.iter()) {
-                        subst.bind(tv, arg.clone());
+                    // Instantiate the scheme with a fresh TypeVar for EVERY
+                    // quantified var — the struct's type params and the method's
+                    // own generics (e.g. `U` in `fun map<U>(...)`). Instantiating
+                    // only the struct tvars would leave the method-level generics
+                    // as stale shared vars, so two call sites would collide and a
+                    // single call could not resolve `U` from its arguments.
+                    let mut inst = Substitution::new();
+                    let mut renaming: HashMap<TypeVar, TypeVar> = HashMap::new();
+                    for &qv in &scheme.quantified_vars {
+                        let fresh = ctx.fresh_type_var_raw();
+                        inst.bind(qv, InferType::Var(fresh));
+                        renaming.insert(qv, fresh);
                     }
-                    subst.apply(&scheme.ty)
+                    let instance = inst.apply(&scheme.ty);
+                    // Pin the struct's (now fresh) type params to the receiver's
+                    // concrete type args so `self`/return types line up.
+                    let mut pin = Substitution::new();
+                    for (&tv, arg) in struct_tvars.iter().zip(recv_type_args.iter()) {
+                        if let Some(&fresh) = renaming.get(&tv) {
+                            pin.bind(fresh, arg.clone());
+                        }
+                    }
+                    pin.apply(&instance)
                 } else {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0003,

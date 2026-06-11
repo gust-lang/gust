@@ -19,6 +19,27 @@ pub enum Perhaps<T> {
     None,
 }
 
+impl Perhaps<T> {
+    pub fun is_some(self) -> boolean {
+        match self {
+            Perhaps::Some { value } => true,
+            _ => false,
+        }
+    }
+    pub fun map<U>(self, f: (T) -> U) -> Perhaps<U> {
+        match self {
+            Perhaps::Some { value } => Perhaps::Some { value: f(value) },
+            _ => Perhaps::None,
+        }
+    }
+    pub fun unwrap_or(self, fallback: T) -> T {
+        match self {
+            Perhaps::Some { value } => value,
+            _ => fallback,
+        }
+    }
+}
+
 pub enum Result<T, E> {
     Ok { pub value: T },
     Err { pub error: E },

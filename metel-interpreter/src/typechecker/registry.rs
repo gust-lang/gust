@@ -319,15 +319,19 @@ fn register_program_decls(
                 TypeExpr::Named(name, _) => name.clone(),
                 _ => continue,
             };
-            if registry
-                .raw_struct_type_params()
-                .contains_key(target_name.as_str())
-            {
-                // Generic struct — Metel method bodies are inferred by
-                // infer_impl_method with TypeVars, so skip them here. NATIVE
-                // methods have no body and are never inferred, so their
-                // annotated signatures are registered as polymorphic schemes
-                // over the struct's type params (List<T> in std::core).
+            // A generic struct OR generic enum (both register non-empty generic
+            // names). Their Metel method bodies are inferred by infer_impl_method
+            // with TypeVars as polymorphic schemes, so skip the concrete
+            // registration here — registering a concrete `(Enum, T) -> T` entry
+            // would shadow the scheme and make the method-level `T` a dangling
+            // Named("T"). NATIVE methods have no body and are never inferred, so
+            // their annotated signatures are registered as polymorphic schemes
+            // over the type's params (List<T> in std::core).
+            let is_generic_target = registry
+                .struct_generic_names_for(target_name.as_str())
+                .map(|names| !names.is_empty())
+                .unwrap_or(false);
+            if is_generic_target {
                 register_generic_native_impl_methods(ib, &target_name, registry);
             } else {
                 register_impl_methods(ib.methods.iter(), &target_name, gen, registry);

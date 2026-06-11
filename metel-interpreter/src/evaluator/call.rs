@@ -17,6 +17,18 @@ pub(super) enum ReceiverBinding {
     Shared(Rc<RefCell<Value>>),
 }
 
+/// Extract the named-type key for a receiver's runtime type, peeling pointer
+/// layers (a `&self` / `&mut self` receiver arrives as a pointer to the value).
+/// Used to look up a generic method's scheme in the registry's method env.
+fn receiver_type_name(ty: &crate::types::Type) -> Option<&str> {
+    use crate::types::Type;
+    match ty {
+        Type::Named(name, _) => Some(name.as_str()),
+        Type::Pointer(inner) | Type::MutPointer(inner) => receiver_type_name(inner),
+        _ => None,
+    }
+}
+
 fn call_runtime_callable(
     callable: RuntimeCallable,
     args: Vec<Value>,
@@ -128,6 +140,16 @@ pub(super) fn call_method_function(
                 .clone()
                 .unwrap_or_else(|| "<closure>".to_string());
             push_frame(fn_name, span.clone());
+            // Capture the receiver's runtime type before it is moved into the
+            // call environment. Generic method bodies are constructed at call
+            // time (ClosureBody::Untyped), and the method's TypeScheme lives in
+            // the registry's method env keyed by the receiver's type name — so
+            // we need that name plus the receiver type as the first arg type
+            // (the scheme's signature includes `self`).
+            let receiver_type = match &receiver {
+                ReceiverBinding::Value(value) => type_of::value_to_type(value),
+                ReceiverBinding::Shared(cell) => type_of::value_to_type(&cell.borrow()),
+            };
             let mut call_env = closure.captured.clone();
             call_env.push_scope();
             if let Some(param) = closure.params.first() {
@@ -142,16 +164,28 @@ pub(super) fn call_method_function(
             let result = match &closure.body {
                 ClosureBody::Typed(b) => eval_block(b, &mut call_env, runtime),
                 ClosureBody::Untyped(b) => {
-                    let scheme_and_ctx = closure
-                        .name
-                        .as_deref()
-                        .and_then(|name| closure.type_ctx.as_ref().map(|ctx| (name, ctx)))
-                        .and_then(|(name, type_ctx)| {
-                            type_ctx.scheme_env.get(name).map(|s| (s, type_ctx))
-                        });
-                    match scheme_and_ctx {
+                    // Resolve the method's scheme. A generic method is registered
+                    // in the registry's method env under (receiver type, method
+                    // name); fall back to the flat scheme env for the rare case a
+                    // free generic closure reaches this path.
+                    let resolved = closure.name.as_deref().zip(closure.type_ctx.as_ref()).and_then(
+                        |(name, type_ctx)| {
+                            let recv_name = receiver_type_name(&receiver_type);
+                            let method_scheme = recv_name.and_then(|tn| {
+                                type_ctx.registry.method_scheme_for(tn, name).map(|(s, _)| s)
+                            });
+                            method_scheme
+                                .or_else(|| type_ctx.scheme_env.get(name))
+                                .map(|scheme| (scheme, type_ctx))
+                        },
+                    );
+                    match resolved {
                         Some((scheme, type_ctx)) => {
-                            let arg_types: Vec<_> = args.iter().map(type_of::value_to_type).collect();
+                            // The scheme's signature includes `self`, so the arg
+                            // types must lead with the receiver type to stay
+                            // positionally aligned with `closure.params`.
+                            let mut arg_types: Vec<_> = vec![receiver_type.clone()];
+                            arg_types.extend(args.iter().map(type_of::value_to_type));
                             let tb = crate::typechecker::construct_generic_body(
                                 scheme, &closure.params, &arg_types, b, span, type_ctx
                             )?;

@@ -2493,9 +2493,17 @@ pub fn eval_expr(
                     Ok(result)
                 }
                 Some(crate::ast::ReceiverKind::Value) => {
-                    let mut all_args = vec![recv_type_view];
-                    all_args.extend(arg_vals);
-                    call::call_function(Value::Callable(func), all_args, span, runtime)
+                    // By-value `self`: bind the receiver as the first parameter.
+                    // Routed through call_method_function (not call_function) so a
+                    // generic method body's scheme is resolved from the registry's
+                    // method env, not the flat scheme env.
+                    call::call_method_function(
+                        func,
+                        call::ReceiverBinding::Value(recv_type_view),
+                        arg_vals,
+                        span,
+                        runtime,
+                    )
                 }
                 None => Err(MetelError::panic(
                     RuntimeErrorCode::R0009,

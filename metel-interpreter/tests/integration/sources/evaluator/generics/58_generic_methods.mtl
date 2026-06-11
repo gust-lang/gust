@@ -1,0 +1,74 @@
+// Methods on generic types — structs and enums — including method-level generic
+// params and closure arguments, dispatched through construction-at-call-time.
+// Regression coverage for the generic-method fixes (sprint 23):
+//   * generic struct methods evaluate (were R0002 "no type context")
+//   * generic enum methods typecheck (were T0002 — concrete (Enum,T)->T shadow)
+//   * method-level generics resolve from arguments (were T0002 in construction)
+
+struct Box<T> {
+    value: T,
+}
+
+impl Box<T> {
+    // Plain generic method returning the struct's type param.
+    fun get_or(self, fallback: T) -> T {
+        self.value
+    }
+    // Method-level generic `U` recovered from the closure argument.
+    fun map<U>(self, f: (T) -> U) -> Box<U> {
+        Box { value: f(self.value) }
+    }
+    fun get(self) -> T {
+        self.value
+    }
+}
+
+enum Maybe<T> {
+    Just { value: T },
+    Nothing,
+}
+
+impl Maybe<T> {
+    // `match self` on a generic enum — the variant field type is the generic T.
+    fun is_just(self) -> boolean {
+        match self {
+            Maybe::Just { value } => true,
+            _ => false,
+        }
+    }
+    fun or_else(self, fallback: T) -> T {
+        match self {
+            Maybe::Just { value } => value,
+            _ => fallback,
+        }
+    }
+    fun map<U>(self, f: (T) -> U) -> Maybe<U> {
+        match self {
+            Maybe::Just { value } => Maybe::Just { value: f(value) },
+            _ => Maybe::Nothing,
+        }
+    }
+}
+
+fun main() {
+    // Generic struct methods.
+    let b = Box { value: 21 };
+    assert(b.get_or(0) == 21);
+    let doubled = b.map((x: i64) -> i64 { x * 2 });
+    assert(doubled.get() == 42);
+    // Method-level generic changing the element type.
+    let labelled = b.map((x: i64) -> String { "n" });
+    assert(labelled.get() == "n");
+
+    // Generic enum methods, including match-on-self and chaining.
+    let j = Maybe::Just { value: 10 };
+    assert(j.is_just());
+    assert(j.or_else(0) == 10);
+    let n: Maybe<i64> = Maybe::Nothing;
+    assert(!n.is_just());
+    assert(n.or_else(7) == 7);
+    assert(j.map((x: i64) -> i64 { x + 5 }).or_else(0) == 15);
+    assert(n.map((x: i64) -> i64 { x + 5 }).or_else(99) == 99);
+
+    println("ok");
+}

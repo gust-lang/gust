@@ -203,6 +203,32 @@ impl<'a> ConstructCtx<'a> {
 /// Instantiates `scheme` with fresh type vars, unifies each instantiated parameter
 /// type with the corresponding runtime argument type (via `arg_types`), then runs the
 /// construction pass on `body` with the resulting substitution.
+/// Construct method-call arguments, hinting each with the corresponding non-self
+/// parameter type from a concrete method function type so integer/float literals
+/// adopt the expected element type (e.g. `List<i32>.push(5)` → `I32`).
+fn construct_method_args(
+    method_fun_ty: &Type,
+    args: &[crate::ast::Expr],
+    ctx: &mut ConstructCtx,
+) -> Result<Vec<TypedExpr>, crate::error::MetelError> {
+    if let Type::Fun(params, _) = method_fun_ty {
+        // params[0] is self/receiver; the rest correspond to args.
+        let arg_params: Vec<Option<&Type>> = params
+            .iter()
+            .skip(1)
+            .map(Some)
+            .chain(std::iter::repeat(None))
+            .take(args.len())
+            .collect();
+        args.iter()
+            .zip(arg_params.iter())
+            .map(|(a, hint)| construct_expr(a, *hint, ctx))
+            .collect()
+    } else {
+        args.iter().map(|a| construct_expr(a, None, ctx)).collect()
+    }
+}
+
 pub(super) fn construct_generic_body(
     scheme: &TypeScheme,
     params: &[crate::ast::Param],
@@ -559,14 +585,17 @@ fn construct_impl_method(
         });
     }
 
-    // Methods on generic structs have T-typed params that can't be resolved to concrete
-    // types in Pass 2 without call-site type args. Store the body as Generic (untyped)
-    // so the evaluator handles dispatch at runtime — same pattern as top-level generic fns.
-    if ctx
+    // Methods on a generic struct OR generic enum have T-typed params that can't be
+    // resolved to concrete types in Pass 2 without call-site type args. Store the body
+    // as Generic (untyped) so the evaluator constructs it at runtime — same pattern as
+    // top-level generic fns. (Using raw_struct_type_params would miss enums, whose
+    // methods would then be eagerly constructed here and fail on e.g. `match self`.)
+    let is_generic_target = ctx
         .registry
-        .raw_struct_type_params()
-        .contains_key(target_name)
-    {
+        .struct_generic_names_for(target_name)
+        .map(|names| !names.is_empty())
+        .unwrap_or(false);
+    if is_generic_target {
         return Ok(TypedFunDecl {
             name: method.name.clone(),
             generics: method.generics.clone(),
@@ -1204,8 +1233,10 @@ fn construct_expr(
                 )
             };
 
-            // Fast path: concrete method type already in method_env.
-            let method_fun_ty = if let Some(ty) = ctx
+            // Resolve the method's function type and construct the arguments.
+            // Two cases: a concrete method already in method_env (fast path), or a
+            // polymorphic scheme on a generic struct/enum (slow path).
+            let (method_fun_ty, typed_args): (Type, Vec<TypedExpr>) = if let Some(ty) = ctx
                 .method_env
                 .get(&struct_name)
                 .and_then(|m| m.get(method.as_str()))
@@ -1218,16 +1249,18 @@ fn construct_expr(
                         span,
                     ));
                 }
-                ty
+                let typed_args = construct_method_args(&ty, args, ctx)?;
+                (ty, typed_args)
             } else {
-                // Slow path: method on a generic struct — look up polymorphic scheme and
-                // instantiate it using the receiver's concrete type arguments.
+                // Slow path: method on a generic struct/enum — look up the polymorphic
+                // scheme and instantiate it using the receiver's concrete type arguments.
                 let (scheme, struct_tvars) = ctx
                     .registry
                     .method_scheme_for(&struct_name, method)
+                    .map(|(s, t)| (s.clone(), t.clone()))
                     .ok_or_else(|| {
-                    MetelError::internal(format!("no method `{method}` on `{struct_name}`"))
-                })?;
+                        MetelError::internal(format!("no method `{method}` on `{struct_name}`"))
+                    })?;
                 // Build substitution: struct_tvars[i] → receiver_type_args[i].
                 let mut subst = Substitution::new();
                 for (&tv, concrete) in struct_tvars.iter().zip(receiver_type_args.iter()) {
@@ -1258,30 +1291,36 @@ fn construct_expr(
                         subst.bind(*tv, type_to_infer(concrete_ty));
                     }
                 }
-                // Apply to the scheme's type to get the concrete method type.
-                let instantiated = subst.apply(&scheme.ty);
-                infer_type_to_type(&instantiated, span)?
-            };
-
-            // Use the non-self parameter types as hints so integer/float literals
-            // adopt the method's expected element type (e.g. List<i32>.push(5) → I32).
-            let typed_args: Vec<TypedExpr> = if let Type::Fun(ref params, _) = method_fun_ty {
-                // params[0] is self/receiver; the rest correspond to args.
-                let arg_params: Vec<Option<&Type>> = params
+                // The struct's type params are now pinned, but the method's OWN
+                // generics (e.g. `U` in `fun map<U>(self, f: (T) -> U)`) may still be
+                // free. Construct the arguments first (hinting with any non-self
+                // param types that are already concrete), then recover the method-
+                // level generics by unifying each parameter type against the actual
+                // argument type. Without this, `infer_type_to_type` below would fail
+                // on the still-free `U` with a spurious T0002.
+                let partial_params: Vec<InferType> = match subst.apply(&scheme.ty) {
+                    InferType::Fun(p, _) => p,
+                    _ => return Err(MetelError::internal("method scheme is not a function type")),
+                };
+                let typed_args: Vec<TypedExpr> = args
                     .iter()
-                    .skip(1)
-                    .map(Some)
-                    .chain(std::iter::repeat(None))
-                    .take(args.len())
-                    .collect();
-                args.iter()
-                    .zip(arg_params.iter())
-                    .map(|(a, hint)| construct_expr(a, *hint, ctx))
-                    .collect::<Result<_, _>>()?
-            } else {
-                args.iter()
-                    .map(|a| construct_expr(a, None, ctx))
-                    .collect::<Result<_, _>>()?
+                    .enumerate()
+                    .map(|(i, a)| {
+                        // params[0] is self; arguments line up with params[1..].
+                        let hint = partial_params
+                            .get(i + 1)
+                            .and_then(|it| infer_type_to_type(&subst.apply(it), span).ok());
+                        construct_expr(a, hint.as_ref(), ctx)
+                    })
+                    .collect::<Result<_, _>>()?;
+                for (param_it, arg) in partial_params.iter().skip(1).zip(typed_args.iter()) {
+                    let arg_it = type_to_infer(arg.ty());
+                    if let Ok(s) = typeinference::unify(&subst.apply(param_it), &arg_it) {
+                        subst = subst.compose(&s);
+                    }
+                }
+                let method_fun_ty = infer_type_to_type(&subst.apply(&scheme.ty), span)?;
+                (method_fun_ty, typed_args)
             };
             let ret_ty = match method_fun_ty {
                 Type::Fun(_, ret) => *ret,
