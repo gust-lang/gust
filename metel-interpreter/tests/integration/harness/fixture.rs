@@ -12,7 +12,7 @@ pub enum RunnerKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum StdPreludeMode {
+pub enum CorePreludeMode {
     Empty,
     Default,
 }
@@ -38,7 +38,7 @@ pub struct Expectation {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FixtureConfig {
     pub runner: RunnerKind,
-    pub prelude: StdPreludeMode,
+    pub prelude: CorePreludeMode,
     pub expect: Expectation,
     pub program: ProgramChecks,
     pub graph: GraphChecks,
@@ -47,7 +47,7 @@ pub struct FixtureConfig {
 #[derive(Default)]
 struct PartialConfig {
     runner: Option<RunnerKind>,
-    prelude: Option<StdPreludeMode>,
+    prelude: Option<CorePreludeMode>,
     status: Option<ExpectStatus>,
     code: Option<String>,
     contains: Option<String>,
@@ -96,35 +96,35 @@ fn suite_defaults(suite: &str) -> FixtureConfig {
     match suite {
         "parsing" => FixtureConfig {
             runner: RunnerKind::Parse,
-            prelude: StdPreludeMode::Empty,
+            prelude: CorePreludeMode::Empty,
             expect: Expectation::success(),
             program: ProgramChecks::default(),
             graph: GraphChecks::default(),
         },
         "typechecking" => FixtureConfig {
             runner: RunnerKind::Typecheck,
-            prelude: StdPreludeMode::Default,
+            prelude: CorePreludeMode::Default,
             expect: Expectation::success(),
             program: ProgramChecks::default(),
             graph: GraphChecks::default(),
         },
         "evaluator" => FixtureConfig {
             runner: RunnerKind::Evaluate,
-            prelude: StdPreludeMode::Default,
+            prelude: CorePreludeMode::Default,
             expect: Expectation::success(),
             program: ProgramChecks::default(),
             graph: GraphChecks::default(),
         },
         "module_loading" => FixtureConfig {
             runner: RunnerKind::FullPipeline,
-            prelude: StdPreludeMode::Empty,
+            prelude: CorePreludeMode::Empty,
             expect: Expectation::success(),
             program: ProgramChecks::default(),
             graph: GraphChecks::default(),
         },
         "module_semantics" => FixtureConfig {
             runner: RunnerKind::FullPipeline,
-            prelude: StdPreludeMode::Empty,
+            prelude: CorePreludeMode::Empty,
             expect: Expectation::success(),
             program: ProgramChecks::default(),
             graph: GraphChecks::default(),
@@ -290,10 +290,10 @@ fn parse_runner(value: &str) -> RunnerKind {
     }
 }
 
-fn parse_prelude(value: &str) -> StdPreludeMode {
+fn parse_prelude(value: &str) -> CorePreludeMode {
     match value {
-        "empty" => StdPreludeMode::Empty,
-        "default" => StdPreludeMode::Default,
+        "empty" => CorePreludeMode::Empty,
+        "default" => CorePreludeMode::Default,
         other => panic!("unknown prelude mode `{other}`"),
     }
 }

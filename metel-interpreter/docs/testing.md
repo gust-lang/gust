@@ -71,7 +71,7 @@ Supported prelude modes:
 - `empty`
 - `default`
 
-`empty` means `typechecker::StdPrelude::empty()`. `default` means `typechecker::StdPrelude::default()`.
+`empty` means `typechecker::CorePrelude::empty()`. `default` means `typechecker::CorePrelude::default()`.
 
 ## Sidecar Format
 

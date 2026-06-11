@@ -10,7 +10,7 @@ use crate::module_loader;
 use crate::name_resolver;
 use crate::parser;
 use crate::path_normalizer;
-use crate::typechecker::{self, StdPrelude, TypecheckPhaseTimings};
+use crate::typechecker::{self, CorePrelude, TypecheckPhaseTimings};
 
 #[derive(Debug, Clone, Default)]
 pub struct RunOptions {
@@ -67,7 +67,7 @@ pub fn run_file(filename: &str, options: &RunOptions) -> Result<RunReport, Metel
     let normalize_ns = elapsed_ns(started);
 
     let started = Instant::now();
-    let typed_graph = typechecker::check_graph(normalized, &names, StdPrelude::default())?;
+    let typed_graph = typechecker::check_graph(normalized, &names, CorePrelude::default())?;
     let typecheck_ns = elapsed_ns(started);
 
     let started = Instant::now();

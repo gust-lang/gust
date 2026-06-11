@@ -56,7 +56,7 @@ fn collect_type_param_bounds(
 /// structs as joined-key schemes (`List::new`) quantified over the struct's
 /// type params (METEL-181). `stdlib/core.mtl` + the `NativeKey` enum are the
 /// single source of truth — there is no hand-maintained scheme list to keep in
-/// sync. Used by `StdPrelude::default()` so the single-program pipeline (which
+/// sync. Used by `CorePrelude::default()` so the single-program pipeline (which
 /// performs no module loading) sees the same surface as the module graph path.
 fn populate_schemes_from_embedded_core(
     map: &mut HashMap<String, TypeScheme>,
@@ -526,16 +526,16 @@ fn register_default_aspect_method(
     }
 }
 
-/// Seed `ctx` with all built-in free-function bindings from `StdPrelude`,
+/// Seed `ctx` with all built-in free-function bindings from `CorePrelude`,
 /// plus built-in method registrations and aspect declarations.
 pub(super) fn register_primitive_type_bindings(
     ctx: &mut InferContext,
-    prelude: &super::StdPrelude,
+    prelude: &super::CorePrelude,
 ) {
     let str_ty = InferType::str();
     let int_ty = InferType::int();
 
-    // Free-function builtins all come from StdPrelude — no separate list needed.
+    // Free-function builtins all come from CorePrelude — no separate list needed.
     for (name, scheme) in prelude.schemes() {
         ctx.bind_poly_if_absent(name, scheme.clone());
     }
@@ -554,11 +554,11 @@ pub(super) fn register_primitive_type_bindings(
     // std::core source and registered by build_registry's decl pass (METEL-181).
 }
 
-/// Add all built-in function schemes from `StdPrelude` to `scheme_env`.
+/// Add all built-in function schemes from `CorePrelude` to `scheme_env`.
 /// Used by the construction pass so builtin names are known during typed-AST building.
 pub(super) fn register_builtin_schemes(
     scheme_env: &mut HashMap<String, TypeScheme>,
-    prelude: &super::StdPrelude,
+    prelude: &super::CorePrelude,
 ) {
     for (name, scheme) in prelude.schemes() {
         scheme_env
@@ -568,7 +568,7 @@ pub(super) fn register_builtin_schemes(
 }
 
 /// Populate `map` with all built-in function schemes.
-/// Called by `StdPrelude::default()` — this is the single canonical list.
+/// Called by `CorePrelude::default()` — this is the single canonical list.
 pub(super) fn populate_std_schemes(
     map: &mut HashMap<String, TypeScheme>,
     gen: &mut TypeVarGenerator,

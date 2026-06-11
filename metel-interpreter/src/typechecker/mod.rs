@@ -86,17 +86,18 @@ struct FunGeneralization {
     name_map: HashMap<TypeVar, String>,
 }
 
-// ── StdPrelude ────────────────────────────────────────────────────────────────
+// ── CorePrelude ────────────────────────────────────────────────────────────────
 
-/// Pre-loaded standard library type schemes, seeded into GlobalExports before
-/// the per-module typechecking loop begins.  `StdPrelude` is the single source
-/// of truth for all builtin function signatures — `register_builtins` and
-/// the construction pass both derive from it.
-pub struct StdPrelude {
+/// The std::core scheme surface, derived entirely by parsing the embedded
+/// `stdlib/core.mtl` (METEL-181): free native functions plus the joined-key
+/// static constructors (`List::new`). Seeded into every module's scheme env so
+/// the single-program pipeline (which performs no module loading) sees the
+/// same names the module-graph path gets from the real std::core module.
+pub struct CorePrelude {
     schemes: SchemeEnv,
 }
 
-impl StdPrelude {
+impl CorePrelude {
     /// No standard library names pre-loaded. Use in tests that do not need std.
     #[allow(dead_code)] // public API used by module-loading test harness
     pub fn empty() -> Self {
@@ -114,9 +115,9 @@ impl StdPrelude {
     }
 }
 
-impl Default for StdPrelude {
-    /// All built-in function schemes (print, assert, List::new, …).
-    /// This is the canonical list — nothing else should register builtins.
+impl Default for CorePrelude {
+    /// All built-in function schemes (print, assert, List::new, …), derived
+    /// from the embedded std::core source.
     ///
     /// The generator starts at 10000 so that prelude TypeVars never collide
     /// with the registry TypeVars allocated by `build_registry` (which starts
@@ -250,7 +251,7 @@ fn check_pub_annotations(loaded: &LoadedModule, names: &ResolvedNames) -> Result
 pub fn check_graph(
     graph: NormalizedModuleGraph,
     names: &ResolvedNames,
-    std_prelude: StdPrelude,
+    std_prelude: CorePrelude,
 ) -> Result<TypedModuleGraph, MetelError> {
     Ok(check_graph_with_report(graph, names, std_prelude)?.graph)
 }
@@ -258,18 +259,12 @@ pub fn check_graph(
 pub fn check_graph_with_report(
     graph: NormalizedModuleGraph,
     names: &ResolvedNames,
-    std_prelude: StdPrelude,
+    std_prelude: CorePrelude,
 ) -> Result<CheckGraphReport, MetelError> {
+    // std::core is a real module in the graph (synthesized ahead of user code),
+    // so its exports land in GlobalExports through the normal per-module loop —
+    // no seeding needed (METEL-181).
     let mut global_exports = GlobalExports::new();
-
-    // Seed std::core into GlobalExports so that std:: imports and the auto-glob resolve.
-    // StdPrelude is the single source of truth for all built-in schemes. See ADR-0027.
-    global_exports.insert(
-        vec!["std".to_string(), "core".to_string()],
-        ModuleExports {
-            pub_schemes: std_prelude.schemes().clone(),
-        },
-    );
 
     let mut typed_modules: Vec<TypedModule> = Vec::new();
     // Accumulated resolved type definitions from already-checked modules.
@@ -620,7 +615,7 @@ pub fn check(program: Program) -> Result<TypedProgram, MetelError> {
         &HashMap::new(),
         HashMap::new(),
         &TypeDefinitionRegistry::new(),
-        &StdPrelude::default(),
+        &CorePrelude::default(),
         &[],
         None,
     )?;
@@ -638,7 +633,7 @@ pub fn check_with_ctx(
 }
 
 pub fn check_with_ctx_with_report(program: Program) -> Result<CheckWithCtxReport, MetelError> {
-    let std_prelude = StdPrelude::default();
+    let std_prelude = CorePrelude::default();
     let report = check_impl_with_report(
         &program,
         &HashMap::new(),
@@ -692,7 +687,7 @@ fn check_impl(
     imported_schemes: &SchemeEnv,
     deferred_conflicts: HashMap<String, Vec<Vec<String>>>,
     base_registry: &TypeDefinitionRegistry,
-    std_prelude: &StdPrelude,
+    std_prelude: &CorePrelude,
     current_module_path: &[String],
     symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
 ) -> Result<(Vec<TypedDecl>, SchemeEnv, TypeDefinitionRegistry), MetelError> {
@@ -713,7 +708,7 @@ fn check_impl_with_report(
     imported_schemes: &SchemeEnv,
     deferred_conflicts: HashMap<String, Vec<Vec<String>>>,
     base_registry: &TypeDefinitionRegistry,
-    std_prelude: &StdPrelude,
+    std_prelude: &CorePrelude,
     current_module_path: &[String],
     symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
 ) -> Result<CheckImplReport, MetelError> {
@@ -794,7 +789,7 @@ fn check_impl_with_report(
     )?;
     let construction_ns = elapsed_ns(started);
 
-    // Return only user-defined names. Builtins (from StdPrelude) are available to
+    // Return only user-defined names. Builtins (from CorePrelude) are available to
     // every module via the auto-glob and don't need to be in GlobalExports.
     let started = Instant::now();
     let local_value_names = top_level_value_names(program);
@@ -862,7 +857,7 @@ mod tests {
     /// there is no longer a duplicated set to keep in sync.
     #[test]
     fn prelude_schemes_cover_embedded_core_natives() {
-        let prelude = StdPrelude::default();
+        let prelude = CorePrelude::default();
         let core_path = ["std".to_string(), "core".to_string()];
         let source = crate::stdlib::lookup(&core_path).expect("std::core is embedded");
         let program =

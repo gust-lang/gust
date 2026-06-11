@@ -7,7 +7,7 @@ use metel::{
 };
 
 use super::fixture::{
-    main_source_path, ExpectStatus, FixtureConfig, GraphChecks, ProgramChecks, StdPreludeMode,
+    main_source_path, ExpectStatus, FixtureConfig, GraphChecks, ProgramChecks, CorePreludeMode,
 };
 
 pub fn run_fixture(path: &Path, config: &FixtureConfig) {
@@ -115,7 +115,7 @@ fn run_load_graph(path: &Path, checks: &GraphChecks) -> Result<(), MetelError> {
 
 fn run_full_pipeline(
     path: &Path,
-    prelude_mode: StdPreludeMode,
+    prelude_mode: CorePreludeMode,
     checks: &GraphChecks,
 ) -> Result<(), MetelError> {
     let graph = module_loader::load_root(main_source_path(path))?;
@@ -127,10 +127,10 @@ fn run_full_pipeline(
     evaluator::evaluate_graph(elaborated)
 }
 
-fn std_prelude(mode: StdPreludeMode) -> typechecker::StdPrelude {
+fn std_prelude(mode: CorePreludeMode) -> typechecker::CorePrelude {
     match mode {
-        StdPreludeMode::Empty => typechecker::StdPrelude::empty(),
-        StdPreludeMode::Default => typechecker::StdPrelude::default(),
+        CorePreludeMode::Empty => typechecker::CorePrelude::empty(),
+        CorePreludeMode::Default => typechecker::CorePrelude::default(),
     }
 }
 

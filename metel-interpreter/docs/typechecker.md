@@ -48,7 +48,7 @@ Entry points:
 
 | File | Responsibility |
 |---|---|
-| `mod.rs` | `check()` / `check_graph()` entry points; `StdPrelude`, `GlobalExports`, `check_impl` |
+| `mod.rs` | `check()` / `check_graph()` entry points; `CorePrelude`, `GlobalExports`, `check_impl` |
 | `registry.rs` | `build_registry`, `register_builtins`, `build_concrete_*_env`; registers aspect declaring modules for elaboration |
 | `inference.rs` | Pass 1 — all `infer_*` functions |
 | `construction.rs` | Pass 2 — `ConstructCtx`, all `construct_*` functions, exhaustiveness checking; `ConstructCtx` carries `symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>` threaded from `check_graph` so `construct_impl_decl` can set `TypedImplBlock::aspect_id` |

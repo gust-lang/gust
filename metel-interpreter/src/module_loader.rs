@@ -265,7 +265,7 @@ fn canonicalize_existing(path: &Path) -> Result<PathBuf, MetelError> {
 /// Resolve an import declaration to a module file.
 ///
 /// Returns `Ok(Some((segments, path)))` when a `.mtl` file is found.
-/// Returns `Ok(None)` for `std::` imports (handled by `StdPrelude` in the typechecker)
+/// Returns `Ok(None)` for `std::` imports (handled by `CorePrelude` in the typechecker)
 /// and for glob/group imports that carry no resolvable file segment.
 /// Returns `Err` if the import names a concrete module that cannot be found.
 ///
