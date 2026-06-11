@@ -7,8 +7,6 @@ use crate::typeinference::{
     EnumInfo, FieldEntry, InferContext, InferType, TypeDefinitionRegistry, TypeScheme, TypeVar,
     TypeVarGenerator, VariantInfo,
 };
-use crate::types::Type;
-
 use super::conversions::{
     type_expr_to_infer, type_expr_to_infer_with_generics, type_expr_to_infer_with_self,
 };
@@ -125,53 +123,14 @@ fn populate_schemes_from_embedded_core(
     }
 }
 
-/// Built-in primitive type names that implement `Display` (and therefore expose
-/// `to_string`). Every numeric primitive plus `boolean`, `Char`, and `String`.
-/// The runtime can format all of these — see
-/// `evaluator::display::value_to_display_string`.
-pub(super) const DISPLAYABLE_PRIMITIVE_NAMES: &[&str] = &[
-    "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "boolean", "Char",
-    "String",
-];
-
 fn register_builtin_aspect_impls(registry: &mut TypeDefinitionRegistry) {
     use crate::types::Type;
-    // Iterable impls for built-in sequence types
+    // Iterable impls for built-in sequence types. Runtime ranges are intrinsic,
+    // so these stay hand-registered; the primitive Display impls and the
+    // numeric From cross-product are declared in the embedded std::core source
+    // and registered through the normal impl-decl pass (METEL-181).
     registry.register_aspect_impl("Range".into(), "Iterable".into(), vec![Type::I64]);
     registry.register_aspect_impl("RangeInclusive".into(), "Iterable".into(), vec![Type::I64]);
-    // Full cross-product numeric From impls: every numeric type has From<T> for every other.
-    let all_numeric = [
-        (Type::I8, "i8"),
-        (Type::I16, "i16"),
-        (Type::I32, "i32"),
-        (Type::I64, "i64"),
-        (Type::U8, "u8"),
-        (Type::U16, "u16"),
-        (Type::U32, "u32"),
-        (Type::U64, "u64"),
-        (Type::F32, "f32"),
-        (Type::F64, "f64"),
-    ];
-    for (target_ty, target_name) in &all_numeric {
-        for (source_ty, _) in &all_numeric {
-            if target_ty != source_ty {
-                registry.register_aspect_impl(
-                    (*target_name).to_string(),
-                    "From".into(),
-                    vec![source_ty.clone()],
-                );
-            }
-        }
-    }
-    // Display impls for built-in types (used by to_string method dispatch).
-    // Every numeric primitive is Displayable, not just i64/f64 — the runtime
-    // formats all of them (see evaluator::display::value_to_display_string).
-    for name in DISPLAYABLE_PRIMITIVE_NAMES {
-        registry.register_aspect_impl((*name).into(), "Display".into(), vec![]);
-    }
-    // Char ↔ u32 (Unicode code point) conversions
-    registry.register_aspect_impl("u32".into(), "From".into(), vec![Type::Char]);
-    registry.register_aspect_impl("Char".into(), "From".into(), vec![Type::U32]);
 }
 
 /// Build the `TypeDefinitionRegistry` from the program's declarations and built-in types.
@@ -465,11 +424,18 @@ fn register_impl_methods<'a>(
     gen: &mut TypeVarGenerator,
     registry: &mut TypeDefinitionRegistry,
 ) {
+    // `self` on a primitive target must be the concrete primitive type
+    // (e.g. Concrete(I32), not Named("i32")) so call sites unify (METEL-181).
+    let self_ty = || {
+        super::inference::primitive_type_from_name(target_name)
+            .map(InferType::Concrete)
+            .unwrap_or_else(|| InferType::Named(target_name.to_string(), vec![]))
+    };
     for method in methods {
         let mut param_types = vec![];
         for p in &method.params {
             let pt = if p.name == "self" {
-                InferType::Named(target_name.to_string(), vec![])
+                self_ty()
             } else if let Some(ann) = &p.type_ann {
                 type_expr_to_infer_with_self(ann, target_name)
             } else {
@@ -529,7 +495,9 @@ fn register_default_aspect_method(
     let mut param_types = vec![];
     for p in &method.params {
         let pt = if p.name == "self" {
-            InferType::Named(target_name.to_string(), vec![])
+            super::inference::primitive_type_from_name(target_name)
+                .map(InferType::Concrete)
+                .unwrap_or_else(|| InferType::Named(target_name.to_string(), vec![]))
         } else if let Some(ann) = &p.type_ann {
             type_expr_to_infer_with_self(ann, target_name)
         } else {
@@ -560,40 +528,15 @@ pub(super) fn register_primitive_type_bindings(
 ) {
     let str_ty = InferType::str();
     let int_ty = InferType::int();
-    let bool_ty = InferType::bool();
 
     // Free-function builtins all come from StdPrelude — no separate list needed.
     for (name, scheme) in prelude.schemes() {
         ctx.bind_poly_if_absent(name, scheme.clone());
     }
 
-    // Methods are not free functions; they're not in StdPrelude::schemes.
-    // Every Displayable primitive exposes `to_string`. The self type is the
-    // concrete primitive itself (e.g. i32 → Concrete(I32)), so dispatch on a
-    // sized-integer receiver resolves correctly.
-    for type_name in DISPLAYABLE_PRIMITIVE_NAMES {
-        let self_ty = match *type_name {
-            "boolean" => bool_ty.clone(),
-            "Char" => InferType::Concrete(Type::Char),
-            "String" => str_ty.clone(),
-            "i8" => InferType::Concrete(Type::I8),
-            "i16" => InferType::Concrete(Type::I16),
-            "i32" => InferType::Concrete(Type::I32),
-            "i64" => InferType::Concrete(Type::I64),
-            "u8" => InferType::Concrete(Type::U8),
-            "u16" => InferType::Concrete(Type::U16),
-            "u32" => InferType::Concrete(Type::U32),
-            "u64" => InferType::Concrete(Type::U64),
-            "f32" => InferType::Concrete(Type::F32),
-            "f64" => InferType::Concrete(Type::F64),
-            other => unreachable!("unexpected displayable primitive `{other}`"),
-        };
-        ctx.register_method(
-            type_name.to_string(),
-            "to_string".to_string(),
-            InferType::Fun(vec![self_ty], Box::new(str_ty.clone())),
-        );
-    }
+    // The primitive Display/From impls (to_string, the numeric From
+    // cross-product, Char ↔ u32) are declared in the embedded std::core source
+    // and registered by build_registry's impl-decl pass (METEL-181).
     ctx.register_method(
         "String".to_string(),
         "len".to_string(),

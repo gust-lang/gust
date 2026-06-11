@@ -30,6 +30,32 @@ pub enum NativeKey {
     StdCoreStringLen,
     /// `std::core::string_concat` — concatenate two strings.
     StdCoreStringConcat,
+    /// `Display::to_string` for every displayable primitive — the host formats
+    /// the receiver by its runtime value, so one key serves all 13 impls.
+    StdCoreToString,
+    /// `i8::from(numeric)` — convert any numeric value to i8.
+    StdCoreI8From,
+    /// `i16::from(numeric)` — convert any numeric value to i16.
+    StdCoreI16From,
+    /// `i32::from(numeric)` — convert any numeric value to i32.
+    StdCoreI32From,
+    /// `i64::from(numeric)` — convert any numeric value to i64.
+    StdCoreI64From,
+    /// `u8::from(numeric)` — convert any numeric value to u8.
+    StdCoreU8From,
+    /// `u16::from(numeric)` — convert any numeric value to u16.
+    StdCoreU16From,
+    /// `u32::from(numeric | Char)` — convert a numeric value or a Char code
+    /// point to u32.
+    StdCoreU32From,
+    /// `u64::from(numeric)` — convert any numeric value to u64.
+    StdCoreU64From,
+    /// `f32::from(numeric)` — convert any numeric value to f32.
+    StdCoreF32From,
+    /// `f64::from(numeric)` — convert any numeric value to f64.
+    StdCoreF64From,
+    /// `Char::from(u32)` — code point to Char; panics on invalid scalars.
+    StdCoreCharFrom,
 }
 
 impl NativeKey {
@@ -47,6 +73,18 @@ impl NativeKey {
             ["std", "core", "clock"] => NativeKey::StdCoreClock,
             ["std", "core", "string_len"] => NativeKey::StdCoreStringLen,
             ["std", "core", "string_concat"] => NativeKey::StdCoreStringConcat,
+            ["std", "core", "to_string"] => NativeKey::StdCoreToString,
+            ["std", "core", "i8_from"] => NativeKey::StdCoreI8From,
+            ["std", "core", "i16_from"] => NativeKey::StdCoreI16From,
+            ["std", "core", "i32_from"] => NativeKey::StdCoreI32From,
+            ["std", "core", "i64_from"] => NativeKey::StdCoreI64From,
+            ["std", "core", "u8_from"] => NativeKey::StdCoreU8From,
+            ["std", "core", "u16_from"] => NativeKey::StdCoreU16From,
+            ["std", "core", "u32_from"] => NativeKey::StdCoreU32From,
+            ["std", "core", "u64_from"] => NativeKey::StdCoreU64From,
+            ["std", "core", "f32_from"] => NativeKey::StdCoreF32From,
+            ["std", "core", "f64_from"] => NativeKey::StdCoreF64From,
+            ["std", "core", "char_from"] => NativeKey::StdCoreCharFrom,
             _ => return None,
         };
         Some(key)
@@ -63,6 +101,18 @@ impl NativeKey {
             NativeKey::StdCoreClock => "@std.core.clock",
             NativeKey::StdCoreStringLen => "@std.core.string_len",
             NativeKey::StdCoreStringConcat => "@std.core.string_concat",
+            NativeKey::StdCoreToString => "@std.core.to_string",
+            NativeKey::StdCoreI8From => "@std.core.i8_from",
+            NativeKey::StdCoreI16From => "@std.core.i16_from",
+            NativeKey::StdCoreI32From => "@std.core.i32_from",
+            NativeKey::StdCoreI64From => "@std.core.i64_from",
+            NativeKey::StdCoreU8From => "@std.core.u8_from",
+            NativeKey::StdCoreU16From => "@std.core.u16_from",
+            NativeKey::StdCoreU32From => "@std.core.u32_from",
+            NativeKey::StdCoreU64From => "@std.core.u64_from",
+            NativeKey::StdCoreF32From => "@std.core.f32_from",
+            NativeKey::StdCoreF64From => "@std.core.f64_from",
+            NativeKey::StdCoreCharFrom => "@std.core.char_from",
         }
     }
 
@@ -77,6 +127,18 @@ impl NativeKey {
         NativeKey::StdCoreClock,
         NativeKey::StdCoreStringLen,
         NativeKey::StdCoreStringConcat,
+        NativeKey::StdCoreToString,
+        NativeKey::StdCoreI8From,
+        NativeKey::StdCoreI16From,
+        NativeKey::StdCoreI32From,
+        NativeKey::StdCoreI64From,
+        NativeKey::StdCoreU8From,
+        NativeKey::StdCoreU16From,
+        NativeKey::StdCoreU32From,
+        NativeKey::StdCoreU64From,
+        NativeKey::StdCoreF32From,
+        NativeKey::StdCoreF64From,
+        NativeKey::StdCoreCharFrom,
     ];
 }
 

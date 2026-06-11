@@ -6,15 +6,6 @@ use super::{
     RuntimeTypeRef, Value,
 };
 
-/// Built-in primitive type names that implement `Display` (expose `to_string`).
-/// The runtime formats all of these via `value_to_display_string`. Mirrors the
-/// typechecker-side list in `typechecker::registry`; the two are unified when
-/// `std::core` becomes a real module (METEL-181).
-const DISPLAYABLE_PRIMITIVE_NAMES: &[&str] = &[
-    "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "boolean", "Char",
-    "String",
-];
-
 fn numeric_as_i128(v: &Value) -> Option<i128> {
     match v {
         Value::I8(n) => Some(*n as i128),
@@ -148,6 +139,88 @@ fn native_string_concat(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Va
     }
 }
 
+// `Display::to_string` for every displayable primitive: one host fn formats the
+// receiver by its runtime value, so all 13 std::core impls share one NativeKey.
+fn native_to_string(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
+    match args.first() {
+        Some(v) => value_to_display_string(v).map(Value::Str).ok_or_else(|| {
+            MetelError::panic(
+                RuntimeErrorCode::R0009,
+                "to_string: value does not implement Display",
+                span,
+            )
+        }),
+        None => Err(MetelError::internal("to_string: expected a receiver")),
+    }
+}
+
+// Numeric `From` conversions. The source type is encoded in the value itself,
+// so one host fn per TARGET covers its whole From<…> impl family. Integer
+// targets truncate through i128, float targets convert through f64 — the same
+// semantics as the per-pair builtins these replace.
+macro_rules! native_int_from {
+    ($fn_name:ident, $label:literal, $out:expr) => {
+        fn $fn_name(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+            match args.first().and_then(numeric_as_i128) {
+                Some(n) => Ok($out(n)),
+                None => Err(MetelError::internal(concat!(
+                    $label,
+                    "::from: expected a numeric argument"
+                ))),
+            }
+        }
+    };
+}
+macro_rules! native_float_from {
+    ($fn_name:ident, $label:literal, $out:expr) => {
+        fn $fn_name(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+            match args.first().and_then(numeric_as_f64_val) {
+                Some(f) => Ok($out(f)),
+                None => Err(MetelError::internal(concat!(
+                    $label,
+                    "::from: expected a numeric argument"
+                ))),
+            }
+        }
+    };
+}
+native_int_from!(native_i8_from, "i8", |n: i128| Value::I8(n as i8));
+native_int_from!(native_i16_from, "i16", |n: i128| Value::I16(n as i16));
+native_int_from!(native_i32_from, "i32", |n: i128| Value::I32(n as i32));
+native_int_from!(native_i64_from, "i64", |n: i128| Value::I64(n as i64));
+native_int_from!(native_u8_from, "u8", |n: i128| Value::U8(n as u8));
+native_int_from!(native_u16_from, "u16", |n: i128| Value::U16(n as u16));
+native_int_from!(native_u64_from, "u64", |n: i128| Value::U64(n as u64));
+native_float_from!(native_f32_from, "f32", |f: f64| Value::F32(f as f32));
+native_float_from!(native_f64_from, "f64", |f: f64| Value::F64(f));
+
+// u32 additionally accepts a Char (its Unicode code point).
+fn native_u32_from(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    match args.first() {
+        Some(Value::Char(c)) => Ok(Value::U32(*c as u32)),
+        Some(v) => match numeric_as_i128(v) {
+            Some(n) => Ok(Value::U32(n as u32)),
+            None => Err(MetelError::internal(
+                "u32::from: expected a numeric or Char argument",
+            )),
+        },
+        None => Err(MetelError::internal("u32::from: expected an argument")),
+    }
+}
+
+fn native_char_from(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
+    match args.first() {
+        Some(Value::U32(n)) => char::from_u32(*n).map(Value::Char).ok_or_else(|| {
+            MetelError::panic(
+                RuntimeErrorCode::R0009,
+                format!("u32 value {n} is not a valid Unicode scalar"),
+                span,
+            )
+        }),
+        _ => Err(MetelError::internal("Char::from: expected a u32 argument")),
+    }
+}
+
 /// The host implementation for a stdlib `native` function, looked up by its
 /// lowered [`NativeKey`]. Total over the closed enum — every variant maps to a
 /// host fn (enforced by the coverage test).
@@ -164,6 +237,18 @@ pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
             NativeKey::StdCoreStringConcat => {
                 ("std::core::string_concat", native_string_concat)
             }
+            NativeKey::StdCoreToString => ("Display::to_string", native_to_string),
+            NativeKey::StdCoreI8From => ("i8::from", native_i8_from),
+            NativeKey::StdCoreI16From => ("i16::from", native_i16_from),
+            NativeKey::StdCoreI32From => ("i32::from", native_i32_from),
+            NativeKey::StdCoreI64From => ("i64::from", native_i64_from),
+            NativeKey::StdCoreU8From => ("u8::from", native_u8_from),
+            NativeKey::StdCoreU16From => ("u16::from", native_u16_from),
+            NativeKey::StdCoreU32From => ("u32::from", native_u32_from),
+            NativeKey::StdCoreU64From => ("u64::from", native_u64_from),
+            NativeKey::StdCoreF32From => ("f32::from", native_f32_from),
+            NativeKey::StdCoreF64From => ("f64::from", native_f64_from),
+            NativeKey::StdCoreCharFrom => ("Char::from", native_char_from),
         };
     RuntimeCallable::Intrinsic {
         label: label.to_string(),
@@ -185,18 +270,77 @@ fn register_core_natives_from_embedded(runtime: &mut RuntimeRegistry) {
     };
     let program = crate::parser::parse(source, "<embedded std::core>")
         .expect("embedded std::core must parse; it is compiled into the binary");
-    for decl in &program.decls {
-        let crate::ast::Decl::Fun(fun) = decl else {
-            continue;
-        };
-        let Some(binding) = &fun.native else { continue };
-        let key = NativeKey::from_path(&binding.key_path).unwrap_or_else(|| {
+    fn key_for(binding: &crate::ast::NativeBinding) -> NativeKey {
+        NativeKey::from_path(&binding.key_path).unwrap_or_else(|| {
             panic!(
                 "embedded std::core declares unknown native binding @{}",
                 binding.key_path.join(".")
             )
-        });
-        runtime.register_std_core_value(fun.name.clone(), Value::Callable(native_host_impl(key)));
+        })
+    }
+    for decl in &program.decls {
+        match decl {
+            crate::ast::Decl::Fun(fun) => {
+                let Some(binding) = &fun.native else { continue };
+                let key = key_for(binding);
+                runtime.register_std_core_value(
+                    fun.name.clone(),
+                    Value::Callable(native_host_impl(key)),
+                );
+            }
+            crate::ast::Decl::Impl(ib) => {
+                let crate::ast::TypeExpr::Named(target_name, _) = &ib.target_type else {
+                    continue;
+                };
+                for method in &ib.methods {
+                    // Only native methods are derivable here; a Metel-bodied
+                    // core impl method would need elaboration, which this
+                    // single-program seeding path does not run.
+                    let Some(binding) = &method.native else { continue };
+                    let key = key_for(binding);
+                    let receiver = method.params.first().and_then(|p| p.receiver.clone());
+                    let params: Vec<RuntimeTypeRef> = method
+                        .params
+                        .iter()
+                        .filter(|p| p.receiver.is_none())
+                        .map(|p| {
+                            p.type_ann.as_ref().map(super::runtime_type_ref).expect(
+                                "native declarations are fully annotated (enforced by native_fun_ty)",
+                            )
+                        })
+                        .collect();
+                    let runtime_method = RuntimeMethod {
+                        label: format!("{target_name}::{}", method.name),
+                        receiver,
+                        signature: RuntimeSignature {
+                            params,
+                            ret: method.return_type.as_ref().map(super::runtime_type_ref),
+                        },
+                        body: native_host_impl(key),
+                    };
+                    if let Some(aspect_name) = &ib.aspect_name {
+                        let type_args = ib
+                            .aspect_type_args
+                            .iter()
+                            .map(super::runtime_type_key)
+                            .collect();
+                        runtime.register_aspect_method(
+                            target_name,
+                            aspect_name,
+                            None,
+                            type_args,
+                            &method.name,
+                            runtime_method,
+                        );
+                    } else if runtime_method.receiver.is_none() {
+                        runtime.register_type_value(target_name, &method.name, runtime_method);
+                    } else {
+                        runtime.register_inherent_method(target_name, &method.name, runtime_method);
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 }
 
@@ -255,62 +399,10 @@ pub(super) fn register_builtins(runtime: &mut RuntimeRegistry) {
             runtime.register_pattern_method($pattern, $method_name, $value);
         };
     }
-    macro_rules! register_aspect {
-        ($type_name:expr, $aspect_name:expr, [$($type_arg:expr),* $(,)?], $method_name:expr, $value:expr) => {
-            runtime.register_aspect_method(
-                $type_name,
-                $aspect_name,
-                None,
-                vec![$($type_arg.to_string()),*],
-                $method_name,
-                $value,
-            );
-        };
-    }
-    macro_rules! register_from {
-        ($target:expr, $source:expr, $value:expr) => {
-            register_aspect!($target, "From", [$source], "from", $value);
-        };
-    }
-
-    // std::core free functions (print/println/dbg/assert/assert_msg/clock/
-    // string_len/string_concat) — derived from the embedded core.mtl natives.
+    // std::core free functions (print/println/…) and the native impl methods
+    // (Display::to_string on primitives, the numeric From cross-product,
+    // Char ↔ u32) — all derived from the embedded core.mtl declarations.
     register_core_natives_from_embedded(runtime);
-
-    // to_string() methods for built-in Display types. Every Displayable
-    // primitive (all numeric types plus boolean/Char/String) uses the same
-    // runtime formatter, so register them with one shared body. The runtime
-    // type name of the receiver (runtime_type_name) selects the right entry.
-    fn display_to_string(
-        args: Vec<Value>,
-        span: &crate::ast::Span,
-    ) -> Result<Value, MetelError> {
-        match args.first() {
-            Some(v) => value_to_display_string(v).map(Value::Str).ok_or_else(|| {
-                MetelError::panic(
-                    RuntimeErrorCode::R0009,
-                    "to_string: value does not implement Display",
-                    span,
-                )
-            }),
-            None => Err(MetelError::internal("to_string: expected a receiver")),
-        }
-    }
-    for type_name in DISPLAYABLE_PRIMITIVE_NAMES {
-        register_aspect!(
-            *type_name,
-            "Display",
-            [],
-            "to_string",
-            method(
-                "Display::to_string",
-                Some(crate::ast::ReceiverKind::Value),
-                &[],
-                Some("String"),
-                builtin_value("Display::to_string", display_to_string),
-            )
-        );
-    }
 
     register_pattern!(
         RuntimeTypePattern::Str,
@@ -341,239 +433,6 @@ pub(super) fn register_builtins(runtime: &mut RuntimeRegistry) {
                 match args.first() {
                     Some(Value::Array(arr)) => Ok(Value::I64(arr.borrow().len() as i64)),
                     _ => Err(MetelError::internal("Array::len: expected array")),
-                }
-            }),
-        )
-    );
-
-    // Numeric From impls: full cross-product of all numeric types.
-    // Fallback generic builtins (for any remaining dispatch paths).
-    register_inherent!(
-        "i64",
-        "from",
-        method(
-            "i64::from",
-            None,
-            &["numeric"],
-            Some("i64"),
-            builtin_value("i64::from", |args, _span| {
-                match args.first().and_then(numeric_as_i128) {
-                    Some(n) => Ok(Value::I64(n as i64)),
-                    None => Err(MetelError::internal("i64::from: expected numeric")),
-                }
-            }),
-        )
-    );
-    register_inherent!(
-        "f64",
-        "from",
-        method(
-            "f64::from",
-            None,
-            &["numeric"],
-            Some("f64"),
-            builtin_value("f64::from", |args, _span| {
-                match args.first().and_then(numeric_as_f64_val) {
-                    Some(f) => Ok(Value::F64(f)),
-                    None => Err(MetelError::internal("f64::from: expected numeric")),
-                }
-            }),
-        )
-    );
-
-    // Specific-key From impls (evaluated before generic fallbacks).
-    macro_rules! from_int {
-        ($target:literal, $source:literal, $out:expr) => {
-            register_from!(
-                $target,
-                $source,
-                method(
-                    concat!($target, "::From<", $source, ">::from"),
-                    None,
-                    &[$source],
-                    Some($target),
-                    builtin_value(
-                        concat!($target, "::From<", $source, ">::from"),
-                        |args, _span| {
-                            match args.first().and_then(|v| numeric_as_i128(v)) {
-                                Some(n) => Ok($out(n)),
-                                None => Err(MetelError::internal(concat!(
-                                    $target,
-                                    "::From<",
-                                    $source,
-                                    ">::from: unexpected argument"
-                                ))),
-                            }
-                        }
-                    ),
-                )
-            );
-        };
-    }
-    macro_rules! from_float {
-        ($target:literal, $source:literal, $out:expr) => {
-            register_from!(
-                $target,
-                $source,
-                method(
-                    concat!($target, "::From<", $source, ">::from"),
-                    None,
-                    &[$source],
-                    Some($target),
-                    builtin_value(
-                        concat!($target, "::From<", $source, ">::from"),
-                        |args, _span| {
-                            match args.first().and_then(|v| numeric_as_f64_val(v)) {
-                                Some(f) => Ok($out(f)),
-                                None => Err(MetelError::internal(concat!(
-                                    $target,
-                                    "::From<",
-                                    $source,
-                                    ">::from: unexpected argument"
-                                ))),
-                            }
-                        }
-                    ),
-                )
-            );
-        };
-    }
-
-    // i8
-    from_int!("i8", "i16", |n: i128| Value::I8(n as i8));
-    from_int!("i8", "i32", |n: i128| Value::I8(n as i8));
-    from_int!("i8", "i64", |n: i128| Value::I8(n as i8));
-    from_int!("i8", "u8", |n: i128| Value::I8(n as i8));
-    from_int!("i8", "u16", |n: i128| Value::I8(n as i8));
-    from_int!("i8", "u32", |n: i128| Value::I8(n as i8));
-    from_int!("i8", "u64", |n: i128| Value::I8(n as i8));
-    from_int!("i8", "f32", |n: i128| Value::I8(n as i8));
-    from_int!("i8", "f64", |n: i128| Value::I8(n as i8));
-    // i16
-    from_int!("i16", "i8", |n: i128| Value::I16(n as i16));
-    from_int!("i16", "i32", |n: i128| Value::I16(n as i16));
-    from_int!("i16", "i64", |n: i128| Value::I16(n as i16));
-    from_int!("i16", "u8", |n: i128| Value::I16(n as i16));
-    from_int!("i16", "u16", |n: i128| Value::I16(n as i16));
-    from_int!("i16", "u32", |n: i128| Value::I16(n as i16));
-    from_int!("i16", "u64", |n: i128| Value::I16(n as i16));
-    from_int!("i16", "f32", |n: i128| Value::I16(n as i16));
-    from_int!("i16", "f64", |n: i128| Value::I16(n as i16));
-    // i32
-    from_int!("i32", "i8", |n: i128| Value::I32(n as i32));
-    from_int!("i32", "i16", |n: i128| Value::I32(n as i32));
-    from_int!("i32", "i64", |n: i128| Value::I32(n as i32));
-    from_int!("i32", "u8", |n: i128| Value::I32(n as i32));
-    from_int!("i32", "u16", |n: i128| Value::I32(n as i32));
-    from_int!("i32", "u32", |n: i128| Value::I32(n as i32));
-    from_int!("i32", "u64", |n: i128| Value::I32(n as i32));
-    from_int!("i32", "f32", |n: i128| Value::I32(n as i32));
-    from_int!("i32", "f64", |n: i128| Value::I32(n as i32));
-    // i64
-    from_int!("i64", "i8", |n: i128| Value::I64(n as i64));
-    from_int!("i64", "i16", |n: i128| Value::I64(n as i64));
-    from_int!("i64", "i32", |n: i128| Value::I64(n as i64));
-    from_int!("i64", "u8", |n: i128| Value::I64(n as i64));
-    from_int!("i64", "u16", |n: i128| Value::I64(n as i64));
-    from_int!("i64", "u32", |n: i128| Value::I64(n as i64));
-    from_int!("i64", "u64", |n: i128| Value::I64(n as i64));
-    from_int!("i64", "f32", |n: i128| Value::I64(n as i64));
-    from_int!("i64", "f64", |n: i128| Value::I64(n as i64));
-    // u8
-    from_int!("u8", "i8", |n: i128| Value::U8(n as u8));
-    from_int!("u8", "i16", |n: i128| Value::U8(n as u8));
-    from_int!("u8", "i32", |n: i128| Value::U8(n as u8));
-    from_int!("u8", "i64", |n: i128| Value::U8(n as u8));
-    from_int!("u8", "u16", |n: i128| Value::U8(n as u8));
-    from_int!("u8", "u32", |n: i128| Value::U8(n as u8));
-    from_int!("u8", "u64", |n: i128| Value::U8(n as u8));
-    from_int!("u8", "f32", |n: i128| Value::U8(n as u8));
-    from_int!("u8", "f64", |n: i128| Value::U8(n as u8));
-    // u16
-    from_int!("u16", "i8", |n: i128| Value::U16(n as u16));
-    from_int!("u16", "i16", |n: i128| Value::U16(n as u16));
-    from_int!("u16", "i32", |n: i128| Value::U16(n as u16));
-    from_int!("u16", "i64", |n: i128| Value::U16(n as u16));
-    from_int!("u16", "u8", |n: i128| Value::U16(n as u16));
-    from_int!("u16", "u32", |n: i128| Value::U16(n as u16));
-    from_int!("u16", "u64", |n: i128| Value::U16(n as u16));
-    from_int!("u16", "f32", |n: i128| Value::U16(n as u16));
-    from_int!("u16", "f64", |n: i128| Value::U16(n as u16));
-    // u32
-    from_int!("u32", "i8", |n: i128| Value::U32(n as u32));
-    from_int!("u32", "i16", |n: i128| Value::U32(n as u32));
-    from_int!("u32", "i32", |n: i128| Value::U32(n as u32));
-    from_int!("u32", "i64", |n: i128| Value::U32(n as u32));
-    from_int!("u32", "u8", |n: i128| Value::U32(n as u32));
-    from_int!("u32", "u16", |n: i128| Value::U32(n as u32));
-    from_int!("u32", "u64", |n: i128| Value::U32(n as u32));
-    from_int!("u32", "f32", |n: i128| Value::U32(n as u32));
-    from_int!("u32", "f64", |n: i128| Value::U32(n as u32));
-    // u64
-    from_int!("u64", "i8", |n: i128| Value::U64(n as u64));
-    from_int!("u64", "i16", |n: i128| Value::U64(n as u64));
-    from_int!("u64", "i32", |n: i128| Value::U64(n as u64));
-    from_int!("u64", "i64", |n: i128| Value::U64(n as u64));
-    from_int!("u64", "u8", |n: i128| Value::U64(n as u64));
-    from_int!("u64", "u16", |n: i128| Value::U64(n as u64));
-    from_int!("u64", "u32", |n: i128| Value::U64(n as u64));
-    from_int!("u64", "f32", |n: i128| Value::U64(n as u64));
-    from_int!("u64", "f64", |n: i128| Value::U64(n as u64));
-    // f32
-    from_float!("f32", "i8", |f: f64| Value::F32(f as f32));
-    from_float!("f32", "i16", |f: f64| Value::F32(f as f32));
-    from_float!("f32", "i32", |f: f64| Value::F32(f as f32));
-    from_float!("f32", "i64", |f: f64| Value::F32(f as f32));
-    from_float!("f32", "u8", |f: f64| Value::F32(f as f32));
-    from_float!("f32", "u16", |f: f64| Value::F32(f as f32));
-    from_float!("f32", "u32", |f: f64| Value::F32(f as f32));
-    from_float!("f32", "u64", |f: f64| Value::F32(f as f32));
-    from_float!("f32", "f64", |f: f64| Value::F32(f as f32));
-    // f64
-    from_float!("f64", "i8", |f: f64| Value::F64(f));
-    from_float!("f64", "i16", |f: f64| Value::F64(f));
-    from_float!("f64", "i32", |f: f64| Value::F64(f));
-    from_float!("f64", "i64", |f: f64| Value::F64(f));
-    from_float!("f64", "u8", |f: f64| Value::F64(f));
-    from_float!("f64", "u16", |f: f64| Value::F64(f));
-    from_float!("f64", "u32", |f: f64| Value::F64(f));
-    from_float!("f64", "u64", |f: f64| Value::F64(f));
-    from_float!("f64", "f32", |f: f64| Value::F64(f));
-
-    register_from!(
-        "u32",
-        "Char",
-        method(
-            "u32::From<Char>::from",
-            None,
-            &["Char"],
-            Some("u32"),
-            builtin_value("u32::From<Char>::from", |args, _span| {
-                match args.first() {
-                    Some(Value::Char(c)) => Ok(Value::U32(*c as u32)),
-                    _ => Err(MetelError::internal("u32::From<Char>::from: expected Char")),
-                }
-            }),
-        )
-    );
-    register_from!(
-        "Char",
-        "u32",
-        method(
-            "Char::From<u32>::from",
-            None,
-            &["u32"],
-            Some("Char"),
-            builtin_value("Char::From<u32>::from", |args, span| {
-                match args.first() {
-                    Some(Value::U32(n)) => char::from_u32(*n).map(Value::Char).ok_or_else(|| {
-                        MetelError::panic(
-                            RuntimeErrorCode::R0009,
-                            format!("u32 value {n} is not a valid Unicode scalar"),
-                            span,
-                        )
-                    }),
-                    _ => Err(MetelError::internal("Char::From<u32>::from: expected u32")),
                 }
             }),
         )

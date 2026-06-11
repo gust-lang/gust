@@ -1,0 +1,38 @@
+// The primitive Display impls and the numeric From cross-product are declared
+// in the embedded std::core source (stdlib/core.mtl) and bound to host
+// implementations via native keys (METEL-181). This locks the derived path:
+// no hand-registered builtin backs any of these.
+fun main() {
+    // Display::to_string on every displayable primitive kind
+    assert(42i8.to_string() == "42");
+    assert(42i16.to_string() == "42");
+    assert(42i32.to_string() == "42");
+    assert(42i64.to_string() == "42");
+    assert(42u8.to_string() == "42");
+    assert(42u16.to_string() == "42");
+    assert(42u32.to_string() == "42");
+    assert(42u64.to_string() == "42");
+    assert(true.to_string() == "true");
+    assert('A'.to_string() == "A");
+    assert("hi".to_string() == "hi");
+
+    // Numeric From conversions via casts (int → int, int → float, float → int)
+    let a: i8 = 7i64 as i8;
+    assert(a == 7i8);
+    let b: u64 = 7i8 as u64;
+    assert(b == 7u64);
+    let c: f32 = 2i64 as f32;
+    let d: i64 = c as i64;
+    assert(d == 2);
+    let e: f64 = 3i32 as f64;
+    let f: i32 = e as i32;
+    assert(f == 3);
+
+    // Char ↔ u32 (Unicode code point)
+    let code: u32 = 'Z' as u32;
+    assert(code == 90u32);
+    let ch: Char = 90u32 as Char;
+    assert(ch == 'Z');
+
+    println("ok");
+}

@@ -50,3 +50,434 @@ native(@std.core.assert_msg) pub fun assert_msg(cond: boolean, msg: String);
 native(@std.core.clock)      pub fun clock() -> i64;
 native(@std.core.string_len)    pub fun string_len(s: String) -> i64;
 native(@std.core.string_concat) pub fun string_concat(a: String, b: String) -> String;
+
+// ── Display impls for the primitive types ──────────────────────────────────
+// One shared host implementation formats any displayable value, so every
+// impl binds to the same @std.core.to_string key.
+
+impl Display for i8 {
+    native(@std.core.to_string) fun to_string(&self) -> String;
+}
+
+impl Display for i16 {
+    native(@std.core.to_string) fun to_string(&self) -> String;
+}
+
+impl Display for i32 {
+    native(@std.core.to_string) fun to_string(&self) -> String;
+}
+
+impl Display for i64 {
+    native(@std.core.to_string) fun to_string(&self) -> String;
+}
+
+impl Display for u8 {
+    native(@std.core.to_string) fun to_string(&self) -> String;
+}
+
+impl Display for u16 {
+    native(@std.core.to_string) fun to_string(&self) -> String;
+}
+
+impl Display for u32 {
+    native(@std.core.to_string) fun to_string(&self) -> String;
+}
+
+impl Display for u64 {
+    native(@std.core.to_string) fun to_string(&self) -> String;
+}
+
+impl Display for f32 {
+    native(@std.core.to_string) fun to_string(&self) -> String;
+}
+
+impl Display for f64 {
+    native(@std.core.to_string) fun to_string(&self) -> String;
+}
+
+impl Display for boolean {
+    native(@std.core.to_string) fun to_string(&self) -> String;
+}
+
+impl Display for Char {
+    native(@std.core.to_string) fun to_string(&self) -> String;
+}
+
+impl Display for String {
+    native(@std.core.to_string) fun to_string(&self) -> String;
+}
+
+// ── Numeric From conversions (full cross-product) ──────────────────────────
+// The host implementation is selected per TARGET type; the source type is
+// carried by the runtime value, so each target's impls share one key.
+
+impl From<i16> for i8 {
+    native(@std.core.i8_from) fun from(x: i16) -> i8;
+}
+
+impl From<i32> for i8 {
+    native(@std.core.i8_from) fun from(x: i32) -> i8;
+}
+
+impl From<i64> for i8 {
+    native(@std.core.i8_from) fun from(x: i64) -> i8;
+}
+
+impl From<u8> for i8 {
+    native(@std.core.i8_from) fun from(x: u8) -> i8;
+}
+
+impl From<u16> for i8 {
+    native(@std.core.i8_from) fun from(x: u16) -> i8;
+}
+
+impl From<u32> for i8 {
+    native(@std.core.i8_from) fun from(x: u32) -> i8;
+}
+
+impl From<u64> for i8 {
+    native(@std.core.i8_from) fun from(x: u64) -> i8;
+}
+
+impl From<f32> for i8 {
+    native(@std.core.i8_from) fun from(x: f32) -> i8;
+}
+
+impl From<f64> for i8 {
+    native(@std.core.i8_from) fun from(x: f64) -> i8;
+}
+
+impl From<i8> for i16 {
+    native(@std.core.i16_from) fun from(x: i8) -> i16;
+}
+
+impl From<i32> for i16 {
+    native(@std.core.i16_from) fun from(x: i32) -> i16;
+}
+
+impl From<i64> for i16 {
+    native(@std.core.i16_from) fun from(x: i64) -> i16;
+}
+
+impl From<u8> for i16 {
+    native(@std.core.i16_from) fun from(x: u8) -> i16;
+}
+
+impl From<u16> for i16 {
+    native(@std.core.i16_from) fun from(x: u16) -> i16;
+}
+
+impl From<u32> for i16 {
+    native(@std.core.i16_from) fun from(x: u32) -> i16;
+}
+
+impl From<u64> for i16 {
+    native(@std.core.i16_from) fun from(x: u64) -> i16;
+}
+
+impl From<f32> for i16 {
+    native(@std.core.i16_from) fun from(x: f32) -> i16;
+}
+
+impl From<f64> for i16 {
+    native(@std.core.i16_from) fun from(x: f64) -> i16;
+}
+
+impl From<i8> for i32 {
+    native(@std.core.i32_from) fun from(x: i8) -> i32;
+}
+
+impl From<i16> for i32 {
+    native(@std.core.i32_from) fun from(x: i16) -> i32;
+}
+
+impl From<i64> for i32 {
+    native(@std.core.i32_from) fun from(x: i64) -> i32;
+}
+
+impl From<u8> for i32 {
+    native(@std.core.i32_from) fun from(x: u8) -> i32;
+}
+
+impl From<u16> for i32 {
+    native(@std.core.i32_from) fun from(x: u16) -> i32;
+}
+
+impl From<u32> for i32 {
+    native(@std.core.i32_from) fun from(x: u32) -> i32;
+}
+
+impl From<u64> for i32 {
+    native(@std.core.i32_from) fun from(x: u64) -> i32;
+}
+
+impl From<f32> for i32 {
+    native(@std.core.i32_from) fun from(x: f32) -> i32;
+}
+
+impl From<f64> for i32 {
+    native(@std.core.i32_from) fun from(x: f64) -> i32;
+}
+
+impl From<i8> for i64 {
+    native(@std.core.i64_from) fun from(x: i8) -> i64;
+}
+
+impl From<i16> for i64 {
+    native(@std.core.i64_from) fun from(x: i16) -> i64;
+}
+
+impl From<i32> for i64 {
+    native(@std.core.i64_from) fun from(x: i32) -> i64;
+}
+
+impl From<u8> for i64 {
+    native(@std.core.i64_from) fun from(x: u8) -> i64;
+}
+
+impl From<u16> for i64 {
+    native(@std.core.i64_from) fun from(x: u16) -> i64;
+}
+
+impl From<u32> for i64 {
+    native(@std.core.i64_from) fun from(x: u32) -> i64;
+}
+
+impl From<u64> for i64 {
+    native(@std.core.i64_from) fun from(x: u64) -> i64;
+}
+
+impl From<f32> for i64 {
+    native(@std.core.i64_from) fun from(x: f32) -> i64;
+}
+
+impl From<f64> for i64 {
+    native(@std.core.i64_from) fun from(x: f64) -> i64;
+}
+
+impl From<i8> for u8 {
+    native(@std.core.u8_from) fun from(x: i8) -> u8;
+}
+
+impl From<i16> for u8 {
+    native(@std.core.u8_from) fun from(x: i16) -> u8;
+}
+
+impl From<i32> for u8 {
+    native(@std.core.u8_from) fun from(x: i32) -> u8;
+}
+
+impl From<i64> for u8 {
+    native(@std.core.u8_from) fun from(x: i64) -> u8;
+}
+
+impl From<u16> for u8 {
+    native(@std.core.u8_from) fun from(x: u16) -> u8;
+}
+
+impl From<u32> for u8 {
+    native(@std.core.u8_from) fun from(x: u32) -> u8;
+}
+
+impl From<u64> for u8 {
+    native(@std.core.u8_from) fun from(x: u64) -> u8;
+}
+
+impl From<f32> for u8 {
+    native(@std.core.u8_from) fun from(x: f32) -> u8;
+}
+
+impl From<f64> for u8 {
+    native(@std.core.u8_from) fun from(x: f64) -> u8;
+}
+
+impl From<i8> for u16 {
+    native(@std.core.u16_from) fun from(x: i8) -> u16;
+}
+
+impl From<i16> for u16 {
+    native(@std.core.u16_from) fun from(x: i16) -> u16;
+}
+
+impl From<i32> for u16 {
+    native(@std.core.u16_from) fun from(x: i32) -> u16;
+}
+
+impl From<i64> for u16 {
+    native(@std.core.u16_from) fun from(x: i64) -> u16;
+}
+
+impl From<u8> for u16 {
+    native(@std.core.u16_from) fun from(x: u8) -> u16;
+}
+
+impl From<u32> for u16 {
+    native(@std.core.u16_from) fun from(x: u32) -> u16;
+}
+
+impl From<u64> for u16 {
+    native(@std.core.u16_from) fun from(x: u64) -> u16;
+}
+
+impl From<f32> for u16 {
+    native(@std.core.u16_from) fun from(x: f32) -> u16;
+}
+
+impl From<f64> for u16 {
+    native(@std.core.u16_from) fun from(x: f64) -> u16;
+}
+
+impl From<i8> for u32 {
+    native(@std.core.u32_from) fun from(x: i8) -> u32;
+}
+
+impl From<i16> for u32 {
+    native(@std.core.u32_from) fun from(x: i16) -> u32;
+}
+
+impl From<i32> for u32 {
+    native(@std.core.u32_from) fun from(x: i32) -> u32;
+}
+
+impl From<i64> for u32 {
+    native(@std.core.u32_from) fun from(x: i64) -> u32;
+}
+
+impl From<u8> for u32 {
+    native(@std.core.u32_from) fun from(x: u8) -> u32;
+}
+
+impl From<u16> for u32 {
+    native(@std.core.u32_from) fun from(x: u16) -> u32;
+}
+
+impl From<u64> for u32 {
+    native(@std.core.u32_from) fun from(x: u64) -> u32;
+}
+
+impl From<f32> for u32 {
+    native(@std.core.u32_from) fun from(x: f32) -> u32;
+}
+
+impl From<f64> for u32 {
+    native(@std.core.u32_from) fun from(x: f64) -> u32;
+}
+
+impl From<i8> for u64 {
+    native(@std.core.u64_from) fun from(x: i8) -> u64;
+}
+
+impl From<i16> for u64 {
+    native(@std.core.u64_from) fun from(x: i16) -> u64;
+}
+
+impl From<i32> for u64 {
+    native(@std.core.u64_from) fun from(x: i32) -> u64;
+}
+
+impl From<i64> for u64 {
+    native(@std.core.u64_from) fun from(x: i64) -> u64;
+}
+
+impl From<u8> for u64 {
+    native(@std.core.u64_from) fun from(x: u8) -> u64;
+}
+
+impl From<u16> for u64 {
+    native(@std.core.u64_from) fun from(x: u16) -> u64;
+}
+
+impl From<u32> for u64 {
+    native(@std.core.u64_from) fun from(x: u32) -> u64;
+}
+
+impl From<f32> for u64 {
+    native(@std.core.u64_from) fun from(x: f32) -> u64;
+}
+
+impl From<f64> for u64 {
+    native(@std.core.u64_from) fun from(x: f64) -> u64;
+}
+
+impl From<i8> for f32 {
+    native(@std.core.f32_from) fun from(x: i8) -> f32;
+}
+
+impl From<i16> for f32 {
+    native(@std.core.f32_from) fun from(x: i16) -> f32;
+}
+
+impl From<i32> for f32 {
+    native(@std.core.f32_from) fun from(x: i32) -> f32;
+}
+
+impl From<i64> for f32 {
+    native(@std.core.f32_from) fun from(x: i64) -> f32;
+}
+
+impl From<u8> for f32 {
+    native(@std.core.f32_from) fun from(x: u8) -> f32;
+}
+
+impl From<u16> for f32 {
+    native(@std.core.f32_from) fun from(x: u16) -> f32;
+}
+
+impl From<u32> for f32 {
+    native(@std.core.f32_from) fun from(x: u32) -> f32;
+}
+
+impl From<u64> for f32 {
+    native(@std.core.f32_from) fun from(x: u64) -> f32;
+}
+
+impl From<f64> for f32 {
+    native(@std.core.f32_from) fun from(x: f64) -> f32;
+}
+
+impl From<i8> for f64 {
+    native(@std.core.f64_from) fun from(x: i8) -> f64;
+}
+
+impl From<i16> for f64 {
+    native(@std.core.f64_from) fun from(x: i16) -> f64;
+}
+
+impl From<i32> for f64 {
+    native(@std.core.f64_from) fun from(x: i32) -> f64;
+}
+
+impl From<i64> for f64 {
+    native(@std.core.f64_from) fun from(x: i64) -> f64;
+}
+
+impl From<u8> for f64 {
+    native(@std.core.f64_from) fun from(x: u8) -> f64;
+}
+
+impl From<u16> for f64 {
+    native(@std.core.f64_from) fun from(x: u16) -> f64;
+}
+
+impl From<u32> for f64 {
+    native(@std.core.f64_from) fun from(x: u32) -> f64;
+}
+
+impl From<u64> for f64 {
+    native(@std.core.f64_from) fun from(x: u64) -> f64;
+}
+
+impl From<f32> for f64 {
+    native(@std.core.f64_from) fun from(x: f32) -> f64;
+}
+
+// ── Char ↔ u32 (Unicode code point) conversions ────────────────────────────
+
+impl From<Char> for u32 {
+    native(@std.core.u32_from) fun from(x: Char) -> u32;
+}
+
+impl From<u32> for Char {
+    // Panics (R0009) when the code point is not a valid Unicode scalar.
+    native(@std.core.char_from) fun from(x: u32) -> Char;
+}
