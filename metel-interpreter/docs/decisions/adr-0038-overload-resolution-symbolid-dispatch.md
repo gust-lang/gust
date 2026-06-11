@@ -40,7 +40,27 @@ no-match error lists every candidate signature verbatim.
 Constraints that follow from this: overloaded functions must be non-generic
 and fully parameter-annotated (each definition needs a distinct concrete
 signature), and duplicate signatures under one name are a `T0011` error.
-The overload table is per module; overloads are not exportable.
+The overload table is per module; user overloads are not exportable.
+
+Bare numeric literals are defaulted before selection (a bare `42` is `i64`),
+and the selected candidate's parameter types are constrained back onto the
+arguments — so literals participate in selection the same way they type
+everywhere else, and a no-match call reports the full candidate list.
+
+**std::core exception (seeding, not export).** std::core declares the first
+overloaded stdlib function (`assert(cond)` / `assert(cond, msg)`), and every
+module must see it. Since overload sets do not flow through
+GlobalExports/imports, the embedded core's overload groups are seeded into
+every module's table by `build_overload_table` — the same derive-from-
+`core_program()` pattern the registry, prelude, and runtime already use
+(ADR-0039). The canonical entries live in a process-wide
+`core_overload_table()` so call sites in every module and the runtime host
+registration agree on each definition's `SymbolId`. A module declaring its
+own `fun` with a seeded name shadows the std::core group entirely. A general
+"exportable overload sets" mechanism (overloads in GlobalExports, resolved
+through normal imports) is future work — METEL-188; if it lands, the
+graph-path seeding becomes an ordinary import while the single-program path
+(which performs no imports) keeps the seeding.
 
 ### Identity: SymbolId per definition, stamped at the call site
 
@@ -100,7 +120,9 @@ lookup.
   allocation must move into the name resolver next to the user range.
 - A call site that types correctly always finds its symbol at runtime; a miss
   in `symbol_values` is an internal error, not a user-facing panic.
-- Argument types must be known at the call site for selection. Bare literals
-  whose type is still an inference variable produce a `T0002` "cannot resolve
-  argument types for overloaded call" error asking for an annotation — this
-  is the documented cost of exact-match selection.
+- Argument types must be known at the call site for selection. Bare numeric
+  literals are defaulted (`42` → `i64`) before selecting, so they resolve like
+  they do everywhere else; arguments whose type is still a genuine inference
+  variable produce a `T0002` "cannot resolve argument types for overloaded
+  call" error asking for an annotation — the documented cost of exact-match
+  selection.
