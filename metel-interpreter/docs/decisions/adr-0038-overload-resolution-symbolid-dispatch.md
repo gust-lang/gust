@@ -54,7 +54,11 @@ back to the outer binding (e.g. a module overloading `print(i32)`/`print(i64)`
 still reaches the generic std::core `print<T>` for an `i8`). A name with no
 outer binding reports the candidate list. Note the asymmetry with single
 declarations: a lone local `fun print(...)` shadows the outer binding fully
-(normal scoping); only *overload sets* get fallback dispatch.
+(normal scoping); only *overload sets* get fallback dispatch. This n=1 → n=2
+discontinuity is a known wart — shadow-vs-extend intent is currently inferred
+from declaration count. A single coherent rule (unify, consistent hiding, or
+Julia-style explicit extension syntax) is part of METEL-188's RFC scope,
+where the same question recurs for imported overload sets.
 
 **std::core exception (seeding, not export).** std::core declares the first
 overloaded stdlib function (`assert(cond)` / `assert(cond, msg)`), and every
