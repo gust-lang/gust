@@ -1,0 +1,106 @@
+---
+id: adr-0038
+title: "Free-Function Overloading: Exact-Match Selection, SymbolId Dispatch"
+date: '2026-06-11'
+status: active
+---
+
+## Context
+
+Sprint 22 (METEL-180) added free-function overloading: a module may declare
+more than one `fun` with the same name, distinguished by parameter types. This
+forced a decision the interpreter had avoided until now — what identifies a
+callable after typechecking? Every dispatch surface (scheme env, lexical
+environment, GlobalExports) was keyed by surface name, which cannot identify
+one definition out of an overload set.
+
+Two sub-decisions were made, one about *selection* (which candidate a call
+site picks) and one about *identity* (how the picked candidate is referenced
+through the rest of the pipeline).
+
+An intermediate name-mangling design (`print$i32`, `print$i64` — construction
+rewrote declaration names and call sites) shipped first and was deleted within
+the same sprint once SymbolId dispatch landed; it is documented here only so
+the history of `overload.rs` makes sense.
+
+## Decision
+
+### Selection: exact match only
+
+A candidate matches a call site only when the argument types equal its
+parameter types exactly. Implicit numeric `From` coercion does **not**
+participate in overload selection (it still applies to non-overloaded calls).
+
+Rationale: coercion makes multiple candidates viable for one call (`1i32`
+matches `i32` exactly *and* `i64` via coercion), which forces a specificity
+ranking with all its edge cases. Exact match keeps resolution a one-line
+predicate (`overload::select`) and keeps diagnostics trivial: the
+no-match error lists every candidate signature verbatim.
+
+Constraints that follow from this: overloaded functions must be non-generic
+and fully parameter-annotated (each definition needs a distinct concrete
+signature), and duplicate signatures under one name are a `T0011` error.
+The overload table is per module; overloads are not exportable.
+
+### Identity: SymbolId per definition, stamped at the call site
+
+Each overloaded definition gets a unique `SymbolId` from a dedicated range
+(`symbols::OVERLOAD_SYM_START = 0x4000_0000`, process-global atomic allocator
+in `typechecker::overload`). The range is disjoint from the name-resolver's
+user range (1000+) so the two allocators never need to coordinate.
+
+The flow:
+
+1. `overload::build_overload_table` (per module, pre-inference) groups
+   same-name `fun` decls, validates them, and assigns each entry a
+   `SymbolId` (`OverloadEntry { params, ret, symbol_id }`).
+2. Inference checks each overloaded body independently but registers
+   **nothing** under the shared name: overloads never enter the name-keyed
+   scheme env, the poly env, or the export surface.
+3. Construction selects the candidate by exact match against the typed
+   argument types and stamps `TypedExpr::Call::callee_id = Some(symbol_id)`.
+   The typed declaration carries the same id (`TypedFunDecl::symbol_id`).
+4. The evaluator registers overloaded definitions in a SymbolId-keyed map
+   (`RuntimeRegistry::symbol_values`) instead of the lexical environment, and
+   a `Call` with `callee_id: Some(id)` dispatches through that map without
+   evaluating the callee expression.
+
+`callee_id: None` (every non-overloaded call) preserves the existing path:
+evaluate the callee expression, which for a named function is a lexical-env
+lookup.
+
+### What was deliberately NOT built
+
+- **No `CalleeId` enum.** The sprint guide sketched
+  `CalleeId::{Free, Method, AspectMethod}`. Only free functions can be
+  overloaded today, so `Option<SymbolId>` on `Call` carries everything needed.
+  The enum can be introduced when method dispatch is rekeyed (METEL-185)
+  without unwinding anything done here.
+- **Method-level SymbolId dispatch.** `MethodCall` still selects methods by
+  name within a type entry; the aspect itself is already id-resolved
+  (`MethodDispatch::Aspect { aspect_id }`, ADR-0037 era). Folded into
+  METEL-185.
+- **Symbol-keyed lookup for ordinary functions.** Functions are first-class
+  values in a lexical environment; rekeying that environment is an
+  architectural question tracked separately (METEL-187).
+
+## Consequences
+
+- Names never disambiguate overloads anywhere in the pipeline. Grepping for
+  `mangle` in `src/` returns nothing; the selection logic
+  (`build_overload_table`, `select`, `no_match_error`) is the permanent part
+  of `typechecker/overload.rs`.
+- Because overloads are invisible to the scheme env, a bare reference to an
+  overloaded name (`let f = describe;`) is an undefined-name error, and
+  overloaded functions cannot be `pub`-exported. Both are acceptable for the
+  current scope and would need explicit design (probably expected-type-driven
+  selection) to lift.
+- Overload SymbolIds are process-unique but not stable across runs. Nothing
+  persists them; if a future incremental-compilation layer needs stability,
+  allocation must move into the name resolver next to the user range.
+- A call site that types correctly always finds its symbol at runtime; a miss
+  in `symbol_values` is an internal error, not a user-facing panic.
+- Argument types must be known at the call site for selection. Bare literals
+  whose type is still an inference variable produce a `T0002` "cannot resolve
+  argument types for overloaded call" error asking for an annotation — this
+  is the documented cost of exact-match selection.

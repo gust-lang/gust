@@ -1,10 +1,16 @@
 ---
 id: ADR-0027
 title: std::core as a virtual in-memory module seeded from StdPrelude
-status: accepted
+status: superseded by adr-0039
 date: 2026-05-29
 issues: ["#201", "#202"]
 ---
+
+> **Superseded (sprint 22, METEL-181).** std::core is no longer a virtual
+> module: it is a real module embedded from `stdlib/core.mtl` that flows
+> through the normal loader → resolver → typechecker → evaluator pipeline.
+> See [adr-0039](adr-0039-native-bindings-embedded-stdcore.md). The TypeVar
+> offset insight below (the 10000 base) survives in `CorePrelude`.
 
 ## Context
 
