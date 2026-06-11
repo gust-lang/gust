@@ -314,6 +314,34 @@ fn native_list_as_slice(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Va
     Ok(Value::Array(inner))
 }
 
+// ── std::env host implementations ──────────────────────────────────────────
+
+fn native_env_var(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    match args.first() {
+        Some(Value::Str(name)) => {
+            Ok(perhaps_value(std::env::var(name).ok().map(Value::Str)))
+        }
+        _ => Err(MetelError::internal("std::env::var: expected (String)")),
+    }
+}
+
+fn native_env_vars(_args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    let entries: Vec<Value> = std::env::vars()
+        .map(|(name, value)| {
+            let mut fields = std::collections::HashMap::new();
+            fields.insert("name".to_string(), Value::Str(name));
+            fields.insert("value".to_string(), Value::Str(value));
+            Value::Struct {
+                name: "EnvVar".to_string(),
+                fields,
+            }
+        })
+        .collect();
+    Ok(Value::Array(Rc::new(RefCell::new(entries))))
+}
+
 /// The host implementation for a stdlib `native` function, looked up by its
 /// lowered [`NativeKey`]. Total over the closed enum — every variant maps to a
 /// host fn (enforced by the coverage test).
@@ -346,6 +374,8 @@ pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
             NativeKey::StdCoreListLen => ("List::len", native_list_len),
             NativeKey::StdCoreListGet => ("List::get", native_list_get),
             NativeKey::StdCoreListAsSlice => ("List::as_slice", native_list_as_slice),
+            NativeKey::StdEnvVar => ("std::env::var", native_env_var),
+            NativeKey::StdEnvVars => ("std::env::vars", native_env_vars),
         };
     RuntimeCallable::Intrinsic {
         label: label.to_string(),

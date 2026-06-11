@@ -69,6 +69,12 @@ pub enum NativeKey {
     StdCoreListGet,
     /// `List::as_slice(self) -> T[]` — the backing array.
     StdCoreListAsSlice,
+
+    // ── std::env ────────────────────────────────────────────────────────────
+    /// `env::var(String) -> Perhaps<String>` — value of an environment variable.
+    StdEnvVar,
+    /// `env::vars() -> (String, String)[]` — all environment variables.
+    StdEnvVars,
 }
 
 impl NativeKey {
@@ -104,6 +110,8 @@ impl NativeKey {
             ["std", "core", "list_len"] => NativeKey::StdCoreListLen,
             ["std", "core", "list_get"] => NativeKey::StdCoreListGet,
             ["std", "core", "list_as_slice"] => NativeKey::StdCoreListAsSlice,
+            ["std", "env", "var"] => NativeKey::StdEnvVar,
+            ["std", "env", "vars"] => NativeKey::StdEnvVars,
             _ => return None,
         };
         Some(key)
@@ -138,6 +146,8 @@ impl NativeKey {
             NativeKey::StdCoreListLen => "@std.core.list_len",
             NativeKey::StdCoreListGet => "@std.core.list_get",
             NativeKey::StdCoreListAsSlice => "@std.core.list_as_slice",
+            NativeKey::StdEnvVar => "@std.env.var",
+            NativeKey::StdEnvVars => "@std.env.vars",
         }
     }
 
@@ -170,6 +180,8 @@ impl NativeKey {
         NativeKey::StdCoreListLen,
         NativeKey::StdCoreListGet,
         NativeKey::StdCoreListAsSlice,
+        NativeKey::StdEnvVar,
+        NativeKey::StdEnvVars,
     ];
 }
 
