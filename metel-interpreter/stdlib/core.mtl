@@ -114,6 +114,29 @@ impl Result<T, E> {
     }
 }
 
+// ── Host error type ─────────────────────────────────────────────────────────
+// The error type returned by the host-backed std modules (std::fs, std::process,
+// …). It carries a human-readable message and implements Display; richer
+// structured fields are a deliberate future extension (RFC-0057). It lives in
+// std::core so every host module returns the same `Result<T, OsError>`.
+
+pub struct OsError {
+    message: String,
+}
+
+impl OsError {
+    // The human-readable description of the error.
+    pub fun message(&self) -> String {
+        self.message
+    }
+}
+
+impl Display for OsError {
+    fun to_string(&self) -> String {
+        self.message
+    }
+}
+
 // ── Core aspects ────────────────────────────────────────────────────────────
 
 pub aspect Display {

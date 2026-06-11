@@ -1,0 +1,39 @@
+// std::fs host module (METEL-165): text file ops returning Result<_, OsError>.
+// Uses a unique temp directory and cleans up after itself.
+import std::fs::{
+    read_to_string, write_string, append_string, exists, read_dir,
+    create_dir_all, remove_file, remove_dir_all,
+};
+
+fun main() {
+    let dir = "/tmp/metel_fs_fixture_x7q2";
+    let file = "/tmp/metel_fs_fixture_x7q2/note.txt";
+
+    // create_dir_all + exists
+    assert(create_dir_all(dir).is_ok());
+    assert(exists(dir));
+
+    // write then append, read back the concatenation
+    assert(write_string(file, "hello").is_ok());
+    assert(append_string(file, " world").is_ok());
+    assert(exists(file));
+    assert(read_to_string(file).unwrap_or("") == "hello world");
+
+    // read_dir returns the single entry name
+    let entries = read_dir(dir).unwrap_or([]);
+    assert(entries.len() == 1);
+    assert(entries[0] == "note.txt");
+
+    // error path: a missing file yields Err with a non-empty OsError message
+    match read_to_string("/tmp/metel_fs_fixture_x7q2/missing.txt") {
+        Result::Ok { value } => assert(false),
+        Result::Err { error } => assert(error.message().len() > 0),
+    }
+
+    // cleanup
+    assert(remove_file(file).is_ok());
+    assert(remove_dir_all(dir).is_ok());
+    assert(!exists(dir));
+
+    println("ok");
+}

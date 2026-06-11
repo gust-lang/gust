@@ -73,8 +73,30 @@ pub enum NativeKey {
     // ── std::env ────────────────────────────────────────────────────────────
     /// `env::var(String) -> Perhaps<String>` — value of an environment variable.
     StdEnvVar,
-    /// `env::vars() -> (String, String)[]` — all environment variables.
+    /// `env::vars() -> EnvVar[]` — all environment variables.
     StdEnvVars,
+
+    // ── std::fs ─────────────────────────────────────────────────────────────
+    /// `fs::read_to_string(String) -> Result<String, OsError>`.
+    StdFsReadToString,
+    /// `fs::write_string(String, String) -> Result<(), OsError>`.
+    StdFsWriteString,
+    /// `fs::append_string(String, String) -> Result<(), OsError>`.
+    StdFsAppendString,
+    /// `fs::exists(String) -> boolean`.
+    StdFsExists,
+    /// `fs::read_dir(String) -> Result<String[], OsError>` — entry names.
+    StdFsReadDir,
+    /// `fs::create_dir(String) -> Result<(), OsError>`.
+    StdFsCreateDir,
+    /// `fs::create_dir_all(String) -> Result<(), OsError>`.
+    StdFsCreateDirAll,
+    /// `fs::remove_file(String) -> Result<(), OsError>`.
+    StdFsRemoveFile,
+    /// `fs::remove_dir(String) -> Result<(), OsError>`.
+    StdFsRemoveDir,
+    /// `fs::remove_dir_all(String) -> Result<(), OsError>`.
+    StdFsRemoveDirAll,
 }
 
 impl NativeKey {
@@ -112,6 +134,16 @@ impl NativeKey {
             ["std", "core", "list_as_slice"] => NativeKey::StdCoreListAsSlice,
             ["std", "env", "var"] => NativeKey::StdEnvVar,
             ["std", "env", "vars"] => NativeKey::StdEnvVars,
+            ["std", "fs", "read_to_string"] => NativeKey::StdFsReadToString,
+            ["std", "fs", "write_string"] => NativeKey::StdFsWriteString,
+            ["std", "fs", "append_string"] => NativeKey::StdFsAppendString,
+            ["std", "fs", "exists"] => NativeKey::StdFsExists,
+            ["std", "fs", "read_dir"] => NativeKey::StdFsReadDir,
+            ["std", "fs", "create_dir"] => NativeKey::StdFsCreateDir,
+            ["std", "fs", "create_dir_all"] => NativeKey::StdFsCreateDirAll,
+            ["std", "fs", "remove_file"] => NativeKey::StdFsRemoveFile,
+            ["std", "fs", "remove_dir"] => NativeKey::StdFsRemoveDir,
+            ["std", "fs", "remove_dir_all"] => NativeKey::StdFsRemoveDirAll,
             _ => return None,
         };
         Some(key)
@@ -148,6 +180,16 @@ impl NativeKey {
             NativeKey::StdCoreListAsSlice => "@std.core.list_as_slice",
             NativeKey::StdEnvVar => "@std.env.var",
             NativeKey::StdEnvVars => "@std.env.vars",
+            NativeKey::StdFsReadToString => "@std.fs.read_to_string",
+            NativeKey::StdFsWriteString => "@std.fs.write_string",
+            NativeKey::StdFsAppendString => "@std.fs.append_string",
+            NativeKey::StdFsExists => "@std.fs.exists",
+            NativeKey::StdFsReadDir => "@std.fs.read_dir",
+            NativeKey::StdFsCreateDir => "@std.fs.create_dir",
+            NativeKey::StdFsCreateDirAll => "@std.fs.create_dir_all",
+            NativeKey::StdFsRemoveFile => "@std.fs.remove_file",
+            NativeKey::StdFsRemoveDir => "@std.fs.remove_dir",
+            NativeKey::StdFsRemoveDirAll => "@std.fs.remove_dir_all",
         }
     }
 
@@ -182,6 +224,16 @@ impl NativeKey {
         NativeKey::StdCoreListAsSlice,
         NativeKey::StdEnvVar,
         NativeKey::StdEnvVars,
+        NativeKey::StdFsReadToString,
+        NativeKey::StdFsWriteString,
+        NativeKey::StdFsAppendString,
+        NativeKey::StdFsExists,
+        NativeKey::StdFsReadDir,
+        NativeKey::StdFsCreateDir,
+        NativeKey::StdFsCreateDirAll,
+        NativeKey::StdFsRemoveFile,
+        NativeKey::StdFsRemoveDir,
+        NativeKey::StdFsRemoveDirAll,
     ];
 }
 

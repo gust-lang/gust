@@ -342,6 +342,129 @@ fn native_env_vars(_args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value,
     Ok(Value::Array(Rc::new(RefCell::new(entries))))
 }
 
+// ── std::fs host implementations ───────────────────────────────────────────
+
+/// Build a std::core `OsError { message }` value.
+fn os_error_value(message: String) -> Value {
+    let mut fields = std::collections::HashMap::new();
+    fields.insert("message".to_string(), Value::Str(message));
+    Value::Struct {
+        name: "OsError".to_string(),
+        fields,
+    }
+}
+
+/// Build a std::core `Result::Ok { value }` / `Result::Err { error }` value.
+fn result_value(r: Result<Value, Value>) -> Value {
+    let (variant, field, val) = match r {
+        Ok(v) => ("Ok", "value", v),
+        Err(e) => ("Err", "error", e),
+    };
+    let mut fields = std::collections::HashMap::new();
+    fields.insert(field.to_string(), val);
+    Value::Enum {
+        name: "Result".to_string(),
+        variant: variant.to_string(),
+        fields,
+    }
+}
+
+/// Map an `io::Result<T>` to a `Result<…, OsError>` value, converting the error
+/// to an `OsError` carrying its display message.
+fn io_result(r: std::io::Result<Value>) -> Value {
+    result_value(r.map_err(|e| os_error_value(e.to_string())))
+}
+
+fn str_at(args: &[Value], idx: usize, label: &str) -> Result<String, MetelError> {
+    match args.get(idx) {
+        Some(Value::Str(s)) => Ok(s.clone()),
+        _ => Err(MetelError::internal(format!(
+            "{label}: expected a String argument at position {idx}"
+        ))),
+    }
+}
+
+fn native_fs_read_to_string(
+    args: Vec<Value>,
+    _span: &crate::ast::Span,
+) -> Result<Value, MetelError> {
+    let path = str_at(&args, 0, "std::fs::read_to_string")?;
+    Ok(io_result(std::fs::read_to_string(&path).map(Value::Str)))
+}
+
+fn native_fs_write_string(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let path = str_at(&args, 0, "std::fs::write_string")?;
+    let contents = str_at(&args, 1, "std::fs::write_string")?;
+    Ok(io_result(std::fs::write(&path, contents).map(|_| Value::Unit)))
+}
+
+fn native_fs_append_string(
+    args: Vec<Value>,
+    _span: &crate::ast::Span,
+) -> Result<Value, MetelError> {
+    use std::io::Write;
+    let path = str_at(&args, 0, "std::fs::append_string")?;
+    let contents = str_at(&args, 1, "std::fs::append_string")?;
+    let appended = std::fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&path)
+        .and_then(|mut f| f.write_all(contents.as_bytes()))
+        .map(|_| Value::Unit);
+    Ok(io_result(appended))
+}
+
+fn native_fs_exists(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let path = str_at(&args, 0, "std::fs::exists")?;
+    Ok(Value::Boolean(std::path::Path::new(&path).exists()))
+}
+
+fn native_fs_read_dir(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    let path = str_at(&args, 0, "std::fs::read_dir")?;
+    let listed = std::fs::read_dir(&path).and_then(|entries| {
+        let mut names = Vec::new();
+        for entry in entries {
+            let name = entry?.file_name().to_string_lossy().into_owned();
+            names.push(Value::Str(name));
+        }
+        Ok(Value::Array(Rc::new(RefCell::new(names))))
+    });
+    Ok(io_result(listed))
+}
+
+fn native_fs_create_dir(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let path = str_at(&args, 0, "std::fs::create_dir")?;
+    Ok(io_result(std::fs::create_dir(&path).map(|_| Value::Unit)))
+}
+
+fn native_fs_create_dir_all(
+    args: Vec<Value>,
+    _span: &crate::ast::Span,
+) -> Result<Value, MetelError> {
+    let path = str_at(&args, 0, "std::fs::create_dir_all")?;
+    Ok(io_result(std::fs::create_dir_all(&path).map(|_| Value::Unit)))
+}
+
+fn native_fs_remove_file(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let path = str_at(&args, 0, "std::fs::remove_file")?;
+    Ok(io_result(std::fs::remove_file(&path).map(|_| Value::Unit)))
+}
+
+fn native_fs_remove_dir(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let path = str_at(&args, 0, "std::fs::remove_dir")?;
+    Ok(io_result(std::fs::remove_dir(&path).map(|_| Value::Unit)))
+}
+
+fn native_fs_remove_dir_all(
+    args: Vec<Value>,
+    _span: &crate::ast::Span,
+) -> Result<Value, MetelError> {
+    let path = str_at(&args, 0, "std::fs::remove_dir_all")?;
+    Ok(io_result(std::fs::remove_dir_all(&path).map(|_| Value::Unit)))
+}
+
 /// The host implementation for a stdlib `native` function, looked up by its
 /// lowered [`NativeKey`]. Total over the closed enum — every variant maps to a
 /// host fn (enforced by the coverage test).
@@ -376,6 +499,24 @@ pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
             NativeKey::StdCoreListAsSlice => ("List::as_slice", native_list_as_slice),
             NativeKey::StdEnvVar => ("std::env::var", native_env_var),
             NativeKey::StdEnvVars => ("std::env::vars", native_env_vars),
+            NativeKey::StdFsReadToString => {
+                ("std::fs::read_to_string", native_fs_read_to_string)
+            }
+            NativeKey::StdFsWriteString => ("std::fs::write_string", native_fs_write_string),
+            NativeKey::StdFsAppendString => {
+                ("std::fs::append_string", native_fs_append_string)
+            }
+            NativeKey::StdFsExists => ("std::fs::exists", native_fs_exists),
+            NativeKey::StdFsReadDir => ("std::fs::read_dir", native_fs_read_dir),
+            NativeKey::StdFsCreateDir => ("std::fs::create_dir", native_fs_create_dir),
+            NativeKey::StdFsCreateDirAll => {
+                ("std::fs::create_dir_all", native_fs_create_dir_all)
+            }
+            NativeKey::StdFsRemoveFile => ("std::fs::remove_file", native_fs_remove_file),
+            NativeKey::StdFsRemoveDir => ("std::fs::remove_dir", native_fs_remove_dir),
+            NativeKey::StdFsRemoveDirAll => {
+                ("std::fs::remove_dir_all", native_fs_remove_dir_all)
+            }
         };
     RuntimeCallable::Intrinsic {
         label: label.to_string(),
