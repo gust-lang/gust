@@ -128,6 +128,10 @@ pub struct TypedFunDecl {
     #[allow(dead_code)] // kept for future reflection / documentation generation
     pub return_type: Option<TypeExpr>,
     pub body: FunBody,
+    /// `Some` only for overloaded free-function definitions (METEL-180): the
+    /// evaluator registers the definition under this id (names cannot
+    /// disambiguate overloads) and call sites dispatch via `Call::callee_id`.
+    pub symbol_id: Option<SymbolId>,
     #[allow(dead_code)] // kept for future error messages
     pub span: Span,
 }
@@ -300,6 +304,11 @@ pub enum TypedExpr {
         callee: Box<TypedExpr>,
         args: Vec<TypedExpr>,
         ty: Type,
+        /// Resolved overload definition (METEL-180): when the callee is an
+        /// overloaded free function, construction stamps the selected
+        /// candidate's SymbolId here and the evaluator dispatches through its
+        /// symbol registry instead of evaluating `callee` by name.
+        callee_id: Option<SymbolId>,
         span: Span,
     },
     MethodCall {

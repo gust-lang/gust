@@ -729,7 +729,7 @@ fn check_impl_with_report(
 
     // Pre-pass: register built-in value bindings, build the overload table, and
     // hoist function names. The overload table must be installed before hoisting
-    // so hoisting can skip overloaded names (they are handled by mangled names).
+    // so hoisting can skip overloaded names (they are dispatched by SymbolId).
     registry::register_primitive_type_bindings(&mut ctx, std_prelude);
     let overloads = overload::build_overload_table(&program.decls)?;
     ctx.set_overloads(overloads.clone());

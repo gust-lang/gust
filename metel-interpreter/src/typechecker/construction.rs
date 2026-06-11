@@ -100,7 +100,8 @@ struct ConstructCtx<'a> {
     /// `None` for single-module pipelines that don't go through `check_graph`.
     symbols: Option<&'a HashMap<(Vec<String>, String), SymbolId>>,
     /// Free-function overload table for the current module (METEL-180). Used to
-    /// mangle overloaded declaration names and resolve overloaded call sites.
+    /// identify overloaded declarations and resolve overloaded call sites to
+    /// the selected definition's SymbolId.
     overloads: &'a crate::typeinference::OverloadTable,
 }
 
@@ -420,19 +421,34 @@ fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl
             params: fun.params.clone(),
             return_type: fun.return_type.clone(),
             body: FunBody::Native(key),
+            symbol_id: None,
             span: fun.span.clone(),
         }));
     }
 
-    // Overloaded functions are stored under a unique mangled name (METEL-180);
-    // single-definition functions keep their original name.
-    let mangled = super::overload::mangled_for_decl(ctx.overloads, fun);
-    let lookup_name = mangled.as_deref().unwrap_or(fun.name.as_str());
-    let scheme = ctx
-        .scheme_env
-        .get(lookup_name)
-        .ok_or_else(|| MetelError::internal(format!("missing type for fn `{lookup_name}`")))?
-        .clone();
+    // Overloaded definitions (METEL-180) never enter the name-keyed scheme env;
+    // their concrete signature comes straight from the overload entry, and the
+    // typed decl carries the entry's SymbolId for the evaluator's registry.
+    let overload_entry = super::overload::entry_for_decl(ctx.overloads, fun).cloned();
+    let scheme = match &overload_entry {
+        Some(entry) => TypeScheme {
+            quantified_vars: vec![],
+            param_names: vec![],
+            ty: InferType::Fun(
+                entry
+                    .params
+                    .iter()
+                    .map(|t| InferType::Concrete(t.clone()))
+                    .collect(),
+                Box::new(InferType::Concrete(entry.ret.clone())),
+            ),
+        },
+        None => ctx
+            .scheme_env
+            .get(fun.name.as_str())
+            .ok_or_else(|| MetelError::internal(format!("missing type for fn `{}`", fun.name)))?
+            .clone(),
+    };
 
     let body = if scheme.quantified_vars.is_empty() {
         let (param_types, ret_ty) = match ctx.subst.apply(&scheme.ty) {
@@ -465,11 +481,12 @@ fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl
     };
 
     Ok(TypedDecl::Fun(TypedFunDecl {
-        name: lookup_name.to_string(),
+        name: fun.name.clone(),
         generics: fun.generics.clone(),
         params: fun.params.clone(),
         return_type: fun.return_type.clone(),
         body,
+        symbol_id: overload_entry.map(|e| e.symbol_id),
         span: fun.span.clone(),
     }))
 }
@@ -532,6 +549,7 @@ fn construct_impl_method(
             params: method.params.clone(),
             return_type: method.return_type.clone(),
             body: FunBody::Native(key),
+            symbol_id: None,
             span: method.span.clone(),
         });
     }
@@ -550,6 +568,7 @@ fn construct_impl_method(
             params: method.params.clone(),
             return_type: method.return_type.clone(),
             body: FunBody::Generic(method.body.clone()),
+            symbol_id: None,
             span: method.span.clone(),
         });
     }
@@ -596,6 +615,7 @@ fn construct_impl_method(
         params: method.params.clone(),
         return_type: method.return_type.clone(),
         body: FunBody::Typed(typed_block),
+        symbol_id: None,
         span: method.span.clone(),
     })
 }
@@ -675,6 +695,7 @@ fn construct_default_aspect_method(
         params: method.params.clone(),
         return_type: method.return_type.clone(),
         body: FunBody::Typed(typed_block),
+        symbol_id: None,
         span: method.span.clone(),
     })
 }
@@ -1965,8 +1986,9 @@ fn construct_call(
     ctx: &mut ConstructCtx,
 ) -> Result<TypedExpr, MetelError> {
     // Overloaded free-function call (METEL-180): select the candidate whose
-    // parameter types exactly match the argument types, then dispatch to the
-    // mangled name. No implicit coercion participates in selection.
+    // parameter types exactly match the argument types and stamp its SymbolId
+    // into the call; the evaluator dispatches through its symbol registry.
+    // No implicit coercion participates in selection.
     if let Some(name) = super::overload::callee_name(callee) {
         if ctx.overloads.contains_key(name) {
             let typed_args: Vec<TypedExpr> = args
@@ -1980,11 +2002,12 @@ fn construct_call(
             })?;
             let fun_ty = Type::Fun(entry.params.clone(), Box::new(entry.ret.clone()));
             let typed_callee =
-                TypedExpr::Ident(entry.mangled.clone(), fun_ty, callee.span().clone());
+                TypedExpr::Ident(name.to_string(), fun_ty, callee.span().clone());
             return Ok(TypedExpr::Call {
                 callee: Box::new(typed_callee),
                 args: typed_args,
                 ty: entry.ret.clone(),
+                callee_id: Some(entry.symbol_id),
                 span: span.clone(),
             });
         }
@@ -2188,6 +2211,7 @@ fn construct_call(
                 callee: Box::new(typed_callee),
                 args: typed_args,
                 ty: *ret.clone(),
+                callee_id: None,
                 span: span.clone(),
             })
         }

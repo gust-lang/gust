@@ -1090,13 +1090,15 @@ pub struct SolveStats {
 pub struct OverloadEntry {
     pub params: Vec<Type>,
     pub ret: Type,
-    /// Unique runtime name for this definition, e.g. `print$i32`.
-    pub mangled: String,
+    /// Stable identity for this definition. Typed call sites carry the selected
+    /// candidate's id (`TypedExpr::Call::callee_id`) and the evaluator
+    /// dispatches through its symbol registry — no name mangling.
+    pub symbol_id: crate::symbols::SymbolId,
 }
 
 /// Maps a function name to its overload candidates. Only names with more than
-/// one free `fun` declaration appear; single-definition functions are never
-/// mangled and follow the ordinary pipeline unchanged.
+/// one free `fun` declaration appear; single-definition functions follow the
+/// ordinary name-keyed pipeline unchanged.
 pub type OverloadTable = std::collections::HashMap<String, Vec<OverloadEntry>>;
 
 impl InferContext {

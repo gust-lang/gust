@@ -74,7 +74,7 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                 continue;
             }
             // Overloaded names are not bound to a single shared type — each
-            // definition is checked independently and dispatched by mangled name
+            // definition is checked independently and dispatched by SymbolId
             // (METEL-180). Binding here would unify their distinct signatures.
             if ctx.is_overloaded(&fun.name) {
                 continue;
@@ -360,9 +360,9 @@ fn infer_fun_decl(
     let fun_ty = InferType::Fun(param_types, Box::new(ret_ty));
 
     // Overloaded functions have no single shared binding to constrain; each
-    // definition stands alone and is registered under its mangled name below.
-    let overload_mangled = super::overload::mangled_for_decl_in_ctx(ctx, fun);
-    let is_overloaded = overload_mangled.is_some();
+    // definition stands alone (its concrete signature lives in the overload
+    // table, keyed by SymbolId) and never enters the name-keyed scheme env.
+    let is_overloaded = ctx.is_overloaded(&fun.name);
 
     if !is_overloaded {
         if let Some(pre_reg) = ctx.lookup(&fun.name) {
@@ -376,11 +376,16 @@ fn infer_fun_decl(
     let solved = ctx.solve()?;
     let partial_subst = ctx.default_literal_vars(&solved);
     let resolved_ty = partial_subst.apply(&fun_ty);
+
+    // Overloaded definitions are dispatched by SymbolId, never by name: the
+    // scheme env and the export surface know nothing about them. The body was
+    // still inferred and solved above, so type errors inside it are reported.
+    if is_overloaded {
+        return Ok(());
+    }
+
     let scheme = generalize(resolved_ty.clone(), &env_fvs);
-    // Register under the mangled name when overloaded so distinct signatures do
-    // not collide in the scheme environment; otherwise under the plain name.
-    let scheme_name = overload_mangled.clone().unwrap_or_else(|| fun.name.clone());
-    ctx.bind_poly(scheme_name.clone(), scheme);
+    ctx.bind_poly(fun.name.clone(), scheme);
 
     // After solving, the original TypeVars may have been unified with others.
     // Remap name_map through partial_subst so quantified_vars (which are in the
@@ -397,7 +402,7 @@ fn infer_fun_decl(
     // Store resolved_ty (post-solve) so the re-generalization in check_impl uses the
     // already-solved type and is not perturbed by a now-empty final substitution.
     fun_generalizations.push(FunGeneralization {
-        name: scheme_name,
+        name: fun.name.clone(),
         fun_ty: resolved_ty,
         env_fvs,
         name_map,
@@ -881,7 +886,7 @@ fn infer_expr(
         } => {
             // Overloaded free-function call (METEL-180): infer argument types,
             // select the exact-match candidate, and yield its return type. The
-            // mangled callee is resolved in the construction pass.
+            // selected definition's SymbolId is stamped in the construction pass.
             if let Some(name) = super::overload::callee_name(callee) {
                 if ctx.is_overloaded(name) {
                     let arg_infer: Vec<InferType> = args

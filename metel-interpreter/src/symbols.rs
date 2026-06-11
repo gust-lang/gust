@@ -7,12 +7,13 @@
 ///
 /// # ID ranges
 ///
-/// | Range    | Purpose                                       |
-/// |----------|-----------------------------------------------|
-/// | 1 – 49   | Builtin types (primitives + core stdlib)      |
-/// | 50 – 99  | Builtin aspects                               |
-/// | 100 – 999| Reserved for stdlib expansion                 |
-/// | 1000 +   | User-defined declarations (name-resolver IDs) |
+/// | Range         | Purpose                                        |
+/// |---------------|------------------------------------------------|
+/// | 1 – 49        | Builtin types (primitives + core stdlib)       |
+/// | 50 – 99       | Builtin aspects                                |
+/// | 100 – 999     | Reserved for stdlib expansion                  |
+/// | 1000 +        | User-defined declarations (name-resolver IDs)  |
+/// | 0x4000_0000 + | Free-function overload definitions (METEL-180) |
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SymbolId(pub u32);
 
@@ -49,6 +50,12 @@ pub const SYM_ASPECT_FROM: SymbolId = SymbolId(52);
 
 /// First SymbolId assigned to user-defined declarations by the name resolver.
 pub const USER_SYM_START: u32 = 1000;
+
+/// Start of the range allocated to free-function overload definitions
+/// (METEL-180). Each overloaded definition gets a process-unique id from a
+/// global counter (see `typechecker::overload`), disjoint from the
+/// name-resolver range so the two allocators never collide.
+pub const OVERLOAD_SYM_START: u32 = 0x4000_0000;
 
 // ── SymbolTable ───────────────────────────────────────────────────────────────
 

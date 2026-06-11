@@ -1,0 +1,21 @@
+// Overloaded definitions are dispatched by SymbolId (METEL-180): the typed
+// call site carries the selected definition's id and the evaluator resolves it
+// through its symbol registry — names never disambiguate overloads.
+
+fun tag(x: i64) -> String { "i64" }
+fun tag(x: String) -> String { "String" }
+// Overloads may call other overloads of the same name (cross-definition
+// dispatch goes through the symbol registry, not the shared name).
+fun tag(x: i64, y: i64) -> String { tag(x) + "+" + tag(y) }
+
+// An overload may also call a regular (name-dispatched) function and back.
+fun shout(s: String) -> String { s + "!" }
+fun tag(x: boolean) -> String { shout("boolean") }
+
+fun main() {
+    assert(tag(1i64) == "i64");
+    assert(tag("s") == "String");
+    assert(tag(1i64, 2i64) == "i64+i64");
+    assert(tag(true) == "boolean!");
+    println("ok");
+}

@@ -363,6 +363,10 @@ pub struct RuntimeRegistry {
     modules: HashMap<Vec<String>, RuntimeModuleEntry>,
     types: HashMap<String, RuntimeTypeEntry>,
     pattern_methods: HashMap<RuntimeTypePattern, HashMap<String, RuntimeMethod>>,
+    /// Callables dispatched by stable SymbolId rather than by name — today the
+    /// overloaded free-function definitions (METEL-180), whose shared surface
+    /// name cannot identify a single definition.
+    symbol_values: HashMap<SymbolId, Value>,
 }
 
 type FieldWriteback = (Rc<RefCell<Value>>, Vec<String>, Rc<RefCell<Value>>);
@@ -370,6 +374,14 @@ type FieldWriteback = (Rc<RefCell<Value>>, Vec<String>, Rc<RefCell<Value>>);
 impl RuntimeRegistry {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn register_symbol_value(&mut self, id: SymbolId, value: Value) {
+        self.symbol_values.insert(id, value);
+    }
+
+    pub fn get_symbol_value(&self, id: SymbolId) -> Option<&Value> {
+        self.symbol_values.get(&id)
     }
 
     pub fn register_module_value(
@@ -1304,10 +1316,13 @@ fn run_passes(
     type_ctx: Option<std::rc::Rc<TypeCtx>>,
 ) -> Result<(), MetelError> {
     env.type_ctx = type_ctx.clone();
-    // Pass 1a
+    // Pass 1a. Overloaded definitions (symbol_id set) are dispatched through
+    // the runtime's symbol registry, never by name — no env binding for them.
     for decl in decls {
         if let TypedDecl::Fun(f) = decl {
-            env.define(&f.name, Value::Unit);
+            if f.symbol_id.is_none() {
+                env.define(&f.name, Value::Unit);
+            }
         }
     }
 
@@ -1329,17 +1344,20 @@ fn run_passes(
                     FunBody::Native(_) => unreachable!("native handled above"),
                 };
                 let captured = env.clone();
-                env.set(
-                    &f.name,
-                    Value::Callable(RuntimeCallable::Closure(Rc::new(ClosureValue {
-                        name: Some(f.name.clone()),
-                        params: f.params.clone(),
-                        body,
-                        captured,
-                        type_ctx: ctx,
-                        fun_type: None,
-                    }))),
-                );
+                let value = Value::Callable(RuntimeCallable::Closure(Rc::new(ClosureValue {
+                    name: Some(f.name.clone()),
+                    params: f.params.clone(),
+                    body,
+                    captured,
+                    type_ctx: ctx,
+                    fun_type: None,
+                })));
+                match f.symbol_id {
+                    Some(id) => runtime.register_symbol_value(id, value),
+                    None => {
+                        env.set(&f.name, value);
+                    }
+                }
             }
             TypedDecl::Impl(impl_block) => {
                 if let crate::ast::TypeExpr::Named(type_name, _) = &impl_block.target_type {
@@ -2483,9 +2501,26 @@ pub fn eval_expr(
         }
 
         TypedExpr::Call {
-            callee, args, span, ..
+            callee,
+            args,
+            callee_id,
+            span,
+            ..
         } => {
-            let func_val = eval_expr(callee, env, runtime)?.into_value();
+            // Overloaded callees (METEL-180) carry the selected definition's
+            // SymbolId; dispatch through the symbol registry instead of
+            // evaluating the (shared, name-ambiguous) callee expression.
+            let func_val = match callee_id {
+                Some(id) => runtime
+                    .get_symbol_value(*id)
+                    .cloned()
+                    .ok_or_else(|| {
+                        MetelError::internal(format!(
+                            "no runtime value registered for overload symbol {id:?}"
+                        ))
+                    })?,
+                None => eval_expr(callee, env, runtime)?.into_value(),
+            };
             let arg_vals: Vec<Value> = args
                 .iter()
                 .map(|a| eval_expr(a, env, runtime).map(Signal::into_value))

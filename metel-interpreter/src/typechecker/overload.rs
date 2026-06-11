@@ -8,27 +8,32 @@
 //! equal a candidate's parameter types exactly. Implicit numeric `From`
 //! coercions do **not** participate in overload selection (decided in sprint 22).
 //!
-//! Implementation strategy: each overloaded definition is given a unique mangled
-//! runtime name (`print$i32`, `print$i64`). Construction rewrites both the
-//! declaration name and every call site to the mangled name, so the rest of the
-//! pipeline — the elaborator, the runtime environment, and call dispatch — needs
-//! no overload-specific logic: mangled names are simply distinct names.
-//!
-//! NOTE (intermediate design): name mangling is a v1 mechanism. The intended end
-//! state is `SymbolId`-based dispatch for all calls. When that lands (folded into
-//! METEL-181, where builtins also gain `SymbolId`s), the *selection* logic here
-//! ([`build_overload_table`], [`select`]) is retained but repointed to yield a
-//! `SymbolId`/`CalleeId`, and the string [`mangle`] machinery plus the
-//! construction-time name rewriting are deleted.
+//! Implementation strategy: each overloaded definition is assigned a unique
+//! [`SymbolId`] from a dedicated range (see `symbols::OVERLOAD_SYM_START`).
+//! Construction selects the matching candidate at each call site and stamps its
+//! id into `TypedExpr::Call::callee_id`; the evaluator registers each
+//! overloaded definition under its id and dispatches such calls through its
+//! symbol registry. Names never disambiguate overloads anywhere in the pipeline.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::ast::{Decl, Expr, FunDecl, Span};
 use crate::error::{MetelError, TypeErrorCode};
+use crate::symbols::SymbolId;
 use crate::types::Type;
 use crate::typeinference::{OverloadEntry, OverloadTable};
 
 use super::conversions::{infer_type_to_type, type_expr_to_infer};
+
+/// Process-global allocator for overload-definition SymbolIds. Overload tables
+/// are built per module; the global counter keeps ids unique across the whole
+/// graph so the evaluator's symbol registry never collides.
+static NEXT_OVERLOAD_SYM: AtomicU32 = AtomicU32::new(crate::symbols::OVERLOAD_SYM_START);
+
+fn next_overload_symbol() -> SymbolId {
+    SymbolId(NEXT_OVERLOAD_SYM.fetch_add(1, Ordering::Relaxed))
+}
 
 /// Build the overload table for a module's top-level declarations.
 ///
@@ -71,11 +76,10 @@ pub(super) fn build_overload_table(decls: &[Decl]) -> Result<OverloadTable, Mete
                     &f.span,
                 ));
             }
-            let mangled = mangle(name, &params);
             entries.push(OverloadEntry {
                 params,
                 ret,
-                mangled,
+                symbol_id: next_overload_symbol(),
             });
         }
         table.insert(name.to_string(), entries);
@@ -104,30 +108,16 @@ fn fun_param_types(fun: &FunDecl) -> Result<Vec<Type>, MetelError> {
         .collect()
 }
 
-/// The mangled runtime name for an overloaded definition, or `None` if `fun`'s
-/// name is not overloaded. Matches the declaration against the table by its
-/// concrete parameter signature.
-pub(super) fn mangled_for_decl(table: &OverloadTable, fun: &FunDecl) -> Option<String> {
-    let entries = table.get(fun.name.as_str())?;
-    mangled_for_entries(entries, fun)
-}
-
-/// Same as [`mangled_for_decl`] but reads the overload set from an
-/// [`InferContext`] (used during the inference pass).
-pub(super) fn mangled_for_decl_in_ctx(
-    ctx: &crate::typeinference::InferContext,
+/// The overload entry for a declaration, or `None` if `fun`'s name is not
+/// overloaded. Matches the declaration against the table by its concrete
+/// parameter signature.
+pub(super) fn entry_for_decl<'a>(
+    table: &'a OverloadTable,
     fun: &FunDecl,
-) -> Option<String> {
-    let entries = ctx.overload_candidates(fun.name.as_str())?;
-    mangled_for_entries(entries, fun)
-}
-
-fn mangled_for_entries(entries: &[OverloadEntry], fun: &FunDecl) -> Option<String> {
+) -> Option<&'a OverloadEntry> {
+    let entries = table.get(fun.name.as_str())?;
     let params = fun_param_types(fun).ok()?;
-    entries
-        .iter()
-        .find(|e| e.params == params)
-        .map(|e| e.mangled.clone())
+    entries.iter().find(|e| e.params == params)
 }
 
 /// Select the overload candidate whose parameters exactly match `arg_types`.
@@ -148,36 +138,6 @@ pub(super) fn callee_name(callee: &Expr) -> Option<&str> {
         Expr::Ident(name, _) => Some(name.as_str()),
         Expr::ResolvedPath { resolved, .. } => Some(resolved.as_str()),
         _ => None,
-    }
-}
-
-/// Build a stable, collision-free runtime name for an overloaded definition.
-pub(super) fn mangle(name: &str, params: &[Type]) -> String {
-    let mut s = String::from(name);
-    for p in params {
-        s.push('$');
-        s.push_str(&type_mangle(p));
-    }
-    s
-}
-
-fn type_mangle(ty: &Type) -> String {
-    match ty {
-        Type::Named(n, args) if args.is_empty() => n.clone(),
-        Type::Named(n, args) => {
-            let inner = args.iter().map(type_mangle).collect::<Vec<_>>().join(".");
-            format!("{n}_{inner}_")
-        }
-        Type::Array(inner) => format!("arr.{}", type_mangle(inner)),
-        Type::SizedArray(inner, len) => format!("arr.{}.{len}", type_mangle(inner)),
-        Type::Pointer(inner) => format!("ptr.{}", type_mangle(inner)),
-        Type::MutPointer(inner) => format!("mptr.{}", type_mangle(inner)),
-        Type::Tuple(items) => {
-            let inner = items.iter().map(type_mangle).collect::<Vec<_>>().join(".");
-            format!("tup.{inner}.")
-        }
-        // Primitives and Unit/Never have simple Display forms with no separators.
-        other => format!("{other}"),
     }
 }
 
@@ -215,27 +175,20 @@ mod tests {
     use crate::typeinference::OverloadEntry;
 
     fn entry(params: Vec<Type>, ret: Type) -> OverloadEntry {
-        let mangled = mangle("f", &params);
         OverloadEntry {
             params,
             ret,
-            mangled,
+            symbol_id: next_overload_symbol(),
         }
     }
 
     #[test]
-    fn mangle_is_distinct_per_signature() {
-        assert_eq!(mangle("print", &[Type::I32]), "print$i32");
-        assert_eq!(mangle("print", &[Type::I64]), "print$i64");
-        assert_ne!(
-            mangle("f", &[Type::I32, Type::Str]),
-            mangle("f", &[Type::Str, Type::I32]),
-            "argument order must affect the mangled name"
-        );
-        assert_eq!(
-            mangle("f", &[Type::Named("Foo".into(), vec![])]),
-            "f$Foo"
-        );
+    fn overload_symbol_ids_are_unique_and_in_range() {
+        let a = next_overload_symbol();
+        let b = next_overload_symbol();
+        assert_ne!(a, b);
+        assert!(a.0 >= crate::symbols::OVERLOAD_SYM_START);
+        assert!(b.0 >= crate::symbols::OVERLOAD_SYM_START);
     }
 
     #[test]
@@ -246,12 +199,12 @@ mod tests {
         ];
         // Exact match picks the right candidate.
         assert_eq!(
-            select(&entries, &[Type::I32]).unwrap().mangled,
-            "f$i32"
+            select(&entries, &[Type::I32]).unwrap().symbol_id,
+            entries[0].symbol_id
         );
         assert_eq!(
-            select(&entries, &[Type::I64]).unwrap().mangled,
-            "f$i64"
+            select(&entries, &[Type::I64]).unwrap().symbol_id,
+            entries[1].symbol_id
         );
         // No coercion: a type with no exact candidate does not match.
         assert!(select(&entries, &[Type::I16]).is_none());
