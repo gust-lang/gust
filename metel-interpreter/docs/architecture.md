@@ -60,7 +60,7 @@ metel-interpreter/
     ├── typeinference/     — HM inference engine: type vars, unification, constraints, schemes
     ├── typechecker/       — two-pass type checker; produces typed AST
     │   ├── mod.rs         — check() / check_graph() entry points, CorePrelude, GlobalExports
-    │   ├── registry.rs    — build_registry, register_builtins, concrete env builders
+    │   ├── registry.rs    — build_registry (drives populate_schemes_from_embedded_core + register_program_decls), concrete env builders
     │   ├── inference.rs   — Pass 1: all infer_* functions
     │   ├── construction.rs— Pass 2: ConstructCtx, construct_* functions, exhaustiveness
     │   └── conversions.rs — type_expr_to_infer, infer_type_to_type, type_to_infer

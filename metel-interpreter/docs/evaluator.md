@@ -1,6 +1,6 @@
 # Evaluator Implementation Notes
 
-> Status: v0.8.1 — elaboration pipeline wired (METEL-151/152): evaluator now takes `ElaboratedModuleGraph` and dispatches aspect method calls by `SymbolId` rather than by string name.  
+> Status: v0.8.3 — SymbolId dispatch for overloads (METEL-180/181): `RuntimeRegistry` gains `symbol_values: HashMap<SymbolId, Value>` for overloaded functions; `TypedExpr::Call::callee_id: Some(id)` bypasses lexical-env lookup. `register_core_natives_from_embedded` derives all std::core native bindings from the embedded `core.mtl` AST rather than hand-registration. `List<T>` native methods and primitive `Display` / `From` impls are live at runtime via `NativeKey` dispatch.  
 > The evaluator is intentionally the simplest correct implementation. It will be rewritten before production use. Do not over-engineer it; open new issues for correctness gaps instead of adding complexity here.
 
 ---

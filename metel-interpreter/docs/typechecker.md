@@ -49,7 +49,8 @@ Entry points:
 | File | Responsibility |
 |---|---|
 | `mod.rs` | `check()` / `check_graph()` entry points; `CorePrelude`, `GlobalExports`, `check_impl` |
-| `registry.rs` | `build_registry`, `register_builtins`, `build_concrete_*_env`; registers aspect declaring modules for elaboration |
+| `registry.rs` | `build_registry` (drives `populate_schemes_from_embedded_core` + `register_program_decls`), `build_concrete_*_env`; registers aspect declaring modules for elaboration |
+| `overload.rs` | `build_overload_table`, `core_overload_table()`, `select`, `no_match_error`; SymbolId allocation for overload sets |
 | `inference.rs` | Pass 1 — all `infer_*` functions |
 | `construction.rs` | Pass 2 — `ConstructCtx`, all `construct_*` functions, exhaustiveness checking; `ConstructCtx` carries `symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>` threaded from `check_graph` so `construct_impl_decl` can set `TypedImplBlock::aspect_id` |
 | `conversions.rs` | `type_expr_to_infer`, `infer_type_to_type`, `resolved_to_type`, `type_to_infer` |
@@ -147,9 +148,9 @@ The HM algorithm infers types at rank 1: `∀` only at the outermost level. High
 
 Three hoisting steps run before Pass 1:
 
-1. `register_builtins` — binds built-in function names (`print`, `array_push`, etc.) as `TypeScheme` entries in `ctx.poly_env`, and registers `String.len` in `ctx.method_env`.
-2. `build_registry` (via `TypeDefinitionRegistry`) — registers `Perhaps<T>` and `Result<T,E>` with their type params as fresh type variables, user-defined enum variants, struct field types, and method signatures.
-3. `hoist_fun_decls` — walks top-level `FunDecl`s and pre-registers each with a fresh type variable in both `ctx.mono_env` and `ctx.poly_env`. Enables forward references, mutual recursion, and shadowing of `std::core` builtin names.
+1. `build_registry` (via `TypeDefinitionRegistry`) — registers types, aspects, and impls. It first calls `populate_schemes_from_embedded_core` to derive schemes for all `std::core` declarations (including `print`/`println`/`assert` with their aspect bounds, and `String::len` as a derived method entry), then calls `register_program_decls` for the user module. The old hand-maintained `register_builtins` step no longer exists — every stdlib item is derived from the embedded `core.mtl` source (ADR-0039).
+2. `build_overload_table` — groups same-name `fun` declarations into overload sets; assigns each definition a process-unique `SymbolId` from the `OVERLOAD_SYM_START` range. Overloaded names are not registered in the scheme env and are resolved by exact-match candidate selection in Pass 1 (ADR-0038).
+3. `hoist_fun_decls` — walks top-level non-overloaded `FunDecl`s and pre-registers each with a fresh type variable in both `ctx.mono_env` and `ctx.poly_env`. Enables forward references, mutual recursion, and shadowing of `std::core` names. Native decls are hoisted with bounds derived from their annotated parameter types.
 
 `hoist_fun_decls` is also called at block entry in `infer_block`, so nested functions support forward references within their block.
 
