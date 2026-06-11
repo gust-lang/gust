@@ -29,6 +29,40 @@ pub enum NativeKey {
     StdCoreClock,
     /// `String::len` — number of characters in a string.
     StdCoreStringLen,
+    /// `String::is_empty(self) -> boolean`.
+    StdCoreStringIsEmpty,
+    /// `String::to_upper(self) -> String`.
+    StdCoreStringToUpper,
+    /// `String::to_lower(self) -> String`.
+    StdCoreStringToLower,
+    /// `String::trim(self) -> String`.
+    StdCoreStringTrim,
+    /// `String::trim_start(self) -> String`.
+    StdCoreStringTrimStart,
+    /// `String::trim_end(self) -> String`.
+    StdCoreStringTrimEnd,
+    /// `String::contains(self, String) -> boolean`.
+    StdCoreStringContains,
+    /// `String::starts_with(self, String) -> boolean`.
+    StdCoreStringStartsWith,
+    /// `String::ends_with(self, String) -> boolean`.
+    StdCoreStringEndsWith,
+    /// `String::index_of(self, String) -> Perhaps<i64>` — scalar index.
+    StdCoreStringIndexOf,
+    /// `String::split(self, String) -> String[]`.
+    StdCoreStringSplit,
+    /// `String::replace(self, String, String) -> String`.
+    StdCoreStringReplace,
+    /// `String::repeat(self, i64) -> String`.
+    StdCoreStringRepeat,
+    /// `String::join(String[], String) -> String` — associated (no receiver).
+    StdCoreStringJoin,
+    /// `String::chars(self) -> Char[]`.
+    StdCoreStringChars,
+    /// `String::char_at(self, i64) -> Perhaps<Char>` — scalar index.
+    StdCoreStringCharAt,
+    /// `String::substring(self, i64, i64) -> String` — clamped scalar range.
+    StdCoreStringSubstring,
     /// `Display::to_string` for every displayable primitive — the host formats
     /// the receiver by its runtime value, so one key serves all 13 impls.
     StdCoreToString,
@@ -119,6 +153,23 @@ impl NativeKey {
             ["std", "core", "assert_msg"] => NativeKey::StdCoreAssertMsg,
             ["std", "core", "clock"] => NativeKey::StdCoreClock,
             ["std", "core", "string_len"] => NativeKey::StdCoreStringLen,
+            ["std", "core", "string_is_empty"] => NativeKey::StdCoreStringIsEmpty,
+            ["std", "core", "string_to_upper"] => NativeKey::StdCoreStringToUpper,
+            ["std", "core", "string_to_lower"] => NativeKey::StdCoreStringToLower,
+            ["std", "core", "string_trim"] => NativeKey::StdCoreStringTrim,
+            ["std", "core", "string_trim_start"] => NativeKey::StdCoreStringTrimStart,
+            ["std", "core", "string_trim_end"] => NativeKey::StdCoreStringTrimEnd,
+            ["std", "core", "string_contains"] => NativeKey::StdCoreStringContains,
+            ["std", "core", "string_starts_with"] => NativeKey::StdCoreStringStartsWith,
+            ["std", "core", "string_ends_with"] => NativeKey::StdCoreStringEndsWith,
+            ["std", "core", "string_index_of"] => NativeKey::StdCoreStringIndexOf,
+            ["std", "core", "string_split"] => NativeKey::StdCoreStringSplit,
+            ["std", "core", "string_replace"] => NativeKey::StdCoreStringReplace,
+            ["std", "core", "string_repeat"] => NativeKey::StdCoreStringRepeat,
+            ["std", "core", "string_join"] => NativeKey::StdCoreStringJoin,
+            ["std", "core", "string_chars"] => NativeKey::StdCoreStringChars,
+            ["std", "core", "string_char_at"] => NativeKey::StdCoreStringCharAt,
+            ["std", "core", "string_substring"] => NativeKey::StdCoreStringSubstring,
             ["std", "core", "to_string"] => NativeKey::StdCoreToString,
             ["std", "core", "i8_from"] => NativeKey::StdCoreI8From,
             ["std", "core", "i16_from"] => NativeKey::StdCoreI16From,
@@ -167,6 +218,23 @@ impl NativeKey {
             NativeKey::StdCoreAssertMsg => "@std.core.assert_msg",
             NativeKey::StdCoreClock => "@std.core.clock",
             NativeKey::StdCoreStringLen => "@std.core.string_len",
+            NativeKey::StdCoreStringIsEmpty => "@std.core.string_is_empty",
+            NativeKey::StdCoreStringToUpper => "@std.core.string_to_upper",
+            NativeKey::StdCoreStringToLower => "@std.core.string_to_lower",
+            NativeKey::StdCoreStringTrim => "@std.core.string_trim",
+            NativeKey::StdCoreStringTrimStart => "@std.core.string_trim_start",
+            NativeKey::StdCoreStringTrimEnd => "@std.core.string_trim_end",
+            NativeKey::StdCoreStringContains => "@std.core.string_contains",
+            NativeKey::StdCoreStringStartsWith => "@std.core.string_starts_with",
+            NativeKey::StdCoreStringEndsWith => "@std.core.string_ends_with",
+            NativeKey::StdCoreStringIndexOf => "@std.core.string_index_of",
+            NativeKey::StdCoreStringSplit => "@std.core.string_split",
+            NativeKey::StdCoreStringReplace => "@std.core.string_replace",
+            NativeKey::StdCoreStringRepeat => "@std.core.string_repeat",
+            NativeKey::StdCoreStringJoin => "@std.core.string_join",
+            NativeKey::StdCoreStringChars => "@std.core.string_chars",
+            NativeKey::StdCoreStringCharAt => "@std.core.string_char_at",
+            NativeKey::StdCoreStringSubstring => "@std.core.string_substring",
             NativeKey::StdCoreToString => "@std.core.to_string",
             NativeKey::StdCoreI8From => "@std.core.i8_from",
             NativeKey::StdCoreI16From => "@std.core.i16_from",
@@ -213,6 +281,23 @@ impl NativeKey {
         NativeKey::StdCoreAssertMsg,
         NativeKey::StdCoreClock,
         NativeKey::StdCoreStringLen,
+        NativeKey::StdCoreStringIsEmpty,
+        NativeKey::StdCoreStringToUpper,
+        NativeKey::StdCoreStringToLower,
+        NativeKey::StdCoreStringTrim,
+        NativeKey::StdCoreStringTrimStart,
+        NativeKey::StdCoreStringTrimEnd,
+        NativeKey::StdCoreStringContains,
+        NativeKey::StdCoreStringStartsWith,
+        NativeKey::StdCoreStringEndsWith,
+        NativeKey::StdCoreStringIndexOf,
+        NativeKey::StdCoreStringSplit,
+        NativeKey::StdCoreStringReplace,
+        NativeKey::StdCoreStringRepeat,
+        NativeKey::StdCoreStringJoin,
+        NativeKey::StdCoreStringChars,
+        NativeKey::StdCoreStringCharAt,
+        NativeKey::StdCoreStringSubstring,
         NativeKey::StdCoreToString,
         NativeKey::StdCoreI8From,
         NativeKey::StdCoreI16From,

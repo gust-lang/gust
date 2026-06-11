@@ -1,0 +1,47 @@
+// std::core String utility methods (METEL-193). Native-backed methods on the
+// String primitive, auto-imported via std::core. Indexing is by Unicode scalar
+// and total (out-of-range clamps or yields None).
+
+fun main() {
+    // ── Case & trim ──────────────────────────────────────────────────────────
+    assert("  Hello, World  ".trim() == "Hello, World");
+    assert("  x".trim_start() == "x");
+    assert("x  ".trim_end() == "x");
+    assert("abc".to_upper() == "ABC");
+    assert("ABC".to_lower() == "abc");
+    assert("".is_empty());
+    assert(!"x".is_empty());
+
+    // ── Search & test ────────────────────────────────────────────────────────
+    assert("hello world".contains("world"));
+    assert(!"hello".contains("z"));
+    assert("hello".starts_with("he"));
+    assert("hello".ends_with("lo"));
+    assert("hello".index_of("l").unwrap_or(-1) == 2);
+    assert("hello".index_of("z").is_none());
+
+    // ── Split, join, replace ─────────────────────────────────────────────────
+    let parts = "a,b,c".split(",");
+    assert(parts.len() == 3);
+    assert(parts[0] == "a");
+    assert(parts[2] == "c");
+    assert("a-b-c".replace("-", "+") == "a+b+c");
+    assert("ab".repeat(3) == "ababab");
+    assert("ab".repeat(0) == "");
+    assert(String::join(["a", "b","c"], "-") == "a-b-c");
+    assert(String::join([] : String[], ",") == "");
+
+    // ── Chars & slicing ──────────────────────────────────────────────────────
+    // 'é' is one Unicode scalar, so chars()/len() count it once.
+    let cs = "héllo".chars();
+    assert(cs.len() == 5);
+    assert(cs[0] == 'h');
+    assert("abc".char_at(1).unwrap_or('z') == 'b');
+    assert("abc".char_at(9).is_none());
+    assert("abc".char_at(0 - 1).is_none());
+    assert("hello".substring(1, 4) == "ell");
+    assert("hello".substring(3, 100) == "lo");   // end clamps to length
+    assert("hello".substring(4, 2) == "");       // reversed range -> empty
+
+    println("ok");
+}

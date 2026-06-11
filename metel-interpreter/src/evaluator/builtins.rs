@@ -130,6 +130,175 @@ fn native_string_len(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value
     }
 }
 
+// ── std::core String utilities (METEL-193) ─────────────────────────────────
+// Index-based operations are in Unicode scalars (consistent with len) and total:
+// out-of-range indices clamp or yield None. The receiver String arrives as the
+// first argument (the method-call path inserts it ahead of the explicit args).
+
+fn i64_at(args: &[Value], idx: usize, label: &str) -> Result<i64, MetelError> {
+    match args.get(idx) {
+        Some(Value::I64(n)) => Ok(*n),
+        _ => Err(MetelError::internal(format!(
+            "{label}: expected an i64 argument at position {idx}"
+        ))),
+    }
+}
+
+fn string_array_value(strings: Vec<String>) -> Value {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    Value::Array(Rc::new(RefCell::new(
+        strings.into_iter().map(Value::Str).collect(),
+    )))
+}
+
+fn native_string_is_empty(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    Ok(Value::Boolean(str_at(&args, 0, "string_is_empty")?.is_empty()))
+}
+
+fn native_string_to_upper(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    Ok(Value::Str(str_at(&args, 0, "string_to_upper")?.to_uppercase()))
+}
+
+fn native_string_to_lower(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    Ok(Value::Str(str_at(&args, 0, "string_to_lower")?.to_lowercase()))
+}
+
+fn native_string_trim(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    Ok(Value::Str(str_at(&args, 0, "string_trim")?.trim().to_string()))
+}
+
+fn native_string_trim_start(
+    args: Vec<Value>,
+    _span: &crate::ast::Span,
+) -> Result<Value, MetelError> {
+    Ok(Value::Str(
+        str_at(&args, 0, "string_trim_start")?
+            .trim_start()
+            .to_string(),
+    ))
+}
+
+fn native_string_trim_end(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    Ok(Value::Str(
+        str_at(&args, 0, "string_trim_end")?.trim_end().to_string(),
+    ))
+}
+
+fn native_string_contains(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let s = str_at(&args, 0, "string_contains")?;
+    let needle = str_at(&args, 1, "string_contains")?;
+    Ok(Value::Boolean(s.contains(&needle)))
+}
+
+fn native_string_starts_with(
+    args: Vec<Value>,
+    _span: &crate::ast::Span,
+) -> Result<Value, MetelError> {
+    let s = str_at(&args, 0, "string_starts_with")?;
+    let prefix = str_at(&args, 1, "string_starts_with")?;
+    Ok(Value::Boolean(s.starts_with(&prefix)))
+}
+
+fn native_string_ends_with(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let s = str_at(&args, 0, "string_ends_with")?;
+    let suffix = str_at(&args, 1, "string_ends_with")?;
+    Ok(Value::Boolean(s.ends_with(&suffix)))
+}
+
+fn native_string_index_of(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let s = str_at(&args, 0, "string_index_of")?;
+    let needle = str_at(&args, 1, "string_index_of")?;
+    // Convert the byte offset of the match to a scalar (char) index.
+    let found = s
+        .find(&needle)
+        .map(|byte_idx| Value::I64(s[..byte_idx].chars().count() as i64));
+    Ok(perhaps_value(found))
+}
+
+fn native_string_split(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let s = str_at(&args, 0, "string_split")?;
+    let sep = str_at(&args, 1, "string_split")?;
+    let parts: Vec<String> = if sep.is_empty() {
+        vec![s]
+    } else {
+        s.split(sep.as_str()).map(str::to_string).collect()
+    };
+    Ok(string_array_value(parts))
+}
+
+fn native_string_replace(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let s = str_at(&args, 0, "string_replace")?;
+    let from = str_at(&args, 1, "string_replace")?;
+    let to = str_at(&args, 2, "string_replace")?;
+    Ok(Value::Str(s.replace(from.as_str(), to.as_str())))
+}
+
+fn native_string_repeat(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let s = str_at(&args, 0, "string_repeat")?;
+    let n = i64_at(&args, 1, "string_repeat")?;
+    Ok(Value::Str(if n <= 0 {
+        String::new()
+    } else {
+        s.repeat(n as usize)
+    }))
+}
+
+fn native_string_join(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let parts: Vec<String> = match args.first() {
+        Some(Value::Array(arr)) => arr
+            .borrow()
+            .iter()
+            .map(|v| match v {
+                Value::Str(s) => Ok(s.clone()),
+                _ => Err(MetelError::internal(
+                    "String::join: parts array must contain Strings",
+                )),
+            })
+            .collect::<Result<_, _>>()?,
+        _ => {
+            return Err(MetelError::internal(
+                "String::join: expected (String[], String)",
+            ))
+        }
+    };
+    let sep = str_at(&args, 1, "String::join")?;
+    Ok(Value::Str(parts.join(sep.as_str())))
+}
+
+fn native_string_chars(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    let s = str_at(&args, 0, "string_chars")?;
+    let chars: Vec<Value> = s.chars().map(Value::Char).collect();
+    Ok(Value::Array(Rc::new(RefCell::new(chars))))
+}
+
+fn native_string_char_at(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let s = str_at(&args, 0, "string_char_at")?;
+    let i = i64_at(&args, 1, "string_char_at")?;
+    let found = if i < 0 {
+        None
+    } else {
+        s.chars().nth(i as usize).map(Value::Char)
+    };
+    Ok(perhaps_value(found))
+}
+
+fn native_string_substring(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let s = str_at(&args, 0, "string_substring")?;
+    let chars: Vec<char> = s.chars().collect();
+    let len = chars.len() as i64;
+    let start = i64_at(&args, 1, "string_substring")?.clamp(0, len) as usize;
+    let end = i64_at(&args, 2, "string_substring")?.clamp(0, len) as usize;
+    let sub: String = if start < end {
+        chars[start..end].iter().collect()
+    } else {
+        String::new()
+    };
+    Ok(Value::Str(sub))
+}
+
 // `Display::to_string` for every displayable primitive: one host fn formats the
 // receiver by its runtime value, so all 13 std::core impls share one NativeKey.
 fn native_to_string(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
@@ -535,6 +704,27 @@ pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
             NativeKey::StdCoreAssertMsg => ("std::core::assert_msg", native_assert_msg),
             NativeKey::StdCoreClock => ("std::core::clock", native_clock),
             NativeKey::StdCoreStringLen => ("String::len", native_string_len),
+            NativeKey::StdCoreStringIsEmpty => ("String::is_empty", native_string_is_empty),
+            NativeKey::StdCoreStringToUpper => ("String::to_upper", native_string_to_upper),
+            NativeKey::StdCoreStringToLower => ("String::to_lower", native_string_to_lower),
+            NativeKey::StdCoreStringTrim => ("String::trim", native_string_trim),
+            NativeKey::StdCoreStringTrimStart => {
+                ("String::trim_start", native_string_trim_start)
+            }
+            NativeKey::StdCoreStringTrimEnd => ("String::trim_end", native_string_trim_end),
+            NativeKey::StdCoreStringContains => ("String::contains", native_string_contains),
+            NativeKey::StdCoreStringStartsWith => {
+                ("String::starts_with", native_string_starts_with)
+            }
+            NativeKey::StdCoreStringEndsWith => ("String::ends_with", native_string_ends_with),
+            NativeKey::StdCoreStringIndexOf => ("String::index_of", native_string_index_of),
+            NativeKey::StdCoreStringSplit => ("String::split", native_string_split),
+            NativeKey::StdCoreStringReplace => ("String::replace", native_string_replace),
+            NativeKey::StdCoreStringRepeat => ("String::repeat", native_string_repeat),
+            NativeKey::StdCoreStringJoin => ("String::join", native_string_join),
+            NativeKey::StdCoreStringChars => ("String::chars", native_string_chars),
+            NativeKey::StdCoreStringCharAt => ("String::char_at", native_string_char_at),
+            NativeKey::StdCoreStringSubstring => ("String::substring", native_string_substring),
             NativeKey::StdCoreToString => ("Display::to_string", native_to_string),
             NativeKey::StdCoreI8From => ("i8::from", native_i8_from),
             NativeKey::StdCoreI16From => ("i16::from", native_i16_from),
