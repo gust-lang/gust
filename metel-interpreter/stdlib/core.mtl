@@ -66,8 +66,8 @@ impl String {
 // ── Free functions ──────────────────────────────────────────────────────────
 
 // print/println/dbg are generic over any Displayable value (the host formats it).
-native(@std.core.print)      pub fun print<T>(x: T);
-native(@std.core.println)    pub fun println<T>(x: T);
+native(@std.core.print)      pub fun print<T: Display>(x: T);
+native(@std.core.println)    pub fun println<T: Display>(x: T);
 native(@std.core.dbg)        pub fun dbg<T>(x: T) -> T;
 // assert is overloaded: with and without a panic message.
 native(@std.core.assert)     pub fun assert(cond: boolean);

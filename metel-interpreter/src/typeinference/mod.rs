@@ -545,6 +545,11 @@ pub struct TypeScheme {
     pub quantified_vars: Vec<TypeVar>,
     /// Source-level names for quantified vars (same order). Empty for builtins.
     pub param_names: Vec<String>,
+    /// Aspect bounds per quantified var (same order; empty Vec = unbounded).
+    /// Bounds travel WITH the scheme so they survive prelude derivation and
+    /// the export alpha-renaming, unlike the TypeVar-keyed `fun_bounds`
+    /// registry (which only works within the defining module).
+    pub bounds: Vec<Vec<String>>,
     pub ty: InferType,
 }
 
@@ -554,8 +559,23 @@ impl TypeScheme {
         Self {
             quantified_vars: vec![],
             param_names: vec![],
+            bounds: vec![],
             ty,
         }
+    }
+
+    /// Attach per-var aspect bounds, given a TypeVar → bounds map. Robust to
+    /// quantifier ordering: each quantified var looks up its own entry.
+    pub fn with_bounds(mut self, by_var: &std::collections::HashMap<TypeVar, Vec<String>>) -> Self {
+        if by_var.values().all(|b| b.is_empty()) {
+            return self;
+        }
+        self.bounds = self
+            .quantified_vars
+            .iter()
+            .map(|v| by_var.get(v).cloned().unwrap_or_default())
+            .collect();
+        self
     }
 }
 
@@ -587,6 +607,7 @@ pub fn generalize(ty: InferType, env_free_vars: &HashSet<TypeVar>) -> TypeScheme
     TypeScheme {
         quantified_vars: quantified,
         param_names: vec![],
+        bounds: vec![],
         ty,
     }
 }
@@ -1421,6 +1442,14 @@ impl InferContext {
             .unwrap()
             .entry(name.into())
             .or_insert(scheme);
+    }
+
+    /// Whether any scope binds `name` (poly or mono), without instantiating.
+    /// Used by overload resolution to decide if a failed exact-match can fall
+    /// back to a non-overload binding (e.g. the std::core generic `print`).
+    pub fn has_binding(&self, name: &str) -> bool {
+        self.poly_env.iter().any(|sc| sc.contains_key(name))
+            || self.mono_env.iter().any(|sc| sc.contains_key(name))
     }
 
     /// Look up a name. Polymorphic bindings are automatically instantiated with

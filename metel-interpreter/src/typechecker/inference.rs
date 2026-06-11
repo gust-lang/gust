@@ -26,12 +26,18 @@ fn ann_to_infer(te: &TypeExpr, ctx: &InferContext) -> InferType {
 
 /// Register the names of all direct `FunDecl`s in `decls` with fresh type
 /// variables so that forward references and mutual recursion work.
-/// The function type of a `native` declaration, built from its annotations.
-/// Native functions must be non-generic and fully annotated.
-fn native_fun_ty(fun: &FunDecl, ctx: &mut InferContext) -> Result<InferType, MetelError> {
-    // Generic native functions (e.g. `List::new<T>`) map each type parameter to a
-    // fresh TypeVar; the caller generalizes the result into a polymorphic scheme.
+/// The function type of a `native` declaration, built from its annotations,
+/// plus the aspect bounds of its generic params keyed by their TypeVars (so
+/// the caller can attach them to the generalized scheme).
+fn native_fun_ty(
+    fun: &FunDecl,
+    ctx: &mut InferContext,
+) -> Result<(InferType, HashMap<TypeVar, Vec<String>>), MetelError> {
+    // Generic native functions (e.g. `print<T: Display>`) map each type
+    // parameter to a fresh TypeVar; the caller generalizes the result into a
+    // polymorphic scheme carrying the bounds.
     let generic_map = fun_generic_map(fun, ctx);
+    let bounds_by_var = collect_fun_type_var_bounds(fun, &generic_map);
     let te_to_infer = |te: &TypeExpr| -> InferType {
         if generic_map.is_empty() {
             type_expr_to_infer(te)
@@ -57,7 +63,7 @@ fn native_fun_ty(fun: &FunDecl, ctx: &mut InferContext) -> Result<InferType, Met
         Some(te) => te_to_infer(te),
         None => InferType::unit(),
     };
-    Ok(InferType::Fun(param_types, Box::new(ret_ty)))
+    Ok((InferType::Fun(param_types, Box::new(ret_ty)), bounds_by_var))
 }
 
 pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
@@ -74,9 +80,9 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
             // bind it eagerly so forward references resolve. Errors here surface
             // again (deterministically) in infer_fun_decl.
             if fun.native.is_some() {
-                if let Ok(fun_ty) = native_fun_ty(fun, ctx) {
+                if let Ok((fun_ty, bounds)) = native_fun_ty(fun, ctx) {
                     let env_fvs = ctx.env_free_vars();
-                    ctx.bind_poly(&fun.name, generalize(fun_ty, &env_fvs));
+                    ctx.bind_poly(&fun.name, generalize(fun_ty, &env_fvs).with_bounds(&bounds));
                 }
                 continue;
             }
@@ -131,7 +137,7 @@ fn fun_generic_map(fun: &FunDecl, ctx: &mut InferContext) -> HashMap<String, Typ
         .collect()
 }
 
-fn collect_fun_type_var_bounds(
+pub(super) fn collect_fun_type_var_bounds(
     fun: &FunDecl,
     generic_map: &HashMap<String, TypeVar>,
 ) -> HashMap<TypeVar, Vec<String>> {
@@ -217,6 +223,7 @@ fn infer_decl(
                         fun_ty: resolved_ty,
                         env_fvs,
                         name_map: HashMap::new(),
+                        bounds: HashMap::new(),
                     });
                     return Ok(InferType::unit());
                 }
@@ -289,19 +296,23 @@ fn infer_fun_decl(
     // Native functions have no Metel body to infer. Validate and record their
     // annotated signature for the construction pass; dispatch is by NativeKey.
     if fun.native.is_some() {
-        let fun_ty = native_fun_ty(fun, ctx)?;
+        let (fun_ty, bounds) = native_fun_ty(fun, ctx)?;
         // Overloaded native definitions (std::core's assert pair) are
         // dispatched by SymbolId and never enter the name-keyed scheme env.
         if ctx.is_overloaded(&fun.name) {
             return Ok(());
         }
         let env_fvs = ctx.env_free_vars();
-        ctx.bind_poly(&fun.name, generalize(fun_ty.clone(), &env_fvs));
+        ctx.bind_poly(
+            &fun.name,
+            generalize(fun_ty.clone(), &env_fvs).with_bounds(&bounds),
+        );
         fun_generalizations.push(FunGeneralization {
             name: fun.name.clone(),
             fun_ty,
             env_fvs,
             name_map: HashMap::new(),
+            bounds,
         });
         return Ok(());
     }
@@ -352,7 +363,7 @@ fn infer_fun_decl(
     let orig_name_map: HashMap<TypeVar, String> =
         generic_map.iter().map(|(n, &tv)| (tv, n.clone())).collect();
     let saved_type_params = ctx.swap_type_params(generic_map);
-    let saved_tp_bounds = ctx.swap_type_param_bounds(type_var_bounds);
+    let saved_tp_bounds = ctx.swap_type_param_bounds(type_var_bounds.clone());
     let saved_ret = ctx.push_return_type(ret_ty.clone());
     let body_ty = infer_block(&fun.body, ctx, fun_generalizations)?;
 
@@ -405,6 +416,13 @@ fn infer_fun_decl(
             }
         })
         .collect();
+    let bounds: HashMap<TypeVar, Vec<String>> = type_var_bounds
+        .iter()
+        .filter_map(|(orig_tv, b)| match partial_subst.apply(&InferType::Var(*orig_tv)) {
+            InferType::Var(final_tv) => Some((final_tv, b.clone())),
+            _ => None,
+        })
+        .collect();
     // Store resolved_ty (post-solve) so the re-generalization in check_impl uses the
     // already-solved type and is not perturbed by a now-empty final substitution.
     fun_generalizations.push(FunGeneralization {
@@ -412,6 +430,7 @@ fn infer_fun_decl(
         fun_ty: resolved_ty,
         env_fvs,
         name_map,
+        bounds,
     });
     Ok(())
 }
@@ -904,27 +923,57 @@ fn infer_expr(
                     // the same way they type everywhere else.
                     let solved = ctx.solve()?;
                     let solved = ctx.default_literal_vars(&solved);
-                    let arg_types: Vec<Type> = arg_infer
+                    // When no candidate matches (or args can't resolve), a call
+                    // can fall back to a non-overload binding of the same name
+                    // from an outer source (the prelude / imports — e.g. the
+                    // generic std::core `print` when a module overloads `print`
+                    // for specific types). Local overload sets EXTEND such a
+                    // binding rather than replace it.
+                    let fallback = |ctx: &mut InferContext,
+                                    arg_infer: &[InferType]|
+                     -> Result<InferType, MetelError> {
+                        let callee_ty = ctx
+                            .lookup(name)
+                            .expect("has_binding checked before fallback");
+                        let ret_var = ctx.fresh_var();
+                        ctx.add_constraint(
+                            callee_ty,
+                            InferType::Fun(arg_infer.to_vec(), Box::new(ret_var.clone())),
+                            span.clone(),
+                        );
+                        Ok(ret_var)
+                    };
+                    let arg_types: Result<Vec<Type>, ()> = arg_infer
                         .iter()
-                        .map(|t| infer_type_to_type(&solved.apply(t), span))
-                        .collect::<Result<_, _>>()
-                        .map_err(|_| {
-                            MetelError::type_error(
+                        .map(|t| infer_type_to_type(&solved.apply(t), span).map_err(|_| ()))
+                        .collect();
+                    let arg_types = match arg_types {
+                        Ok(tys) => tys,
+                        Err(()) if ctx.has_binding(name) => {
+                            return fallback(ctx, &arg_infer);
+                        }
+                        Err(()) => {
+                            return Err(MetelError::type_error(
                                 TypeErrorCode::T0002,
                                 format!(
                                     "cannot resolve argument types for overloaded call to `{name}`; \
                                      add type annotations"
                                 ),
                                 span,
-                            )
-                        })?;
+                            ))
+                        }
+                    };
                     let entries = ctx.overload_candidates(name).unwrap();
                     let entry = match super::overload::select(entries, &arg_types) {
                         Some(entry) => entry.clone(),
                         None => {
+                            if ctx.has_binding(name) {
+                                return fallback(ctx, &arg_infer);
+                            }
+                            let entries = ctx.overload_candidates(name).unwrap();
                             return Err(super::overload::no_match_error(
                                 name, &arg_types, entries, span,
-                            ))
+                            ));
                         }
                     };
                     // Commit the selection: constrain each argument to the chosen

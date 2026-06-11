@@ -438,6 +438,7 @@ fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl
         Some(entry) => TypeScheme {
             quantified_vars: vec![],
             param_names: vec![],
+            bounds: vec![],
             ty: InferType::Fun(
                 entry
                     .params
@@ -2001,19 +2002,30 @@ fn construct_call(
                 .collect::<Result<_, _>>()?;
             let arg_types: Vec<Type> = typed_args.iter().map(|a| a.ty().clone()).collect();
             let entries = &ctx.overloads[name];
-            let entry = super::overload::select(entries, &arg_types).ok_or_else(|| {
-                super::overload::no_match_error(name, &arg_types, entries, span)
-            })?;
-            let fun_ty = Type::Fun(entry.params.clone(), Box::new(entry.ret.clone()));
-            let typed_callee =
-                TypedExpr::Ident(name.to_string(), fun_ty, callee.span().clone());
-            return Ok(TypedExpr::Call {
-                callee: Box::new(typed_callee),
-                args: typed_args,
-                ty: entry.ret.clone(),
-                callee_id: Some(entry.symbol_id),
-                span: span.clone(),
-            });
+            match super::overload::select(entries, &arg_types) {
+                Some(entry) => {
+                    let fun_ty = Type::Fun(entry.params.clone(), Box::new(entry.ret.clone()));
+                    let typed_callee =
+                        TypedExpr::Ident(name.to_string(), fun_ty, callee.span().clone());
+                    return Ok(TypedExpr::Call {
+                        callee: Box::new(typed_callee),
+                        args: typed_args,
+                        ty: entry.ret.clone(),
+                        callee_id: Some(entry.symbol_id),
+                        span: span.clone(),
+                    });
+                }
+                // No exact match: fall back to a non-overload binding of the
+                // same name (prelude/imports), mirroring the inference pass.
+                // The normal path below re-constructs the arguments.
+                None if ctx.lookup(name).is_some()
+                    || ctx.scheme_env.contains_key(name) => {}
+                None => {
+                    return Err(super::overload::no_match_error(
+                        name, &arg_types, entries, span,
+                    ))
+                }
+            }
         }
     }
     // For monomorphic callee identifiers already in scope, extract param types as hints so
@@ -2077,6 +2089,7 @@ fn construct_call(
                 None => instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen)?,
             };
             check_fun_call_bounds(name, &var_map, span, ctx.registry)?;
+            check_scheme_bounds(name, scheme, &var_map, span, ctx.registry)?;
             let typed = TypedExpr::Ident(name.clone(), concrete.clone(), ident_span.clone());
             (typed, concrete)
         }
@@ -2113,6 +2126,7 @@ fn construct_call(
                 }
             };
             check_fun_call_bounds(&joined, &var_map, span, ctx.registry)?;
+            check_scheme_bounds(&joined, scheme, &var_map, span, ctx.registry)?;
             let typed = TypedExpr::Path(segments.clone(), concrete.clone(), path_span.clone());
             (typed, concrete)
         }
@@ -2135,6 +2149,7 @@ fn construct_call(
                 None => instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen)?,
             };
             check_fun_call_bounds(&last, &var_map, span, ctx.registry)?;
+            check_scheme_bounds(&last, scheme, &var_map, span, ctx.registry)?;
             let typed = TypedExpr::Path(segments.clone(), concrete.clone(), path_span.clone());
             (typed, concrete)
         }
@@ -2150,6 +2165,7 @@ fn construct_call(
                 None => instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen)?,
             };
             check_fun_call_bounds(resolved, &var_map, span, ctx.registry)?;
+            check_scheme_bounds(resolved, scheme, &var_map, span, ctx.registry)?;
             let typed = TypedExpr::Ident(resolved.clone(), concrete.clone(), rspan.clone());
             (typed, concrete)
         }
@@ -2243,20 +2259,63 @@ fn check_fun_call_bounds(
             Some(t) => t,
             None => continue,
         };
-        let type_name = match concrete {
-            Type::Named(n, _) => n.clone(),
-            _ => continue,
+        check_type_satisfies_bounds(concrete, aspect_names, fun_name, span, registry)?;
+    }
+    Ok(())
+}
+
+/// Enforce the aspect bounds carried ON a scheme (`TypeScheme::bounds`,
+/// positional per quantified var). This is how bounds on prelude/imported
+/// schemes are checked — the TypeVar-keyed `fun_bounds` registry above only
+/// matches schemes from the defining module.
+fn check_scheme_bounds(
+    fun_name: &str,
+    scheme: &TypeScheme,
+    var_to_type: &HashMap<TypeVar, Type>,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+) -> Result<(), MetelError> {
+    if scheme.bounds.is_empty() {
+        return Ok(());
+    }
+    for (tv, aspect_names) in scheme.quantified_vars.iter().zip(&scheme.bounds) {
+        if aspect_names.is_empty() {
+            continue;
+        }
+        let concrete = match var_to_type.get(tv) {
+            Some(t) => t,
+            None => continue,
         };
-        for aspect in aspect_names {
-            if !registry.impl_aspect_env_has(&type_name, aspect) {
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0012,
-                    format!(
-                        "`{type_name}` does not implement `{aspect}` (required by `{fun_name}`)"
-                    ),
-                    span,
-                ));
-            }
+        check_type_satisfies_bounds(concrete, aspect_names, fun_name, span, registry)?;
+    }
+    Ok(())
+}
+
+/// Check one concrete type against a set of required aspect names. Named types
+/// and primitives are checked against the aspect-impl registry; structural
+/// types (arrays, tuples, closures) have no named impls and are skipped — the
+/// runtime remains the backstop for those.
+fn check_type_satisfies_bounds(
+    concrete: &Type,
+    aspect_names: &[String],
+    fun_name: &str,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+) -> Result<(), MetelError> {
+    let type_name = match concrete {
+        Type::Named(n, _) => n.clone(),
+        other => match super::inference::primitive_type_name(other) {
+            Some(n) => n,
+            None => return Ok(()),
+        },
+    };
+    for aspect in aspect_names {
+        if !registry.impl_aspect_env_has(&type_name, aspect) {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0012,
+                format!("`{type_name}` does not implement `{aspect}` (required by `{fun_name}`)"),
+                span,
+            ));
         }
     }
     Ok(())

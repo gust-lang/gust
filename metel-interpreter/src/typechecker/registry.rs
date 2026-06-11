@@ -101,7 +101,9 @@ fn populate_schemes_from_embedded_core(
                     .map(&te)
                     .unwrap_or_else(InferType::unit);
                 let fun_ty = InferType::Fun(params, Box::new(ret));
-                let scheme = crate::typeinference::generalize(fun_ty, &Default::default());
+                let bounds = super::inference::collect_fun_type_var_bounds(fun, &generic_map);
+                let scheme = crate::typeinference::generalize(fun_ty, &Default::default())
+                    .with_bounds(&bounds);
                 map.insert(fun.name.clone(), scheme);
             }
             Decl::Impl(ib) => {
@@ -421,6 +423,7 @@ fn register_generic_native_impl_methods(
             TypeScheme {
                 quantified_vars: type_params.clone(),
                 param_names: vec![],
+                bounds: vec![],
                 ty: InferType::Fun(param_types, Box::new(ret_ty)),
             },
             type_params.clone(),

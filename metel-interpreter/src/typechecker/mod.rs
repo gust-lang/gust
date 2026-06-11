@@ -85,6 +85,9 @@ struct FunGeneralization {
     env_fvs: HashSet<TypeVar>,
     /// Maps TypeVar ID → source-level generic param name, for scheme param_names.
     name_map: HashMap<TypeVar, String>,
+    /// Maps TypeVar ID → aspect bounds, attached to the re-generalized scheme
+    /// so bounds survive prelude/export scheme propagation.
+    bounds: HashMap<TypeVar, Vec<String>>,
 }
 
 // ── CorePrelude ────────────────────────────────────────────────────────────────
@@ -183,6 +186,8 @@ fn refresh_scheme_for_export(
     TypeScheme {
         quantified_vars,
         param_names: scheme.param_names.clone(),
+        // Order is preserved by the renaming, so positional bounds stay valid.
+        bounds: scheme.bounds.clone(),
         ty,
     }
 }
@@ -760,7 +765,8 @@ fn check_impl_with_report(
         // fg.fun_ty is already post-inline-solve (resolved_ty from infer_fun_decl).
         // Applying the final module-level subst would collapse generic TypeVars that
         // happened to appear in other functions' constraints. (METEL-137)
-        let scheme = generalize_with_names(fg.fun_ty, &fg.env_fvs, &fg.name_map);
+        let scheme =
+            generalize_with_names(fg.fun_ty, &fg.env_fvs, &fg.name_map).with_bounds(&fg.bounds);
         scheme_env.insert(fg.name, scheme);
     }
     // Imported schemes must be visible in the construction pass so calls to imported

@@ -692,6 +692,7 @@ mod phase_6_type_schemes {
         let scheme = TypeScheme {
             quantified_vars: vec![TypeVar(0)],
             param_names: vec![],
+            bounds: vec![],
             ty: InferType::Fun(
                 vec![InferType::var(TypeVar(0))],
                 Box::new(InferType::var(TypeVar(0))),
@@ -720,6 +721,7 @@ mod phase_6_type_schemes {
         let scheme = TypeScheme {
             quantified_vars: vec![quantified],
             param_names: vec![],
+            bounds: vec![],
             ty: InferType::var(quantified),
         };
         let first = instantiate(&scheme, &mut var_gen);
@@ -745,6 +747,7 @@ mod phase_6_type_schemes {
         let scheme = TypeScheme {
             quantified_vars: vec![TypeVar(0)],
             param_names: vec![],
+            bounds: vec![],
             ty: InferType::Fun(
                 vec![InferType::var(TypeVar(0))],
                 Box::new(InferType::var(TypeVar(0))),
@@ -758,6 +761,7 @@ mod phase_6_type_schemes {
         let scheme = TypeScheme {
             quantified_vars: vec![TypeVar(0), TypeVar(1)],
             param_names: vec![],
+            bounds: vec![],
             ty: InferType::Fun(
                 vec![InferType::var(TypeVar(0))],
                 Box::new(InferType::var(TypeVar(1))),
@@ -810,6 +814,7 @@ mod phase_7_infer_context {
         let scheme = TypeScheme {
             quantified_vars: vec![TypeVar(0)],
             param_names: vec![],
+            bounds: vec![],
             ty: InferType::Fun(vec![v.clone()], Box::new(v)),
         };
         ctx.bind_poly("id", scheme);
@@ -827,6 +832,7 @@ mod phase_7_infer_context {
         let scheme = TypeScheme {
             quantified_vars: vec![TypeVar(0)],
             param_names: vec![],
+            bounds: vec![],
             ty: v,
         };
         ctx.bind_poly("id", scheme);
@@ -846,6 +852,7 @@ mod phase_7_infer_context {
             TypeScheme {
                 quantified_vars: vec![TypeVar(0)],
                 param_names: vec![],
+            bounds: vec![],
                 ty: v,
             },
         );
@@ -1114,6 +1121,7 @@ mod phase_8_known_limitations {
         let scheme = TypeScheme {
             quantified_vars: vec![TypeVar(0)],
             param_names: vec![],
+            bounds: vec![],
             ty: InferType::Fun(
                 vec![InferType::var(TypeVar(0))],
                 Box::new(InferType::var(TypeVar(0))),

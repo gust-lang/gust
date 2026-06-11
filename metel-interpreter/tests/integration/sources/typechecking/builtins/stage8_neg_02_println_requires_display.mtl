@@ -1,0 +1,11 @@
+// println/print require Display (METEL-181): passing a type with no
+// Display impl is a compile-time error, not a runtime panic.
+
+struct Test {
+    attr: i8,
+}
+
+fun main() {
+    let x = Test { attr: 1i8 };
+    println(x); // ERROR[T0012]
+}
