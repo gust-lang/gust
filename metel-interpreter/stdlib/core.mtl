@@ -8,9 +8,11 @@
 // Host-backed items use `native(@std.core.<id>)`, binding to a Rust host
 // implementation selected by NativeKey. Everything else is ordinary Metel.
 //
-// Still hand-registered in Rust (build_registry / register_builtins):
+// String methods (len + the utilities) are declared here as native methods on
+// `impl String` and dispatch like any named-type method (a String value's type
+// name is "String"). Still hand-registered in Rust:
 //   * Iterable impls for Range/RangeInclusive (runtime ranges are intrinsic)
-//   * String::len / T[]::len pattern methods (receiver shapes, not named types)
+//   * the `T[]::len` array pattern method (a receiver shape, not a named type)
 
 // ── Core sum types ──────────────────────────────────────────────────────────
 
