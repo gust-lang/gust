@@ -59,31 +59,27 @@ fn run_parse(path: &Path) -> Result<(), MetelError> {
     parser::parse(&source, &filename).map(|_| ())
 }
 
+// Both `run_typecheck` and `run_evaluate` drive the *full module pipeline* (the
+// same one `pipeline::run_file` and the shipped binary use), loading std::core
+// as a real embedded module. The earlier single-program path (`check_with_ctx` /
+// `evaluate_with_ctx`) skipped module loading + elaboration and hand-seeded
+// std::core, which drifted from the product path and could not run Metel-bodied
+// core free functions (e.g. the print/println Display wrappers, METEL-192). The
+// pub single-program API remains for the benchmark binary only.
 fn run_typecheck(path: &Path) -> Result<(), MetelError> {
-    let source_path = main_source_path(path);
-    let source = fs::read_to_string(&source_path)
-        .unwrap_or_else(|e| panic!("could not read {}: {e}", source_path.display()));
-    let filename = source_path
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
-    let program = parser::parse(&source, &filename)?;
-    typechecker::check(program).map(|_| ())
+    let graph = module_loader::load_root(main_source_path(path))?;
+    let names = name_resolver::resolve(&graph)?;
+    let normalized = path_normalizer::normalize(graph, &names)?;
+    typechecker::check_graph(normalized, &names, typechecker::CorePrelude::default()).map(|_| ())
 }
 
 fn run_evaluate(path: &Path) -> Result<(), MetelError> {
-    let source_path = main_source_path(path);
-    let source = fs::read_to_string(&source_path)
-        .unwrap_or_else(|e| panic!("could not read {}: {e}", source_path.display()));
-    let filename = source_path
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
-    let program = parser::parse(&source, &filename)?;
-    let (typed, ctx) = typechecker::check_with_ctx(program)?;
-    evaluator::evaluate_with_ctx(typed, ctx)
+    let graph = module_loader::load_root(main_source_path(path))?;
+    let names = name_resolver::resolve(&graph)?;
+    let normalized = path_normalizer::normalize(graph, &names)?;
+    let typed = typechecker::check_graph(normalized, &names, typechecker::CorePrelude::default())?;
+    let elaborated = elaborator::elaborate(typed, &names)?;
+    evaluator::evaluate_graph(elaborated)
 }
 
 fn run_load_program(path: &Path, checks: &ProgramChecks) -> Result<(), MetelError> {

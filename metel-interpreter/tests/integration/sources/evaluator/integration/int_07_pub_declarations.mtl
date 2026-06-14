@@ -14,7 +14,7 @@ fun classify(d: Direction) -> i64 {
     }
 }
 
-pub fun main() {
+pub fun main() -> () {
     let p = Point { x: 3, y: 4 };
     assert(distance(p) == 7);
 

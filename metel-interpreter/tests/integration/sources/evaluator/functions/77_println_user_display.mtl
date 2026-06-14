@@ -1,0 +1,35 @@
+// print/println must dispatch a user-defined `Display` impl, not only format
+// primitives. Before METEL-192 these calls typechecked but panicked at runtime
+// with R0009 because the host formatter only handled primitive values. The
+// public print/println now lower to `x.to_string()` in-language, so any
+// `Display` value (struct, enum, primitive) prints via its own impl.
+
+struct Point { x: i64, y: i64 }
+
+impl Display for Point {
+	fun to_string(&self) -> String {
+		"(${self.x}, ${self.y})"
+	}
+}
+
+enum Color { Red, Green }
+
+impl Display for Color {
+	fun to_string(&self) -> String {
+		match (self) {
+			Color::Red => "red",
+			Color::Green => "green",
+		}
+	}
+}
+
+fun main() {
+	// struct with a user Display impl
+	println(Point { x: 1, y: 2 });
+	// enum with a user Display impl
+	print(Color::Red);
+	println(Color::Green);
+	// primitives must still print unchanged
+	println(42);
+	println("done");
+}

@@ -1,0 +1,17 @@
+// An aspect's *default* method body, inherited by an impl for a primitive type
+// (no override), must typecheck: `self` resolves to the concrete primitive so
+// the default body unifies with call sites producing `Concrete(Type::I64)`.
+// Exercises infer_default_aspect_method's primitive bridge (METEL-149).
+aspect Tripler {
+	fun tripled(&self) -> i64 {
+		self + self + self
+	}
+}
+
+impl Tripler for i64 {}
+
+fun main() {
+	let x = 14i64;
+	let y = x.tripled();
+	println("${y}");
+}

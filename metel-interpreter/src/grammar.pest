@@ -227,12 +227,12 @@ bind_pattern    = { ident }
 
 type_expr = {
     fun_type
-  | unit_type
-  | tuple_type
   | mut_pointer_type
   | pointer_type
   | sized_array_type  // must come before array_type — both start with "["
-  | array_type
+  | array_type        // atom "[]" — must precede the unit/tuple/named atoms it wraps
+  | unit_type
+  | tuple_type
   | impl_type
   | named_type
 }
@@ -245,7 +245,10 @@ fun_type   = { "(" ~ type_list? ~ ")" ~ "->" ~ type_expr }
 pointer_type = { "*" ~ type_expr }
 mut_pointer_type = { "*" ~ mut_kw ~ type_expr }
 sized_array_type = { "[" ~ type_expr ~ ";" ~ decimal_int ~ "]" }
-array_type = { named_type ~ "[]" }
+array_type = { array_atom ~ "[]" }
+// The element of a postfix `[]` array: a unit, tuple, or named type. Silent so
+// the matched inner rule flattens into `array_type` and the parser is unchanged.
+array_atom = _{ unit_type | tuple_type | named_type }
 named_type = { type_path ~ ("<" ~ type_args ~ ">")? }
 type_args  = { type_expr ~ ("," ~ type_expr)* }
 type_list  = { type_expr ~ ("," ~ type_expr)* }

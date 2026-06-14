@@ -602,7 +602,9 @@ fn infer_default_aspect_method(
         }
     };
 
-    // TODO(named-concrete): same issue as infer_impl_method — see comment there.
+    // For a primitive target the `self` type must be the concrete primitive, so
+    // an inherited default method unifies with call sites that produce
+    // `Concrete(Type::I64)` (METEL-149 / METEL-181). User structs stay `Named`.
     let self_ty = match primitive_type_from_name(target_name) {
         Some(prim) => InferType::Concrete(prim),
         None => InferType::Named(target_name.to_string(), vec![]),

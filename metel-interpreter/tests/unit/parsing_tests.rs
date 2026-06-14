@@ -276,3 +276,70 @@ fun main() -> i64 {
 
     parser::parse(source, "zero_arg_closure_and_type.mtl").unwrap_or_else(|e| panic!("{e}"));
 }
+
+// METEL-191: the postfix `[]` array suffix must bind to a parenthesized/tuple
+// type, not only to a named type. `(String, String)[]` previously failed with
+// P0001 because the parser consumed the tuple and left the `[]` dangling.
+#[test]
+fn array_suffix_binds_to_tuple_type() {
+    use metel::ast::{Decl, TypeExpr};
+
+    let source = r#"
+fun vars() -> (String, String)[] {
+    return [];
+}
+
+fun takes(pairs: (String, String)[]) -> i64 {
+    return 0;
+}
+
+fun annotates() {
+    let xs: (i64, bool)[] = [];
+}
+"#;
+
+    let program = parser::parse(source, "tuple_array_suffix.mtl")
+        .unwrap_or_else(|e| panic!("(T, U)[] should parse: {e}"));
+
+    let expect_tuple_array = |ty: &TypeExpr, ctx: &str| match ty {
+        TypeExpr::Array(inner) => assert!(
+            matches!(inner.as_ref(), TypeExpr::Tuple(elems) if elems.len() == 2),
+            "{ctx}: expected Array(Tuple(2)), got Array({:?})",
+            inner
+        ),
+        other => panic!("{ctx}: expected Array(Tuple(..)), got {other:?}"),
+    };
+
+    let mut saw_return = false;
+    let mut saw_param = false;
+    for decl in &program.decls {
+        if let Decl::Fun(f) = decl {
+            match f.name.as_str() {
+                "vars" => {
+                    expect_tuple_array(f.return_type.as_ref().expect("vars return type"), "return");
+                    saw_return = true;
+                }
+                "takes" => {
+                    let ann = f.params[0].type_ann.as_ref().expect("param annotation");
+                    expect_tuple_array(ann, "param");
+                    saw_param = true;
+                }
+                _ => {}
+            }
+        }
+    }
+    assert!(saw_return && saw_param, "expected to inspect vars() and takes()");
+}
+
+// METEL-191 acceptance: a tuple as a generic type argument must also parse.
+#[test]
+fn tuple_type_as_generic_argument_parses() {
+    let source = r#"
+fun pairs() -> List<(String, String)> {
+    return List::new();
+}
+"#;
+
+    parser::parse(source, "tuple_generic_arg.mtl")
+        .unwrap_or_else(|e| panic!("List<(String, String)> should parse: {e}"));
+}
