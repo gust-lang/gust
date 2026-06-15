@@ -298,6 +298,7 @@ pub fn check_graph_with_report(
             &std_prelude,
             &loaded.module_path,
             Some(&names.symbols),
+            Some(&names.references),
         )?;
         accumulate_typecheck_timings(&mut timings, report.timings);
         type_registry = report.registry;
@@ -624,6 +625,7 @@ pub fn check(program: Program) -> Result<TypedProgram, MetelError> {
         &CorePrelude::default(),
         &[],
         None,
+        None,
     )?;
     Ok(report.typed_decls)
 }
@@ -647,6 +649,7 @@ pub fn check_with_ctx_with_report(program: Program) -> Result<CheckWithCtxReport
         &TypeDefinitionRegistry::new(),
         &std_prelude,
         &[],
+        None,
         None,
     )?;
     let mut full_scheme_env = report.scheme_env;
@@ -696,6 +699,7 @@ fn check_impl(
     std_prelude: &CorePrelude,
     current_module_path: &[String],
     symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
+    references: Option<&crate::reference_resolver::ReferenceTable>,
 ) -> Result<(Vec<TypedDecl>, SchemeEnv, TypeDefinitionRegistry), MetelError> {
     let report = check_impl_with_report(
         program,
@@ -705,10 +709,12 @@ fn check_impl(
         std_prelude,
         current_module_path,
         symbols,
+        references,
     )?;
     Ok((report.typed_decls, report.scheme_env, report.registry))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn check_impl_with_report(
     program: &Program,
     imported_schemes: &SchemeEnv,
@@ -717,6 +723,7 @@ fn check_impl_with_report(
     std_prelude: &CorePrelude,
     current_module_path: &[String],
     symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
+    references: Option<&crate::reference_resolver::ReferenceTable>,
 ) -> Result<CheckImplReport, MetelError> {
     // `native` declarations are stdlib-only: reject them outside `std::…`.
     enforce_native_stdlib_only(program, current_module_path)?;
@@ -793,6 +800,8 @@ fn check_impl_with_report(
         gen,
         symbols,
         &overloads,
+        current_module_path,
+        references,
     )?;
     let construction_ns = elapsed_ns(started);
 

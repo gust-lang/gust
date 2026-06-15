@@ -103,6 +103,15 @@ struct ConstructCtx<'a> {
     /// identify overloaded declarations and resolve overloaded call sites to
     /// the selected definition's SymbolId.
     overloads: &'a crate::typeinference::OverloadTable,
+    /// Module path being constructed. Reserved for SymbolId-keyed type/registry
+    /// resolution in later ADR-0041 steps; `def_id` assignment currently uses the
+    /// `construct_program` parameter directly.
+    #[allow(dead_code)]
+    current_module: &'a [String],
+    /// Resolved bare-`Ident` reference table (METEL-187 / ADR-0041): reference-site
+    /// span → referent `SymbolId`. Used to stamp `Call::callee_id` so direct calls to
+    /// top-level functions dispatch by id. `None` for the single-program path.
+    references: Option<&'a HashMap<Span, SymbolId>>,
 }
 
 impl<'a> ConstructCtx<'a> {
@@ -113,6 +122,8 @@ impl<'a> ConstructCtx<'a> {
         gen: TypeVarGenerator,
         symbols: Option<&'a HashMap<(Vec<String>, String), SymbolId>>,
         overloads: &'a crate::typeinference::OverloadTable,
+        current_module: &'a [String],
+        references: Option<&'a HashMap<Span, SymbolId>>,
     ) -> Result<Self, MetelError> {
         let concrete_struct_env = build_concrete_struct_env(registry, subst)?;
         let method_env = build_concrete_method_env(registry, subst)?;
@@ -129,6 +140,8 @@ impl<'a> ConstructCtx<'a> {
             generic_params: HashMap::new(),
             symbols,
             overloads,
+            current_module,
+            references,
         };
         // Derive concrete types for all monomorphic entries in scheme_env.
         // Both builtins and user functions are populated here — no second registration site.
@@ -172,6 +185,21 @@ impl<'a> ConstructCtx<'a> {
 
     fn lookup(&self, name: &str) -> Option<&Type> {
         self.env.iter().rev().find_map(|s| s.get(name))
+    }
+
+    /// Resolve the stable `SymbolId` of a direct-call callee, if it refers to a
+    /// statically-resolved top-level declaration (METEL-187). A bare `Ident` is
+    /// looked up in the resolver's reference table by span; a normalized
+    /// `ResolvedPath` carries its id directly. Locals and dynamic callees return
+    /// `None` (dispatched by value at runtime). The evaluator tolerates an id that
+    /// has no symbol registration (e.g. a top-level `let`-bound value) by falling
+    /// back to name lookup, so this may be stamped liberally.
+    fn resolved_callee_id(&self, callee: &Expr) -> Option<SymbolId> {
+        match callee {
+            Expr::Ident(_, span) => self.references.and_then(|r| r.get(span).copied()),
+            Expr::ResolvedPath { symbol_id, .. } => *symbol_id,
+            _ => None,
+        }
     }
 
     fn push_return_type(&mut self, ty: Option<Type>) -> Option<Type> {
@@ -287,6 +315,8 @@ pub(super) fn construct_generic_body(
     // Generic bodies are constructed at call time; overloaded functions are never
     // generic, so there is no overload table to consult here.
     let empty_overloads = crate::typeinference::OverloadTable::new();
+    // Generic bodies are reconstructed at runtime; their inner direct calls are
+    // re-resolved here without a reference table (callee_id stamping is skipped).
     let mut ctx = ConstructCtx::new(
         &subst,
         &type_ctx.scheme_env,
@@ -294,6 +324,8 @@ pub(super) fn construct_generic_body(
         gen,
         None,
         &empty_overloads,
+        &[],
+        None,
     )?;
 
     // Build name → fresh TypeVar mapping so type annotations like `T[]` in the body
@@ -323,6 +355,7 @@ pub(super) fn construct_generic_body(
     Ok(typed_block)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn construct_program(
     program: &Program,
     subst: &Substitution,
@@ -331,12 +364,37 @@ pub(super) fn construct_program(
     gen: TypeVarGenerator,
     symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
     overloads: &crate::typeinference::OverloadTable,
+    current_module: &[String],
+    references: Option<&HashMap<Span, SymbolId>>,
 ) -> Result<TypedProgram, MetelError> {
-    let mut ctx = ConstructCtx::new(subst, scheme_env, registry, gen, symbols, overloads)?;
+    let mut ctx = ConstructCtx::new(
+        subst,
+        scheme_env,
+        registry,
+        gen,
+        symbols,
+        overloads,
+        current_module,
+        references,
+    )?;
 
     let mut out = vec![];
     for decl in &program.decls {
-        out.push(construct_decl(decl, &mut ctx)?);
+        let mut typed = construct_decl(decl, &mut ctx)?;
+        // Assign each non-overloaded top-level function its stable identity so the
+        // evaluator can register and dispatch it by `SymbolId` (METEL-187). Only
+        // genuine top-level declarations are post-processed here; methods and
+        // nested/local functions keep `def_id: None`.
+        if let TypedDecl::Fun(f) = &mut typed {
+            if f.symbol_id.is_none() {
+                if let Some(syms) = symbols {
+                    f.def_id = syms
+                        .get(&(current_module.to_vec(), f.name.clone()))
+                        .copied();
+                }
+            }
+        }
+        out.push(typed);
     }
     Ok(out)
 }
@@ -452,6 +510,7 @@ fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl
             return_type: fun.return_type.clone(),
             body: FunBody::Native(key),
             symbol_id,
+            def_id: None,
             span: fun.span.clone(),
         }));
     }
@@ -518,6 +577,7 @@ fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl
         return_type: fun.return_type.clone(),
         body,
         symbol_id: overload_entry.map(|e| e.symbol_id),
+        def_id: None,
         span: fun.span.clone(),
     }))
 }
@@ -581,6 +641,7 @@ fn construct_impl_method(
             return_type: method.return_type.clone(),
             body: FunBody::Native(key),
             symbol_id: None,
+            def_id: None,
             span: method.span.clone(),
         });
     }
@@ -603,6 +664,7 @@ fn construct_impl_method(
             return_type: method.return_type.clone(),
             body: FunBody::Generic(method.body.clone()),
             symbol_id: None,
+            def_id: None,
             span: method.span.clone(),
         });
     }
@@ -650,6 +712,7 @@ fn construct_impl_method(
         return_type: method.return_type.clone(),
         body: FunBody::Typed(typed_block),
         symbol_id: None,
+        def_id: None,
         span: method.span.clone(),
     })
 }
@@ -730,6 +793,7 @@ fn construct_default_aspect_method(
         return_type: method.return_type.clone(),
         body: FunBody::Typed(typed_block),
         symbol_id: None,
+        def_id: None,
         span: method.span.clone(),
     })
 }
@@ -2270,7 +2334,7 @@ fn construct_call(
                 callee: Box::new(typed_callee),
                 args: typed_args,
                 ty: *ret.clone(),
-                callee_id: None,
+                callee_id: ctx.resolved_callee_id(callee),
                 span: span.clone(),
             })
         }

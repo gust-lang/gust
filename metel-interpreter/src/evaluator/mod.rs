@@ -1412,6 +1412,12 @@ fn run_passes(
                     match f.symbol_id {
                         Some(id) => runtime.register_symbol_value(id, value),
                         None => {
+                            // Ordinary top-level fn: bind by name (first-class uses) and,
+                            // when it has a stable identity, also register it by SymbolId so
+                            // direct calls dispatch through `callee_id` (METEL-187).
+                            if let Some(id) = f.def_id {
+                                runtime.register_symbol_value(id, value.clone());
+                            }
                             env.set(&f.name, value);
                         }
                     }
@@ -1434,6 +1440,9 @@ fn run_passes(
                 match f.symbol_id {
                     Some(id) => runtime.register_symbol_value(id, value),
                     None => {
+                        if let Some(id) = f.def_id {
+                            runtime.register_symbol_value(id, value.clone());
+                        }
                         env.set(&f.name, value);
                     }
                 }
@@ -2594,18 +2603,24 @@ pub fn eval_expr(
             span,
             ..
         } => {
-            // Overloaded callees (METEL-180) carry the selected definition's
-            // SymbolId; dispatch through the symbol registry instead of
-            // evaluating the (shared, name-ambiguous) callee expression.
+            // A statically-resolved callee carries its SymbolId (METEL-180 overloads
+            // and METEL-187 ordinary top-level functions); dispatch through the symbol
+            // registry instead of evaluating the callee expression by name.
             let func_val = match callee_id {
-                Some(id) => runtime
-                    .get_symbol_value(*id)
-                    .cloned()
-                    .ok_or_else(|| {
-                        MetelError::internal(format!(
+                Some(id) => match runtime.get_symbol_value(*id).cloned() {
+                    Some(value) => value,
+                    // An overload id with no registered value is an internal error.
+                    None if id.0 >= crate::symbols::OVERLOAD_SYM_START => {
+                        return Err(MetelError::internal(format!(
                             "no runtime value registered for overload symbol {id:?}"
-                        ))
-                    })?,
+                        )));
+                    }
+                    // An ordinary top-level callable id may legitimately have no symbol
+                    // registration (e.g. a top-level `let`-bound value, or the
+                    // single-program path that does no symbol seeding): fall back to
+                    // evaluating the callee by name. (METEL-187)
+                    None => eval_expr(callee, env, runtime)?.into_value(),
+                },
                 None => eval_expr(callee, env, runtime)?.into_value(),
             };
             let arg_vals: Vec<Value> = args

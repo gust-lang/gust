@@ -26,11 +26,16 @@ use std::collections::{HashMap, HashSet};
 use crate::ast::{
     AssignTarget, Block, Decl, Expr, ForInit, FunDecl, MatchArm, Pattern, Span, Stmt,
 };
-use crate::name_resolver::ModuleScope;
+use crate::name_resolver::{GlobTier, ModuleScope};
 use crate::symbols::SymbolId;
 
 /// The classification of a single reference site. See module docs.
+///
+/// The collected table stores only `Def` references (by span); `Local` is implicit in
+/// a span's absence. The explicit `Local` variant documents the ADR-0041 design and is
+/// reserved for a future move to carrying `Res` directly on AST nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum Res {
     /// A reference to a top-level declaration with this stable identity.
     Def(SymbolId),
@@ -127,24 +132,31 @@ impl Walker<'_, '_> {
             return Some(binding.symbol_id);
         }
 
-        // Glob imports — search higher tiers first so user globs win over std.
-        for (_, glob_module) in scope.globs.iter().rev() {
-            if self
+        // Glob imports — user globs win over the std auto-glob (ADR-0026 tiers),
+        // regardless of push order, so resolve a `User`-tier hit eagerly and only
+        // fall back to a `Std`-tier hit if no user glob provides the name.
+        let mut std_hit = None;
+        for (tier, glob_module) in &scope.globs {
+            let provides = self
                 .inputs
                 .pub_surface
                 .get(glob_module)
-                .is_some_and(|names| names.contains(name))
+                .is_some_and(|names| names.contains(name));
+            if !provides {
+                continue;
+            }
+            if let Some(id) = self
+                .inputs
+                .symbols
+                .get(&(glob_module.clone(), name.to_string()))
             {
-                if let Some(id) = self
-                    .inputs
-                    .symbols
-                    .get(&(glob_module.clone(), name.to_string()))
-                {
-                    return Some(*id);
+                match tier {
+                    GlobTier::User => return Some(*id),
+                    GlobTier::Std => std_hit = std_hit.or(Some(*id)),
                 }
             }
         }
-        None
+        std_hit
     }
 
     fn record_ref(&mut self, name: &str, span: &Span) {
