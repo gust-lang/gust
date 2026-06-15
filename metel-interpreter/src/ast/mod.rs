@@ -4,7 +4,10 @@ use crate::symbols::SymbolId;
 // ── Span ──────────────────────────────────────────────────────────────────────
 
 /// Source location (byte offsets + resolved line/col into the original source string).
-#[derive(Debug, Clone, PartialEq)]
+///
+/// `Eq`/`Hash` are derived so a `Span` can key the reference-resolution side table
+/// (see `reference_resolver`): each reference site has a unique `(start, end, filename)`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Span {
     pub start: usize,
     pub end: usize,

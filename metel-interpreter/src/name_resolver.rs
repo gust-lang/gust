@@ -74,6 +74,12 @@ pub struct ResolvedNames {
     /// Used by diagnostics and tooling (e.g. LSP goto-definition) to locate the
     /// definition site of any resolved symbol. See RFC-0059.
     pub definitions: HashMap<SymbolId, Span>,
+    /// Resolved bare-`Ident` references: reference-site span → referent `SymbolId`.
+    /// Populated by the reference resolver (METEL-187 / ADR-0041). A reference whose
+    /// span is absent is a true local (or unresolved). Multi-segment paths are not
+    /// recorded here — they carry their `symbol_id` on `Expr::ResolvedPath` after
+    /// path normalization.
+    pub references: crate::reference_resolver::ReferenceTable,
 }
 
 // ── Symbol interning ──────────────────────────────────────────────────────────
@@ -184,12 +190,30 @@ pub fn resolve(graph: &ModuleGraph) -> Result<ResolvedNames, MetelError> {
         scopes.insert(loaded.module_path.clone(), scope);
     }
 
+    // Fourth pass: resolve every bare-`Ident` reference to its declaration's SymbolId,
+    // tracking lexical scopes so true locals stay name-keyed (METEL-187 / ADR-0041).
+    let module_decls: Vec<(Vec<String>, &[Decl])> = graph
+        .modules
+        .iter()
+        .map(|m| (m.module_path.clone(), m.program.decls.as_slice()))
+        .collect();
+    let references = crate::reference_resolver::collect_references(
+        &module_decls,
+        &crate::reference_resolver::ResolveInputs {
+            scopes: &scopes,
+            pub_surface: &pub_surface,
+            declared_names: &declared_names,
+            symbols: &sym.map,
+        },
+    );
+
     Ok(ResolvedNames {
         scopes,
         pub_surface,
         declared_names,
         symbols: sym.map,
         definitions,
+        references,
     })
 }
 

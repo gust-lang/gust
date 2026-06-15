@@ -13,6 +13,7 @@ pub mod stdlib;
 pub mod parser;
 pub mod path_normalizer;
 pub mod pipeline;
+pub mod reference_resolver;
 pub mod symbols;
 pub mod typechecker;
 pub mod typed_ast;
