@@ -174,6 +174,33 @@ Two prerequisites for steps 3–5 surfaced during implementation, splitting step
   `Value` variants — a wide but mechanical change done as its own step before the
   registry is rekeyed.
 
+### Landed so far
+
+- **3b-i**: the resolver now interns through `crate::symbols::SymbolTable`, so the
+  `SYM_TYPE_*`/`SYM_ASPECT_*` constants are the real pipeline ids; embedded-core
+  aspect impls are seeded under their builtin ids.
+- **3b (aspect)**: `get_aspect_method_by_id` is purely id-based; the string
+  fallback and `get_aspect_method` are deleted.
+- **3b-ii**: `Value::Struct`/`Value::Enum` carry `type_id`, populated at every
+  user/std construction site (struct literals, unit enum variants via struct-
+  literal lowering, builtin Perhaps/Result/List/Range). Host-built std data types
+  (`EnvVar`/`OsError`/`ProcessOutput`, which have no method dispatch) remain `None`.
+- **Single-program path removed**: `typechecker::check*` / `evaluator::evaluate*`
+  (the no-resolver path) are gone; the bench and unit tests run the graph
+  pipeline. This removes the last surface-name-only consumer and unblocks the cut.
+
+### Remaining (the atomic registry cut + step 4–5)
+
+Keying `RuntimeRegistry::types` by `SymbolId` is one interconnected change: a
+`value_type_id(&Value)` resolver (primitives → `SYM_TYPE_*`, struct/enum →
+`type_id`); `target_type_id` on `TypedImplBlock` for registration; builtin
+name→id at the `register_builtins`/embedded-core seeding sites; static-member
+calls (`List::new`) carrying their type id on the typed node; then flipping the
+`types` map key and all `register_*`/`get_*`/dispatch sites together. The
+`TypeDefinitionRegistry` rekey (step 4) and cleanup (step 5) follow. The
+`Call::callee_id`→name fallback stays: it is the deferred first-class-function
+environment question (METEL-187 out-of-scope note), not type/method dispatch.
+
 ## Consequences
 
 - After step 5, no struct/enum/aspect/method/function *lookup* in the
