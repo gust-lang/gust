@@ -103,10 +103,9 @@ struct ConstructCtx<'a> {
     /// identify overloaded declarations and resolve overloaded call sites to
     /// the selected definition's SymbolId.
     overloads: &'a crate::typeinference::OverloadTable,
-    /// Module path being constructed. Reserved for SymbolId-keyed type/registry
-    /// resolution in later ADR-0041 steps; `def_id` assignment currently uses the
-    /// `construct_program` parameter directly.
-    #[allow(dead_code)]
+    /// Module path being constructed; used with `symbols` to assign `def_id` to
+    /// top-level functions and to resolve constructed struct/enum types to their
+    /// type `SymbolId` (METEL-185 / ADR-0041).
     current_module: &'a [String],
     /// Resolved bare-`Ident` reference table (METEL-187 / ADR-0041): reference-site
     /// span → referent `SymbolId`. Used to stamp `Call::callee_id` so direct calls to
@@ -200,6 +199,20 @@ impl<'a> ConstructCtx<'a> {
             Expr::ResolvedPath { symbol_id, .. } => *symbol_id,
             _ => None,
         }
+    }
+
+    /// Resolve a struct/enum type name to its declaration `SymbolId` (METEL-185).
+    /// Uses the registry's declaring-module index, falling back to the current
+    /// module for locally-declared types. `None` without resolver context.
+    fn type_symbol_id(&self, type_name: &str) -> Option<SymbolId> {
+        let symbols = self.symbols?;
+        let module = self
+            .registry
+            .struct_declaring_module(type_name)
+            .or_else(|| self.registry.enum_declaring_module(type_name))
+            .cloned()
+            .unwrap_or_else(|| self.current_module.to_vec());
+        symbols.get(&(module, type_name.to_string())).copied()
     }
 
     fn push_return_type(&mut self, ty: Option<Type>) -> Option<Type> {
@@ -1489,10 +1502,19 @@ fn construct_expr(
                 }
             };
 
+            // Resolve the constructed type's stable identity (struct name, or the
+            // enum name for a 2-segment `Enum::Variant` literal).
+            let type_id = if path.len() == 2 {
+                ctx.type_symbol_id(&path[0])
+            } else {
+                ctx.type_symbol_id(path.last().unwrap())
+            };
+
             Ok(TypedExpr::StructLiteral {
                 path: path.clone(),
                 fields: typed_fields,
                 ty,
+                type_id,
                 span: span.clone(),
             })
         }
@@ -2797,6 +2819,7 @@ fn construct_propagate_error(
                         path: vec!["Result".to_string(), "Err".to_string()],
                         fields: vec![("error".to_string(), err_value)],
                         ty: return_ty,
+                        type_id: Some(crate::symbols::SYM_TYPE_RESULT),
                         span: span.clone(),
                     }),
                     span: span.clone(),

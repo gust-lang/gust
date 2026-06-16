@@ -86,11 +86,19 @@ pub enum Value {
     Array(Rc<RefCell<Vec<Value>>>),
     Struct {
         name: String,
+        /// Stable identity of the struct's declaration (METEL-185 / ADR-0041). Lets
+        /// method dispatch resolve the receiver to a type `SymbolId` instead of its
+        /// surface name, so two modules' same-named structs never collide. `None`
+        /// for values built without resolver context (the single-program path) and
+        /// for builtins not yet threaded; dispatch falls back to the name then.
+        type_id: Option<SymbolId>,
         fields: HashMap<String, Value>,
     },
     // Perhaps<T> and Result<T,E> use Value::Enum like all other enums. See ADR-0028.
     Enum {
         name: String,
+        /// Stable identity of the enum's declaration. See `Struct::type_id`.
+        type_id: Option<SymbolId>,
         variant: String,
         fields: HashMap<String, Value>,
     },
@@ -649,8 +657,13 @@ fn deep_clone_value(v: Value) -> Value {
             Value::Array(Rc::new(RefCell::new(cloned)))
         }
         Value::Tuple(items) => Value::Tuple(items.into_iter().map(deep_clone_value).collect()),
-        Value::Struct { name, fields } => Value::Struct {
+        Value::Struct {
             name,
+            type_id,
+            fields,
+        } => Value::Struct {
+            name,
+            type_id,
             fields: fields
                 .into_iter()
                 .map(|(k, v)| (k, deep_clone_value(v)))
@@ -658,10 +671,12 @@ fn deep_clone_value(v: Value) -> Value {
         },
         Value::Enum {
             name,
+            type_id,
             variant,
             fields,
         } => Value::Enum {
             name,
+            type_id,
             variant,
             fields: fields
                 .into_iter()
@@ -1771,12 +1786,12 @@ fn eval_for_in(
     // Fast path for built-in sequence types.
     let fast_items: Option<Vec<Value>> = match &iterable {
         Value::Array(rc) => Some(rc.borrow().clone()),
-        Value::Struct { name, fields } if name == "Range" => {
+        Value::Struct { name, fields, .. } if name == "Range" => {
             let s = range_field(fields, "start", span)?;
             let e = range_field(fields, "end", span)?;
             Some((s..e).map(Value::I64).collect())
         }
-        Value::Struct { name, fields } if name == "RangeInclusive" => {
+        Value::Struct { name, fields, .. } if name == "RangeInclusive" => {
             let s = range_field(fields, "start", span)?;
             let e = range_field(fields, "end", span)?;
             Some((s..=e).map(Value::I64).collect())
@@ -1835,6 +1850,7 @@ fn eval_for_in(
                 name,
                 variant,
                 mut fields,
+                ..
             } if name == "Perhaps" => {
                 if variant == "None" {
                     None
@@ -1925,6 +1941,7 @@ pub fn eval_expr(
                 Literal::Str(s) => Value::Str(s.clone()),
                 Literal::None => Value::Enum {
                     name: "Perhaps".into(),
+                    type_id: Some(crate::symbols::SYM_TYPE_PERHAPS),
                     variant: "None".into(),
                     fields: HashMap::new(),
                 },
@@ -1969,6 +1986,9 @@ pub fn eval_expr(
                 let variant = segments[segments.len() - 1].clone();
                 Ok(Signal::Value(Value::Enum {
                     name,
+                    // Unit enum variant resolved by surface path at runtime; no
+                    // resolver context here, so dispatch falls back to the name.
+                    type_id: None,
                     variant,
                     fields: HashMap::new(),
                 }))
@@ -2395,6 +2415,7 @@ pub fn eval_expr(
         TypedExpr::StructLiteral {
             path,
             fields,
+            type_id,
             span: _,
             ..
         } => {
@@ -2405,6 +2426,7 @@ pub fn eval_expr(
             if path.len() == 2 {
                 Ok(Signal::Value(Value::Enum {
                     name: path[0].clone(),
+                    type_id: *type_id,
                     variant: path[1].clone(),
                     fields: field_vals,
                 }))
@@ -2415,6 +2437,7 @@ pub fn eval_expr(
                     .clone();
                 Ok(Signal::Value(Value::Struct {
                     name,
+                    type_id: *type_id,
                     fields: field_vals,
                 }))
             }

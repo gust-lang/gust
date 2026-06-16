@@ -395,6 +395,7 @@ fn list_value(backing: Vec<Value>) -> Value {
     );
     Value::Struct {
         name: "List".to_string(),
+        type_id: Some(crate::symbols::SYM_TYPE_LIST),
         fields,
     }
 }
@@ -406,12 +407,14 @@ fn perhaps_value(v: Option<Value>) -> Value {
             f.insert("value".to_string(), val);
             Value::Enum {
                 name: "Perhaps".to_string(),
+                type_id: Some(crate::symbols::SYM_TYPE_PERHAPS),
                 variant: "Some".to_string(),
                 fields: f,
             }
         }
         None => Value::Enum {
             name: "Perhaps".to_string(),
+            type_id: Some(crate::symbols::SYM_TYPE_PERHAPS),
             variant: "None".to_string(),
             fields: std::collections::HashMap::new(),
         },
@@ -423,7 +426,7 @@ fn list_inner(
     label: &str,
 ) -> Result<std::rc::Rc<std::cell::RefCell<Vec<Value>>>, MetelError> {
     match args.first() {
-        Some(Value::Struct { name, fields }) if name == "List" => match fields.get("inner") {
+        Some(Value::Struct { name, fields, .. }) if name == "List" => match fields.get("inner") {
             Some(Value::Array(arr)) => Ok(arr.clone()),
             _ => Err(MetelError::internal(format!(
                 "{label}: missing inner field"
@@ -504,6 +507,9 @@ fn native_env_vars(_args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value,
             fields.insert("value".to_string(), Value::Str(value));
             Value::Struct {
                 name: "EnvVar".to_string(),
+                // std::env-declared type; host construction has no resolver context,
+                // so dispatch falls back to the name.
+                type_id: None,
                 fields,
             }
         })
@@ -519,6 +525,7 @@ fn os_error_value(message: String) -> Value {
     fields.insert("message".to_string(), Value::Str(message));
     Value::Struct {
         name: "OsError".to_string(),
+        type_id: None,
         fields,
     }
 }
@@ -533,6 +540,7 @@ fn result_value(r: Result<Value, Value>) -> Value {
     fields.insert(field.to_string(), val);
     Value::Enum {
         name: "Result".to_string(),
+        type_id: Some(crate::symbols::SYM_TYPE_RESULT),
         variant: variant.to_string(),
         fields,
     }
@@ -644,6 +652,7 @@ fn process_output_value(status: i64, stdout: String, stderr: String) -> Value {
     fields.insert("stderr".to_string(), Value::Str(stderr));
     Value::Struct {
         name: "ProcessOutput".to_string(),
+        type_id: None,
         fields,
     }
 }

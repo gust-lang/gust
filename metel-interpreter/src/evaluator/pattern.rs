@@ -77,6 +77,7 @@ pub(super) fn match_pattern(
                     name,
                     variant,
                     fields: enum_fields,
+                    ..
                 } if name == type_name && variant == variant_name => {
                     for field_name in fields {
                         match enum_fields.get(field_name) {

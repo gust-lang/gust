@@ -387,6 +387,10 @@ pub enum TypedExpr {
         path: Vec<String>,
         fields: Vec<(String, TypedExpr)>,
         ty: Type,
+        /// Stable identity of the constructed struct/enum type (METEL-185 / ADR-0041),
+        /// copied onto the runtime `Value` so method dispatch keys by `SymbolId`
+        /// rather than surface name. `None` when no resolver context is available.
+        type_id: Option<SymbolId>,
         span: Span,
     },
 }
