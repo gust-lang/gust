@@ -1335,7 +1335,7 @@ fn seed_core_bodied_methods(runtime: &mut RuntimeRegistry, type_ctx: &std::rc::R
                 runtime.register_aspect_method(
                     target_name,
                     aspect_name,
-                    None,
+                    builtins::builtin_aspect_id(aspect_name),
                     type_args,
                     &method.name,
                     runtime_method,

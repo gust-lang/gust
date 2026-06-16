@@ -780,6 +780,19 @@ pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
 /// prelude derives its schemes from the same source). This serves the
 /// single-program pipeline; the module-graph pipeline additionally evaluates
 /// std::core as a real module.
+/// The well-known `SymbolId` of a builtin `std::core` aspect, matching the id the
+/// name resolver assigns it (the `SymbolTable` pre-seeds these). Lets embedded-core
+/// seeding register builtin aspect impls under the same id elaboration stamps into
+/// call sites, so aspect dispatch is purely id-based (METEL-185).
+pub(super) fn builtin_aspect_id(aspect_name: &str) -> Option<crate::symbols::SymbolId> {
+    match aspect_name {
+        "Display" => Some(crate::symbols::SYM_ASPECT_DISPLAY),
+        "Iterable" => Some(crate::symbols::SYM_ASPECT_ITERABLE),
+        "From" => Some(crate::symbols::SYM_ASPECT_FROM),
+        _ => None,
+    }
+}
+
 fn register_core_natives_from_embedded(runtime: &mut RuntimeRegistry) {
     let core_path = ["std".to_string(), "core".to_string()];
     let Some(source) = crate::stdlib::lookup(&core_path) else {
@@ -848,7 +861,7 @@ fn register_core_natives_from_embedded(runtime: &mut RuntimeRegistry) {
                         runtime.register_aspect_method(
                             target_name,
                             aspect_name,
-                            None,
+                            builtin_aspect_id(aspect_name),
                             type_args,
                             &method.name,
                             runtime_method,

@@ -84,31 +84,13 @@ pub struct ResolvedNames {
 
 // ── Symbol interning ──────────────────────────────────────────────────────────
 
-/// Mutable state threaded through name resolution to assign stable `SymbolId`s.
-struct SymbolTable {
-    map: HashMap<(Vec<String>, String), SymbolId>,
-    next_id: u32,
-}
-
-impl SymbolTable {
-    fn new() -> Self {
-        Self {
-            map: HashMap::new(),
-            next_id: 1,
-        }
-    }
-
-    /// Return the existing `SymbolId` for `(source_module, source_name)`, or assign
-    /// a fresh one. Two calls with identical arguments always return the same id.
-    fn intern(&mut self, source_module: &[String], source_name: &str) -> SymbolId {
-        let key = (source_module.to_vec(), source_name.to_string());
-        *self.map.entry(key).or_insert_with(|| {
-            let id = SymbolId(self.next_id);
-            self.next_id += 1;
-            id
-        })
-    }
-}
+// The interning table is `crate::symbols::SymbolTable`, which pre-seeds the builtin
+// `std::core` types and aspects with their well-known `SYM_*` ids and allocates
+// user declarations from `USER_SYM_START`. Using it here (rather than a private
+// counter from 1) makes the `SYM_TYPE_*` / `SYM_ASPECT_*` constants the *actual*
+// ids that flow through the pipeline, so runtime seeding can register builtin
+// impls under those same ids. See METEL-185 / ADR-0041.
+use crate::symbols::SymbolTable;
 
 // ── Path alias dereferencing ──────────────────────────────────────────────────
 
