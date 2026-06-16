@@ -199,17 +199,27 @@ Two prerequisites for steps 3–5 surfaced during implementation, splitting step
   `Call::callee_id`→name fallback stays — it is the deferred first-class-function
   environment question (METEL-187 out-of-scope note), not type/method dispatch.
 
-- **Step 4 is required for the cross-module guarantee.** A scratch regression
-  (two modules each declaring `struct Widget` with a different `kind()`) showed
-  the values still dispatch to one impl: construction resolves a struct/enum's
-  `type_id` through the **name-keyed** `TypeDefinitionRegistry`
-  (`struct_declaring_module`/`enum_declaring_module`), which collides for
-  same-named cross-module types, and the typechecker's `struct_env`/`enum_env`
-  themselves merge by name. So the `TypeDefinitionRegistry` cluster
-  (`struct_env`, `enum_env`, `method_*`, `aspect_*`, decl-module maps) must be
-  rekeyed by type `SymbolId` (or struct/enum *reference* nodes must carry the
-  resolver-stamped type id) before the cross-module regression can pass. Step 5
-  then adds that regression and removes the residual name maps.
+- **Cross-module dispatch guarantee (landed).** Rather than the full registry
+  rekey, struct/enum *reference* nodes now carry the resolver-stamped type id:
+  the path normalizer resolves a module-qualified struct/enum literal's type id
+  from the symbol table (`Expr::StructLiteral` gained `symbol_id`), and
+  construction prefers it over the name-keyed declaring-module index. Two modules
+  each declaring `struct Widget` with a different `kind()` now dispatch to their
+  own impl (regression `same_named_structs_in_two_modules_dispatch_independently`).
+
+- **Deep `TypeDefinitionRegistry` rekey (remaining cleanup).** The runtime path
+  is now correct, but the typechecker's `TypeDefinitionRegistry` clusters
+  (`struct_env`, `enum_env`, `method_*`, `aspect_*`, decl-module maps) are still
+  name-keyed and accumulate across modules, so two *different-shaped* same-named
+  cross-module types would still conflate at type-check time (a rarer case that
+  surfaces as a confusing type error, not wrong runtime behaviour). Fully meeting
+  the "no surface-name lookup in the typechecker" criterion means rekeying those
+  maps by type `SymbolId` (threading the resolver id through inference's type-name
+  lookups). This is a large, self-contained follow-up; the cross-module runtime
+  guarantee and all of METEL-187 do not depend on it. Residual single name→id
+  resolution steps (`RuntimeRegistry::type_ids`, unit enum-variant paths,
+  module-defined std data types, the `Call::callee_id`→name first-class-function
+  fallback) are deliberate and documented above.
 
 ## Consequences
 
