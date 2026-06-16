@@ -802,6 +802,35 @@ pub(super) fn builtin_aspect_id(aspect_name: &str) -> Option<crate::symbols::Sym
     }
 }
 
+/// The well-known `SymbolId` of a builtin `std::core` type, matching the id the
+/// name resolver assigns it (pre-seeded in `SymbolTable`). Lets embedded-core
+/// seeding register builtin type entries under the same id the rest of the
+/// pipeline uses, so the runtime type registry is keyed purely by id (METEL-185).
+pub(super) fn builtin_type_id(type_name: &str) -> Option<crate::symbols::SymbolId> {
+    use crate::symbols::*;
+    Some(match type_name {
+        "boolean" => SYM_TYPE_BOOLEAN,
+        "String" => SYM_TYPE_STRING,
+        "Char" => SYM_TYPE_CHAR,
+        "i8" => SYM_TYPE_I8,
+        "i16" => SYM_TYPE_I16,
+        "i32" => SYM_TYPE_I32,
+        "i64" => SYM_TYPE_I64,
+        "u8" => SYM_TYPE_U8,
+        "u16" => SYM_TYPE_U16,
+        "u32" => SYM_TYPE_U32,
+        "u64" => SYM_TYPE_U64,
+        "f32" => SYM_TYPE_F32,
+        "f64" => SYM_TYPE_F64,
+        "List" => SYM_TYPE_LIST,
+        "Perhaps" => SYM_TYPE_PERHAPS,
+        "Result" => SYM_TYPE_RESULT,
+        "Range" => SYM_TYPE_RANGE,
+        "RangeInclusive" => SYM_TYPE_RANGE_INCLUSIVE,
+        _ => return None,
+    })
+}
+
 fn register_core_natives_from_embedded(runtime: &mut RuntimeRegistry) {
     let core_path = ["std".to_string(), "core".to_string()];
     let Some(source) = crate::stdlib::lookup(&core_path) else {
@@ -833,6 +862,10 @@ fn register_core_natives_from_embedded(runtime: &mut RuntimeRegistry) {
             }
             crate::ast::Decl::Impl(ib) => {
                 let crate::ast::TypeExpr::Named(target_name, _) = &ib.target_type else {
+                    continue;
+                };
+                // Every std::core impl targets a builtin type with a well-known id.
+                let Some(target_id) = builtin_type_id(target_name) else {
                     continue;
                 };
                 for method in &ib.methods {
@@ -868,6 +901,7 @@ fn register_core_natives_from_embedded(runtime: &mut RuntimeRegistry) {
                             .map(super::runtime_type_key)
                             .collect();
                         runtime.register_aspect_method(
+                            target_id,
                             target_name,
                             aspect_name,
                             builtin_aspect_id(aspect_name),
@@ -876,9 +910,19 @@ fn register_core_natives_from_embedded(runtime: &mut RuntimeRegistry) {
                             runtime_method,
                         );
                     } else if runtime_method.receiver.is_none() {
-                        runtime.register_type_value(target_name, &method.name, runtime_method);
+                        runtime.register_type_value(
+                            target_id,
+                            target_name,
+                            &method.name,
+                            runtime_method,
+                        );
                     } else {
-                        runtime.register_inherent_method(target_name, &method.name, runtime_method);
+                        runtime.register_inherent_method(
+                            target_id,
+                            target_name,
+                            &method.name,
+                            runtime_method,
+                        );
                     }
                 }
             }

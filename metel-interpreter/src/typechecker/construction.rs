@@ -206,13 +206,20 @@ impl<'a> ConstructCtx<'a> {
     /// module for locally-declared types. `None` without resolver context.
     fn type_symbol_id(&self, type_name: &str) -> Option<SymbolId> {
         let symbols = self.symbols?;
-        let module = self
+        if let Some(module) = self
             .registry
             .struct_declaring_module(type_name)
             .or_else(|| self.registry.enum_declaring_module(type_name))
-            .cloned()
-            .unwrap_or_else(|| self.current_module.to_vec());
-        symbols.get(&(module, type_name.to_string())).copied()
+        {
+            return symbols.get(&(module.clone(), type_name.to_string())).copied();
+        }
+        // Builtin types (impl on i64/String/List/…) live in std::core, pre-seeded
+        // with their SYM_TYPE_* ids; fall back there, then the current module.
+        let std_core = vec!["std".to_string(), "core".to_string()];
+        symbols
+            .get(&(std_core, type_name.to_string()))
+            .or_else(|| symbols.get(&(self.current_module.to_vec(), type_name.to_string())))
+            .copied()
     }
 
     fn push_return_type(&mut self, ty: Option<Type>) -> Option<Type> {
@@ -622,6 +629,7 @@ fn construct_impl_decl(ib: &ImplBlock, ctx: &mut ConstructCtx) -> Result<TypedDe
     Ok(TypedDecl::Impl(TypedImplBlock {
         aspect_name: ib.aspect_name.clone(),
         aspect_id,
+        target_type_id: ctx.type_symbol_id(&target_name),
         aspect_type_args: ib.aspect_type_args.clone(),
         target_type: ib.target_type.clone(),
         methods,

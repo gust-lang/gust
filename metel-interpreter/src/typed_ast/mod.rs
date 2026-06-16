@@ -170,6 +170,9 @@ pub struct TypedImplBlock {
     /// Stable identity of the aspect this impl satisfies.  `None` for inherent impls.
     /// Populated by the typechecker construction pass when `names.symbols` is available.
     pub aspect_id: Option<SymbolId>,
+    /// Stable identity of the target type, used to register this impl's methods in the
+    /// SymbolId-keyed runtime type registry (METEL-185). `None` without resolver context.
+    pub target_type_id: Option<SymbolId>,
     pub aspect_type_args: Vec<TypeExpr>,
     pub target_type: TypeExpr,
     pub methods: Vec<TypedFunDecl>,
