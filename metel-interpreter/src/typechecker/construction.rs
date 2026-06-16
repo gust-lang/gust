@@ -1532,19 +1532,29 @@ fn construct_expr(
                 // Also check enum variants via enum_env.
                 if let Some(info) = ctx.registry.enum_info(type_name.as_str()) {
                     if let Some(variant) = info.variants.iter().find(|v| &v.name == member_name) {
-                        let ty = if variant.fields.is_empty() {
-                            Type::Named(type_name.clone(), vec![])
-                        } else {
-                            let field_types: Vec<Type> = variant
-                                .fields
-                                .iter()
-                                .map(|field| infer_type_to_type(&field.ty, span))
-                                .collect::<Result<_, _>>()?;
-                            Type::Fun(
-                                field_types,
-                                Box::new(Type::Named(type_name.clone(), vec![])),
-                            )
-                        };
+                        if variant.fields.is_empty() {
+                            // A unit enum variant is a value, not a constructor: emit it as
+                            // a (field-less) struct literal so it carries the enum's type
+                            // SymbolId onto the runtime value, like any other constructor
+                            // (METEL-185). The evaluator builds `Value::Enum` from a
+                            // 2-segment struct-literal path.
+                            return Ok(TypedExpr::StructLiteral {
+                                path: segments.clone(),
+                                fields: vec![],
+                                ty: Type::Named(type_name.clone(), vec![]),
+                                type_id: ctx.type_symbol_id(type_name),
+                                span: span.clone(),
+                            });
+                        }
+                        let field_types: Vec<Type> = variant
+                            .fields
+                            .iter()
+                            .map(|field| infer_type_to_type(&field.ty, span))
+                            .collect::<Result<_, _>>()?;
+                        let ty = Type::Fun(
+                            field_types,
+                            Box::new(Type::Named(type_name.clone(), vec![])),
+                        );
                         return Ok(TypedExpr::Path(segments.clone(), ty, span.clone()));
                     }
                 }
