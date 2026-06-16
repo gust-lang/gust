@@ -460,18 +460,17 @@ impl RuntimeRegistry {
         });
     }
 
-    /// Look up a method that belongs to a specific aspect (by stable SymbolId).
-    /// Falls back to string-name lookup when `aspect_id` has no registered entry
-    /// (e.g. builtins registered before the elaboration pass ran).
+    /// Look up a method belonging to a specific aspect impl, by the aspect's stable
+    /// `SymbolId`. Selection is purely id-based: builtin aspect impls are seeded with
+    /// their `SYM_ASPECT_*` ids and user impls carry the elaboration-stamped id, so
+    /// no surface-name fallback is needed (METEL-185 / ADR-0041).
     pub fn get_aspect_method_by_id(
         &self,
         type_name: &str,
         aspect_id: SymbolId,
         method_name: &str,
     ) -> Option<RuntimeMethod> {
-        let entry = self.types.get(type_name)?;
-        // Prefer exact SymbolId match.
-        if let Some(method) = entry.aspect_impls.iter().rev().find_map(|ai| {
+        self.types.get(type_name)?.aspect_impls.iter().rev().find_map(|ai| {
             if ai.aspect_id == Some(aspect_id) {
                 ai.methods
                     .get(method_name)
@@ -480,11 +479,7 @@ impl RuntimeRegistry {
             } else {
                 None
             }
-        }) {
-            return Some(method);
-        }
-        // Fall back to string-based search (covers builtins without a SymbolId).
-        self.get_aspect_method(type_name, method_name)
+        })
     }
 
     pub fn register_pattern_method(
@@ -531,22 +526,6 @@ impl RuntimeRegistry {
             .get(method_name)
             .cloned()
             .filter(|method| method.receiver.is_some())
-    }
-
-    /// Look up a method that is known to come from an aspect impl, skipping inherent methods.
-    pub fn get_aspect_method(&self, type_name: &str, method_name: &str) -> Option<RuntimeMethod> {
-        self.types
-            .get(type_name)?
-            .aspect_impls
-            .iter()
-            .rev()
-            .find_map(|aspect_impl| {
-                aspect_impl
-                    .methods
-                    .get(method_name)
-                    .cloned()
-                    .filter(|method| method.receiver.is_some())
-            })
     }
 
     pub fn get_regular_method(&self, type_name: &str, method_name: &str) -> Option<RuntimeMethod> {
