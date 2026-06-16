@@ -189,17 +189,27 @@ Two prerequisites for steps 3–5 surfaced during implementation, splitting step
   (the no-resolver path) are gone; the bench and unit tests run the graph
   pipeline. This removes the last surface-name-only consumer and unblocks the cut.
 
-### Remaining (the atomic registry cut + step 4–5)
+### Remaining (step 4–5)
 
-Keying `RuntimeRegistry::types` by `SymbolId` is one interconnected change: a
-`value_type_id(&Value)` resolver (primitives → `SYM_TYPE_*`, struct/enum →
-`type_id`); `target_type_id` on `TypedImplBlock` for registration; builtin
-name→id at the `register_builtins`/embedded-core seeding sites; static-member
-calls (`List::new`) carrying their type id on the typed node; then flipping the
-`types` map key and all `register_*`/`get_*`/dispatch sites together. The
-`TypeDefinitionRegistry` rekey (step 4) and cleanup (step 5) follow. The
-`Call::callee_id`→name fallback stays: it is the deferred first-class-function
-environment question (METEL-187 out-of-scope note), not type/method dispatch.
+- **3b-iii (landed).** `RuntimeRegistry::types` is keyed by `SymbolId`, with a
+  `type_ids` name→id index as the single resolution step for static members,
+  `From` targets, and host-built values. `resolve_value_type_id` drives instance
+  dispatch (carried `type_id` first, else name index); `TypedImplBlock` carries
+  `target_type_id`; embedded-core/`run_passes` register under the type id. The
+  `Call::callee_id`→name fallback stays — it is the deferred first-class-function
+  environment question (METEL-187 out-of-scope note), not type/method dispatch.
+
+- **Step 4 is required for the cross-module guarantee.** A scratch regression
+  (two modules each declaring `struct Widget` with a different `kind()`) showed
+  the values still dispatch to one impl: construction resolves a struct/enum's
+  `type_id` through the **name-keyed** `TypeDefinitionRegistry`
+  (`struct_declaring_module`/`enum_declaring_module`), which collides for
+  same-named cross-module types, and the typechecker's `struct_env`/`enum_env`
+  themselves merge by name. So the `TypeDefinitionRegistry` cluster
+  (`struct_env`, `enum_env`, `method_*`, `aspect_*`, decl-module maps) must be
+  rekeyed by type `SymbolId` (or struct/enum *reference* nodes must carry the
+  resolver-stamped type id) before the cross-module regression can pass. Step 5
+  then adds that regression and removes the residual name maps.
 
 ## Consequences
 
