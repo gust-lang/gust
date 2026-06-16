@@ -1420,7 +1420,12 @@ fn construct_expr(
                 span: span.clone(),
             })
         }
-        Expr::StructLiteral { path, fields, span } => {
+        Expr::StructLiteral {
+            path,
+            fields,
+            symbol_id,
+            span,
+        } => {
             // Look up field type hints from the struct definition for non-generic structs.
             // Clone to release the borrow on ctx before calling construct_expr below.
             let type_name = path.last().map(|s| s.as_str()).unwrap_or("");
@@ -1510,13 +1515,17 @@ fn construct_expr(
                 }
             };
 
-            // Resolve the constructed type's stable identity (struct name, or the
-            // enum name for a 2-segment `Enum::Variant` literal).
-            let type_id = if path.len() == 2 {
-                ctx.type_symbol_id(&path[0])
-            } else {
-                ctx.type_symbol_id(path.last().unwrap())
-            };
+            // Resolve the constructed type's stable identity. A module-qualified
+            // literal carries its resolver-stamped id (correct across modules with
+            // same-named types); otherwise derive it from the declaring-module index
+            // (struct name, or the enum name for a 2-segment `Enum::Variant` literal).
+            let type_id = symbol_id.or_else(|| {
+                if path.len() == 2 {
+                    ctx.type_symbol_id(&path[0])
+                } else {
+                    ctx.type_symbol_id(path.last().unwrap())
+                }
+            });
 
             Ok(TypedExpr::StructLiteral {
                 path: path.clone(),

@@ -1390,7 +1390,9 @@ fn infer_expr(
                 span,
             ))
         }
-        Expr::StructLiteral { path, fields, span } => {
+        Expr::StructLiteral {
+            path, fields, span, ..
+        } => {
             if path.len() == 2 {
                 infer_enum_variant_literal(
                     &path[0],

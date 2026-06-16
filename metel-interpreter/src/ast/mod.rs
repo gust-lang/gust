@@ -413,6 +413,13 @@ pub enum Expr {
     StructLiteral {
         path: Vec<String>,
         fields: Vec<(String, Expr)>,
+        /// Stable identity of the constructed struct/enum type, resolved by the path
+        /// normalizer for module-qualified literals (METEL-185 / ADR-0041). Lets
+        /// construction stamp the correct per-reference type id onto the value instead
+        /// of re-deriving it from the name-keyed registry (which collides for
+        /// same-named cross-module types). `None` for local/unqualified literals,
+        /// which resolve correctly via the declaring-module index.
+        symbol_id: Option<SymbolId>,
         span: Span,
     },
     PropagateError {
