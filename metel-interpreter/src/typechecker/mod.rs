@@ -10,7 +10,7 @@ use crate::module_loader::LoadedModule;
 use crate::name_resolver::{GlobTier, ResolvedNames};
 use crate::path_normalizer::NormalizedModuleGraph;
 use crate::symbols::SymbolId;
-use crate::typed_ast::{ResolvedImportRef, TypedDecl, TypedModule, TypedModuleGraph, TypedProgram};
+use crate::typed_ast::{ResolvedImportRef, TypedDecl, TypedModule, TypedModuleGraph};
 use crate::typeinference::*;
 
 mod construction;
@@ -41,14 +41,6 @@ struct CheckImplReport {
     scheme_env: SchemeEnv,
     registry: TypeDefinitionRegistry,
     timings: TypecheckPhaseTimings,
-}
-
-#[allow(dead_code)] // public profiling API for benchmark workflows
-#[derive(Debug, Clone)]
-pub struct CheckWithCtxReport {
-    pub decls: TypedProgram,
-    pub type_ctx: crate::typeinference::TypeCtx,
-    pub timings: TypecheckPhaseTimings,
 }
 
 #[allow(dead_code)] // public profiling API for benchmark workflows
@@ -613,55 +605,6 @@ fn enforce_native_stdlib_only(
         }
     }
     Ok(())
-}
-
-#[allow(dead_code)] // public API used by single-file test harness
-pub fn check(program: Program) -> Result<TypedProgram, MetelError> {
-    let report = check_impl_with_report(
-        &program,
-        &HashMap::new(),
-        HashMap::new(),
-        &TypeDefinitionRegistry::new(),
-        &CorePrelude::default(),
-        &[],
-        None,
-        None,
-    )?;
-    Ok(report.typed_decls)
-}
-
-/// Run the type checker and also return the type context needed for
-/// construction-at-call-time of generic function bodies.
-#[allow(dead_code)] // public API used by single-file test harness
-pub fn check_with_ctx(
-    program: Program,
-) -> Result<(TypedProgram, crate::typeinference::TypeCtx), MetelError> {
-    let report = check_with_ctx_with_report(program)?;
-    Ok((report.decls, report.type_ctx))
-}
-
-pub fn check_with_ctx_with_report(program: Program) -> Result<CheckWithCtxReport, MetelError> {
-    let std_prelude = CorePrelude::default();
-    let report = check_impl_with_report(
-        &program,
-        &HashMap::new(),
-        HashMap::new(),
-        &TypeDefinitionRegistry::new(),
-        &std_prelude,
-        &[],
-        None,
-        None,
-    )?;
-    let mut full_scheme_env = report.scheme_env;
-    registry::register_builtin_schemes(&mut full_scheme_env, &std_prelude);
-    Ok(CheckWithCtxReport {
-        decls: report.typed_decls,
-        type_ctx: crate::typeinference::TypeCtx {
-            scheme_env: full_scheme_env,
-            registry: report.registry,
-        },
-        timings: report.timings,
-    })
 }
 
 /// Construct a `TypedBlock` for a generic (polymorphic) function body at call time.

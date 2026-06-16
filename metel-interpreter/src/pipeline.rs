@@ -1,4 +1,3 @@
-use std::fs;
 use std::time::Instant;
 
 use serde::Serialize;
@@ -8,7 +7,6 @@ use crate::error::MetelError;
 use crate::evaluator::{self, EvaluationReport};
 use crate::module_loader;
 use crate::name_resolver;
-use crate::parser;
 use crate::path_normalizer;
 use crate::typechecker::{self, CorePrelude, TypecheckPhaseTimings};
 
@@ -97,6 +95,15 @@ pub fn run_file(filename: &str, options: &RunOptions) -> Result<RunReport, Metel
     })
 }
 
+/// Run a single evaluator fixture through the full module pipeline (the same path
+/// the shipped binary uses), reporting evaluator-focused phase timings for the
+/// benchmark binary.
+///
+/// `parse_ns` here covers load + resolve + normalize (the front end), `typecheck_ns`
+/// covers type-checking + elaboration, and `evaluate_ns` the graph evaluation.
+/// Previously this used the single-program path (`check_with_ctx`); that path was
+/// removed once the SymbolId migration made it the sole remaining surface-name
+/// consumer (METEL-185 / ADR-0041), so the bench now matches the product path.
 #[allow(dead_code)] // public API used by the benchmark binary
 pub fn run_evaluator_fixture(
     filename: &str,
@@ -105,22 +112,20 @@ pub fn run_evaluator_fixture(
     let total_started = Instant::now();
 
     let started = Instant::now();
-    let source = fs::read_to_string(filename).map_err(|err| {
-        MetelError::internal(format!(
-            "failed to read evaluator fixture `{filename}`: {err}"
-        ))
-    })?;
-    let program = parser::parse(&source, filename)?;
+    let graph = module_loader::load_root(filename)?;
+    let names = name_resolver::resolve(&graph)?;
+    let normalized = path_normalizer::normalize(graph, &names)?;
     let parse_ns = elapsed_ns(started);
 
     let started = Instant::now();
-    let typecheck_report = typechecker::check_with_ctx_with_report(program)?;
+    let typed_report =
+        typechecker::check_graph_with_report(normalized, &names, CorePrelude::default())?;
+    let elaborated = elaborator::elaborate(typed_report.graph, &names)?;
     let typecheck_ns = elapsed_ns(started);
 
     let started = Instant::now();
-    let evaluation = evaluator::evaluate_with_ctx_and_options(
-        typecheck_report.decls,
-        typecheck_report.type_ctx,
+    let evaluation = evaluator::evaluate_graph_with_options(
+        elaborated,
         evaluator::EvaluationOptions {
             collect_profile: options.collect_evaluator_profile,
         },
@@ -131,7 +136,7 @@ pub fn run_evaluator_fixture(
         phase_timings: EvaluatorFixturePhaseTimings {
             parse_ns,
             typecheck_ns,
-            typecheck_detail: typecheck_report.timings,
+            typecheck_detail: typed_report.timings,
             evaluate_ns,
             total_ns: elapsed_ns(total_started),
         },
