@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::{Decl, ImportTree, PathRoot, Span, Visibility};
+use crate::ast::{Decl, ImportTree, PathRoot, Span, TypeExpr, Visibility};
 use crate::error::{MetelError, TypeErrorCode};
 use crate::module_loader::{LoadedModule, ModuleGraph};
 use crate::module_paths::resolve_path_root;
@@ -169,6 +169,9 @@ pub fn resolve(graph: &ModuleGraph) -> Result<ResolvedNames, MetelError> {
                     definitions.entry(id).or_insert_with(|| span.clone());
                 }
             }
+            // METEL-185 step 3a: give every impl/aspect method a stable SymbolId so
+            // later passes can dispatch method selection by id rather than by name.
+            intern_method_symbols(decl, &loaded.module_path, &mut sym, &mut definitions);
         }
     }
 
@@ -215,6 +218,64 @@ pub fn resolve(graph: &ModuleGraph) -> Result<ResolvedNames, MetelError> {
         definitions,
         references,
     })
+}
+
+/// Build the canonical symbol-table name for an `impl`/`aspect` method (METEL-185).
+///
+/// These keys live in the same `(module, name)` symbol namespace as ordinary
+/// declarations but are disambiguated by their `::`-joined shape so they never
+/// collide with a plain declaration name:
+///
+/// - inherent impl method: `Target::method`
+/// - aspect impl method:   `Target::Aspect::method`
+/// - aspect-declared method (default/abstract): `Aspect::method`
+///
+/// Both the resolver (which assigns the id) and later consumers (which look it up)
+/// must build keys through this function so the identities agree.
+pub fn method_symbol_name(target: &str, aspect: Option<&str>, method: &str) -> String {
+    match aspect {
+        Some(aspect) => format!("{target}::{aspect}::{method}"),
+        None => format!("{target}::{method}"),
+    }
+}
+
+/// Extract the surface type name of an impl target (`impl Foo { … }` → `Foo`).
+/// Returns `None` for non-named targets (which the typechecker rejects elsewhere).
+fn impl_target_name(target: &TypeExpr) -> Option<&str> {
+    match target {
+        TypeExpr::Named(name, _) => Some(name.as_str()),
+        _ => None,
+    }
+}
+
+/// Intern a `SymbolId` (and record a definition span) for every method declared in
+/// an `impl` or `aspect` declaration. No-op for other declarations. See METEL-185.
+fn intern_method_symbols(
+    decl: &Decl,
+    module_path: &[String],
+    sym: &mut SymbolTable,
+    definitions: &mut HashMap<SymbolId, Span>,
+) {
+    match decl {
+        Decl::Impl(ib) => {
+            let Some(target) = impl_target_name(&ib.target_type) else {
+                return;
+            };
+            for method in &ib.methods {
+                let key = method_symbol_name(target, ib.aspect_name.as_deref(), &method.name);
+                let id = sym.intern(module_path, &key);
+                definitions.entry(id).or_insert_with(|| method.span.clone());
+            }
+        }
+        Decl::Aspect(ad) => {
+            for method in &ad.methods {
+                let key = method_symbol_name(&ad.name, None, &method.name);
+                let id = sym.intern(module_path, &key);
+                definitions.entry(id).or_insert_with(|| method.span.clone());
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Returns the declaration span for a named top-level declaration, if it has one.
@@ -1240,6 +1301,36 @@ mod tests {
                 "definitions should contain `{name}`"
             );
         }
+    }
+
+    #[test]
+    fn interns_impl_and_aspect_method_symbols() {
+        // Inherent, aspect-impl, and aspect-declared methods each get a distinct
+        // SymbolId under their structured key, with a recorded definition span
+        // (METEL-185 step 3a).
+        let src = "struct Foo { x: i64 }\n\
+                   impl Foo { fun bar(self) -> i64 { self.x } }\n\
+                   aspect Greet { fun hi(self) -> i64; }\n\
+                   impl Greet for Foo { fun hi(self) -> i64 { 1 } }";
+        let program = crate::parser::parse(src, "t.mtl").expect("parse");
+        let graph = make_graph(vec![(vec![], program)]);
+        let names = resolve(&graph).unwrap();
+
+        let inherent = names.symbols[&(vec![], "Foo::bar".to_string())];
+        let aspect_impl = names.symbols[&(vec![], "Foo::Greet::hi".to_string())];
+        let aspect_decl = names.symbols[&(vec![], "Greet::hi".to_string())];
+
+        for id in [inherent, aspect_impl, aspect_decl] {
+            assert!(
+                names.definitions.contains_key(&id),
+                "method symbol {id:?} should have a definition span"
+            );
+        }
+        assert_ne!(
+            inherent, aspect_impl,
+            "an inherent method and an aspect-impl method on the same type must differ"
+        );
+        assert_ne!(aspect_impl, aspect_decl);
     }
 
     #[test]
