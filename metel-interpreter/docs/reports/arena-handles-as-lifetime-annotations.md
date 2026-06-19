@@ -19,7 +19,8 @@ Arena::scoped(fun(arena: &mut Arena) {
 The annotation `[arena]` on the pointer type marks `p` as arena-backed and therefore
 non-sendable: it is tied to the lifetime of the `arena` handle. This report examines
 what `[arena]` actually means as a language construct, how it compares to Rust's
-abstract lifetime parameters, and what it implies for annotation inference.
+abstract lifetime parameters, how region relationships between multiple arenas are
+expressed, and what the system implies for annotation inference.
 
 ---
 
@@ -129,7 +130,7 @@ let b: *iso[r2] Node = r2.alloc(Node { val: 2, next: null });
 // a.next = b;   // ERROR: *iso[r2] stored inside *iso[r1] — regions differ
 ```
 
-Arena::scoped assigns all allocations the same region, so nodes can freely reference
+`Arena::scoped` assigns all allocations the same region, so nodes can freely reference
 each other:
 
 ```metel
@@ -166,8 +167,8 @@ summarise(a) + summarise(b);
 // second call: [n] instantiated to [r2]
 ```
 
-No explicit region type parameter (`<R>`) is written anywhere. The region annotation in
-the signature refers to the parameter name, and instantiation is implicit at each call
+No explicit region type parameter is written anywhere. The region annotation in the
+signature refers to the parameter name, and instantiation is implicit at each call
 site — the same way type inference works for ordinary generics.
 
 Functions that allocate into a caller-supplied region thread the handle through the
@@ -188,13 +189,149 @@ At the call site the compiler unifies `build_node`'s `arena` parameter with the
 caller's `arena` variable, giving `n` the correct region tag without any annotation at
 the call site.
 
+This implicit form covers the common single-region case. When a function involves
+multiple regions, or when a struct must hold pointers from a region it does not own,
+explicit region parameters are needed.
+
 ---
 
-## 4. Does this improve the annotation inference story?
+## 4. Explicit region parameters and outlives relationships
+
+### 4.1 The `[...]` region parameter clause
+
+Region parameters are declared in a `[...]` clause following the type parameter list.
+This keeps them visually distinct from value type parameters while using the same
+bracket notation already used in pointer types and arena types:
+
+```metel
+// single region parameter
+fun alloc_node<T>[R](arena: &mut Arena[R], val: T) -> *iso[R] T {
+    arena.alloc(val)
+}
+
+// multiple region parameters
+fun transfer<T>[Src, Dst](
+    src: &mut Arena[Src],
+    dst: &mut Arena[Dst],
+    val: *iso[Src] T,
+) -> *iso[Dst] T {
+    dst.alloc(*val)
+}
+```
+
+At call sites region parameters are inferred from the concrete arena handles passed —
+they are never written explicitly, just as type parameters are not written when they
+can be inferred.
+
+### 4.2 Outlives as an aspect bound
+
+When two regions must stand in an outlives relationship, the `Outlives` aspect expresses
+the constraint in the `[...]` clause using the same bound syntax as type parameters:
+
+```metel
+aspect Outlives<R> {}
+
+fun transfer<T>[Src, Dst: Outlives<Src>](
+    src: &mut Arena[Src],
+    dst: &mut Arena[Dst],
+    val: *iso[Src] T,
+) -> *iso[Dst] T {
+    dst.alloc(*val)   // safe: Dst outlives Src — data copied into the longer-lived region
+}
+```
+
+The compiler auto-generates `Outlives` impls from scope analysis: if `long` was created
+before `short` in the program (and therefore lives longer), the compiler generates
+`impl Outlives<short_region> for long_region`. Manual `impl` of `Outlives` is not
+permitted — the compiler is the sole authority on region ordering.
+
+Structs with multiple regions follow the same pattern:
+
+```metel
+struct Session[Req, Resp: Outlives<Req>] {
+    request_data: *iso[Req] Bytes,
+    response_buf: *iso[Resp] Bytes,
+}
+
+fun handle[Req, Resp: Outlives<Req>](
+    req_arena:  &mut Arena[Req],
+    resp_arena: &mut Arena[Resp],
+    raw:        *val Bytes,
+) -> *iso[Resp] Session[Req, Resp] {
+    resp_arena.alloc(Session {
+        request_data: req_arena.alloc(parse(raw)),
+        response_buf: resp_arena.alloc(Bytes::empty()),
+    })
+}
+```
+
+At use sites:
+
+```metel
+let resp = Arena::new();
+Arena::scoped(fun(req: &mut Arena) {
+    // compiler sees: resp created before scoped block
+    // → impl Outlives<req_region> for resp_region  ✓
+    let session = handle(&mut req, &mut resp, raw);
+    // Req = req's region, Resp = resp's region — inferred; Outlives check passes
+    process(session);
+});
+// req freed; session is *iso[resp] — still valid
+// resp freed when resp goes out of scope
+```
+
+Lexical nesting handles the common case automatically: if `resp` is in an outer scope
+relative to `req`, the compiler derives the outlives relationship without any
+annotation. Explicit `Outlives` bounds are needed only in function and struct signatures
+where the regions arrive from outside and their relationship cannot be observed from
+the local scope.
+
+### 4.3 Sub-arenas with `Arena[R]`
+
+A sub-arena is an arena whose region is bounded by a parent region. At declaration
+sites `Arena[R]` names the bounding region abstractly; at use sites the bracket holds a
+concrete handle:
+
+```metel
+// declaration: R is an abstract region parameter
+fun make_sub[Parent, Child: Outlives<Parent>](parent: &mut Arena[Parent]) -> Arena[Child] {
+    parent.sub()
+}
+
+// use: brackets hold a concrete arena handle
+let outer = Arena::new();              // outer: Arena
+let inner: Arena[outer] = outer.sub();   // inner's region is bounded by outer
+// compiler generates: impl Outlives<inner_region> for outer_region  ✓
+```
+
+Allocating from `inner` produces `*iso[inner] T` pointers. These can reference data
+from `outer` (because `outer` outlives `inner`) but not the other way around.
+
+### 4.4 The `[...]` notation across all levels
+
+`[...]` consistently means "region" throughout the syntax. The level of abstraction is
+determined by context: concrete handle names at use sites, abstract parameters
+(uppercase by convention) at declaration sites.
+
+| Form | Level | Meaning |
+|---|---|---|
+| `*iso[R] T` | type annotation | pointer in abstract region R |
+| `*iso[arena] T` | type annotation | pointer in concrete region `arena` |
+| `Arena[R]` | type annotation | arena bounded by abstract region R |
+| `Arena[outer]` | type annotation | arena bounded by concrete handle `outer` |
+| `fun foo[R]` | declaration | declares abstract region parameter R |
+| `struct Foo[R]` | declaration | struct parameterised over region R |
+
+No separate syntax is introduced for each context. The same bracket notation works
+across all three levels.
+
+---
+
+## 5. Does this improve the annotation inference story?
 
 Yes, in ways that matter.
 
-### 4.1 Inference from the allocation site
+### 5.1 Inference from the allocation site
 
 When you write `arena.alloc(Counter { value: 0 })`, the compiler already knows the
 region — it is `arena`, the receiver of the call. The return type is `*iso[arena]
@@ -211,7 +348,7 @@ scope at this point?" The compiler already performs this check for every variabl
 Region checking becomes a specialisation of ordinary liveness analysis rather than a
 separate abstract constraint-solving pass.
 
-### 4.2 Function signatures are self-documenting
+### 5.2 Function signatures are self-documenting
 
 In Rust, an explicit lifetime annotation introduces a phantom variable whose meaning is
 established only by its appearance in the constraints:
@@ -233,9 +370,20 @@ fun parse(src: *val str, arena: &mut Arena) -> *iso[arena] Ast {
 ```
 
 `[arena]` in the return type points at the parameter `arena`. There is nothing to
-mentally bind.
+mentally bind. For the multi-region case the `[...]` clause makes the region parameters
+explicit in one place:
 
-### 4.3 Error messages name real objects
+```rust
+// Rust — two phantom parameters, reader must infer their relationship
+fn handle<'req, 'resp: 'req>(req: &'req mut Bump, resp: &'resp mut Bump) -> &'resp Session<'req>
+```
+
+```metel
+// metel — region parameters and their relationship in one clause
+fun handle[Req, Resp: Outlives<Req>](req: &mut Arena[Req], resp: &mut Arena[Resp]) -> *iso[Resp] Session[Req, Resp]
+```
+
+### 5.3 Error messages name real objects
 
 When a region escapes its scope in Rust the error references abstract lifetime
 variables:
@@ -260,50 +408,54 @@ error: *iso[arena] value escapes the scope of `arena`
 The programmer sees which arena is involved without consulting the lifetime constraint
 graph.
 
-### 4.4 Struct definitions — the remaining hard case
+### 5.4 Struct definitions
 
-Rust requires lifetime parameters at the struct definition site because the definition
-must be self-contained:
+With explicit region parameters in a `[...]` clause, struct definitions are
+self-contained without needing to mix region and type parameters into a single `<>`
+list:
+
+```metel
+struct Parser[R] { input: *iso[R] str, pos: i64 }
+// usage — R inferred from the arena at the construction site:
+Arena::scoped(fun(arena: &mut Arena) {
+    let p = Parser { input: arena.alloc(source), pos: 0 };
+    // p: Parser[arena] — R inferred as arena's region
+});
+```
+
+Compare Rust, where lifetime parameters must appear in the `<>` list alongside type
+parameters and carry no information about which parameter they come from:
 
 ```rust
 struct Parser<'a> { input: &'a str, pos: usize }
 ```
 
-With arena handles, the region does not exist at definition time. One option is a
-region type parameter at the definition site, analogous to Rust but shorter:
-
-```metel
-struct Parser[R] { input: *iso[R] str, pos: i64 }
-// usage:
-let p: Parser[arena] = Parser { input: arena.alloc(source), pos: 0 };
-```
-
-A more ambitious option is for region annotations to appear only at binding sites, with
-the struct definition carrying no region parameters:
+A more ambitious option — speculative — is for region annotations to appear only at
+binding sites, with the struct definition carrying no region clause at all:
 
 ```metel
 struct Parser { input: *iso str, pos: i64 }   // region elided in definition
 
 let p: Parser[arena] = Parser { input: arena.alloc(source), pos: 0 };
-// all *iso fields inferred to carry [arena]
+// binding annotation propagates [arena] to all *iso fields
 ```
 
-The binding annotation `Parser[arena]` propagates to all `*iso` fields inside the
-struct, and field accesses within the scope inherit `[arena]` without annotation. This
-would require region inference across field accesses, making struct definitions
-significantly cleaner than Rust's `struct Foo<'a, 'b>`. It is the more speculative of
-the two options but points toward a genuinely better story.
+This would require region inference across field accesses. The `struct Foo[R]` form is
+the practical starting point; binding-site-only annotation is a possible later
+extension.
 
-### 4.5 Summary
+### 5.5 Summary
 
-| Property | Rust `'a` lifetimes | Arena handles `[arena]` |
+| Property | Rust `'a` lifetimes | Arena handles with `[...]` |
 |---|---|---|
 | Annotation refers to | Abstract phantom variable | Real variable in scope |
 | Inference mechanism | Abstract constraint solving | Liveness of named variable |
 | Error messages | Abstract relations between `'a`, `'b` | Named arena out of scope |
-| Function signatures | Must introduce `<'a>` parameter | Refers to existing parameter |
-| Struct definitions | `struct Foo<'a>` required | Region parameter or binding-site annotation (TBD) |
-| CSC disjointness | Separate sep{} annotation | Derived from distinct region tags |
+| Single-region functions | Must introduce `<'a>` parameter | Region named after parameter; implicit |
+| Multi-region functions | `<'a, 'b: 'a>` in type param list | `[Src, Dst: Outlives<Src>]` in region clause |
+| Struct definitions | `struct Foo<'a>` required | `struct Foo[R]` with region clause |
+| Outlives relationship | `'a: 'b` special syntax | `Outlives<R>` aspect bound |
+| CSC disjointness | Separate `sep{}` annotation | Derived from distinct region tags |
 
 The inference algorithm is not fundamentally simpler — escape analysis is escape
 analysis. But the surface the programmer sees is anchored to real objects rather than
@@ -312,7 +464,7 @@ cases that do require them are easier to write and read.
 
 ---
 
-## 5. Relationship to the reference capability vocabulary
+## 6. Relationship to the reference capability vocabulary
 
 The `[r]` region annotation interacts with the capability vocabulary as follows:
 
