@@ -776,6 +776,181 @@ properties described in section 9.
 
 ---
 
+## 11. Custom arena implementations and fallible allocation
+
+### 11.1 `Arena` as an aspect
+
+So far `Arena` has been a concrete type. Making it an aspect enables Zig-style allocator
+polymorphism — callers inject an allocation strategy without changing the function's
+logic — while keeping the region tag `[R]` as a static lifetime annotation:
+
+```metel
+aspect Arena[R] {
+    type AllocError;
+
+    fun try_alloc<T>(&mut self, val: T) -> Result<*iso[R] T, Self::AllocError>;
+    fun try_freeze<T>(&mut self, ptr: *iso[R] T) -> Result<*val[R] T, Self::AllocError>;
+    fun free<T>(&mut self, ptr: *iso[R] T);
+    fun release<T>(&mut self, ptr: *val[R] T);
+}
+```
+
+`AllocError = !` (the never type) signals that an implementation cannot fail. Marking
+this common case lets call sites omit error handling without a separate aspect:
+
+```metel
+aspect InfallibleArena[R]: Arena[R, AllocError = !> {
+    // convenience methods that unwrap the never-error
+    fun alloc<T>(&mut self, val: T) -> *iso[R] T {
+        self.try_alloc(val).unwrap()
+    }
+    fun freeze<T>(&mut self, ptr: *iso[R] T) -> *val[R] T {
+        self.try_freeze(ptr).unwrap()
+    }
+}
+```
+
+`Heap` and `LocalHeap` implement `InfallibleArena`. The concrete built-in arena used
+inside `Arena::scoped` also implements `InfallibleArena`, so existing code requires no
+changes.
+
+### 11.2 Fallible implementations
+
+```metel
+// Stack-backed fixed buffer — size known at compile time, always fallible
+struct FixedBufferArena<[R], const N: usize> {
+    buf:    [u8; N],
+    offset: usize,
+}
+
+impl<[R], const N: usize> Arena[R] for FixedBufferArena<R, N> {
+    type AllocError = OutOfMemory;
+
+    fun try_alloc<T>(&mut self, val: T) -> Result<*iso[R] T, OutOfMemory> {
+        let align = alignof::<T>();
+        let size  = sizeof::<T>();
+        let start = (self.offset + align - 1) & !(align - 1);
+        if start + size > N { return Err(OutOfMemory); }
+        let ptr = self.buf.as_mut_ptr().add(start) as *mut T;
+        ptr.write(val);
+        self.offset = start + size;
+        Ok(unsafe { &mut *ptr as *iso[R] T })
+    }
+
+    fun free<T>(&mut self, _ptr: *iso[R] T) {}  // bump arenas don't free individually
+    fun try_freeze<T>(&mut self, ptr: *iso[R] T) -> Result<*val[R] T, OutOfMemory> { ... }
+    fun release<T>(&mut self, _ptr: *val[R] T) {}
+}
+
+// Spill: try fast arena first, fall back to heap — itself infallible
+struct FallbackArena<[R], Fast: Arena[R]> {
+    fast: Fast,
+    slow: &'static InfallibleArena[R],  // e.g. Heap
+}
+
+impl<[R], Fast: Arena[R>> Arena[R] for FallbackArena<R, Fast> {
+    type AllocError = !;
+
+    fun try_alloc<T>(&mut self, val: T) -> Result<*iso[R] T, !> {
+        match self.fast.try_alloc(val) {
+            Ok(ptr) => Ok(ptr),
+            Err(_)  => Ok(self.slow.alloc(val)),
+        }
+    }
+    ...
+}
+```
+
+### 11.3 Allocator-polymorphic functions
+
+The region tag `[R]` and the allocator type are independent axes. A function can be
+polymorphic over both simultaneously:
+
+```metel
+// works with any allocator that backs region R
+fun parse<[R]>(arena: &mut impl Arena[R], src: &str) -> Result<*iso[R] Ast, ParseError>
+
+// callers choose the strategy; the function stays the same
+let mut scratch: FixedBufferArena<_, 4096> = FixedBufferArena::new();
+
+Arena::scoped(fun(r: &mut Arena) {
+    let a = parse(&mut scratch, src)?;   // fixed buffer — fallible
+    let b = parse(r, src)?;             // scoped bump    — infallible
+    let c = parse(&mut Heap, src)?;     // global heap    — infallible
+});
+```
+
+A bound of `InfallibleArena[R]` expresses that the caller requires a non-failing
+allocator, enforced statically:
+
+```metel
+// result is stored long-term; allocation must not fail
+fun cache_result<[R]>(
+    arena: &mut impl InfallibleArena[R],
+    cache: &mut HashMap<Key, *val[R] Ast>,
+    src:   &str,
+) -> *val[R] Ast { ... }
+
+cache_result(&mut scratch, &mut cache, src);  // ERROR: FixedBufferArena is not InfallibleArena
+cache_result(&mut Heap,    &mut cache, src);  // OK
+```
+
+### 11.4 Catalogue of useful implementations
+
+| Arena type | `AllocError` | Backing | Notable property |
+|---|---|---|---|
+| Built-in bump (inside `scoped`) | `!` | Heap page | O(1) alloc, O(1) bulk free |
+| `FixedBufferArena<N>` | `OutOfMemory` | Stack `[u8; N]` | Zero heap; predictable |
+| `FallbackArena<Fast>` | `!` | Fast + Heap spill | Never fails; fast common case |
+| `DebugArena` | `!` | Wraps another | Guard pages, use-after-free detection |
+| `TrackingArena` | `!` | Wraps another | Records live pointers; reports leaks on drop |
+| `ScratchArena` | `!` | Reusable buffer | Adds `clear()` to reset without dealloc |
+| `PageArena` | `OutOfMemory` | OS `mmap` | Large bulk allocations; fallible |
+
+### 11.5 Relationship to Zig's allocator model
+
+Zig's `std.mem.Allocator` is a runtime-erased vtable that every allocation-using
+function receives as a parameter. Functions do not track lifetimes in the type system —
+safety is the programmer's responsibility.
+
+Metel extends this idea in two directions:
+
+1. **Static lifetime tracking.** The region tag `[R]` is a compile-time annotation
+   independent of the allocator type. A `FixedBufferArena<R, 4096>` and `Heap` both
+   produce `*iso[R] T` — the lifetime is a property of the region, not the allocator.
+   Escape errors are caught at compile time regardless of which allocator was used.
+
+2. **Infallibility as a bound.** Zig's `alloc` always returns `!T` (fallible). Metel
+   distinguishes `Arena[R]` from `InfallibleArena[R]` at the type level, so functions
+   that require reliable allocation can express that requirement as a bound and have it
+   checked by the compiler.
+
+The trade-off is that Metel's aspect-based approach is compile-time monomorphised (one
+instantiation per concrete allocator type), whereas Zig's vtable is one indirect call
+regardless of type. For hot allocation paths the monomorphised version enables inlining;
+for code-size sensitive embedded targets a vtable may be preferred — both are achievable.
+
+### 11.6 Open question: `Arena::scoped` and abstract arenas
+
+`Arena::scoped` currently yields a concrete bump arena. Making it yield
+`&mut impl InfallibleArena[R]` instead would let the closure accept any infallible
+allocator:
+
+```metel
+// Option A — concrete (current): caller always gets a bump arena
+Arena::scoped(fun(r: &mut BumpArena) { ... })
+
+// Option B — abstract: closure is generic over the allocator
+Arena::scoped(fun[R](r: &mut impl InfallibleArena[R]) { ... })
+```
+
+Option B is more flexible but requires the closure to be generic over `[R]`, which adds
+notation noise for the common case. Option A is the practical default; Option B can be
+offered as `Arena::scoped_with(allocator, closure)` for callers that want to supply
+their own backing strategy.
+
+---
+
 ## References
 
 - Tofte, M., & Talpin, J.-P. (1997). Region-based memory management. *Information and
