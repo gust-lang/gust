@@ -507,56 +507,77 @@ current fiber; its pointers cannot be sent.
 
 ### 7.2 Box, Arc, and Rc
 
+Region annotations are uniform: every allocated value carries `[R]` regardless of which
+arena backed it. Construction functions take an explicit arena argument with `Heap` as the
+default, so the region is inferred from the arena and need not be written at the call site:
+
 ```metel
-aspect Drop { fun drop(self); }   // runtime calls drop(self) when an affine value is weakened
+aspect Drop { fun drop(self); }
 
-// ---- Box<T> — unique ownership, sendable ------------------------------------
-struct Box<T> { ptr: *iso[Heap] T }
+// ---- Box<T>[R] — unique ownership in region R --------------------------------
+struct Box<T>[R] { ptr: *iso[R] T }
 
-impl<T> Box<T> {
-    fun new(val: T) -> Box<T>        { Box { ptr: Heap.alloc(val) } }
+impl<T>[R] Box<T>[R] {
+    fun new(val: T, arena: &mut impl InfallibleArena[R] = &mut Heap) -> Box<T>[R] {
+        Box { ptr: arena.alloc(val) }
+    }
     fun get(&self) -> *T             { &*self.ptr }
     fun get_mut(&mut self) -> *mut T { &mut *self.ptr }
     fun into_inner(self) -> T        { *self.ptr }
-    fun freeze(self) -> Arc<T>       { Arc { ptr: Heap.freeze(self.ptr) } }
+    fun freeze(self) -> Arc<T>[R]    { Arc { ptr: arena_freeze(self.ptr) } }
 }
-impl<T> Drop for Box<T> {
-    fun drop(self) { Heap.free(self.ptr); }        // T::drop (if any) + dealloc
-}
-
-// ---- Arc<T> — shared immutable, sendable, atomic refcount ------------------
-struct Arc<T> { ptr: *val T }
-
-impl<T> Arc<T> {
-    fun new(val: T) -> Arc<T> { Box::new(val).freeze() }
-    fun get(&self) -> *T      { &*self.ptr }
-}
-impl<T> Drop for Arc<T> {
-    fun drop(self) { Heap.release(self.ptr); }     // atomic decrement; free at zero
+impl<T>[R] Drop for Box<T>[R] {
+    fun drop(self) {
+        // T::drop (if any), then free self.ptr in region R:
+        // Heap / LocalHeap: actual deallocation
+        // scoped bump arena: no-op — the arena drop reclaims all memory at once
+    }
 }
 
-// ---- Rc<T> — shared immutable, NOT sendable, non-atomic refcount -----------
-struct Rc<T> { ptr: *val[LocalHeap] T }
+// ---- Arc<T>[R] — shared immutable in region R --------------------------------
+// Sendable iff R is a static region (e.g. Heap).
+// Refcount is atomic when sendable, non-atomic otherwise.
+struct Arc<T>[R] { ptr: *val[R] T }
 
-impl<T> Rc<T> {
-    fun new(val: T) -> Rc<T> {
-        Rc { ptr: LocalHeap.freeze(LocalHeap.alloc(val)) }
+impl<T>[R] Arc<T>[R] {
+    fun new(val: T, arena: &mut impl InfallibleArena[R] = &mut Heap) -> Arc<T>[R] {
+        Box::new(val, arena).freeze()
     }
     fun get(&self) -> *T { &*self.ptr }
 }
-impl<T> Drop for Rc<T> {
-    fun drop(self) { LocalHeap.release(self.ptr); } // non-atomic; always fiber-local
+impl<T>[R] Drop for Arc<T>[R] {
+    fun drop(self) {
+        // decrement refcount in R; free allocation when count reaches zero
+    }
 }
+
+// ---- Rc<T> — Arc in the fiber-local heap ------------------------------------
+type Rc<T> = Arc<T>[LocalHeap];   // not sendable; non-atomic refcount
 ```
 
-`Arc<T>` and `Rc<T>` are structurally identical. The arena determines sendability and
-whether the refcount requires atomic operations:
+Usage — region is always inferred, never written at call sites:
+
+```metel
+let a = Box::new(42);               // a: Box<i32>[Heap]      — default arena
+let b = Arc::new("hello");          // b: Arc<str>[Heap]      — default arena
+let c = Rc::new(vec![1, 2, 3]);    // c: Arc<Vec<i32>>[LocalHeap]
+
+Arena::scoped(fun(s: &mut impl InfallibleArena) {
+    let d = Box::new(Node { val: 1 }, s);  // d: Box<Node>[s] — region inferred from s
+    let e = Arc::new(Node { val: 2 }, s);  // e: Arc<Node>[s] — shared within scope
+});                                         // s drops; d and e freed automatically
+```
+
+Sendability and refcount strategy fall out of the region:
 
 | Type | Arena | Pointer | Sendable | Refcount |
 |---|---|---|---|---|
-| `Box<T>` | `Heap` | `*iso[Heap] T` | Yes | — |
-| `Arc<T>` | `Heap` | `*val T` | Yes | atomic |
-| `Rc<T>` | `LocalHeap` | `*val[LocalHeap] T` | No | non-atomic |
+| `Box<T>[Heap]` | `Heap` | `*iso[Heap] T` | Yes | — |
+| `Box<T>[LocalHeap]` | `LocalHeap` | `*iso[LocalHeap] T` | No | — |
+| `Box<T>[s]` | scoped `s` | `*iso[s] T` | No | — |
+| `Arc<T>[Heap]` | `Heap` | `*val[Heap] T` | Yes | atomic |
+| `Rc<T>` = `Arc<T>[LocalHeap]` | `LocalHeap` | `*val[LocalHeap] T` | No | non-atomic |
+| `Arc<T>[s]` | scoped `s` | `*val[s] T` | No | non-atomic |
 
 ---
 
@@ -564,38 +585,39 @@ whether the refcount requires atomic operations:
 
 Two leak scenarios arise from the design above.
 
-### 8.1 Leak 1 — raw `*iso[Heap] T` silently dropped
+### 8.1 Leak 1 — raw `*iso[R] T` silently dropped
 
-`Heap.alloc` returns `*iso[Heap] T`. That type is affine — it can be weakened without
-calling `Heap.free`. If a caller discards a raw pointer without consuming it, the
+`arena.alloc` returns `*iso[R] T`. That type is affine — it can be weakened without
+calling `arena.free`. If a caller discards a raw pointer without consuming it, the
 allocation leaks:
 
 ```metel
 fun leaky() {
     let p: *iso[Heap] Counter = Heap.alloc(Counter { value: 0 });
-    // p weakened here — no Drop on *iso — Heap.free never called
+    // p weakened here — no Drop on raw *iso — Heap.free never called
 }
 ```
 
 Three coherent responses:
 
-**Option A — implicit Drop on `*iso[Heap] T`**: the compiler treats every
-`*iso[Heap] T` drop as a call to `Heap.free` (chaining into `T::drop` first). No user
-action needed. For arena-backed `*iso[arena] T`, the implicit drop is a no-op — the
-arena frees everything at region end. One compiler rule handles both cases.
+**Option A — implicit Drop on `*iso[R] T`**: the compiler treats every `*iso[R] T` drop
+as a call into the region's free function (chaining into `T::drop` first). No user
+action needed. For scoped bump arenas the implicit drop is a no-op — the arena frees
+everything at region end. For `Heap` and `LocalHeap` it actually deallocates. One
+compiler rule handles all cases.
 
-**Option B — `Heap.alloc` returns `Box<T>` directly**: raw `*iso[Heap] T` is never
-exposed outside the stdlib. `Heap.alloc` and `Box::new` are the same function. Users
-can only produce `Box<T>`, `Arc<T>`, `Rc<T>` — all of which have `Drop`. This is the
-same boundary Rust draws between raw pointers and `Box`.
+**Option B — `arena.alloc` returns `Box<T>[R]` directly**: raw `*iso[R] T` is never
+exposed outside the stdlib. Users can only produce `Box<T>[R]`, `Arc<T>[R]`, `Rc<T>` —
+all of which have `Drop`. This is the same boundary Rust draws between raw pointers and
+`Box`.
 
-**Option C — `*iso[Heap] T` is linear**: consuming the pointer is required; weakening
-is a compile error. Forces explicit handling at every exit point. Too restrictive for
+**Option C — `*iso[R] T` is linear**: consuming the pointer is required; weakening is a
+compile error. Forces explicit handling at every exit point. Too restrictive for
 practical use but maximally leak-safe.
 
 Option B is the practical default: the raw capability is an implementation detail of
 the stdlib, not a user-visible type. Option A is a useful safety net for any unsafe
-context where raw `*iso[Heap] T` appears.
+context where raw `*iso[R] T` appears.
 
 ### 8.2 Leak 2 — reference cycles in `Rc<T>` and `Arc<T>`
 
@@ -604,32 +626,31 @@ values reference each other, the count never reaches zero and the memory is neve
 
 The standard fix is `Weak<T>` — a non-owning handle that does not increment the
 refcount. In metel's capability vocabulary, `*tag T` (identity only, no read/write) maps
-directly onto this role:
+directly onto this role. `Weak<T>[R]` is region-polymorphic just like `Arc<T>[R]`:
 
 ```metel
-struct Weak<T>    { ptr: *tag[LocalHeap] T }  // non-owning; Rc-backed; not sendable
-struct WeakArc<T> { ptr: *tag T }             // non-owning; Arc-backed; sendable
+struct Weak<T>[R] { ptr: *tag[R] T }   // non-owning; sendable iff R is static
 
-impl<T> Rc<T> {
-    fun downgrade(&self) -> Weak<T> {
+impl<T>[R] Arc<T>[R] {
+    fun downgrade(&self) -> Weak<T>[R] {
         Weak { ptr: tag_of(self.ptr) }   // identity only — no refcount increment
     }
 }
 
-impl<T> Weak<T> {
-    fun upgrade(&self) -> Rc<T>? {
-        LocalHeap.try_upgrade(self.ptr)  // Some(Rc) if still alive, else null
+impl<T>[R] Weak<T>[R] {
+    fun upgrade(&self) -> Arc<T>[R]? {
+        arena_try_upgrade[R](self.ptr)   // Some(Arc) if still alive, else null
     }
 }
 ```
 
-Back-edges in graphs use `Weak<T>`; only forward-ownership edges use `Rc<T>`:
+Back-edges in graphs use `Weak<T>[R]`; only forward-ownership edges use `Arc<T>[R]`:
 
 ```metel
 struct Node {
-    val:    i64,
-    parent: Weak<Node>,      // back-edge — does not prevent parent from being freed
-    children: [Rc<Node>],   // forward-ownership edges
+    val:      i64,
+    parent:   Weak<Node>[LocalHeap],  // back-edge — does not prevent parent from being freed
+    children: Vec<Rc<Node>>,         // forward-ownership edges (Rc<T> = Arc<T>[LocalHeap])
 }
 ```
 
