@@ -486,6 +486,296 @@ The normal path for making arena-allocated data sendable is `freeze`: consume th
 
 ---
 
+## 7. Stdlib allocation types
+
+The reference capability vocabulary provides the primitives; `Box<T>`, `Arc<T>`, and
+`Rc<T>` are ordinary stdlib structs built on top with no compiler magic beyond the
+`Drop` aspect and two special arenas.
+
+### 7.1 The global and fiber-local heaps
+
+Two arenas with permanent lifetimes serve as the backing store for standard allocation:
+
+```metel
+static      Heap:      Arena = Arena::heap();   // global — *iso[Heap] T is sendable
+fiber_local LocalHeap: Arena = Arena::local();  // per-fiber — *iso[LocalHeap] T is not
+```
+
+`Heap` outlives all scopes and fibers, so the compiler treats `[Heap]` as a static
+region and permits `*iso[Heap] T` to cross fiber boundaries. `LocalHeap` is tied to the
+current fiber; its pointers cannot be sent.
+
+### 7.2 Box, Arc, and Rc
+
+```metel
+aspect Drop { fun drop(self); }   // runtime calls drop(self) when an affine value is weakened
+
+// ---- Box<T> — unique ownership, sendable ------------------------------------
+struct Box<T> { ptr: *iso[Heap] T }
+
+impl<T> Box<T> {
+    fun new(val: T) -> Box<T>        { Box { ptr: Heap.alloc(val) } }
+    fun get(&self) -> *T             { &*self.ptr }
+    fun get_mut(&mut self) -> *mut T { &mut *self.ptr }
+    fun into_inner(self) -> T        { *self.ptr }
+    fun freeze(self) -> Arc<T>       { Arc { ptr: Heap.freeze(self.ptr) } }
+}
+impl<T> Drop for Box<T> {
+    fun drop(self) { Heap.free(self.ptr); }        // T::drop (if any) + dealloc
+}
+
+// ---- Arc<T> — shared immutable, sendable, atomic refcount ------------------
+struct Arc<T> { ptr: *val T }
+
+impl<T> Arc<T> {
+    fun new(val: T) -> Arc<T> { Box::new(val).freeze() }
+    fun get(&self) -> *T      { &*self.ptr }
+}
+impl<T> Drop for Arc<T> {
+    fun drop(self) { Heap.release(self.ptr); }     // atomic decrement; free at zero
+}
+
+// ---- Rc<T> — shared immutable, NOT sendable, non-atomic refcount -----------
+struct Rc<T> { ptr: *val[LocalHeap] T }
+
+impl<T> Rc<T> {
+    fun new(val: T) -> Rc<T> {
+        Rc { ptr: LocalHeap.freeze(LocalHeap.alloc(val)) }
+    }
+    fun get(&self) -> *T { &*self.ptr }
+}
+impl<T> Drop for Rc<T> {
+    fun drop(self) { LocalHeap.release(self.ptr); } // non-atomic; always fiber-local
+}
+```
+
+`Arc<T>` and `Rc<T>` are structurally identical. The arena determines sendability and
+whether the refcount requires atomic operations:
+
+| Type | Arena | Pointer | Sendable | Refcount |
+|---|---|---|---|---|
+| `Box<T>` | `Heap` | `*iso[Heap] T` | Yes | — |
+| `Arc<T>` | `Heap` | `*val T` | Yes | atomic |
+| `Rc<T>` | `LocalHeap` | `*val[LocalHeap] T` | No | non-atomic |
+
+---
+
+## 8. Memory safety: leaks and cycles
+
+Two leak scenarios arise from the design above.
+
+### 8.1 Leak 1 — raw `*iso[Heap] T` silently dropped
+
+`Heap.alloc` returns `*iso[Heap] T`. That type is affine — it can be weakened without
+calling `Heap.free`. If a caller discards a raw pointer without consuming it, the
+allocation leaks:
+
+```metel
+fun leaky() {
+    let p: *iso[Heap] Counter = Heap.alloc(Counter { value: 0 });
+    // p weakened here — no Drop on *iso — Heap.free never called
+}
+```
+
+Three coherent responses:
+
+**Option A — implicit Drop on `*iso[Heap] T`**: the compiler treats every
+`*iso[Heap] T` drop as a call to `Heap.free` (chaining into `T::drop` first). No user
+action needed. For arena-backed `*iso[arena] T`, the implicit drop is a no-op — the
+arena frees everything at region end. One compiler rule handles both cases.
+
+**Option B — `Heap.alloc` returns `Box<T>` directly**: raw `*iso[Heap] T` is never
+exposed outside the stdlib. `Heap.alloc` and `Box::new` are the same function. Users
+can only produce `Box<T>`, `Arc<T>`, `Rc<T>` — all of which have `Drop`. This is the
+same boundary Rust draws between raw pointers and `Box`.
+
+**Option C — `*iso[Heap] T` is linear**: consuming the pointer is required; weakening
+is a compile error. Forces explicit handling at every exit point. Too restrictive for
+practical use but maximally leak-safe.
+
+Option B is the practical default: the raw capability is an implementation detail of
+the stdlib, not a user-visible type. Option A is a useful safety net for any unsafe
+context where raw `*iso[Heap] T` appears.
+
+### 8.2 Leak 2 — reference cycles in `Rc<T>` and `Arc<T>`
+
+No refcount-based system detects cycles without additional machinery. If two `Rc<T>`
+values reference each other, the count never reaches zero and the memory is never freed.
+
+The standard fix is `Weak<T>` — a non-owning handle that does not increment the
+refcount. In metel's capability vocabulary, `*tag T` (identity only, no read/write) maps
+directly onto this role:
+
+```metel
+struct Weak<T>    { ptr: *tag[LocalHeap] T }  // non-owning; Rc-backed; not sendable
+struct WeakArc<T> { ptr: *tag T }             // non-owning; Arc-backed; sendable
+
+impl<T> Rc<T> {
+    fun downgrade(&self) -> Weak<T> {
+        Weak { ptr: tag_of(self.ptr) }   // identity only — no refcount increment
+    }
+}
+
+impl<T> Weak<T> {
+    fun upgrade(&self) -> Rc<T>? {
+        LocalHeap.try_upgrade(self.ptr)  // Some(Rc) if still alive, else null
+    }
+}
+```
+
+Back-edges in graphs use `Weak<T>`; only forward-ownership edges use `Rc<T>`:
+
+```metel
+struct Node {
+    val:    i64,
+    parent: Weak<Node>,      // back-edge — does not prevent parent from being freed
+    children: [Rc<Node>],   // forward-ownership edges
+}
+```
+
+### 8.3 How other languages handle these problems
+
+| Approach | Leak 1 | Leak 2 | Cost |
+|---|---|---|---|
+| Tracing GC (Java, Go, OCaml) | Solved | Solved | GC pauses; non-deterministic finalization |
+| RAII + Drop (C++, Rust) | Solved via `Box`/`Drop` | Not solved; `Weak` is opt-in | None at runtime |
+| ARC + weak/unowned (Swift) | Solved | Partially — programmer uses `weak` | None at runtime |
+| RC + cycle collector (Python) | Solved | Solved via periodic scan | Scan overhead |
+| Nim ORC | Solved | Solved via trial deletion | O(cycle size) per collection |
+| Linear types (Idris 2, Linear Haskell) | Compile-time error | Structurally impossible | Expressivity |
+| Explicit allocators (Zig) | Debug-mode detection | N/A | Programmer discipline |
+
+**Nim ORC** is the most relevant point of comparison. ORC uses reference counting for
+Leak 1 (the compiler inserts decrements at scope exit, equivalent to `Drop`) and adds a
+lightweight cycle detector for Leak 2: when a refcount drops and the object might
+participate in a cycle, ORC traces the local subgraph and collects any fully-internal
+cycles. This is deterministic O(cycle size) work per collection rather than O(heap) as
+in a full tracing GC.
+
+Applying Nim's approach to metel's `*val` capability would mean the compiler inserts
+refcount increments on every `*val T` copy and decrements on every drop — making `Rc<T>`
+and `Arc<T>` thin ergonomic wrappers over language-level behaviour rather than
+substantive abstractions. The `Drop` impl on each type would become unnecessary. The
+constraint is that implicit RC cannot apply to `*iso T`, which must remain uniquely
+owned; automatic reference counting on a unique pointer contradicts its semantics.
+
+---
+
+## 9. Advantages of region allocation
+
+Region allocation is not merely a lifetime-annotation mechanism; it has concrete
+performance and safety properties that per-object allocation does not.
+
+**Allocation speed.** Arena allocation is a pointer bump: increment a counter and
+return the old value. `Heap.alloc` (backed by `malloc`) maintains free lists, handles
+fragmentation, and typically acquires a lock or uses per-thread bookkeeping. For
+allocation-heavy workloads — parsing, tree building, request-scoped data — the
+difference is 10–100×.
+
+**O(1) bulk deallocation.** Freeing N individually-allocated objects requires N
+`Heap.free` calls and N `Drop` invocations for the allocations themselves. Dropping an
+arena resets one pointer. A compiler processing a 100,000-node AST and discarding it
+pays one deallocation, not 100,000.
+
+**No per-object overhead.** `Arc<T>` stores a refcount in every object and emits
+atomic increment/decrement on every copy and drop. Arena objects carry no extra fields
+and require no Drop implementation for the allocation itself — only for external
+resources (file handles, sockets) the object may own.
+
+**Cache locality.** Objects bump-allocated sequentially are physically adjacent.
+Traversing a tree whose nodes all came from the same arena hits L1/L2 cache reliably.
+Individual `Box<T>` allocations scatter objects across the heap.
+
+**Structural sharing without lifetime complexity.** Every `*iso[arena] T` pointer in
+the same arena shares one lifetime. Nodes can reference each other freely, including
+cycles, because all are freed together when the arena drops — no cycle is a leak:
+
+```metel
+Arena::scoped(fun(a: &mut Arena) {
+    let x = a.alloc(Node { val: 1, next: null });
+    let y = a.alloc(Node { val: 2, next: x });
+    x.next = y;   // cycle — irrelevant; both freed when arena drops
+});
+```
+
+**Predictable latency.** Refcount cascades — where dropping one `Arc<T>` triggers
+a chain of inner drops — can free thousands of objects in a single operation with
+unpredictable timing. Dropping an arena is one bounded operation.
+
+---
+
+## 10. Coexistence with standard allocation
+
+Region allocation and standard per-object allocation are not alternatives; they are
+the same system at different lifetime granularities. `Heap` is simply an arena whose
+region never ends.
+
+**Borrows are region-agnostic.** Any function taking `&T` or `*T` works regardless of
+where the `T` was allocated. The borrow carries no information about its source arena:
+
+```metel
+fun describe(node: &Node) -> i64 { node.val }
+
+let h = Box::new(Node { val: 1 });
+describe(h.get());                        // from Heap
+
+Arena::scoped(fun(a: &mut Arena) {
+    let n = a.alloc(Node { val: 2 });
+    describe(n);                          // from scoped arena — same call, same function
+});
+```
+
+**Region-polymorphic functions work with any arena, including `Heap`.** A function
+declared with a `[R]` region parameter instantiates to `Heap`, `LocalHeap`, or any
+scoped arena at the call site:
+
+```metel
+fun build_node[R](arena: &mut Arena[R], val: i64) -> *iso[R] Node {
+    arena.alloc(Node { val, next: null })
+}
+
+let h = build_node(&mut Heap, 1);         // *iso[Heap] Node — equivalent to Box<Node>
+
+Arena::scoped(fun(a: &mut Arena) {
+    let n = build_node(a, 2);             // *iso[a] Node — arena-scoped
+});
+```
+
+**Data can move between regions.** When arena-scoped data needs to outlive its arena,
+it is either copied to the heap or frozen into a sendable `*val`:
+
+```metel
+Arena::scoped(fun(a: &mut Arena) {
+    let temp: *iso[a] Config = a.alloc(Config { workers: 4 });
+
+    let permanent = Box::new(*temp);      // copy to Heap — independent lifetime
+    let shared: *val Config = freeze(temp); // freeze — globally immutable, sendable
+    spawn { use_config(shared) };
+});
+```
+
+**Most user code never sees a region annotation.** The `[R]` clause appears in stdlib
+implementations and region-polymorphic library functions. Application code uses `Box<T>`,
+`Arc<T>`, `Rc<T>`, and `Arena::scoped` — all of which hide the underlying `*iso[R] T`
+behind a named type:
+
+```metel
+fun main() {
+    let b = Box::new(Counter { value: 0 });      // no annotation visible
+    let a = Arc::new(Config { workers: 4 });     // no annotation visible
+    Arena::scoped(fun(arena: &mut Arena) {
+        let node = arena.alloc(Node { val: 1 }); // type inferred
+    });
+}
+```
+
+The region system is additive: programs that never need regions use `Box`, `Arc`, and
+`Rc` as in any other language. Programs that benefit from bulk allocation or shared
+lifetimes opt into `Arena::scoped` and gain the performance and lifetime-simplicity
+properties described in section 9.
+
+---
+
 ## References
 
 - Tofte, M., & Talpin, J.-P. (1997). Region-based memory management. *Information and
@@ -497,3 +787,11 @@ The normal path for making arena-allocated data sendable is `freeze`: consume th
 - Weiss, A. et al. (2019). Oxide: the essence of Rust. *arXiv:1903.00982*.
 - Levy, A. et al. (2017). Multiprogramming a 64 kB computer safely and efficiently
   (Tock OS). *SOSP 2017*. (Region-based memory in embedded Rust.)
+- Boyapati, C. et al. (2003). Ownership types for safe region-based memory management
+  in real-time Java. *PLDI 2003*.
+- Ekblad, A., & Claessen, K. (2014). A splittable implicit heap memory manager.
+  *Haskell Symposium 2014*. (Bulk allocation and region deallocation in Haskell.)
+- Rądkiewicz, A. (2020). ORC — Nim's new garbage collector. *Nim blog*.
+  (Trial-deletion cycle collection on top of reference counting.)
+- Bernardy, J.-P. et al. (2018). Linear Haskell: practical linearity in a higher-order
+  polymorphic language. *POPL 2018*. (Implicit RC via linear types.)
