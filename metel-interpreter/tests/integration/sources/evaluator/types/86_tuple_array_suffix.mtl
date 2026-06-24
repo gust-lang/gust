@@ -1,0 +1,22 @@
+// `(T, U)[]` must survive the full pipeline, not only the parser. This covers
+// tuple-array annotations on locals, function parameters, returns, and struct
+// fields (METEL-191).
+
+struct PairTable {
+    rows: (String, i64)[],
+}
+
+fun keep(rows: (String, i64)[]) -> (String, i64)[] {
+    return rows;
+}
+
+fun main() {
+    let rows: (String, i64)[] = [("alpha", 1), ("beta", 2)];
+    let echoed = keep(rows);
+    let table = PairTable { rows: echoed };
+
+    assert(table.rows[0].0 == "alpha");
+    assert(table.rows[0].1 == 1);
+    assert(table.rows[1].0 == "beta");
+    assert(table.rows[1].1 == 2);
+}

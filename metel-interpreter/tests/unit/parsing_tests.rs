@@ -285,6 +285,10 @@ fn array_suffix_binds_to_tuple_type() {
     use metel::ast::{Decl, TypeExpr};
 
     let source = r#"
+struct Env {
+    vars: (String, String)[],
+}
+
 fun vars() -> (String, String)[] {
     return [];
 }
@@ -310,13 +314,21 @@ fun annotates() {
         other => panic!("{ctx}: expected Array(Tuple(..)), got {other:?}"),
     };
 
+    let mut saw_field = false;
     let mut saw_return = false;
     let mut saw_param = false;
     for decl in &program.decls {
-        if let Decl::Fun(f) = decl {
-            match f.name.as_str() {
+        match decl {
+            Decl::Struct(s) if s.name == "Env" => {
+                expect_tuple_array(&s.fields[0].type_ann, "field");
+                saw_field = true;
+            }
+            Decl::Fun(f) => match f.name.as_str() {
                 "vars" => {
-                    expect_tuple_array(f.return_type.as_ref().expect("vars return type"), "return");
+                    expect_tuple_array(
+                        f.return_type.as_ref().expect("vars return type"),
+                        "return",
+                    );
                     saw_return = true;
                 }
                 "takes" => {
@@ -325,10 +337,27 @@ fun annotates() {
                     saw_param = true;
                 }
                 _ => {}
-            }
+            },
+            _ => {}
         }
     }
-    assert!(saw_return && saw_param, "expected to inspect vars() and takes()");
+    assert!(
+        saw_field && saw_return && saw_param,
+        "expected to inspect Env, vars() and takes()"
+    );
+}
+
+#[test]
+fn tuple_array_suffix_works_inside_nested_generic_arg() {
+    let source = r#"
+fun groups() -> List<(String, String)[]> {
+    return List::new();
+}
+"#;
+
+    parser::parse(source, "tuple_array_nested_generic_arg.mtl").unwrap_or_else(|e| {
+        panic!("List<(T, U)[]> should parse when the array suffix binds to the tuple: {e}")
+    });
 }
 
 // METEL-191 acceptance: a tuple as a generic type argument must also parse.

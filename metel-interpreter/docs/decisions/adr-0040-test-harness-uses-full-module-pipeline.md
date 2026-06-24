@@ -64,6 +64,9 @@ dependence on the divergent path, not the path itself.
 - The evaluator/typechecking fixtures now exercise elaboration and real std::core
   module loading. METEL-192's fix is a plain stdlib change with no harness-specific
   seeding.
+- The regression suite now has product-path coverage for user-defined `Display`
+  values flowing through `print`/`println`, instead of only checking the divergent
+  single-program shortcut.
 - Surfaced one latent fixture divergence: `int_07_pub_declarations.mtl` used
   `pub fun main()` with no return type, which the lax single-program path accepted
   but the product path rejects with T0010 (pub declarations require an explicit

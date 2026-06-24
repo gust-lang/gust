@@ -1,0 +1,16 @@
+// Stage 3 regression: the postfix `[]` array suffix must bind to tuple types in
+// every annotation position, not only named types (METEL-191).
+
+struct PairTable {
+    rows: (String, i64)[],
+}
+
+fun keep(rows: (String, i64)[]) -> (String, i64)[] {
+    rows
+}
+
+let rows: (String, i64)[] = [("alpha", 1), ("beta", 2)];
+let table = PairTable { rows: keep(rows) };
+let first: (String, i64) = table.rows[0];
+let name: String = first.0;
+let value: i64 = first.1;

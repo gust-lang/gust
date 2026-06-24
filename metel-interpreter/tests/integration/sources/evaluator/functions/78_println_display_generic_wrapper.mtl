@@ -1,0 +1,39 @@
+// print/println must keep working when called through user helpers that are
+// themselves generic over Display. This exercises the std::core Metel-bodied
+// wrappers through the full graph pipeline, not only direct call sites.
+
+struct User {
+    name: String,
+}
+
+impl Display for User {
+    fun to_string(&self) -> String {
+        "User(${self.name})"
+    }
+}
+
+enum Status {
+    Ready,
+    Busy,
+}
+
+impl Display for Status {
+    fun to_string(&self) -> String {
+        match (self) {
+            Status::Ready => "ready",
+            Status::Busy => "busy",
+        }
+    }
+}
+
+fun log_value<T: Display>(value: T) {
+    print(value);
+    println(value);
+}
+
+fun main() {
+    log_value(User { name: "Ada" });
+    log_value(Status::Ready);
+    log_value(42);
+    log_value("done");
+}
