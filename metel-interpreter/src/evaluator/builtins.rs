@@ -114,6 +114,33 @@ fn native_assert_msg(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value,
     }
 }
 
+/// `Perhaps::yolo()`'s `None` arm. Always panics — there is no value to report,
+/// unlike `yolo_err` below. Callers must supply `T` via turbofish
+/// (`yolo_none::<T>()`) — unlike enum variant construction, a generic function
+/// call's return type isn't inferred from surrounding match-arm unification alone.
+fn native_yolo_none(_args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
+    Err(MetelError::panic(
+        RuntimeErrorCode::R0014,
+        "called `.yolo()` on a `None` value",
+        span,
+    ))
+}
+
+/// `Result::yolo()`'s `Err` arm. Always panics, including the `Err` value's debug
+/// representation via `format_value` — the same formatter `dbg` uses — so this
+/// needs no `E: Display` bound on the caller (not even expressible today; `impl`
+/// blocks have no per-method bounds syntax).
+fn native_yolo_err(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
+    match args.first() {
+        Some(error) => Err(MetelError::panic(
+            RuntimeErrorCode::R0014,
+            format!("called `.yolo()` on an `Err` value: {}", format_value(error)),
+            span,
+        )),
+        None => Err(MetelError::internal("yolo_err: expected one argument")),
+    }
+}
+
 fn native_clock(_args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
     use std::time::{SystemTime, UNIX_EPOCH};
     let ms = SystemTime::now()
@@ -712,6 +739,8 @@ pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
             NativeKey::StdCoreAssert => ("std::core::assert", native_assert),
             NativeKey::StdCoreAssertMsg => ("std::core::assert_msg", native_assert_msg),
             NativeKey::StdCoreClock => ("std::core::clock", native_clock),
+            NativeKey::StdCoreYoloNone => ("std::core::yolo_none", native_yolo_none),
+            NativeKey::StdCoreYoloErr => ("std::core::yolo_err", native_yolo_err),
             NativeKey::StdCoreStringLen => ("String::len", native_string_len),
             NativeKey::StdCoreStringIsEmpty => ("String::is_empty", native_string_is_empty),
             NativeKey::StdCoreStringToUpper => ("String::to_upper", native_string_to_upper),

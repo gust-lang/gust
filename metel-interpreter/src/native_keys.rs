@@ -27,6 +27,11 @@ pub enum NativeKey {
     StdCoreAssertMsg,
     /// `std::core::clock` — milliseconds since the Unix epoch.
     StdCoreClock,
+    /// `std::core::yolo_none` — panics unconditionally; `Perhaps::yolo()`'s `None` arm.
+    StdCoreYoloNone,
+    /// `std::core::yolo_err` — panics unconditionally, including the `Err` value's
+    /// debug representation; `Result::yolo()`'s `Err` arm.
+    StdCoreYoloErr,
     /// `String::len` — number of characters in a string.
     StdCoreStringLen,
     /// `String::is_empty(self) -> boolean`.
@@ -152,6 +157,8 @@ impl NativeKey {
             ["std", "core", "assert"] => NativeKey::StdCoreAssert,
             ["std", "core", "assert_msg"] => NativeKey::StdCoreAssertMsg,
             ["std", "core", "clock"] => NativeKey::StdCoreClock,
+            ["std", "core", "yolo_none"] => NativeKey::StdCoreYoloNone,
+            ["std", "core", "yolo_err"] => NativeKey::StdCoreYoloErr,
             ["std", "core", "string_len"] => NativeKey::StdCoreStringLen,
             ["std", "core", "string_is_empty"] => NativeKey::StdCoreStringIsEmpty,
             ["std", "core", "string_to_upper"] => NativeKey::StdCoreStringToUpper,
@@ -217,6 +224,8 @@ impl NativeKey {
             NativeKey::StdCoreAssert => "@std.core.assert",
             NativeKey::StdCoreAssertMsg => "@std.core.assert_msg",
             NativeKey::StdCoreClock => "@std.core.clock",
+            NativeKey::StdCoreYoloNone => "@std.core.yolo_none",
+            NativeKey::StdCoreYoloErr => "@std.core.yolo_err",
             NativeKey::StdCoreStringLen => "@std.core.string_len",
             NativeKey::StdCoreStringIsEmpty => "@std.core.string_is_empty",
             NativeKey::StdCoreStringToUpper => "@std.core.string_to_upper",
@@ -280,6 +289,8 @@ impl NativeKey {
         NativeKey::StdCoreAssert,
         NativeKey::StdCoreAssertMsg,
         NativeKey::StdCoreClock,
+        NativeKey::StdCoreYoloNone,
+        NativeKey::StdCoreYoloErr,
         NativeKey::StdCoreStringLen,
         NativeKey::StdCoreStringIsEmpty,
         NativeKey::StdCoreStringToUpper,

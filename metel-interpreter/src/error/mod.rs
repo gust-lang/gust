@@ -52,6 +52,7 @@ pub enum RuntimeErrorCode {
     R0010, // Call on non-callable value
     R0011, // Invalid for-in iterator
     R0013, // Assertion failed
+    R0014, // Unwrap on `None`/`Err` (`.yolo()`)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

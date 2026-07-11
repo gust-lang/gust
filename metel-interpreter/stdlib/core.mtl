@@ -64,6 +64,23 @@ impl Perhaps<T> {
             _ => f(),
         }
     }
+    // The contained value, or panics on `None`. Use only when `None` represents a
+    // logic error that should never occur in correct code — prefer `match` or
+    // `.unwrap_or`/`.unwrap_or_else` for expected absence.
+    pub fun yolo(self) -> T {
+        match self {
+            Perhaps::Some { value } => value,
+            _ => yolo_none::<T>(),
+        }
+    }
+    // Converts to `Result<T, E>`: `Some { value }` becomes `Ok { value }`; `None`
+    // becomes `Err { error }`.
+    pub fun ok_or<E>(self, error: E) -> Result<T, E> {
+        match self {
+            Perhaps::Some { value } => Result::Ok { value: value },
+            _ => Result::Err { error: error },
+        }
+    }
 }
 
 pub enum Result<T, E> {
@@ -112,6 +129,31 @@ impl Result<T, E> {
         match self {
             Result::Ok { value } => value,
             _ => f(),
+        }
+    }
+    // The success value, or panics on `Err`, including the error's debug
+    // representation in the panic message. Use only when `Err` represents a
+    // logic error — propagate expected errors with `?` or handle with `match`.
+    pub fun yolo(self) -> T {
+        match self {
+            Result::Ok { value } => value,
+            Result::Err { error } => yolo_err::<T, E>(error),
+        }
+    }
+    // Applies `f` to the `Err` value, leaving `Ok` unchanged. Useful for
+    // converting between error types.
+    pub fun map_err<F>(self, f: (E) -> F) -> Result<T, F> {
+        match self {
+            Result::Ok { value } => Result::Ok { value: value },
+            Result::Err { error } => Result::Err { error: f(error) },
+        }
+    }
+    // Converts to `Perhaps<T>`: `Ok { value }` becomes `Some { value }`; `Err`
+    // becomes `None`. The error value is discarded.
+    pub fun ok(self) -> Perhaps<T> {
+        match self {
+            Result::Ok { value } => Perhaps::Some { value: value },
+            _ => Perhaps::None,
         }
     }
 }
@@ -286,6 +328,13 @@ native(@std.core.dbg)        pub fun dbg<T>(x: T) -> T;
 native(@std.core.assert)     pub fun assert(cond: boolean);
 native(@std.core.assert_msg) pub fun assert(cond: boolean, msg: String);
 native(@std.core.clock)      pub fun clock() -> i64;
+
+// `.yolo()`'s two panicking arms (issue #232). Both always panic — there is no
+// well-typed "success" case. Callers must supply generics via turbofish
+// (e.g. `yolo_none::<T>()`); unlike enum variant construction, a generic function
+// call's return type doesn't get inferred from surrounding match-arm unification.
+native(@std.core.yolo_none) fun yolo_none<T>() -> T;
+native(@std.core.yolo_err)  fun yolo_err<T, E>(error: E) -> T;
 
 // ── Display impls for the primitive types ──────────────────────────────────
 // One shared host implementation formats any displayable value, so every
