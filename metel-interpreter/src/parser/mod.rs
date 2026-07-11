@@ -1750,7 +1750,12 @@ fn parse_struct_literal(
             fields.push((name, value));
         }
     }
-    Ok(Expr::StructLiteral { path, fields, span })
+    Ok(Expr::StructLiteral {
+        path,
+        fields,
+        symbol_id: None,
+        span,
+    })
 }
 
 fn collect_path_components(pair: pest::iterators::Pair<Rule>) -> Result<Vec<String>, MetelError> {

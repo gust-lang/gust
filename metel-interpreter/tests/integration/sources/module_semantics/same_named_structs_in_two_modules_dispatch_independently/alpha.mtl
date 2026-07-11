@@ -1,0 +1,4 @@
+pub struct Widget { pub id: i64 }
+impl Widget {
+    pub fun kind(self) -> String { "alpha" }
+}

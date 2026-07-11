@@ -4,7 +4,10 @@ use crate::symbols::SymbolId;
 // ── Span ──────────────────────────────────────────────────────────────────────
 
 /// Source location (byte offsets + resolved line/col into the original source string).
-#[derive(Debug, Clone, PartialEq)]
+///
+/// `Eq`/`Hash` are derived so a `Span` can key the reference-resolution side table
+/// (see `reference_resolver`): each reference site has a unique `(start, end, filename)`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Span {
     pub start: usize,
     pub end: usize,
@@ -410,6 +413,13 @@ pub enum Expr {
     StructLiteral {
         path: Vec<String>,
         fields: Vec<(String, Expr)>,
+        /// Stable identity of the constructed struct/enum type, resolved by the path
+        /// normalizer for module-qualified literals (METEL-185 / ADR-0041). Lets
+        /// construction stamp the correct per-reference type id onto the value instead
+        /// of re-deriving it from the name-keyed registry (which collides for
+        /// same-named cross-module types). `None` for local/unqualified literals,
+        /// which resolve correctly via the declaring-module index.
+        symbol_id: Option<SymbolId>,
         span: Span,
     },
     PropagateError {

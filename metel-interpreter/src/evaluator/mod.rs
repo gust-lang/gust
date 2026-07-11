@@ -86,11 +86,19 @@ pub enum Value {
     Array(Rc<RefCell<Vec<Value>>>),
     Struct {
         name: String,
+        /// Stable identity of the struct's declaration (METEL-185 / ADR-0041). Lets
+        /// method dispatch resolve the receiver to a type `SymbolId` instead of its
+        /// surface name, so two modules' same-named structs never collide. `None`
+        /// for values built without resolver context (the single-program path) and
+        /// for builtins not yet threaded; dispatch falls back to the name then.
+        type_id: Option<SymbolId>,
         fields: HashMap<String, Value>,
     },
     // Perhaps<T> and Result<T,E> use Value::Enum like all other enums. See ADR-0028.
     Enum {
         name: String,
+        /// Stable identity of the enum's declaration. See `Struct::type_id`.
+        type_id: Option<SymbolId>,
         variant: String,
         fields: HashMap<String, Value>,
     },
@@ -361,11 +369,19 @@ pub struct RuntimeMethod {
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeRegistry {
     modules: HashMap<Vec<String>, RuntimeModuleEntry>,
-    types: HashMap<String, RuntimeTypeEntry>,
+    /// Struct/enum type entries keyed by the type's stable `SymbolId` (METEL-185 /
+    /// ADR-0041). Instance method dispatch resolves the receiver `Value` to this id
+    /// directly, so two modules' same-named types never collide.
+    types: HashMap<SymbolId, RuntimeTypeEntry>,
+    /// Surface type name → `SymbolId`, the single name→id resolution step (ADR-0041)
+    /// for sites that only have a name: static-member access (`List::new`), `From`
+    /// targets, and host-built values whose `type_id` was not threaded. Not a method
+    /// lookup — it only maps a name to an id, which then keys `types`.
+    type_ids: HashMap<String, SymbolId>,
     pattern_methods: HashMap<RuntimeTypePattern, HashMap<String, RuntimeMethod>>,
-    /// Callables dispatched by stable SymbolId rather than by name — today the
-    /// overloaded free-function definitions (METEL-180), whose shared surface
-    /// name cannot identify a single definition.
+    /// Callables dispatched by stable SymbolId rather than by name — overloaded
+    /// free-function definitions (METEL-180) and ordinary top-level functions
+    /// (METEL-187), whose surface name cannot always identify a single definition.
     symbol_values: HashMap<SymbolId, Value>,
 }
 
@@ -401,42 +417,55 @@ impl RuntimeRegistry {
         self.register_module_value(vec!["std".to_string(), "core".to_string()], name, value);
     }
 
+    /// Get (or create) the type entry for `type_id`, recording the `type_name → id`
+    /// resolution so name-only sites can resolve to this id later.
+    fn type_entry_mut(&mut self, type_id: SymbolId, type_name: &str) -> &mut RuntimeTypeEntry {
+        self.type_ids.insert(type_name.to_string(), type_id);
+        self.types.entry(type_id).or_default()
+    }
+
+    /// Resolve a surface type name to its registered `SymbolId` (single resolution
+    /// step; see [`RuntimeRegistry::type_ids`]).
+    fn type_id_for_name(&self, type_name: &str) -> Option<SymbolId> {
+        self.type_ids.get(type_name).copied()
+    }
+
     pub fn register_type_value(
         &mut self,
-        type_name: impl Into<String>,
+        type_id: SymbolId,
+        type_name: &str,
         name: impl Into<String>,
         value: RuntimeMethod,
     ) {
-        self.types
-            .entry(type_name.into())
-            .or_default()
+        self.type_entry_mut(type_id, type_name)
             .associated_values
             .insert(name.into(), value);
     }
 
     pub fn register_inherent_method(
         &mut self,
-        type_name: impl Into<String>,
+        type_id: SymbolId,
+        type_name: &str,
         method_name: impl Into<String>,
         value: RuntimeMethod,
     ) {
-        self.types
-            .entry(type_name.into())
-            .or_default()
+        self.type_entry_mut(type_id, type_name)
             .inherent_methods
             .insert(method_name.into(), value);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn register_aspect_method(
         &mut self,
-        type_name: impl Into<String>,
+        type_id: SymbolId,
+        type_name: &str,
         aspect_name: impl Into<String>,
         aspect_id: Option<SymbolId>,
         type_args: Vec<String>,
         method_name: impl Into<String>,
         value: RuntimeMethod,
     ) {
-        let entry = self.types.entry(type_name.into()).or_default();
+        let entry = self.type_entry_mut(type_id, type_name);
         let aspect_name = aspect_name.into();
         let method_name = method_name.into();
         if let Some(aspect_impl) = entry.aspect_impls.iter_mut().find(|aspect_impl| {
@@ -460,18 +489,17 @@ impl RuntimeRegistry {
         });
     }
 
-    /// Look up a method that belongs to a specific aspect (by stable SymbolId).
-    /// Falls back to string-name lookup when `aspect_id` has no registered entry
-    /// (e.g. builtins registered before the elaboration pass ran).
+    /// Look up a method belonging to a specific aspect impl, by the aspect's stable
+    /// `SymbolId`. Selection is purely id-based: builtin aspect impls are seeded with
+    /// their `SYM_ASPECT_*` ids and user impls carry the elaboration-stamped id, so
+    /// no surface-name fallback is needed (METEL-185 / ADR-0041).
     pub fn get_aspect_method_by_id(
         &self,
-        type_name: &str,
+        type_id: SymbolId,
         aspect_id: SymbolId,
         method_name: &str,
     ) -> Option<RuntimeMethod> {
-        let entry = self.types.get(type_name)?;
-        // Prefer exact SymbolId match.
-        if let Some(method) = entry.aspect_impls.iter().rev().find_map(|ai| {
+        self.types.get(&type_id)?.aspect_impls.iter().rev().find_map(|ai| {
             if ai.aspect_id == Some(aspect_id) {
                 ai.methods
                     .get(method_name)
@@ -480,11 +508,7 @@ impl RuntimeRegistry {
             } else {
                 None
             }
-        }) {
-            return Some(method);
-        }
-        // Fall back to string-based search (covers builtins without a SymbolId).
-        self.get_aspect_method(type_name, method_name)
+        })
     }
 
     pub fn register_pattern_method(
@@ -504,7 +528,7 @@ impl RuntimeRegistry {
     }
 
     pub fn get_type_value(&self, type_name: &str, name: &str) -> Option<Value> {
-        let type_entry = self.types.get(type_name)?;
+        let type_entry = self.types.get(&self.type_id_for_name(type_name)?)?;
         type_entry
             .associated_values
             .get(name)
@@ -524,52 +548,43 @@ impl RuntimeRegistry {
             })
     }
 
-    pub fn get_inherent_method(&self, type_name: &str, method_name: &str) -> Option<RuntimeMethod> {
+    pub fn get_inherent_method(
+        &self,
+        type_id: SymbolId,
+        method_name: &str,
+    ) -> Option<RuntimeMethod> {
         self.types
-            .get(type_name)?
+            .get(&type_id)?
             .inherent_methods
             .get(method_name)
             .cloned()
             .filter(|method| method.receiver.is_some())
     }
 
-    /// Look up a method that is known to come from an aspect impl, skipping inherent methods.
-    pub fn get_aspect_method(&self, type_name: &str, method_name: &str) -> Option<RuntimeMethod> {
-        self.types
-            .get(type_name)?
-            .aspect_impls
-            .iter()
-            .rev()
-            .find_map(|aspect_impl| {
-                aspect_impl
-                    .methods
-                    .get(method_name)
-                    .cloned()
-                    .filter(|method| method.receiver.is_some())
-            })
-    }
-
-    pub fn get_regular_method(&self, type_name: &str, method_name: &str) -> Option<RuntimeMethod> {
-        self.get_inherent_method(type_name, method_name)
-            .or_else(|| {
-                self.types
-                    .get(type_name)?
-                    .aspect_impls
-                    .iter()
-                    .rev()
-                    .find_map(|aspect_impl| {
-                        aspect_impl
-                            .methods
-                            .get(method_name)
-                            .cloned()
-                            .filter(|method| method.receiver.is_some())
-                    })
-            })
+    pub fn get_regular_method(
+        &self,
+        type_id: SymbolId,
+        method_name: &str,
+    ) -> Option<RuntimeMethod> {
+        self.get_inherent_method(type_id, method_name).or_else(|| {
+            self.types
+                .get(&type_id)?
+                .aspect_impls
+                .iter()
+                .rev()
+                .find_map(|aspect_impl| {
+                    aspect_impl
+                        .methods
+                        .get(method_name)
+                        .cloned()
+                        .filter(|method| method.receiver.is_some())
+                })
+        })
     }
 
     pub fn get_method_for_value(&self, value: &Value, method_name: &str) -> Option<RuntimeMethod> {
-        runtime_type_name(value)
-            .and_then(|type_name| self.get_regular_method(type_name, method_name))
+        self.resolve_value_type_id(value)
+            .and_then(|type_id| self.get_regular_method(type_id, method_name))
             .or_else(|| {
                 runtime_type_pattern(value).and_then(|pattern| {
                     self.pattern_methods
@@ -581,9 +596,23 @@ impl RuntimeRegistry {
             })
     }
 
+    /// Resolve a receiver `Value` to its type's `SymbolId` for method dispatch:
+    /// the value's carried `type_id` when present (cross-module correct), else the
+    /// name→id index (host-built values, primitives). `None` for values with no
+    /// type entry (Array/Tuple/etc., which dispatch via `pattern_methods`).
+    fn resolve_value_type_id(&self, value: &Value) -> Option<SymbolId> {
+        match value {
+            Value::Struct { type_id, name, .. } | Value::Enum { type_id, name, .. } => {
+                type_id.or_else(|| self.type_id_for_name(name))
+            }
+            _ => runtime_type_name(value).and_then(|name| self.type_id_for_name(name)),
+        }
+    }
+
     pub fn get_from_method(&self, target: &str, source: &str) -> Option<RuntimeMethod> {
+        let target_id = self.type_id_for_name(target)?;
         self.types
-            .get(target)?
+            .get(&target_id)?
             .aspect_impls
             .iter()
             .rev()
@@ -596,21 +625,21 @@ impl RuntimeRegistry {
             })
             .or_else(|| {
                 self.types
-                    .get(target)?
+                    .get(&target_id)?
                     .associated_values
                     .get("from")
                     .cloned()
-                    .or_else(|| self.inherent_method_without_receiver(target, "from"))
+                    .or_else(|| self.inherent_method_without_receiver(target_id, "from"))
             })
     }
 
     fn inherent_method_without_receiver(
         &self,
-        type_name: &str,
+        type_id: SymbolId,
         method_name: &str,
     ) -> Option<RuntimeMethod> {
         self.types
-            .get(type_name)?
+            .get(&type_id)?
             .inherent_methods
             .get(method_name)
             .cloned()
@@ -670,8 +699,13 @@ fn deep_clone_value(v: Value) -> Value {
             Value::Array(Rc::new(RefCell::new(cloned)))
         }
         Value::Tuple(items) => Value::Tuple(items.into_iter().map(deep_clone_value).collect()),
-        Value::Struct { name, fields } => Value::Struct {
+        Value::Struct {
             name,
+            type_id,
+            fields,
+        } => Value::Struct {
+            name,
+            type_id,
             fields: fields
                 .into_iter()
                 .map(|(k, v)| (k, deep_clone_value(v)))
@@ -679,10 +713,12 @@ fn deep_clone_value(v: Value) -> Value {
         },
         Value::Enum {
             name,
+            type_id,
             variant,
             fields,
         } => Value::Enum {
             name,
+            type_id,
             variant,
             fields: fields
                 .into_iter()
@@ -1245,134 +1281,6 @@ pub fn evaluate_graph_with_options(
     Ok(EvaluationReport { profile })
 }
 
-#[allow(dead_code)] // public API used by single-file test harness
-pub fn evaluate(program: TypedProgram) -> Result<(), MetelError> {
-    evaluate_with_options(program, EvaluationOptions::default()).map(|_| ())
-}
-
-pub fn evaluate_with_options(
-    program: TypedProgram,
-    options: EvaluationOptions,
-) -> Result<EvaluationReport, MetelError> {
-    reset_runtime_state(false);
-    let mut runtime = builtins::runtime_registry();
-    let mut env = Environment::new();
-    run_passes(
-        &program,
-        &std::collections::HashMap::new(),
-        &mut env,
-        &mut runtime,
-        None,
-    )?;
-    reset_runtime_state(options.collect_profile);
-    let result = run_main(&mut env, &runtime);
-    let profile = finish_profile();
-    result?;
-    Ok(EvaluationReport { profile })
-}
-
-#[allow(dead_code)] // public API used by single-file test harness
-pub fn evaluate_with_ctx(program: TypedProgram, ctx: TypeCtx) -> Result<(), MetelError> {
-    evaluate_with_ctx_and_options(program, ctx, EvaluationOptions::default()).map(|_| ())
-}
-
-/// Seed std::core's Metel-bodied generic methods (Perhaps/Result/List ergonomics)
-/// into the runtime for the single-program path.
-///
-/// The graph path registers these when std::core is evaluated as a module; the
-/// single-program path (`evaluate_with_ctx`) never loads std::core as a module, so
-/// `register_core_natives_from_embedded` (which only handles native methods) leaves
-/// the bodied ones unregistered. Here each bodied core method is registered as an
-/// untyped closure carrying the program's `type_ctx`, so it is constructed at call
-/// time exactly like a generic method in a user module. Method bodies reference
-/// static methods and enum constructors through the runtime registry, not a lexical
-/// environment, so a fresh captured environment suffices.
-fn seed_core_bodied_methods(runtime: &mut RuntimeRegistry, type_ctx: &std::rc::Rc<TypeCtx>) {
-    let core_path = ["std".to_string(), "core".to_string()];
-    let Some(source) = crate::stdlib::lookup(&core_path) else {
-        return;
-    };
-    let program = crate::parser::parse(source, "<embedded std::core>")
-        .expect("embedded std::core must parse; it is compiled into the binary");
-    for decl in &program.decls {
-        let crate::ast::Decl::Impl(ib) = decl else {
-            continue;
-        };
-        let crate::ast::TypeExpr::Named(target_name, _) = &ib.target_type else {
-            continue;
-        };
-        for method in &ib.methods {
-            // Native methods are seeded by register_core_natives_from_embedded.
-            if method.native.is_some() {
-                continue;
-            }
-            let receiver = method.params.first().and_then(|p| p.receiver.clone());
-            let params: Vec<RuntimeTypeRef> = method
-                .params
-                .iter()
-                .filter(|p| p.receiver.is_none())
-                .filter_map(|p| p.type_ann.as_ref().map(runtime_type_ref))
-                .collect();
-            let body = RuntimeCallable::Closure(Rc::new(ClosureValue {
-                name: Some(method.name.clone()),
-                params: method.params.clone(),
-                body: ClosureBody::Untyped(method.body.clone()),
-                captured: Environment::new(),
-                type_ctx: Some(type_ctx.clone()),
-                fun_type: None,
-            }));
-            let runtime_method = RuntimeMethod {
-                label: format!("{target_name}::{}", method.name),
-                receiver,
-                signature: RuntimeSignature {
-                    params,
-                    ret: method.return_type.as_ref().map(runtime_type_ref),
-                },
-                body,
-            };
-            if let Some(aspect_name) = &ib.aspect_name {
-                let type_args = ib.aspect_type_args.iter().map(runtime_type_key).collect();
-                runtime.register_aspect_method(
-                    target_name,
-                    aspect_name,
-                    None,
-                    type_args,
-                    &method.name,
-                    runtime_method,
-                );
-            } else if runtime_method.receiver.is_none() {
-                runtime.register_type_value(target_name, &method.name, runtime_method);
-            } else {
-                runtime.register_inherent_method(target_name, &method.name, runtime_method);
-            }
-        }
-    }
-}
-
-pub fn evaluate_with_ctx_and_options(
-    program: TypedProgram,
-    ctx: TypeCtx,
-    options: EvaluationOptions,
-) -> Result<EvaluationReport, MetelError> {
-    reset_runtime_state(false);
-    let mut runtime = builtins::runtime_registry();
-    let mut env = Environment::new();
-    let type_ctx_rc = std::rc::Rc::new(ctx);
-    seed_core_bodied_methods(&mut runtime, &type_ctx_rc);
-    run_passes(
-        &program,
-        &std::collections::HashMap::new(),
-        &mut env,
-        &mut runtime,
-        Some(type_ctx_rc),
-    )?;
-    reset_runtime_state(options.collect_profile);
-    let result = run_main(&mut env, &runtime);
-    let profile = finish_profile();
-    result?;
-    Ok(EvaluationReport { profile })
-}
-
 /// Run the standard 3-pass evaluation on `decls` into `env`.
 ///
 /// Pass 1a: placeholder bindings so closures can capture each other's Rc.
@@ -1412,6 +1320,12 @@ fn run_passes(
                     match f.symbol_id {
                         Some(id) => runtime.register_symbol_value(id, value),
                         None => {
+                            // Ordinary top-level fn: bind by name (first-class uses) and,
+                            // when it has a stable identity, also register it by SymbolId so
+                            // direct calls dispatch through `callee_id` (METEL-187).
+                            if let Some(id) = f.def_id {
+                                runtime.register_symbol_value(id, value.clone());
+                            }
                             env.set(&f.name, value);
                         }
                     }
@@ -1434,12 +1348,23 @@ fn run_passes(
                 match f.symbol_id {
                     Some(id) => runtime.register_symbol_value(id, value),
                     None => {
+                        if let Some(id) = f.def_id {
+                            runtime.register_symbol_value(id, value.clone());
+                        }
                         env.set(&f.name, value);
                     }
                 }
             }
             TypedDecl::Impl(impl_block) => {
                 if let crate::ast::TypeExpr::Named(type_name, _) = &impl_block.target_type {
+                    // The target type's stable id keys the runtime registry (METEL-185).
+                    // Fall back to its builtin id when resolution wasn't available.
+                    let Some(target_id) = impl_block
+                        .target_type_id
+                        .or_else(|| builtins::builtin_type_id(type_name))
+                    else {
+                        continue;
+                    };
                     for method in &impl_block.methods {
                         // Native methods bind to their host implementation;
                         // others wrap their (typed/generic) body in a closure.
@@ -1476,6 +1401,7 @@ fn run_passes(
                                 .map(runtime_type_key)
                                 .collect();
                             runtime.register_aspect_method(
+                                target_id,
                                 type_name,
                                 aspect_name,
                                 impl_block.aspect_id,
@@ -1484,9 +1410,15 @@ fn run_passes(
                                 runtime_method,
                             );
                         } else if runtime_method.receiver.is_none() {
-                            runtime.register_type_value(type_name, &method.name, runtime_method);
+                            runtime.register_type_value(
+                                target_id,
+                                type_name,
+                                &method.name,
+                                runtime_method,
+                            );
                         } else {
                             runtime.register_inherent_method(
+                                target_id,
                                 type_name,
                                 &method.name,
                                 runtime_method,
@@ -1783,12 +1715,12 @@ fn eval_for_in(
     // Fast path for built-in sequence types.
     let fast_items: Option<Vec<Value>> = match &iterable {
         Value::Array(rc) => Some(rc.borrow().clone()),
-        Value::Struct { name, fields } if name == "Range" => {
+        Value::Struct { name, fields, .. } if name == "Range" => {
             let s = range_field(fields, "start", span)?;
             let e = range_field(fields, "end", span)?;
             Some((s..e).map(Value::I64).collect())
         }
-        Value::Struct { name, fields } if name == "RangeInclusive" => {
+        Value::Struct { name, fields, .. } if name == "RangeInclusive" => {
             let s = range_field(fields, "start", span)?;
             let e = range_field(fields, "end", span)?;
             Some((s..=e).map(Value::I64).collect())
@@ -1811,7 +1743,7 @@ fn eval_for_in(
         return Ok(Signal::Value(Value::Unit));
     }
 
-    // User-defined Iterable: dispatch through TypeName::next.
+    // User-defined Iterable: dispatch through the receiver type's `next` (by id).
     let type_name = match &iterable {
         Value::Struct { name, .. } => name.clone(),
         _ => {
@@ -1823,7 +1755,8 @@ fn eval_for_in(
         }
     };
     let next_fn = runtime
-        .get_regular_method(&type_name, "next")
+        .resolve_value_type_id(&iterable)
+        .and_then(|id| runtime.get_regular_method(id, "next"))
         .ok_or_else(|| {
             MetelError::panic(
                 RuntimeErrorCode::R0011,
@@ -1847,6 +1780,7 @@ fn eval_for_in(
                 name,
                 variant,
                 mut fields,
+                ..
             } if name == "Perhaps" => {
                 if variant == "None" {
                     None
@@ -1937,6 +1871,7 @@ pub fn eval_expr(
                 Literal::Str(s) => Value::Str(s.clone()),
                 Literal::None => Value::Enum {
                     name: "Perhaps".into(),
+                    type_id: Some(crate::symbols::SYM_TYPE_PERHAPS),
                     variant: "None".into(),
                     fields: HashMap::new(),
                 },
@@ -1981,6 +1916,9 @@ pub fn eval_expr(
                 let variant = segments[segments.len() - 1].clone();
                 Ok(Signal::Value(Value::Enum {
                     name,
+                    // Unit enum variant resolved by surface path at runtime; no
+                    // resolver context here, so dispatch falls back to the name.
+                    type_id: None,
                     variant,
                     fields: HashMap::new(),
                 }))
@@ -2407,6 +2345,7 @@ pub fn eval_expr(
         TypedExpr::StructLiteral {
             path,
             fields,
+            type_id,
             span: _,
             ..
         } => {
@@ -2417,6 +2356,7 @@ pub fn eval_expr(
             if path.len() == 2 {
                 Ok(Signal::Value(Value::Enum {
                     name: path[0].clone(),
+                    type_id: *type_id,
                     variant: path[1].clone(),
                     fields: field_vals,
                 }))
@@ -2427,6 +2367,7 @@ pub fn eval_expr(
                     .clone();
                 Ok(Signal::Value(Value::Struct {
                     name,
+                    type_id: *type_id,
                     fields: field_vals,
                 }))
             }
@@ -2480,10 +2421,12 @@ pub fn eval_expr(
             // Runtime methods are dispatched through the runtime registry, not lexical env.
             let recv_type_view = deref_value(&recv_val, span)?.unwrap_or_else(|| recv_val.clone());
             let method_entry = match dispatch {
-                // Elaboration resolved this as an aspect call: dispatch by stable SymbolId,
-                // falling back to string search for builtins that lack a SymbolId.
-                MethodDispatch::Aspect { aspect_id } => runtime_type_name(&recv_type_view)
-                    .and_then(|tn| runtime.get_aspect_method_by_id(tn, *aspect_id, method))
+                // Elaboration resolved this as an aspect call: resolve the receiver to its
+                // type SymbolId and dispatch the aspect method by id, falling back to the
+                // general value lookup (inherent + pattern methods).
+                MethodDispatch::Aspect { aspect_id } => runtime
+                    .resolve_value_type_id(&recv_type_view)
+                    .and_then(|tid| runtime.get_aspect_method_by_id(tid, *aspect_id, method))
                     .or_else(|| runtime.get_method_for_value(&recv_type_view, method)),
                 // Inherent or unresolved: use the full lookup (inherent is tried first).
                 MethodDispatch::Inherent | MethodDispatch::Dynamic => {
@@ -2594,18 +2537,24 @@ pub fn eval_expr(
             span,
             ..
         } => {
-            // Overloaded callees (METEL-180) carry the selected definition's
-            // SymbolId; dispatch through the symbol registry instead of
-            // evaluating the (shared, name-ambiguous) callee expression.
+            // A statically-resolved callee carries its SymbolId (METEL-180 overloads
+            // and METEL-187 ordinary top-level functions); dispatch through the symbol
+            // registry instead of evaluating the callee expression by name.
             let func_val = match callee_id {
-                Some(id) => runtime
-                    .get_symbol_value(*id)
-                    .cloned()
-                    .ok_or_else(|| {
-                        MetelError::internal(format!(
+                Some(id) => match runtime.get_symbol_value(*id).cloned() {
+                    Some(value) => value,
+                    // An overload id with no registered value is an internal error.
+                    None if id.0 >= crate::symbols::OVERLOAD_SYM_START => {
+                        return Err(MetelError::internal(format!(
                             "no runtime value registered for overload symbol {id:?}"
-                        ))
-                    })?,
+                        )));
+                    }
+                    // An ordinary top-level callable id may legitimately have no symbol
+                    // registration (e.g. a top-level `let`-bound value, or the
+                    // single-program path that does no symbol seeding): fall back to
+                    // evaluating the callee by name. (METEL-187)
+                    None => eval_expr(callee, env, runtime)?.into_value(),
+                },
                 None => eval_expr(callee, env, runtime)?.into_value(),
             };
             let arg_vals: Vec<Value> = args

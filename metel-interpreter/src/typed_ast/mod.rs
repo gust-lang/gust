@@ -132,6 +132,12 @@ pub struct TypedFunDecl {
     /// evaluator registers the definition under this id (names cannot
     /// disambiguate overloads) and call sites dispatch via `Call::callee_id`.
     pub symbol_id: Option<SymbolId>,
+    /// Stable identity of an ordinary (non-overloaded) top-level function (METEL-187 /
+    /// ADR-0041). The evaluator registers the definition under this id in addition to
+    /// its lexical-env binding, and direct call sites dispatch through it via
+    /// `Call::callee_id`. `None` for methods, nested/local functions, and the
+    /// single-program path (no resolver). Mutually exclusive with `symbol_id`.
+    pub def_id: Option<SymbolId>,
     #[allow(dead_code)] // kept for future error messages
     pub span: Span,
 }
@@ -164,6 +170,9 @@ pub struct TypedImplBlock {
     /// Stable identity of the aspect this impl satisfies.  `None` for inherent impls.
     /// Populated by the typechecker construction pass when `names.symbols` is available.
     pub aspect_id: Option<SymbolId>,
+    /// Stable identity of the target type, used to register this impl's methods in the
+    /// SymbolId-keyed runtime type registry (METEL-185). `None` without resolver context.
+    pub target_type_id: Option<SymbolId>,
     pub aspect_type_args: Vec<TypeExpr>,
     pub target_type: TypeExpr,
     pub methods: Vec<TypedFunDecl>,
@@ -381,6 +390,10 @@ pub enum TypedExpr {
         path: Vec<String>,
         fields: Vec<(String, TypedExpr)>,
         ty: Type,
+        /// Stable identity of the constructed struct/enum type (METEL-185 / ADR-0041),
+        /// copied onto the runtime `Value` so method dispatch keys by `SymbolId`
+        /// rather than surface name. `None` when no resolver context is available.
+        type_id: Option<SymbolId>,
         span: Span,
     },
 }

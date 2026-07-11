@@ -60,7 +60,7 @@ pub(super) fn format_value(val: &Value) -> String {
                 .join(", ");
             format!("[{}]", inner)
         }
-        Value::Struct { name, fields } => {
+        Value::Struct { name, fields, .. } => {
             let mut pairs: Vec<_> = fields.iter().collect();
             pairs.sort_by_key(|(k, _)| k.as_str());
             let inner = pairs
@@ -77,6 +77,7 @@ pub(super) fn format_value(val: &Value) -> String {
             name,
             variant,
             fields,
+            ..
         } if name == "Perhaps" => match (variant.as_str(), fields.get("value")) {
             ("Some", Some(v)) => format!("Some({})", format_value(v)),
             _ => "None".to_string(),
@@ -85,6 +86,7 @@ pub(super) fn format_value(val: &Value) -> String {
             name,
             variant,
             fields,
+            ..
         } if name == "Result" => match variant.as_str() {
             "Ok" => format!(
                 "Ok({})",
@@ -99,6 +101,7 @@ pub(super) fn format_value(val: &Value) -> String {
             name,
             variant,
             fields,
+            ..
         } => {
             if fields.is_empty() {
                 format!("{}::{}", name, variant)

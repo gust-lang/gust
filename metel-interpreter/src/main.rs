@@ -14,6 +14,7 @@ mod stdlib;
 mod parser;
 mod path_normalizer;
 mod pipeline;
+mod reference_resolver;
 mod symbols;
 mod typechecker;
 mod typed_ast;

@@ -395,6 +395,7 @@ fn list_value(backing: Vec<Value>) -> Value {
     );
     Value::Struct {
         name: "List".to_string(),
+        type_id: Some(crate::symbols::SYM_TYPE_LIST),
         fields,
     }
 }
@@ -406,12 +407,14 @@ fn perhaps_value(v: Option<Value>) -> Value {
             f.insert("value".to_string(), val);
             Value::Enum {
                 name: "Perhaps".to_string(),
+                type_id: Some(crate::symbols::SYM_TYPE_PERHAPS),
                 variant: "Some".to_string(),
                 fields: f,
             }
         }
         None => Value::Enum {
             name: "Perhaps".to_string(),
+            type_id: Some(crate::symbols::SYM_TYPE_PERHAPS),
             variant: "None".to_string(),
             fields: std::collections::HashMap::new(),
         },
@@ -423,7 +426,7 @@ fn list_inner(
     label: &str,
 ) -> Result<std::rc::Rc<std::cell::RefCell<Vec<Value>>>, MetelError> {
     match args.first() {
-        Some(Value::Struct { name, fields }) if name == "List" => match fields.get("inner") {
+        Some(Value::Struct { name, fields, .. }) if name == "List" => match fields.get("inner") {
             Some(Value::Array(arr)) => Ok(arr.clone()),
             _ => Err(MetelError::internal(format!(
                 "{label}: missing inner field"
@@ -504,6 +507,9 @@ fn native_env_vars(_args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value,
             fields.insert("value".to_string(), Value::Str(value));
             Value::Struct {
                 name: "EnvVar".to_string(),
+                // std::env-declared type; host construction has no resolver context,
+                // so dispatch falls back to the name.
+                type_id: None,
                 fields,
             }
         })
@@ -519,6 +525,7 @@ fn os_error_value(message: String) -> Value {
     fields.insert("message".to_string(), Value::Str(message));
     Value::Struct {
         name: "OsError".to_string(),
+        type_id: None,
         fields,
     }
 }
@@ -533,6 +540,7 @@ fn result_value(r: Result<Value, Value>) -> Value {
     fields.insert(field.to_string(), val);
     Value::Enum {
         name: "Result".to_string(),
+        type_id: Some(crate::symbols::SYM_TYPE_RESULT),
         variant: variant.to_string(),
         fields,
     }
@@ -644,6 +652,7 @@ fn process_output_value(status: i64, stdout: String, stderr: String) -> Value {
     fields.insert("stderr".to_string(), Value::Str(stderr));
     Value::Struct {
         name: "ProcessOutput".to_string(),
+        type_id: None,
         fields,
     }
 }
@@ -780,6 +789,48 @@ pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
 /// prelude derives its schemes from the same source). This serves the
 /// single-program pipeline; the module-graph pipeline additionally evaluates
 /// std::core as a real module.
+/// The well-known `SymbolId` of a builtin `std::core` aspect, matching the id the
+/// name resolver assigns it (the `SymbolTable` pre-seeds these). Lets embedded-core
+/// seeding register builtin aspect impls under the same id elaboration stamps into
+/// call sites, so aspect dispatch is purely id-based (METEL-185).
+pub(super) fn builtin_aspect_id(aspect_name: &str) -> Option<crate::symbols::SymbolId> {
+    match aspect_name {
+        "Display" => Some(crate::symbols::SYM_ASPECT_DISPLAY),
+        "Iterable" => Some(crate::symbols::SYM_ASPECT_ITERABLE),
+        "From" => Some(crate::symbols::SYM_ASPECT_FROM),
+        _ => None,
+    }
+}
+
+/// The well-known `SymbolId` of a builtin `std::core` type, matching the id the
+/// name resolver assigns it (pre-seeded in `SymbolTable`). Lets embedded-core
+/// seeding register builtin type entries under the same id the rest of the
+/// pipeline uses, so the runtime type registry is keyed purely by id (METEL-185).
+pub(super) fn builtin_type_id(type_name: &str) -> Option<crate::symbols::SymbolId> {
+    use crate::symbols::*;
+    Some(match type_name {
+        "boolean" => SYM_TYPE_BOOLEAN,
+        "String" => SYM_TYPE_STRING,
+        "Char" => SYM_TYPE_CHAR,
+        "i8" => SYM_TYPE_I8,
+        "i16" => SYM_TYPE_I16,
+        "i32" => SYM_TYPE_I32,
+        "i64" => SYM_TYPE_I64,
+        "u8" => SYM_TYPE_U8,
+        "u16" => SYM_TYPE_U16,
+        "u32" => SYM_TYPE_U32,
+        "u64" => SYM_TYPE_U64,
+        "f32" => SYM_TYPE_F32,
+        "f64" => SYM_TYPE_F64,
+        "List" => SYM_TYPE_LIST,
+        "Perhaps" => SYM_TYPE_PERHAPS,
+        "Result" => SYM_TYPE_RESULT,
+        "Range" => SYM_TYPE_RANGE,
+        "RangeInclusive" => SYM_TYPE_RANGE_INCLUSIVE,
+        _ => return None,
+    })
+}
+
 fn register_core_natives_from_embedded(runtime: &mut RuntimeRegistry) {
     let core_path = ["std".to_string(), "core".to_string()];
     let Some(source) = crate::stdlib::lookup(&core_path) else {
@@ -811,6 +862,10 @@ fn register_core_natives_from_embedded(runtime: &mut RuntimeRegistry) {
             }
             crate::ast::Decl::Impl(ib) => {
                 let crate::ast::TypeExpr::Named(target_name, _) = &ib.target_type else {
+                    continue;
+                };
+                // Every std::core impl targets a builtin type with a well-known id.
+                let Some(target_id) = builtin_type_id(target_name) else {
                     continue;
                 };
                 for method in &ib.methods {
@@ -846,17 +901,28 @@ fn register_core_natives_from_embedded(runtime: &mut RuntimeRegistry) {
                             .map(super::runtime_type_key)
                             .collect();
                         runtime.register_aspect_method(
+                            target_id,
                             target_name,
                             aspect_name,
-                            None,
+                            builtin_aspect_id(aspect_name),
                             type_args,
                             &method.name,
                             runtime_method,
                         );
                     } else if runtime_method.receiver.is_none() {
-                        runtime.register_type_value(target_name, &method.name, runtime_method);
+                        runtime.register_type_value(
+                            target_id,
+                            target_name,
+                            &method.name,
+                            runtime_method,
+                        );
                     } else {
-                        runtime.register_inherent_method(target_name, &method.name, runtime_method);
+                        runtime.register_inherent_method(
+                            target_id,
+                            target_name,
+                            &method.name,
+                            runtime_method,
+                        );
                     }
                 }
             }

@@ -103,6 +103,14 @@ struct ConstructCtx<'a> {
     /// identify overloaded declarations and resolve overloaded call sites to
     /// the selected definition's SymbolId.
     overloads: &'a crate::typeinference::OverloadTable,
+    /// Module path being constructed; used with `symbols` to assign `def_id` to
+    /// top-level functions and to resolve constructed struct/enum types to their
+    /// type `SymbolId` (METEL-185 / ADR-0041).
+    current_module: &'a [String],
+    /// Resolved bare-`Ident` reference table (METEL-187 / ADR-0041): reference-site
+    /// span → referent `SymbolId`. Used to stamp `Call::callee_id` so direct calls to
+    /// top-level functions dispatch by id. `None` for the single-program path.
+    references: Option<&'a HashMap<Span, SymbolId>>,
 }
 
 impl<'a> ConstructCtx<'a> {
@@ -113,6 +121,8 @@ impl<'a> ConstructCtx<'a> {
         gen: TypeVarGenerator,
         symbols: Option<&'a HashMap<(Vec<String>, String), SymbolId>>,
         overloads: &'a crate::typeinference::OverloadTable,
+        current_module: &'a [String],
+        references: Option<&'a HashMap<Span, SymbolId>>,
     ) -> Result<Self, MetelError> {
         let concrete_struct_env = build_concrete_struct_env(registry, subst)?;
         let method_env = build_concrete_method_env(registry, subst)?;
@@ -129,6 +139,8 @@ impl<'a> ConstructCtx<'a> {
             generic_params: HashMap::new(),
             symbols,
             overloads,
+            current_module,
+            references,
         };
         // Derive concrete types for all monomorphic entries in scheme_env.
         // Both builtins and user functions are populated here — no second registration site.
@@ -172,6 +184,42 @@ impl<'a> ConstructCtx<'a> {
 
     fn lookup(&self, name: &str) -> Option<&Type> {
         self.env.iter().rev().find_map(|s| s.get(name))
+    }
+
+    /// Resolve the stable `SymbolId` of a direct-call callee, if it refers to a
+    /// statically-resolved top-level declaration (METEL-187). A bare `Ident` is
+    /// looked up in the resolver's reference table by span; a normalized
+    /// `ResolvedPath` carries its id directly. Locals and dynamic callees return
+    /// `None` (dispatched by value at runtime). The evaluator tolerates an id that
+    /// has no symbol registration (e.g. a top-level `let`-bound value) by falling
+    /// back to name lookup, so this may be stamped liberally.
+    fn resolved_callee_id(&self, callee: &Expr) -> Option<SymbolId> {
+        match callee {
+            Expr::Ident(_, span) => self.references.and_then(|r| r.get(span).copied()),
+            Expr::ResolvedPath { symbol_id, .. } => *symbol_id,
+            _ => None,
+        }
+    }
+
+    /// Resolve a struct/enum type name to its declaration `SymbolId` (METEL-185).
+    /// Uses the registry's declaring-module index, falling back to the current
+    /// module for locally-declared types. `None` without resolver context.
+    fn type_symbol_id(&self, type_name: &str) -> Option<SymbolId> {
+        let symbols = self.symbols?;
+        if let Some(module) = self
+            .registry
+            .struct_declaring_module(type_name)
+            .or_else(|| self.registry.enum_declaring_module(type_name))
+        {
+            return symbols.get(&(module.clone(), type_name.to_string())).copied();
+        }
+        // Builtin types (impl on i64/String/List/…) live in std::core, pre-seeded
+        // with their SYM_TYPE_* ids; fall back there, then the current module.
+        let std_core = vec!["std".to_string(), "core".to_string()];
+        symbols
+            .get(&(std_core, type_name.to_string()))
+            .or_else(|| symbols.get(&(self.current_module.to_vec(), type_name.to_string())))
+            .copied()
     }
 
     fn push_return_type(&mut self, ty: Option<Type>) -> Option<Type> {
@@ -287,6 +335,8 @@ pub(super) fn construct_generic_body(
     // Generic bodies are constructed at call time; overloaded functions are never
     // generic, so there is no overload table to consult here.
     let empty_overloads = crate::typeinference::OverloadTable::new();
+    // Generic bodies are reconstructed at runtime; their inner direct calls are
+    // re-resolved here without a reference table (callee_id stamping is skipped).
     let mut ctx = ConstructCtx::new(
         &subst,
         &type_ctx.scheme_env,
@@ -294,6 +344,8 @@ pub(super) fn construct_generic_body(
         gen,
         None,
         &empty_overloads,
+        &[],
+        None,
     )?;
 
     // Build name → fresh TypeVar mapping so type annotations like `T[]` in the body
@@ -323,6 +375,7 @@ pub(super) fn construct_generic_body(
     Ok(typed_block)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn construct_program(
     program: &Program,
     subst: &Substitution,
@@ -331,12 +384,37 @@ pub(super) fn construct_program(
     gen: TypeVarGenerator,
     symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
     overloads: &crate::typeinference::OverloadTable,
+    current_module: &[String],
+    references: Option<&HashMap<Span, SymbolId>>,
 ) -> Result<TypedProgram, MetelError> {
-    let mut ctx = ConstructCtx::new(subst, scheme_env, registry, gen, symbols, overloads)?;
+    let mut ctx = ConstructCtx::new(
+        subst,
+        scheme_env,
+        registry,
+        gen,
+        symbols,
+        overloads,
+        current_module,
+        references,
+    )?;
 
     let mut out = vec![];
     for decl in &program.decls {
-        out.push(construct_decl(decl, &mut ctx)?);
+        let mut typed = construct_decl(decl, &mut ctx)?;
+        // Assign each non-overloaded top-level function its stable identity so the
+        // evaluator can register and dispatch it by `SymbolId` (METEL-187). Only
+        // genuine top-level declarations are post-processed here; methods and
+        // nested/local functions keep `def_id: None`.
+        if let TypedDecl::Fun(f) = &mut typed {
+            if f.symbol_id.is_none() {
+                if let Some(syms) = symbols {
+                    f.def_id = syms
+                        .get(&(current_module.to_vec(), f.name.clone()))
+                        .copied();
+                }
+            }
+        }
+        out.push(typed);
     }
     Ok(out)
 }
@@ -452,6 +530,7 @@ fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl
             return_type: fun.return_type.clone(),
             body: FunBody::Native(key),
             symbol_id,
+            def_id: None,
             span: fun.span.clone(),
         }));
     }
@@ -518,6 +597,7 @@ fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl
         return_type: fun.return_type.clone(),
         body,
         symbol_id: overload_entry.map(|e| e.symbol_id),
+        def_id: None,
         span: fun.span.clone(),
     }))
 }
@@ -549,6 +629,7 @@ fn construct_impl_decl(ib: &ImplBlock, ctx: &mut ConstructCtx) -> Result<TypedDe
     Ok(TypedDecl::Impl(TypedImplBlock {
         aspect_name: ib.aspect_name.clone(),
         aspect_id,
+        target_type_id: ctx.type_symbol_id(&target_name),
         aspect_type_args: ib.aspect_type_args.clone(),
         target_type: ib.target_type.clone(),
         methods,
@@ -581,6 +662,7 @@ fn construct_impl_method(
             return_type: method.return_type.clone(),
             body: FunBody::Native(key),
             symbol_id: None,
+            def_id: None,
             span: method.span.clone(),
         });
     }
@@ -603,6 +685,7 @@ fn construct_impl_method(
             return_type: method.return_type.clone(),
             body: FunBody::Generic(method.body.clone()),
             symbol_id: None,
+            def_id: None,
             span: method.span.clone(),
         });
     }
@@ -650,6 +733,7 @@ fn construct_impl_method(
         return_type: method.return_type.clone(),
         body: FunBody::Typed(typed_block),
         symbol_id: None,
+        def_id: None,
         span: method.span.clone(),
     })
 }
@@ -730,6 +814,7 @@ fn construct_default_aspect_method(
         return_type: method.return_type.clone(),
         body: FunBody::Typed(typed_block),
         symbol_id: None,
+        def_id: None,
         span: method.span.clone(),
     })
 }
@@ -1335,7 +1420,12 @@ fn construct_expr(
                 span: span.clone(),
             })
         }
-        Expr::StructLiteral { path, fields, span } => {
+        Expr::StructLiteral {
+            path,
+            fields,
+            symbol_id,
+            span,
+        } => {
             // Look up field type hints from the struct definition for non-generic structs.
             // Clone to release the borrow on ctx before calling construct_expr below.
             let type_name = path.last().map(|s| s.as_str()).unwrap_or("");
@@ -1425,10 +1515,23 @@ fn construct_expr(
                 }
             };
 
+            // Resolve the constructed type's stable identity. A module-qualified
+            // literal carries its resolver-stamped id (correct across modules with
+            // same-named types); otherwise derive it from the declaring-module index
+            // (struct name, or the enum name for a 2-segment `Enum::Variant` literal).
+            let type_id = symbol_id.or_else(|| {
+                if path.len() == 2 {
+                    ctx.type_symbol_id(&path[0])
+                } else {
+                    ctx.type_symbol_id(path.last().unwrap())
+                }
+            });
+
             Ok(TypedExpr::StructLiteral {
                 path: path.clone(),
                 fields: typed_fields,
                 ty,
+                type_id,
                 span: span.clone(),
             })
         }
@@ -1446,19 +1549,29 @@ fn construct_expr(
                 // Also check enum variants via enum_env.
                 if let Some(info) = ctx.registry.enum_info(type_name.as_str()) {
                     if let Some(variant) = info.variants.iter().find(|v| &v.name == member_name) {
-                        let ty = if variant.fields.is_empty() {
-                            Type::Named(type_name.clone(), vec![])
-                        } else {
-                            let field_types: Vec<Type> = variant
-                                .fields
-                                .iter()
-                                .map(|field| infer_type_to_type(&field.ty, span))
-                                .collect::<Result<_, _>>()?;
-                            Type::Fun(
-                                field_types,
-                                Box::new(Type::Named(type_name.clone(), vec![])),
-                            )
-                        };
+                        if variant.fields.is_empty() {
+                            // A unit enum variant is a value, not a constructor: emit it as
+                            // a (field-less) struct literal so it carries the enum's type
+                            // SymbolId onto the runtime value, like any other constructor
+                            // (METEL-185). The evaluator builds `Value::Enum` from a
+                            // 2-segment struct-literal path.
+                            return Ok(TypedExpr::StructLiteral {
+                                path: segments.clone(),
+                                fields: vec![],
+                                ty: Type::Named(type_name.clone(), vec![]),
+                                type_id: ctx.type_symbol_id(type_name),
+                                span: span.clone(),
+                            });
+                        }
+                        let field_types: Vec<Type> = variant
+                            .fields
+                            .iter()
+                            .map(|field| infer_type_to_type(&field.ty, span))
+                            .collect::<Result<_, _>>()?;
+                        let ty = Type::Fun(
+                            field_types,
+                            Box::new(Type::Named(type_name.clone(), vec![])),
+                        );
                         return Ok(TypedExpr::Path(segments.clone(), ty, span.clone()));
                     }
                 }
@@ -2270,7 +2383,7 @@ fn construct_call(
                 callee: Box::new(typed_callee),
                 args: typed_args,
                 ty: *ret.clone(),
-                callee_id: None,
+                callee_id: ctx.resolved_callee_id(callee),
                 span: span.clone(),
             })
         }
@@ -2733,6 +2846,7 @@ fn construct_propagate_error(
                         path: vec!["Result".to_string(), "Err".to_string()],
                         fields: vec![("error".to_string(), err_value)],
                         ty: return_ty,
+                        type_id: Some(crate::symbols::SYM_TYPE_RESULT),
                         span: span.clone(),
                     }),
                     span: span.clone(),

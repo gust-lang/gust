@@ -432,6 +432,7 @@ pub(super) fn eval_binop(
         // Range — produce a Struct value understood by for-in (issue #55)
         (BinOp::Range, Value::I64(a), Value::I64(b)) => Value::Struct {
             name: "Range".to_string(),
+            type_id: Some(crate::symbols::SYM_TYPE_RANGE),
             fields: {
                 let mut m = HashMap::new();
                 m.insert("start".to_string(), Value::I64(a));
@@ -441,6 +442,7 @@ pub(super) fn eval_binop(
         },
         (BinOp::RangeInclusive, Value::I64(a), Value::I64(b)) => Value::Struct {
             name: "RangeInclusive".to_string(),
+            type_id: Some(crate::symbols::SYM_TYPE_RANGE_INCLUSIVE),
             fields: {
                 let mut m = HashMap::new();
                 m.insert("start".to_string(), Value::I64(a));
