@@ -5,8 +5,11 @@
 
 use crate::ast::{AspectMethod, ReceiverKind, Span, Visibility};
 use crate::error::MetelError;
+use crate::name_resolver::{GlobTier, ModuleScope};
+use crate::symbols::SymbolId;
 use crate::types::Type;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 use std::time::Instant;
 
 // ── Phase 1: Type Variables ───────────────────────────────────────────────────
@@ -735,9 +738,34 @@ pub struct TypeDefinitionRegistry {
     aspect_decl_modules: HashMap<String, Vec<String>>,
     /// aspect name → full declared methods, including default bodies.
     aspect_method_defs: HashMap<String, Vec<AspectMethod>>,
-    /// (target_type_name, aspect_name) → list of type-arg vectors, one per registered impl.
-    /// E.g. ("Int", "From") → [[Type::F64]] means `impl From<Float> for Int`.
-    impl_aspect_env: HashMap<(String, String), Vec<Vec<Type>>>,
+    /// (target_type_id, aspect_name) → list of type-arg vectors, one per registered
+    /// impl. E.g. (Int's id, "From") → [[Type::F64]] means `impl From<Float> for Int`.
+    ///
+    /// Target is keyed by `SymbolId`, not name (ADR-0042/issue #239): two modules each
+    /// declaring a *type* with the same surface name must never conflate their impls,
+    /// the same collision class ADR-0041 already fixed for runtime dispatch. Resolving
+    /// a name to its id (`resolve_type_position_id`) needs to know which module the
+    /// name is being read *from* — an impl's target type is very often imported, not
+    /// locally declared — so this registry carries its own copies of the global symbol
+    /// table and every module's import scope (both `Rc`-shared, set once when built) to
+    /// do that resolution the same way `reference_resolver` does for expression
+    /// `Ident`s.
+    ///
+    /// The **aspect stays name-keyed, deliberately** — unlike types, `From`/`Iterable`
+    /// (and aspect names generally, for this bookkeeping) are treated as shared,
+    /// program-wide protocol slots, not shadowable per-module declarations: a module
+    /// declaring its own `aspect From<T>` for a domain conversion (e.g.
+    /// `evaluator/types/60_from_cast.mtl`'s `Celsius`/`Fahrenheit`) still needs the
+    /// *built-in* numeric `From` cross-product (`i64 as f64`) to resolve in the same
+    /// file, registered from `std::core`'s own scope where "From" means the builtin.
+    /// Resolving the aspect half through the same shadowing-aware lookup as the target
+    /// would make a local `From`/`Iterable` declaration invisibly shadow the builtin
+    /// one for this bookkeeping — a real regression caught by that exact test.
+    impl_aspect_env: HashMap<(SymbolId, String), Vec<Vec<Type>>>,
+    /// Global `(module, name) -> SymbolId` table. See `impl_aspect_env`'s doc.
+    symbols: Rc<HashMap<(Vec<String>, String), SymbolId>>,
+    /// Every module's resolved import scope. See `impl_aspect_env`'s doc.
+    scopes: Rc<HashMap<Vec<String>, ModuleScope>>,
 }
 
 impl TypeDefinitionRegistry {
@@ -759,7 +787,53 @@ impl TypeDefinitionRegistry {
             aspect_decl_modules: HashMap::new(),
             aspect_method_defs: HashMap::new(),
             impl_aspect_env: HashMap::new(),
+            symbols: Rc::new(HashMap::new()),
+            scopes: Rc::new(HashMap::new()),
         }
+    }
+
+    /// Give this registry the global symbol table and import scopes it needs to
+    /// resolve impl target/aspect names to ids (see `impl_aspect_env`'s doc). Set once,
+    /// right after `build_registry` constructs a fresh registry for a module; cheap to
+    /// call repeatedly (an `Rc` clone, not a deep copy of either map).
+    pub fn set_symbol_resolution(
+        &mut self,
+        symbols: Rc<HashMap<(Vec<String>, String), SymbolId>>,
+        scopes: Rc<HashMap<Vec<String>, ModuleScope>>,
+    ) {
+        self.symbols = symbols;
+        self.scopes = scopes;
+    }
+
+    /// Resolve a type-position name (an impl's target type or aspect name) to its
+    /// declaring `SymbolId`, from `current_module`'s point of view. Mirrors
+    /// `reference_resolver::resolve_name`'s precedence for expression `Ident`s — local
+    /// declaration, then explicit import, then glob imports (user tier before std) —
+    /// applied to type positions, which have no resolver of their own otherwise.
+    /// `None` if `name` isn't visible in `current_module` at all (or symbol resolution
+    /// hasn't been wired up — the single-program/no-resolver path, if it's ever used
+    /// with this registry, degrades to no impl-aspect tracking rather than panicking).
+    fn resolve_type_position_id(&self, current_module: &[String], name: &str) -> Option<SymbolId> {
+        if let Some(id) = self
+            .symbols
+            .get(&(current_module.to_vec(), name.to_string()))
+        {
+            return Some(*id);
+        }
+        let scope = self.scopes.get(current_module)?;
+        if let Some(binding) = scope.explicit.get(name) {
+            return Some(binding.symbol_id);
+        }
+        let mut std_hit = None;
+        for (tier, glob_module) in &scope.globs {
+            if let Some(id) = self.symbols.get(&(glob_module.clone(), name.to_string())) {
+                match tier {
+                    GlobTier::User => return Some(*id),
+                    GlobTier::Std => std_hit = std_hit.or(Some(*id)),
+                }
+            }
+        }
+        std_hit
     }
 
     pub fn register_struct_fields(
@@ -850,9 +924,20 @@ impl TypeDefinitionRegistry {
     }
 
     /// Returns true if `type_name` has a registered `impl AspectName` in the env.
-    pub fn impl_aspect_env_has(&self, type_name: &str, aspect_name: &str) -> bool {
+    /// `type_name` is resolved from `current_module`'s own scope (see
+    /// `resolve_type_position_id`); `aspect_name` is matched literally by name — see
+    /// `impl_aspect_env`'s doc for why the aspect half stays name-keyed.
+    pub fn impl_aspect_env_has(
+        &self,
+        current_module: &[String],
+        type_name: &str,
+        aspect_name: &str,
+    ) -> bool {
+        let Some(type_id) = self.resolve_type_position_id(current_module, type_name) else {
+            return false;
+        };
         self.impl_aspect_env
-            .contains_key(&(type_name.to_string(), aspect_name.to_string()))
+            .contains_key(&(type_id, aspect_name.to_string()))
     }
 
     pub fn register_fun_bounds(&mut self, name: String, bounds: HashMap<TypeVar, Vec<String>>) {
@@ -930,25 +1015,64 @@ impl TypeDefinitionRegistry {
         self.aspect_method_defs.get(name)
     }
 
-    pub fn register_aspect_impl(&mut self, target: String, aspect: String, type_args: Vec<Type>) {
+    /// Registers `impl aspect for target` with `type_args`. `target` is resolved from
+    /// `current_module`'s scope to its `SymbolId`; `aspect` stays a literal name (see
+    /// `impl_aspect_env`'s doc). A no-op if `target` can't be resolved from that
+    /// module's scope — matches this registry's existing graceful-degradation style
+    /// elsewhere (e.g. `symbols` being absent entirely on the tolerated no-resolver
+    /// path) rather than surfacing an error a caller has no good way to act on; a
+    /// genuinely unresolvable target name is caught earlier, by the typechecker's own
+    /// name resolution over the impl block itself.
+    pub fn register_aspect_impl(
+        &mut self,
+        current_module: &[String],
+        target: &str,
+        aspect: &str,
+        type_args: Vec<Type>,
+    ) {
+        let Some(target_id) = self.resolve_type_position_id(current_module, target) else {
+            return;
+        };
+        self.register_aspect_impl_by_id(target_id, aspect, type_args);
+    }
+
+    /// Registers `impl aspect for target` with `target` already resolved to an id —
+    /// for the handful of hand-registered builtin impls (`Range`/`RangeInclusive`'s
+    /// `Iterable`) whose target is a fixed `SYM_TYPE_*` constant, not a name needing
+    /// scope resolution.
+    pub fn register_aspect_impl_by_id(
+        &mut self,
+        target: SymbolId,
+        aspect: &str,
+        type_args: Vec<Type>,
+    ) {
         self.impl_aspect_env
-            .entry((target, aspect))
+            .entry((target, aspect.to_string()))
             .or_default()
             .push(type_args);
     }
 
     /// Checks `(target, "From")` for an impl with first type-arg matching `source`.
-    pub fn has_from_impl(&self, target: &str, source: &Type) -> bool {
+    /// `target` is resolved from `current_module`'s scope; `"From"` is matched
+    /// literally — see `impl_aspect_env`'s doc for why the aspect half stays
+    /// name-keyed (a module-local `aspect From<T>` must not shadow the builtin one for
+    /// this specific bookkeeping).
+    pub fn has_from_impl(&self, current_module: &[String], target: &str, source: &Type) -> bool {
+        let Some(target_id) = self.resolve_type_position_id(current_module, target) else {
+            return false;
+        };
         self.impl_aspect_env
-            .get(&(target.to_string(), "From".to_string()))
+            .get(&(target_id, "From".to_string()))
             .map(|impls| impls.iter().any(|args| args.first() == Some(source)))
             .unwrap_or(false)
     }
 
-    /// Returns the element type registered for `(target, "Iterable")`, if any.
-    pub fn iterable_elem_type(&self, target: &str) -> Option<&Type> {
+    /// Returns the element type registered for `(target, "Iterable")`, if any. See
+    /// `has_from_impl`'s doc for why the aspect half stays name-keyed.
+    pub fn iterable_elem_type(&self, current_module: &[String], target: &str) -> Option<&Type> {
+        let target_id = self.resolve_type_position_id(current_module, target)?;
         self.impl_aspect_env
-            .get(&(target.to_string(), "Iterable".to_string()))
+            .get(&(target_id, "Iterable".to_string()))
             .and_then(|impls| impls.first())
             .and_then(|args| args.first())
     }
@@ -1244,11 +1368,13 @@ impl InferContext {
     }
 
     pub fn has_from_impl(&self, target: &str, source: &Type) -> bool {
-        self.registry.has_from_impl(target, source)
+        self.registry
+            .has_from_impl(&self.current_module_path, target, source)
     }
 
     pub fn iterable_elem_type(&self, target: &str) -> Option<&Type> {
-        self.registry.iterable_elem_type(target)
+        self.registry
+            .iterable_elem_type(&self.current_module_path, target)
     }
 
     pub fn registry(&self) -> &TypeDefinitionRegistry {

@@ -1,8 +1,11 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::ast::{
     AspectDecl, AspectMethod, Decl, GenericParam, Program, TypeExpr, WhereClause,
 };
+use crate::name_resolver::ModuleScope;
+use crate::symbols::SymbolId;
 use crate::typeinference::{
     EnumInfo, FieldEntry, InferContext, InferType, TypeDefinitionRegistry, TypeScheme, TypeVar,
     TypeVarGenerator, VariantInfo,
@@ -158,13 +161,21 @@ fn populate_schemes_from_embedded_core(
 }
 
 fn register_builtin_aspect_impls(registry: &mut TypeDefinitionRegistry) {
+    use crate::symbols::{SYM_TYPE_RANGE, SYM_TYPE_RANGE_INCLUSIVE};
     use crate::types::Type;
     // Iterable impls for built-in sequence types. Runtime ranges are intrinsic,
     // so these stay hand-registered; the primitive Display impls and the
     // numeric From cross-product are declared in the embedded std::core source
-    // and registered through the normal impl-decl pass (METEL-181).
-    registry.register_aspect_impl("Range".into(), "Iterable".into(), vec![Type::I64]);
-    registry.register_aspect_impl("RangeInclusive".into(), "Iterable".into(), vec![Type::I64]);
+    // and registered through the normal impl-decl pass (METEL-181). Target
+    // registered directly by id — Range/RangeInclusive are fixed builtin type ids,
+    // not names needing scope resolution (ADR-0042); the aspect half stays the
+    // literal name "Iterable" (see `impl_aspect_env`'s doc for why).
+    registry.register_aspect_impl_by_id(SYM_TYPE_RANGE, "Iterable", vec![Type::I64]);
+    registry.register_aspect_impl_by_id(
+        SYM_TYPE_RANGE_INCLUSIVE,
+        "Iterable",
+        vec![Type::I64],
+    );
 }
 
 /// Build the `TypeDefinitionRegistry` from the program's declarations and built-in types.
@@ -174,8 +185,17 @@ pub(super) fn build_registry(
     program: &Program,
     gen: &mut TypeVarGenerator,
     current_module_path: &[String],
+    symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
+    scopes: Option<&HashMap<Vec<String>, ModuleScope>>,
 ) -> TypeDefinitionRegistry {
     let mut registry = TypeDefinitionRegistry::new();
+    if let (Some(symbols), Some(scopes)) = (symbols, scopes) {
+        // Cloned once per module here, not per lookup — `impl_aspect_env`'s
+        // resolution needs its own `Rc` handle to share cheaply as this registry
+        // gets merged across modules (`merge_from`), but `ResolvedNames` itself
+        // doesn't carry these as `Rc`, so the one clone happens at the boundary.
+        registry.set_symbol_resolution(Rc::new(symbols.clone()), Rc::new(scopes.clone()));
+    }
     register_builtin_aspect_impls(&mut registry);
 
     // Builtin types and aspects (Perhaps, Result, List, Display, From,
@@ -356,7 +376,12 @@ fn register_program_decls(
                         }
                     })
                     .collect();
-                registry.register_aspect_impl(target_name.clone(), aspect_name.clone(), type_args);
+                registry.register_aspect_impl(
+                    current_module_path,
+                    &target_name,
+                    aspect_name,
+                    type_args,
+                );
             }
         }
     }

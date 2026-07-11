@@ -158,3 +158,50 @@ declared in `["parser", "ast"]`) — corrected to assert the real declaring modu
 
 Still open: the `TypeDefinitionRegistry` → `ResolvedTypeRegistry` piece (item 2, issues
 #237/#239) — not started.
+
+## Implementation note, 2026-07-11 — item 2 scoped down to `impl_aspect_env`, done
+
+The full `ResolvedTypeRegistry` sealed wrapper (struct/enum/method definitions) was
+reconsidered before starting: its only forcing function is issue #238's coherence
+pipeline, which doesn't exist yet, so building it now risked exactly the speculative
+rework this ADR exists to avoid. Scoped down to what issue #239 names concretely:
+`impl_aspect_env` (`(target, aspect) -> type_args`), rekeyed so the **target type** is
+a `SymbolId` rather than a bare string — fixing the real, concrete bug this enables:
+two modules each declaring a type with the same surface name (e.g. `struct Item`)
+would otherwise conflate their aspect impls, the same collision class ADR-0041 already
+fixed for runtime dispatch but left open here.
+
+**The aspect half deliberately stays name-keyed, not id-keyed** — this is the one
+place this ADR's own instinct (rekey everything to ids) was wrong, caught by an actual
+test failure, not by inspection. `From`/`Iterable`/aspect names generally are treated
+as shared, program-wide protocol slots for this bookkeeping: a module declaring its
+own `aspect From<T>` for a domain conversion still needs the *built-in* numeric `From`
+cross-product to resolve in the same file (`evaluator/types/60_from_cast.mtl`), and a
+module declaring its own `aspect Iterable` still needs that binding to work with its
+own targets without needing the builtin's specific id
+(`evaluator/aspects/59_iterable_aspect.mtl`). Resolving the aspect half through the
+same shadowing-aware lookup as the target made a local declaration invisibly shadow
+the builtin one for this specific bookkeeping — a real regression, not a hypothetical,
+caught by 10 failing tests on the first attempt.
+
+**Target resolution reuses `ModuleScope`, not new infrastructure.** An impl's target
+type is very often imported, not locally declared, so knowing its real declaring
+module needs the same lookup `reference_resolver` already does for expression
+`Ident`s — local declaration, then explicit import, then glob (user tier before std).
+`TypeDefinitionRegistry` now carries `Rc`-shared copies of the global symbol table and
+every module's import scope (set once when built) and a `resolve_type_position_id`
+helper mirroring that precedence, so `register_aspect_impl`/`impl_aspect_env_has`/
+`has_from_impl`/`iterable_elem_type`'s public signatures gained a `current_module`
+parameter but stay otherwise name-based — no ripple into the typechecker's
+construction/inference call sites beyond passing that one extra parameter through
+context that was already available at every call site (`ConstructCtx::current_module`,
+`InferContext::current_module_path()`).
+
+Regression test: `typechecking/cross_module_same_named_type_impl_isolation` — two
+modules each declare their own `struct Item`, only one implements `Labelled`; a bound
+check against the other must fail (`T0012`), not incorrectly succeed via a bare-string
+match against the wrong module's impl.
+
+Full suite green (638 tests, up from 636). The `struct_env`/`enum_env`/`method_env`
+sealed-accessor piece remains genuinely deferred, per the reasoning above — revisit
+once #238 has a concrete consumer for it.

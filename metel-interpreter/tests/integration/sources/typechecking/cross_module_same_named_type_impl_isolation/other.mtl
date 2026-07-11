@@ -1,0 +1,16 @@
+// A different module's own `Item`, with its own `Labelled` impl. Shares a name
+// with main.mtl's `Item` (below) but is otherwise unrelated.
+
+pub struct Item {
+    y: i64,
+}
+
+pub aspect Labelled {
+    fun label(self) -> String;
+}
+
+impl Labelled for Item {
+    fun label(self) -> String {
+        return "other";
+    }
+}

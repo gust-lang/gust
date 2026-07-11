@@ -1,0 +1,21 @@
+// Regression test (ADR-0042/issue #239): `other.mtl` declares its own `struct
+// Item` and implements `Labelled` for it. This module's own `Item` — same
+// surface name, unrelated declaration, no `Labelled` impl — must not be seen
+// as satisfying `Labelled` just because some *other* module's same-named type
+// does. Before the impl-aspect registry was rekeyed by SymbolId, this bound
+// check matched by bare string name and would have incorrectly succeeded.
+
+import other::Labelled;
+
+struct Item {
+    x: i64,
+}
+
+fun needs_label<T: Labelled>(value: T) -> String {
+    return value.label();
+}
+
+fun main() {
+    let item = Item { x: 1 };
+    let _ = needs_label(item); // ERROR[T0012]
+}

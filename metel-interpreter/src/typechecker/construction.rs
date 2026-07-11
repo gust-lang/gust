@@ -1515,8 +1515,11 @@ fn construct_expr(
                                 _ => continue,
                             };
                             for aspect in bounds {
-                                let has_impl =
-                                    ctx.registry.impl_aspect_env_has(&type_arg_name, aspect);
+                                let has_impl = ctx.registry.impl_aspect_env_has(
+                                    ctx.current_module,
+                                    &type_arg_name,
+                                    aspect,
+                                );
                                 if !has_impl {
                                     return Err(MetelError::type_error(
                                         TypeErrorCode::T0012,
@@ -2091,7 +2094,10 @@ fn construct_enum_literal_ty(
                 _ => continue,
             };
             for aspect in bounds {
-                if !ctx.registry.impl_aspect_env_has(&type_name, aspect) {
+                if !ctx
+                    .registry
+                    .impl_aspect_env_has(ctx.current_module, &type_name, aspect)
+                {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0012,
                         format!("`{type_name}` does not implement `{aspect}` (required by `{enum_name}`)"),
@@ -2258,8 +2264,8 @@ fn construct_call(
                 Some(tys) => instantiate_scheme_with_turbofish(scheme, tys, span)?,
                 None => instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen)?,
             };
-            check_fun_call_bounds(name, &var_map, span, ctx.registry)?;
-            check_scheme_bounds(name, scheme, &var_map, span, ctx.registry)?;
+            check_fun_call_bounds(name, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_scheme_bounds(name, scheme, &var_map, span, ctx.registry, ctx.current_module)?;
             let typed = TypedExpr::Ident(name.clone(), concrete.clone(), ident_span.clone());
             (typed, concrete)
         }
@@ -2295,8 +2301,8 @@ fn construct_call(
                     }
                 }
             };
-            check_fun_call_bounds(&joined, &var_map, span, ctx.registry)?;
-            check_scheme_bounds(&joined, scheme, &var_map, span, ctx.registry)?;
+            check_fun_call_bounds(&joined, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_scheme_bounds(&joined, scheme, &var_map, span, ctx.registry, ctx.current_module)?;
             let typed = TypedExpr::Path(segments.clone(), concrete.clone(), path_span.clone());
             (typed, concrete)
         }
@@ -2318,8 +2324,8 @@ fn construct_call(
                 Some(tys) => instantiate_scheme_with_turbofish(scheme, tys, span)?,
                 None => instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen)?,
             };
-            check_fun_call_bounds(&last, &var_map, span, ctx.registry)?;
-            check_scheme_bounds(&last, scheme, &var_map, span, ctx.registry)?;
+            check_fun_call_bounds(&last, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_scheme_bounds(&last, scheme, &var_map, span, ctx.registry, ctx.current_module)?;
             let typed = TypedExpr::Path(segments.clone(), concrete.clone(), path_span.clone());
             (typed, concrete)
         }
@@ -2334,8 +2340,8 @@ fn construct_call(
                 Some(tys) => instantiate_scheme_with_turbofish(scheme, tys, span)?,
                 None => instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen)?,
             };
-            check_fun_call_bounds(resolved, &var_map, span, ctx.registry)?;
-            check_scheme_bounds(resolved, scheme, &var_map, span, ctx.registry)?;
+            check_fun_call_bounds(resolved, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_scheme_bounds(resolved, scheme, &var_map, span, ctx.registry, ctx.current_module)?;
             let typed = TypedExpr::Ident(resolved.clone(), concrete.clone(), rspan.clone());
             (typed, concrete)
         }
@@ -2420,6 +2426,7 @@ fn check_fun_call_bounds(
     var_to_type: &HashMap<TypeVar, Type>,
     span: &Span,
     registry: &TypeDefinitionRegistry,
+    current_module: &[String],
 ) -> Result<(), MetelError> {
     let Some(bounds_map) = registry.fun_bounds_for(fun_name) else {
         return Ok(());
@@ -2429,7 +2436,7 @@ fn check_fun_call_bounds(
             Some(t) => t,
             None => continue,
         };
-        check_type_satisfies_bounds(concrete, aspect_names, fun_name, span, registry)?;
+        check_type_satisfies_bounds(concrete, aspect_names, fun_name, span, registry, current_module)?;
     }
     Ok(())
 }
@@ -2444,6 +2451,7 @@ fn check_scheme_bounds(
     var_to_type: &HashMap<TypeVar, Type>,
     span: &Span,
     registry: &TypeDefinitionRegistry,
+    current_module: &[String],
 ) -> Result<(), MetelError> {
     if scheme.bounds.is_empty() {
         return Ok(());
@@ -2456,7 +2464,7 @@ fn check_scheme_bounds(
             Some(t) => t,
             None => continue,
         };
-        check_type_satisfies_bounds(concrete, aspect_names, fun_name, span, registry)?;
+        check_type_satisfies_bounds(concrete, aspect_names, fun_name, span, registry, current_module)?;
     }
     Ok(())
 }
@@ -2471,6 +2479,7 @@ fn check_type_satisfies_bounds(
     fun_name: &str,
     span: &Span,
     registry: &TypeDefinitionRegistry,
+    current_module: &[String],
 ) -> Result<(), MetelError> {
     let type_name = match concrete {
         Type::Named(n, _) => n.clone(),
@@ -2480,7 +2489,7 @@ fn check_type_satisfies_bounds(
         },
     };
     for aspect in aspect_names {
-        if !registry.impl_aspect_env_has(&type_name, aspect) {
+        if !registry.impl_aspect_env_has(current_module, &type_name, aspect) {
             return Err(MetelError::type_error(
                 TypeErrorCode::T0012,
                 format!("`{type_name}` does not implement `{aspect}` (required by `{fun_name}`)"),

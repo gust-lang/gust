@@ -291,6 +291,7 @@ pub fn check_graph_with_report(
             &loaded.module_path,
             Some(&names.symbols),
             Some(&names.references),
+            Some(&names.scopes),
         )?;
         accumulate_typecheck_timings(&mut timings, report.timings);
         type_registry = report.registry;
@@ -653,6 +654,7 @@ fn check_impl(
         current_module_path,
         symbols,
         references,
+        None,
     )?;
     Ok((report.typed_decls, report.scheme_env, report.registry))
 }
@@ -667,6 +669,7 @@ fn check_impl_with_report(
     current_module_path: &[String],
     symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
     references: Option<&crate::reference_resolver::ReferenceTable>,
+    scopes: Option<&HashMap<Vec<String>, crate::name_resolver::ModuleScope>>,
 ) -> Result<CheckImplReport, MetelError> {
     // `native` declarations are stdlib-only: reject them outside `std::…`.
     enforce_native_stdlib_only(program, current_module_path)?;
@@ -677,7 +680,7 @@ fn check_impl_with_report(
 
     let started = Instant::now();
     let mut gen = TypeVarGenerator::new();
-    let mut reg = registry::build_registry(program, &mut gen, current_module_path);
+    let mut reg = registry::build_registry(program, &mut gen, current_module_path, symbols, scopes);
     // Merge dependency type definitions so cross-module struct/enum refs resolve.
     reg.merge_from(base_registry);
     let mut ctx = InferContext::new(reg, gen, imported_schemes, current_module_path.to_vec());
