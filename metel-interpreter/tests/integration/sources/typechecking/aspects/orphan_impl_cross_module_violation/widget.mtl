@@ -1,0 +1,5 @@
+// A foreign type, declared away from both `main.mtl` and `greet_aspect.mtl`.
+
+pub struct Widget {
+    x: i64,
+}

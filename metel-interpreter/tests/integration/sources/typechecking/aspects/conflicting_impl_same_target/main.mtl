@@ -1,0 +1,25 @@
+// Regression test (RFC-0060/issue #238): overlap detection. Two impls of the
+// same aspect for the same concrete type conflict, independent of whether
+// their method bodies agree or disagree.
+
+aspect Describe {
+    fun describe(self) -> String;
+}
+
+struct Crate {
+    x: i64,
+}
+
+impl Describe for Crate {
+    fun describe(self) -> String {
+        return "a";
+    }
+}
+
+impl Describe for Crate { // ERROR[T0015]
+    fun describe(self) -> String {
+        return "b";
+    }
+}
+
+fun main() {}

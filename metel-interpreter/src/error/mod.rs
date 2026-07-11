@@ -34,6 +34,8 @@ pub enum TypeErrorCode {
     T0011, // Import name conflict
     T0012, // Aspect bound not satisfied
     T0013, // Ambiguous aspect method resolution
+    T0014, // Orphan implementation
+    T0015, // Conflicting implementation
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

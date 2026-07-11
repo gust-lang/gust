@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use serde::Serialize;
 
+use crate::coherence;
 use crate::elaborator;
 use crate::error::MetelError;
 use crate::evaluator::{self, EvaluationReport};
@@ -20,6 +21,7 @@ pub struct PhaseTimings {
     pub load_root_ns: u64,
     pub resolve_ns: u64,
     pub normalize_ns: u64,
+    pub coherence_ns: u64,
     pub typecheck_ns: u64,
     pub elaborate_ns: u64,
     pub evaluate_ns: u64,
@@ -65,6 +67,10 @@ pub fn run_file(filename: &str, options: &RunOptions) -> Result<RunReport, Metel
     let normalize_ns = elapsed_ns(started);
 
     let started = Instant::now();
+    coherence::check(&normalized, &names)?;
+    let coherence_ns = elapsed_ns(started);
+
+    let started = Instant::now();
     let typed_graph = typechecker::check_graph(normalized, &names, CorePrelude::default())?;
     let typecheck_ns = elapsed_ns(started);
 
@@ -86,6 +92,7 @@ pub fn run_file(filename: &str, options: &RunOptions) -> Result<RunReport, Metel
             load_root_ns,
             resolve_ns,
             normalize_ns,
+            coherence_ns,
             typecheck_ns,
             elaborate_ns,
             evaluate_ns,
@@ -115,6 +122,7 @@ pub fn run_evaluator_fixture(
     let graph = module_loader::load_root(filename)?;
     let names = name_resolver::resolve(&graph)?;
     let normalized = path_normalizer::normalize(graph, &names)?;
+    coherence::check(&normalized, &names)?;
     let parse_ns = elapsed_ns(started);
 
     let started = Instant::now();

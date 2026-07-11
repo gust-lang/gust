@@ -1,0 +1,15 @@
+// Regression test (RFC-0060/issue #238): orphan rule. `main.mtl` declares
+// neither `Greet` (from greet_aspect.mtl) nor `Widget` (from widget.mtl) — an
+// impl here owns no half of the pair, so it must be rejected as an orphan
+// implementation regardless of what the impl body does.
+
+import greet_aspect::Greet;
+import widget::Widget;
+
+impl Greet for Widget { // ERROR[T0014]
+    fun greet(self) -> String {
+        return "hi";
+    }
+}
+
+fun main() {}

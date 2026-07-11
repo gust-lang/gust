@@ -205,3 +205,54 @@ match against the wrong module's impl.
 Full suite green (638 tests, up from 636). The `struct_env`/`enum_env`/`method_env`
 sealed-accessor piece remains genuinely deferred, per the reasoning above — revisit
 once #238 has a concrete consumer for it.
+
+## Implementation note, 2026-07-11 — issue #238, coherence pipeline (concrete impls only)
+
+`#238` turned out to be exactly the consumer named above, but scoped down before
+writing any code: `ImplBlock` has no generics/where-clause field at all, so
+conditional/blanket impls (RFC-0036) aren't parseable yet; `AspectDecl` has no
+auto-impl marker, so auto-derived aspects (RFC-0080) don't exist either; and no
+polarity/negative-impl syntax exists anywhere in the parser. Confirmed via `grep`
+before starting, not assumed. Scoped to the orphan rule (T0014) and overlap
+detection (T0015) for concrete impls only — blanket-impl disjointness and auto-impl
+synthesis are deferred until those RFCs actually land.
+
+New module: `src/coherence.rs`, run as its own pass between `path_normalizer::normalize`
+and `typechecker::check_graph` (both in `pipeline::run_file`/`run_evaluator_fixture`
+and the test harness's `runners.rs`, which reimplements the same sequence separately).
+It needed nothing from `TypeDefinitionRegistry` — only name resolution, which already
+exists at this point in the pipeline as `ResolvedNames`. Rather than wait for a
+`TypeDefinitionRegistry` instance (built later, during type-checking) or reuse
+`resolve_type_position_id` (not reachable from outside `typeinference`), `coherence.rs`
+carries its own miniature copy of that same precedence (local declaration → explicit
+import → glob, user tier before std) directly over `ResolvedNames.symbols`/`.scopes`.
+
+**No special-casing for builtin primitives was needed at all** — the concern flagged
+during investigation (primitives like `i64` have no textual `Decl::Struct` in
+`stdlib/core.mtl`, only a seeded `SymbolTable` entry). Every builtin, primitive or
+not, is interned as exactly `(["std","core"], name) -> fixed SymbolId`, which *is* a
+normal declaring-module entry — inverting `names.symbols` once (`SymbolId ->
+declaring module`) treats builtins and user declarations identically. `impl Display
+for i64` resolves `i64` to `std::core` via the same auto-glob every module gets, so
+it's "local" exactly when the impl itself lives in `std::core`, and foreign
+otherwise — matching the spec's examples with no extra logic.
+
+**Overlap detection had to include the aspect's own type arguments, not just the
+target.** First pass keyed overlap purely on `(aspect_id, canonical_target)` and
+immediately broke 392 of 638 tests — `stdlib/core.mtl`'s numeric `From` impls
+(`impl From<i16> for i8`, `impl From<i32> for i8`, ...) all share a target but are
+genuinely different instantiations of `From<T>`. Fixed by canonicalizing
+`ib.aspect_type_args` alongside the target and keying on the full tuple; this is
+the concrete reason the ADR's "keep shapes, seal the guarantee" approach (Option C)
+mattered here too — the fix was catching a wrong assumption in the *new* code, not
+in inherited AST shape.
+
+New module `src/coherence.rs`; wired into `src/lib.rs` and — since `src/main.rs`
+duplicates the module tree independently for the bin target rather than depending on
+the `metel` lib crate — `src/main.rs` as well.
+
+Regression fixtures: `typechecking/aspects/orphan_impl_cross_module_violation` (impl
+in a module owning neither the aspect nor the type → T0014) and
+`typechecking/aspects/conflicting_impl_same_target` (two impls of the same aspect for
+the same concrete type in one module → T0015). Full suite green (640 tests, up from
+638).

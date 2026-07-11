@@ -3,7 +3,8 @@ use std::path::Path;
 
 use metel::error::MetelError;
 use metel::{
-    elaborator, evaluator, module_loader, name_resolver, parser, path_normalizer, typechecker,
+    coherence, elaborator, evaluator, module_loader, name_resolver, parser, path_normalizer,
+    typechecker,
 };
 
 use super::fixture::{
@@ -70,6 +71,7 @@ fn run_typecheck(path: &Path) -> Result<(), MetelError> {
     let graph = module_loader::load_root(main_source_path(path))?;
     let names = name_resolver::resolve(&graph)?;
     let normalized = path_normalizer::normalize(graph, &names)?;
+    coherence::check(&normalized, &names)?;
     typechecker::check_graph(normalized, &names, typechecker::CorePrelude::default()).map(|_| ())
 }
 
@@ -77,6 +79,7 @@ fn run_evaluate(path: &Path) -> Result<(), MetelError> {
     let graph = module_loader::load_root(main_source_path(path))?;
     let names = name_resolver::resolve(&graph)?;
     let normalized = path_normalizer::normalize(graph, &names)?;
+    coherence::check(&normalized, &names)?;
     let typed = typechecker::check_graph(normalized, &names, typechecker::CorePrelude::default())?;
     let elaborated = elaborator::elaborate(typed, &names)?;
     evaluator::evaluate_graph(elaborated)
@@ -118,6 +121,7 @@ fn run_full_pipeline(
     assert_graph_checks(path, &graph, checks);
     let names = name_resolver::resolve(&graph)?;
     let normalized = path_normalizer::normalize(graph, &names)?;
+    coherence::check(&normalized, &names)?;
     let typed = typechecker::check_graph(normalized, &names, std_prelude(prelude_mode))?;
     let elaborated = elaborator::elaborate(typed, &names)?;
     evaluator::evaluate_graph(elaborated)

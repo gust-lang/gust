@@ -2,6 +2,7 @@
 //! Exposes modules for use in tests and external code.
 
 pub mod ast;
+pub mod coherence;
 pub mod elaborator;
 pub mod error;
 pub mod evaluator;
