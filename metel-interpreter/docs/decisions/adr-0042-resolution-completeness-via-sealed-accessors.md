@@ -117,3 +117,44 @@ symbol resolution only.
   METEL-171; it also does not require one to get the correctness guarantee that
   actually matters here (no silent fallback to name lookup past the point where an id
   should exist).
+
+## Implementation note, 2026-07-11 — two real bugs closing the fallback surfaced
+
+The `Call::callee_id` piece (item 1) is done: `TypedLetDecl`/`TypedMutDecl` gained a
+`def_id`, registered in `RuntimeRegistry` the moment their Pass 2 initializer runs (the
+same moment they're bound in `env`) — closing the specific gap this ADR named. A
+`let_mut_def_ids` set distinguishes a legitimate "called before its `let` executed" miss
+(falls back to the existing, correct name-lookup error) from a genuine bug (anything
+else missing its runtime value is now `MetelError::internal`, not a silent
+re-evaluation by name).
+
+Turning that miss into a hard error immediately surfaced two pre-existing bugs in
+`SymbolId` resolution that the old blanket fallback had silently absorbed for as long
+as the migration has existed — neither is specific to `let`/`mut`:
+
+1. **Overloaded names resolved to a stale id.** `reference_resolver::resolve_name`'s
+   "same-module declared name" check didn't exclude overloaded names — a bare
+   reference to an overloaded name (e.g. a call that falls through to an outer/generic
+   binding because no local overload matches) got whatever id the initial interning
+   pass happened to assign the name, never the id anything actually registers a value
+   under. Fixed: `resolve_name` now skips this check entirely for a name declared via
+   more than one `fn` in the module (a new `overloaded_names` input, purely syntactic),
+   falling through to imports/globs — which correctly finds the outer binding's real,
+   registered id.
+2. **Re-exported names got an orphaned id, not their real declaration's.** Importing a
+   re-exported name (`export inner::name;` then `import facade::name;`) minted a fresh
+   `SymbolId` under `(facade_module, name)` — a key nothing ever declares anything
+   under, since `name` isn't actually declared in `facade`, just re-exported. Fixed:
+   `name_resolver` now keeps every module's full re-export bindings (previously only
+   their key names survived, into `pub_surface`) and an item import checks whether the
+   source module re-exports the name before minting an id, reusing the re-export's own
+   binding (already chased to its real declaring module) instead.
+
+Both were latent in ADR-0041's migration itself, invisible only because the fallback
+this ADR closes was silently and correctly re-resolving these exact cases by name every
+time. One pre-existing unit test (`facade_re_exports_item_for_callers`) asserted the
+first bug's *symptom* directly (`source_module == ["parser"]` for a name actually
+declared in `["parser", "ast"]`) — corrected to assert the real declaring module.
+
+Still open: the `TypeDefinitionRegistry` → `ResolvedTypeRegistry` piece (item 2, issues
+#237/#239) — not started.

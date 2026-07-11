@@ -383,6 +383,15 @@ pub struct RuntimeRegistry {
     /// free-function definitions (METEL-180) and ordinary top-level functions
     /// (METEL-187), whose surface name cannot always identify a single definition.
     symbol_values: HashMap<SymbolId, Value>,
+    /// Every top-level (module-level) `let`/`mut`'s `def_id` (ADR-0042), populated
+    /// once before Pass 1 from the whole program's declarations. Unlike a top-level
+    /// `fn`'s `def_id` (always registered in `symbol_values` by Pass 1b, before any
+    /// user code runs), a `let`/`mut`'s value is only registered when its Pass 2
+    /// initializer actually executes — so a `Call::callee_id` miss on one of these ids
+    /// can be a legitimate "used before it was defined" runtime error, not a bug. This
+    /// set is exactly what distinguishes that case from an unconditional internal
+    /// error (see the `TypedExpr::Call` handling in `eval_expr`).
+    let_mut_def_ids: std::collections::HashSet<SymbolId>,
 }
 
 type FieldWriteback = (Rc<RefCell<Value>>, Vec<String>, Rc<RefCell<Value>>);
@@ -398,6 +407,19 @@ impl RuntimeRegistry {
 
     pub fn get_symbol_value(&self, id: SymbolId) -> Option<&Value> {
         self.symbol_values.get(&id)
+    }
+
+    /// Record that `id` belongs to a top-level `let`/`mut` (ADR-0042) — see the field
+    /// doc on `let_mut_def_ids`.
+    pub fn mark_let_mut_def_id(&mut self, id: SymbolId) {
+        self.let_mut_def_ids.insert(id);
+    }
+
+    /// Whether `id` is a top-level `let`/`mut`'s identity, i.e. a `symbol_values` miss
+    /// on it can be a legitimate "used before it was defined" runtime error rather
+    /// than an internal bug.
+    pub fn is_let_mut_def_id(&self, id: SymbolId) -> bool {
+        self.let_mut_def_ids.contains(&id)
     }
 
     pub fn register_module_value(
@@ -1298,6 +1320,24 @@ fn run_passes(
     type_ctx: Option<std::rc::Rc<TypeCtx>>,
 ) -> Result<(), MetelError> {
     env.type_ctx = type_ctx.clone();
+    // Pass 0 (ADR-0042): record this module's top-level let/mut identities before
+    // anything else runs, so a later `Call::callee_id` miss on one of them can be
+    // recognized as "not registered yet" rather than an internal-error bug.
+    for decl in decls {
+        match decl {
+            TypedDecl::Let(d) => {
+                if let Some(id) = d.def_id {
+                    runtime.mark_let_mut_def_id(id);
+                }
+            }
+            TypedDecl::Mut(d) => {
+                if let Some(id) = d.def_id {
+                    runtime.mark_let_mut_def_id(id);
+                }
+            }
+            _ => {}
+        }
+    }
     // Pass 1a. Overloaded definitions (symbol_id set) are dispatched through
     // the runtime's symbol registry, never by name — no env binding for them.
     for decl in decls {
@@ -1447,6 +1487,23 @@ fn run_passes(
     for decl in decls {
         if !matches!(decl, TypedDecl::Fun(_) | TypedDecl::Impl(_)) {
             eval_decl(decl, env, runtime)?;
+            // ADR-0042: register a top-level let/mut's value by SymbolId too, right
+            // after its initializer runs — the same moment `env.define` already binds
+            // it by name. This is what lets `Call::callee_id` dispatch work for a
+            // module-level first-class function value the same way it already does
+            // for `fn` declarations, without changing when the binding becomes
+            // available (a call before this line executes still misses, exactly as
+            // it does today via `env`).
+            let stamped = match decl {
+                TypedDecl::Let(d) => d.def_id.map(|id| (id, d.name.as_str())),
+                TypedDecl::Mut(d) => d.def_id.map(|id| (id, d.name.as_str())),
+                _ => None,
+            };
+            if let Some((id, name)) = stamped {
+                if let Some(value) = env.get(name) {
+                    runtime.register_symbol_value(id, value);
+                }
+            }
         }
     }
 
@@ -2543,17 +2600,30 @@ pub fn eval_expr(
             let func_val = match callee_id {
                 Some(id) => match runtime.get_symbol_value(*id).cloned() {
                     Some(value) => value,
-                    // An overload id with no registered value is an internal error.
+                    // An overload id with no registered value is an internal error —
+                    // all overloads are registered in Pass 1a, before any user code runs.
                     None if id.0 >= crate::symbols::OVERLOAD_SYM_START => {
                         return Err(MetelError::internal(format!(
                             "no runtime value registered for overload symbol {id:?}"
                         )));
                     }
-                    // An ordinary top-level callable id may legitimately have no symbol
-                    // registration (e.g. a top-level `let`-bound value, or the
-                    // single-program path that does no symbol seeding): fall back to
-                    // evaluating the callee by name. (METEL-187)
-                    None => eval_expr(callee, env, runtime)?.into_value(),
+                    // A top-level `let`/`mut`'s id is registered lazily, when its own
+                    // Pass 2 initializer runs (ADR-0042) — a miss here can legitimately
+                    // mean "called before that line executed," the same "used before
+                    // defined" error `eval_expr` already produces via plain name lookup
+                    // (R0003), not a bug. Evaluating by name here reuses that existing,
+                    // correct error path rather than duplicating it.
+                    None if runtime.is_let_mut_def_id(*id) => {
+                        eval_expr(callee, env, runtime)?.into_value()
+                    }
+                    // Any other top-level callable id (ordinary `fn`s, registered in
+                    // Pass 1b before any user code runs) missing its value is a genuine
+                    // resolver/construction bug, not a legitimate runtime state.
+                    None => {
+                        return Err(MetelError::internal(format!(
+                            "no runtime value registered for callable symbol {id:?}"
+                        )));
+                    }
                 },
                 None => eval_expr(callee, env, runtime)?.into_value(),
             };

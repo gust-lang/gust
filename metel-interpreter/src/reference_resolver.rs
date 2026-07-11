@@ -57,6 +57,13 @@ pub(crate) struct ResolveInputs<'a> {
     pub declared_names: &'a HashMap<Vec<String>, HashSet<String>>,
     /// Canonical `(module, name)` → `SymbolId` table.
     pub symbols: &'a HashMap<(Vec<String>, String), SymbolId>,
+    /// Names declared via more than one `fn` in the same module (overload sets).
+    /// `symbols`'s entry for such a name is a leftover single-declaration artifact of
+    /// the initial interning pass, not a stable identity for the name as a whole — an
+    /// overloaded name's real identity is resolved per call site by argument types
+    /// (`typechecker::overload`), not by this reference table. `resolve_name` must not
+    /// treat these as an ordinary same-module declaration (ADR-0042).
+    pub overloaded_names: &'a HashMap<Vec<String>, HashSet<String>>,
 }
 
 /// Walk every module's declarations and collect the `Def` reference table.
@@ -109,12 +116,21 @@ impl Walker<'_, '_> {
     /// declaration in the current module wins, then an explicit import, then a
     /// glob-visible name (user globs before `std::core`).
     fn resolve_name(&self, name: &str) -> Option<SymbolId> {
-        // Same-module top-level declaration.
-        if self
+        // Same-module top-level declaration — but not an overloaded one (ADR-0042):
+        // there's no single unambiguous declaration to point at until argument types
+        // are known, so this falls through to imports/globs below instead, the same
+        // as a name this module doesn't declare at all.
+        let is_overloaded = self
             .inputs
-            .declared_names
+            .overloaded_names
             .get(self.module_path)
-            .is_some_and(|names| names.contains(name))
+            .is_some_and(|names| names.contains(name));
+        if !is_overloaded
+            && self
+                .inputs
+                .declared_names
+                .get(self.module_path)
+                .is_some_and(|names| names.contains(name))
         {
             if let Some(id) = self
                 .inputs

@@ -137,6 +137,29 @@ pub fn resolve(graph: &ModuleGraph) -> Result<ResolvedNames, MetelError> {
         })
         .collect();
 
+    // Names declared via more than one `fn` in the same module — overload sets. Purely
+    // syntactic (arity/type-based selection happens later, in the typechecker); this
+    // is only used to keep the reference resolver from treating an overloaded name as
+    // an ordinary single-declaration reference (ADR-0042).
+    let overloaded_names: HashMap<Vec<String>, HashSet<String>> = graph
+        .modules
+        .iter()
+        .map(|m| {
+            let mut counts: HashMap<&str, u32> = HashMap::new();
+            for decl in &m.program.decls {
+                if let Decl::Fun(d) = decl {
+                    *counts.entry(d.name.as_str()).or_insert(0) += 1;
+                }
+            }
+            let overloaded = counts
+                .into_iter()
+                .filter(|(_, count)| *count > 1)
+                .map(|(name, _)| name.to_string())
+                .collect();
+            (m.module_path.clone(), overloaded)
+        })
+        .collect();
+
     // Assign SymbolIds to all top-level declarations in their home modules.
     // This ensures every declaration has a stable id even if it is never imported.
     // The intern call is idempotent, so import-site ids (assigned below) will match.
@@ -157,8 +180,13 @@ pub fn resolve(graph: &ModuleGraph) -> Result<ResolvedNames, MetelError> {
         }
     }
 
-    // Second pass: process re-exports and extend pub_surface.
-    // Simple single-pass (no support for transitive re-export chains; that's future work).
+    // Second pass: process re-exports and extend pub_surface. Keep the full bindings
+    // (not just the names) — an import of a re-exported name (third pass) must reuse
+    // the re-export's own `symbol_id` (chased to its real source module), not mint a
+    // fresh one under the re-exporting module's own path. Simple single-pass (no
+    // support for transitive re-export chains — a re-export of a re-export; that's
+    // future work, same as before).
+    let mut all_re_exports: HashMap<Vec<String>, HashMap<String, ImportBinding>> = HashMap::new();
     for loaded in &graph.modules {
         let re_exported =
             collect_re_exports(loaded, &known_modules, &pub_surface, path_aliases, &mut sym)?;
@@ -166,12 +194,19 @@ pub fn resolve(graph: &ModuleGraph) -> Result<ResolvedNames, MetelError> {
             .entry(loaded.module_path.clone())
             .or_default()
             .extend(re_exported.keys().cloned());
+        all_re_exports.insert(loaded.module_path.clone(), re_exported);
     }
 
     // Third pass: resolve imports using the final pub_surface.
     let mut scopes = HashMap::new();
     for loaded in &graph.modules {
-        let scope = resolve_module(loaded, &known_modules, &pub_surface, path_aliases, &mut sym)?;
+        let scope = resolve_module(
+            loaded,
+            &known_modules,
+            &all_re_exports,
+            path_aliases,
+            &mut sym,
+        )?;
         scopes.insert(loaded.module_path.clone(), scope);
     }
 
@@ -189,6 +224,7 @@ pub fn resolve(graph: &ModuleGraph) -> Result<ResolvedNames, MetelError> {
             pub_surface: &pub_surface,
             declared_names: &declared_names,
             symbols: &sym.map,
+            overloaded_names: &overloaded_names,
         },
     );
 
@@ -303,11 +339,14 @@ fn decl_any_name(decl: &Decl) -> Option<String> {
 fn resolve_module(
     loaded: &LoadedModule,
     known_modules: &HashSet<Vec<String>>,
-    pub_surface: &HashMap<Vec<String>, HashSet<String>>,
+    all_re_exports: &HashMap<Vec<String>, HashMap<String, ImportBinding>>,
     path_aliases: &HashMap<Vec<String>, Vec<String>>,
     sym: &mut SymbolTable,
 ) -> Result<ModuleScope, MetelError> {
-    let re_exports = collect_re_exports(loaded, known_modules, pub_surface, path_aliases, sym)?;
+    // Reuse this module's own re-exports (already computed in `resolve`'s second
+    // pass) rather than recomputing them — same result, one fewer pass over the
+    // export tree.
+    let re_exports = all_re_exports.get(&loaded.module_path).cloned().unwrap_or_default();
     let mut scope = ModuleScope {
         explicit: HashMap::new(),
         globs: Vec::new(),
@@ -320,6 +359,7 @@ fn resolve_module(
             &base,
             &import.path.tree,
             known_modules,
+            all_re_exports,
             path_aliases,
             &mut scope,
             &import.span,
@@ -485,6 +525,7 @@ fn process_tree(
     base: &[String],
     tree: &ImportTree,
     known_modules: &HashSet<Vec<String>>,
+    all_re_exports: &HashMap<Vec<String>, HashMap<String, ImportBinding>>,
     path_aliases: &HashMap<Vec<String>, Vec<String>>,
     scope: &mut ModuleScope,
     import_span: &Span,
@@ -506,27 +547,35 @@ fn process_tree(
             let mut module_candidate = base.to_vec();
             module_candidate.push(name.clone());
 
-            let (source_module, kind) = if known_modules.contains(&module_candidate) {
-                (module_candidate, BindingKind::Module)
+            let binding = if known_modules.contains(&module_candidate) {
+                ImportBinding {
+                    symbol_id: sym.intern(&module_candidate, name),
+                    source_module: module_candidate,
+                    source_name: name.clone(),
+                    kind: BindingKind::Module,
+                }
+            } else if let Some(re_export) =
+                all_re_exports.get(base).and_then(|m| m.get(name.as_str()))
+            {
+                // `base` re-exports `name` rather than declaring it directly — reuse
+                // the re-export's own binding (already chased to its real source
+                // module/id by `collect_re_exports`) instead of minting a fresh
+                // symbol under `(base, name)`, which would never match anything
+                // Pass 1b actually registers a runtime value under.
+                re_export.clone()
             } else {
                 // Record the binding regardless of visibility. See ADR-0024.
                 // Visibility (T0009) and existence (T0003) are checked by the typechecker
                 // in build_import_schemes, which has access to the full graph and GlobalExports.
-                (base.to_vec(), BindingKind::Item)
+                ImportBinding {
+                    symbol_id: sym.intern(base, name),
+                    source_module: base.to_vec(),
+                    source_name: name.clone(),
+                    kind: BindingKind::Item,
+                }
             };
 
-            let symbol_id = sym.intern(&source_module, name);
-            add_explicit(
-                scope,
-                local,
-                ImportBinding {
-                    source_module,
-                    source_name: name.clone(),
-                    kind,
-                    symbol_id,
-                },
-                import_span,
-            )?;
+            add_explicit(scope, local, binding, import_span)?;
         }
 
         ImportTree::Path { name, tree } => {
@@ -536,6 +585,7 @@ fn process_tree(
                 &new_base,
                 tree,
                 known_modules,
+                all_re_exports,
                 path_aliases,
                 scope,
                 import_span,
@@ -549,6 +599,7 @@ fn process_tree(
                     base,
                     item,
                     known_modules,
+                    all_re_exports,
                     path_aliases,
                     scope,
                     import_span,
@@ -1024,13 +1075,17 @@ mod tests {
             parser_scope.re_exports.contains_key("Ast"),
             "parser should re-export Ast"
         );
-        // root should have imported Ast from parser
+        // root should have imported Ast from parser — but the binding's real identity
+        // (ADR-0042) chases through the re-export to Ast's actual declaring module,
+        // `["parser", "ast"]`, not the facade's own path. This is what makes the
+        // binding's `symbol_id` match the same id `ast`'s own module registers a
+        // runtime value under, instead of an orphaned id nothing ever populates.
         let root_scope = &names.scopes[&vec![]];
         let binding = root_scope
             .explicit
             .get("Ast")
             .expect("Ast should be importable from facade");
-        assert_eq!(binding.source_module, vec!["parser"]);
+        assert_eq!(binding.source_module, vec!["parser", "ast"]);
     }
 
     #[test]

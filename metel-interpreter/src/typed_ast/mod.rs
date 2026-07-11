@@ -90,6 +90,13 @@ pub struct TypedLetDecl {
     #[allow(dead_code)] // kept for future tooling (hover types, LSP)
     pub type_ann: Option<TypeExpr>,
     pub value: TypedExpr,
+    /// Stable identity of a top-level (module-level) `let` (ADR-0042). The evaluator
+    /// registers the binding's value under this id, in addition to its lexical-env
+    /// binding, once its Pass 2 initializer has run — so `Call::callee_id` dispatch
+    /// works for a top-level first-class function value the same way it already does
+    /// for `fn` declarations. `None` for block-local/`for`-init `let`s, which stay
+    /// name-keyed only (ADR-0041 design: locals are never given a top-level identity).
+    pub def_id: Option<SymbolId>,
     #[allow(dead_code)] // kept for future error messages
     pub span: Span,
 }
@@ -100,6 +107,8 @@ pub struct TypedMutDecl {
     #[allow(dead_code)] // kept for future tooling (hover types, LSP)
     pub type_ann: Option<TypeExpr>,
     pub value: TypedExpr,
+    /// See `TypedLetDecl::def_id` — same identity, same rationale, for `mut`.
+    pub def_id: Option<SymbolId>,
     #[allow(dead_code)] // kept for future error messages
     pub span: Span,
 }

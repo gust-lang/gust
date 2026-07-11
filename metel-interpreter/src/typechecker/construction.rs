@@ -414,6 +414,19 @@ pub(super) fn construct_program(
                 }
             }
         }
+        // Same identity assignment for top-level `let`/`mut` (ADR-0042): only
+        // module-level bindings reach this loop, so this never touches a block-local
+        // or `for`-init binding (those keep `def_id: None` from construction).
+        if let TypedDecl::Let(ld) = &mut typed {
+            if let Some(syms) = symbols {
+                ld.def_id = syms.get(&(current_module.to_vec(), ld.name.clone())).copied();
+            }
+        }
+        if let TypedDecl::Mut(md) = &mut typed {
+            if let Some(syms) = symbols {
+                md.def_id = syms.get(&(current_module.to_vec(), md.name.clone())).copied();
+            }
+        }
         out.push(typed);
     }
     Ok(out)
@@ -445,6 +458,7 @@ fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<TypedDecl, Mete
                                 ty: Type::Unit,
                                 span: cls_span.clone(),
                             },
+                            def_id: None,
                             span: ld.span.clone(),
                         }));
                     }
@@ -462,6 +476,7 @@ fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<TypedDecl, Mete
                 name: ld.name.clone(),
                 type_ann: ld.type_ann.clone(),
                 value,
+                def_id: None,
                 span: ld.span.clone(),
             }))
         }
@@ -478,6 +493,7 @@ fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<TypedDecl, Mete
                 name: md.name.clone(),
                 type_ann: md.type_ann.clone(),
                 value,
+                def_id: None,
                 span: md.span.clone(),
             }))
         }
@@ -908,6 +924,7 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
                         name: ld.name.clone(),
                         type_ann: ld.type_ann.clone(),
                         value,
+                        def_id: None,
                         span: ld.span.clone(),
                     };
                     Some(TypedForInit::Let(typed_ld))
@@ -920,6 +937,7 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
                         name: md.name.clone(),
                         type_ann: md.type_ann.clone(),
                         value,
+                        def_id: None,
                         span: md.span.clone(),
                     };
                     Some(TypedForInit::Mut(typed_md))
