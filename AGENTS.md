@@ -86,6 +86,18 @@ a `sprint-N` label or a Codeberg Project (kanban) board — neither is required.
 don't enforce blocking; treat the same as Plane's `blocked_by`/`blocking` relations
 were treated, as documentation, not enforcement.
 
+**Rate limits on creating issues/comments.** Codeberg enforces a tight anti-spam
+guard on issue and comment creation — roughly 5 issue creates or ~15 comment posts
+per account per 5-minute window (observed empirically, not documented; not the
+general API rate limit, which is much higher). This is a nonprofit, donation- and
+membership-funded instance (Codeberg e.V.) with no paid tier that lifts it. Creating
+more than a handful of issues/comments in one sitting (a bulk migration, splitting a
+task into several subissues, closing out a batch of stale issues) **will** hit this.
+Use `tools/tea-paced.sh <tea subcommand and args>` instead of calling `tea` directly
+for any such batch — it retries with backoff specifically on a rate-limit response
+and fails fast (no retry) on any other error. It does not pre-emptively pace calls;
+a bulk loop should still put a pause (60-90s) between individual creates.
+
 Common actions:
 
 - Read a task: fetch the issue by number.
