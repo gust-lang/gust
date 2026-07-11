@@ -1,0 +1,13 @@
+// TYPECHECK_ERROR[T0001]
+// RFC-0067a §3a: read-copy fires at let/ascription/return/break/tail-expression
+// positions but never at a plain call-argument position — there is no declared
+// type for the argument itself to compare against, so passing a reference where
+// the parameter expects the referent type is a hard type mismatch, not an
+// implicit copy.
+fun takes_i64(x: i64) {}
+
+fun main() {
+    let n = 5;
+    let r: &i64 = &n;
+    takes_i64(r);
+}

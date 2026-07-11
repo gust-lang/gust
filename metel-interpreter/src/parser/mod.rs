@@ -1375,10 +1375,6 @@ fn shift_assign_target_span(
 ) {
     match target {
         AssignTarget::Ident(_, span) => shift_span(span, base_start, base_line, base_col),
-        AssignTarget::Deref { object, span } => {
-            shift_expr_span(object, base_start, base_line, base_col);
-            shift_span(span, base_start, base_line, base_col);
-        }
         AssignTarget::FieldAccess { object, span, .. } => {
             shift_expr_span(object, base_start, base_line, base_col);
             shift_span(span, base_start, base_line, base_col);
@@ -1924,12 +1920,6 @@ fn parse_unary_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result
             Box::new(parse_expr(child, filename)?),
             span,
         ))
-    } else if text.starts_with('*') {
-        Ok(Expr::UnaryOp(
-            UnaryOp::Deref,
-            Box::new(parse_expr(child, filename)?),
-            span,
-        ))
     } else if text.starts_with('-') {
         Ok(Expr::UnaryOp(
             UnaryOp::Neg,
@@ -2354,7 +2344,6 @@ fn parse_assign_op(s: &str) -> AssignOp {
 fn expr_to_assign_target(expr: Expr) -> Result<AssignTarget, MetelError> {
     match expr {
         Expr::Ident(name, span) => Ok(AssignTarget::Ident(name, span)),
-        Expr::UnaryOp(UnaryOp::Deref, object, span) => Ok(AssignTarget::Deref { object, span }),
         Expr::FieldAccess {
             object,
             field,
@@ -2401,25 +2390,25 @@ fn parse_type_expr(
                 .collect::<Result<_, _>>()?;
             Ok(TypeExpr::Tuple(elems))
         }
-        Rule::pointer_type => {
+        Rule::reference_type => {
             let elem = parse_type_expr(
-                pair.into_inner()
-                    .next()
-                    .ok_or_else(|| MetelError::internal("pointer_type: expected pointee type"))?,
+                pair.into_inner().next().ok_or_else(|| {
+                    MetelError::internal("reference_type: expected referent type")
+                })?,
                 filename,
             )?;
-            Ok(TypeExpr::Pointer(Box::new(elem)))
+            Ok(TypeExpr::Reference(Box::new(elem)))
         }
-        Rule::mut_pointer_type => {
+        Rule::mut_reference_type => {
             let elem = parse_type_expr(
                 pair.into_inner()
                     .find(|p| p.as_rule() == Rule::type_expr)
                     .ok_or_else(|| {
-                        MetelError::internal("mut_pointer_type: expected pointee type")
+                        MetelError::internal("mut_reference_type: expected referent type")
                     })?,
                 filename,
             )?;
-            Ok(TypeExpr::MutPointer(Box::new(elem)))
+            Ok(TypeExpr::MutReference(Box::new(elem)))
         }
         Rule::sized_array_type => {
             let mut inner = pair.into_inner();

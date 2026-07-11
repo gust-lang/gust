@@ -1,28 +1,27 @@
-// Field assignment through a *mut pointer — both auto-deref and explicit deref forms.
+// Field assignment through a &mut reference — auto-deref field access.
 struct Point { x: i64, y: i64 }
 struct Outer { inner: Point }
 
 fun main() {
     let mut p = Point { x: 1, y: 2 };
-    let ptr: *mut Point = &mut p;
+    let ptr: &mut Point = &mut p;
 
-    // Auto-deref field assign through *mut Point.
+    // Auto-deref field assign through &mut Point.
     ptr.x = 10;
     assert(p.x == 10);
 
     ptr.y += 8;
     assert(p.y == 10);
 
-    // Explicit deref field assign: (*ptr).field = value.
-    (*ptr).x = 99;
+    ptr.x = 99;
     assert(p.x == 99);
 
-    (*ptr).y += 1;
+    ptr.y += 1;
     assert(p.y == 11);
 
-    // Nested struct behind a *mut pointer.
+    // Nested struct behind a &mut reference.
     let mut o = Outer { inner: Point { x: 0, y: 0 } };
-    let optr: *mut Outer = &mut o;
-    (*optr).inner.x = 42;
+    let optr: &mut Outer = &mut o;
+    optr.inner.x = 42;
     assert(o.inner.x == 42);
 }

@@ -44,9 +44,9 @@ pub(super) fn value_to_type(value: &Value) -> Type {
                 .unwrap_or_else(|| Type::Fun(vec![], Box::new(Type::Unit))),
             super::RuntimeCallable::Intrinsic { .. } => Type::Fun(vec![], Box::new(Type::Unit)),
         },
-        Value::Pointer(rc) => Type::Pointer(Box::new(value_to_type(&rc.borrow()))),
-        Value::MutPointer(rc) => Type::MutPointer(Box::new(value_to_type(&rc.borrow()))),
-        Value::MutFieldPointer { root, path } => {
+        Value::Reference(rc) => Type::Reference(Box::new(value_to_type(&rc.borrow()))),
+        Value::MutReference(rc) => Type::MutReference(Box::new(value_to_type(&rc.borrow()))),
+        Value::MutFieldReference { root, path } => {
             // Approximate: read the leaf type from the current root value.
             let root_val = root.borrow();
             let mut cur_type = value_to_type(&root_val);
@@ -60,7 +60,7 @@ pub(super) fn value_to_type(value: &Value) -> Type {
                     _ => Type::Unit,
                 };
             }
-            Type::MutPointer(Box::new(cur_type))
+            Type::MutReference(Box::new(cur_type))
         }
     }
 }

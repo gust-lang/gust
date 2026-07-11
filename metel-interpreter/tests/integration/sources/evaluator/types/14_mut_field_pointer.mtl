@@ -1,4 +1,6 @@
 // RFC-0045: Mutable address-of lvalue paths — fat pointer (MutFieldPointer) tests.
+// RFC-0067a: *T/*mut T renamed to &T/&mut T; explicit *p deref replaced by
+// write-through assignment and type-directed read-copy.
 
 struct Point { x: i64, y: i64 }
 struct Rect { top_left: Point, bottom_right: Point }
@@ -6,36 +8,36 @@ struct Rect { top_left: Point, bottom_right: Point }
 fun main() {
     // &mut struct.field — write through fat pointer.
     let mut p = Point { x: 1, y: 2 };
-    let px: *mut i64 = &mut p.x;
-    *px = 10;
+    let px: &mut i64 = &mut p.x;
+    px = 10;
     assert(p.x == 10);
     assert(p.y == 2);
 
     // &mut struct.field — compound assign through fat pointer.
-    *px += 5;
+    px += 5;
     assert(p.x == 15);
 
-    // Read through fat pointer — *p yields current field value.
-    let read_x = *px;
+    // Read through fat pointer — type-directed copy yields current field value.
+    let read_x: i64 = px;
     assert(read_x == 15);
 
     // &mut tuple element.
     let mut t = (100, 200);
-    let t1: *mut i64 = &mut t.1;
-    *t1 = 999;
+    let t1: &mut i64 = &mut t.1;
+    t1 = 999;
     assert(t.1 == 999);
     assert(t.0 == 100);
 
     // &mut array element.
     let mut arr: [i64; 3] = [1, 2, 3];
-    let a1: *mut i64 = &mut arr[1];
-    *a1 = 42;
+    let a1: &mut i64 = &mut arr[1];
+    a1 = 42;
     assert(arr[0] == 1);
     assert(arr[1] == 42);
     assert(arr[2] == 3);
 
     // Compound assign through array element fat pointer.
-    *a1 += 8;
+    a1 += 8;
     assert(arr[1] == 50);
 
     // Chained path: &mut outer.inner.field (nested struct).
@@ -43,15 +45,15 @@ fun main() {
         top_left:     Point { x: 0, y: 0 },
         bottom_right: Point { x: 10, y: 10 },
     };
-    let brx: *mut i64 = &mut r.bottom_right.x;
-    *brx = 20;
+    let brx: &mut i64 = &mut r.bottom_right.x;
+    brx = 20;
     assert(r.bottom_right.x == 20);
     assert(r.top_left.x == 0);
 
-    // Auto-deref field access through MutFieldPointer — FieldAccess auto-deref.
+    // Auto-deref field access through MutFieldReference — FieldAccess auto-deref.
     let mut q = Point { x: 5, y: 7 };
-    let qptr: *mut Point = &mut q;
-    assert((*qptr).x == 5);
-    (*qptr).y = 99;
+    let qptr: &mut Point = &mut q;
+    assert(qptr.x == 5);
+    qptr.y = 99;
     assert(q.y == 99);
 }

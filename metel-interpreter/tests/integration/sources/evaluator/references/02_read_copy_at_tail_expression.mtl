@@ -1,0 +1,13 @@
+// RFC-0067a §3a: read-copy at an implicit tail expression (no `return` keyword),
+// including through an `if`/`else` whose branches are both reference-typed while the
+// function's own declared return type is the plain referent type.
+fun pick(cond: boolean, a: &i64, b: &i64) -> i64 {
+    if (cond) { a } else { b }
+}
+
+fun main() {
+    let x = 10;
+    let y = 20;
+    assert(pick(true, &x, &y) == 10);
+    assert(pick(false, &x, &y) == 20);
+}

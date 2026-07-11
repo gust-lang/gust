@@ -24,7 +24,7 @@ fn receiver_type_name(ty: &crate::types::Type) -> Option<&str> {
     use crate::types::Type;
     match ty {
         Type::Named(name, _) => Some(name.as_str()),
-        Type::Pointer(inner) | Type::MutPointer(inner) => receiver_type_name(inner),
+        Type::Reference(inner) | Type::MutReference(inner) => receiver_type_name(inner),
         _ => None,
     }
 }
@@ -102,7 +102,7 @@ pub(super) fn call_function(
 ) -> Result<Signal, MetelError> {
     // Auto-deref: calling through a function pointer transparently unwraps one pointer layer.
     let func = match func {
-        Value::Pointer(rc) | Value::MutPointer(rc) => rc.borrow().clone(),
+        Value::Reference(rc) | Value::MutReference(rc) => rc.borrow().clone(),
         other => other,
     };
     match func {

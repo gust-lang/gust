@@ -1,0 +1,10 @@
+// RFC-0067a §3a: read-copy at a `loop { break value; }` where the break value is a
+// reference, made concrete via an explicit ascription on the break value itself.
+fun main() {
+    let mut n = 0;
+    let p: &mut i64 = &mut n;
+    let result: i64 = loop {
+        break (p: i64);
+    };
+    assert(result == 0);
+}

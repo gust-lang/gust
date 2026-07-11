@@ -10,8 +10,8 @@ use super::{eval_expr, Environment, RuntimeRegistry, Signal, Value};
 /// the full field path (including `final_field`) to navigate within it.
 ///
 /// Handles three root forms:
-/// - `Ident(x)` — looks up `x` in the environment; auto-derefs one `*mut` level.
-/// - `Deref(ptr_expr)` — evaluates `ptr_expr` and extracts the `MutPointer` inner Rc.
+/// - `Ident(x)` — looks up `x` in the environment; auto-derefs one `&mut` level.
+/// - `Deref(ptr_expr)` — evaluates `ptr_expr` and extracts the `MutReference` inner Rc.
 /// - `Field { object, field }` — recurses into `object`, then appends `field`.
 pub(super) fn resolve_field_assign_root<'a>(
     place: &'a TypedPlace,
@@ -36,10 +36,10 @@ pub(super) fn resolve_field_assign_root<'a>(
                         ident_span,
                     )
                 })?;
-                // Auto-deref: if the binding holds a *mut pointer, follow it.
+                // Auto-deref: if the binding holds a &mut reference, follow it.
                 let inner = {
                     let v = rc.borrow();
-                    if let Value::MutPointer(inner_rc) = &*v {
+                    if let Value::MutReference(inner_rc) = &*v {
                         Some(inner_rc.clone())
                     } else {
                         None
@@ -53,10 +53,10 @@ pub(super) fn resolve_field_assign_root<'a>(
             } => {
                 let ptr = eval_expr(object, env, runtime)?.into_value();
                 match ptr {
-                    Value::MutPointer(inner_rc) => Ok(inner_rc),
+                    Value::MutReference(inner_rc) => Ok(inner_rc),
                     _ => Err(MetelError::panic(
                         RuntimeErrorCode::R0003,
-                        "field assign: not a *mut pointer",
+                        "field assign: not a &mut reference",
                         tspan,
                     )),
                 }
@@ -101,7 +101,7 @@ pub(super) fn eval_typed_place_value(
         } => {
             let ptr = eval_expr(object, env, runtime)?.into_value();
             match ptr {
-                Value::Pointer(rc) | Value::MutPointer(rc) => Ok(rc.borrow().clone()),
+                Value::Reference(rc) | Value::MutReference(rc) => Ok(rc.borrow().clone()),
                 _ => Err(MetelError::panic(
                     RuntimeErrorCode::R0003,
                     "assign: not a pointer",

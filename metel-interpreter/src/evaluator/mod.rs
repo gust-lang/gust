@@ -53,7 +53,7 @@ use crate::typed_ast::{
 
 // ── Runtime values ────────────────────────────────────────────────────────────
 
-/// One step in a `MutFieldPointer` path.
+/// One step in a `MutFieldReference` path.
 #[derive(Debug, Clone)]
 pub enum PathSegment {
     Field(String),
@@ -104,12 +104,12 @@ pub enum Value {
     },
     Callable(RuntimeCallable),
     /// Read-only pointer to a named binding cell.
-    Pointer(Rc<RefCell<Value>>),
+    Reference(Rc<RefCell<Value>>),
     /// Writable pointer to a named binding cell.
-    MutPointer(Rc<RefCell<Value>>),
+    MutReference(Rc<RefCell<Value>>),
     /// Fat mutable pointer for sub-element lvalue paths (RFC-0045).
     /// `root` is the binding cell; `path` navigates to the leaf.
-    MutFieldPointer {
+    MutFieldReference {
         root: Rc<RefCell<Value>>,
         path: Vec<PathSegment>,
     },
@@ -842,18 +842,18 @@ fn write_path(
     }
 }
 
-/// Like `Pointer`/`MutPointer` deref but also handles `MutFieldPointer` with a proper span.
+/// Like `Reference`/`MutReference` deref but also handles `MutFieldReference` with a proper span.
 fn deref_value(value: &Value, span: &Span) -> Result<Option<Value>, MetelError> {
     match value {
-        Value::Pointer(rc) | Value::MutPointer(rc) => Ok(Some(rc.borrow().clone())),
-        Value::MutFieldPointer { root, path } => Ok(Some(read_path(&root.borrow(), path, span)?)),
+        Value::Reference(rc) | Value::MutReference(rc) => Ok(Some(rc.borrow().clone())),
+        Value::MutFieldReference { root, path } => Ok(Some(read_path(&root.borrow(), path, span)?)),
         _ => Ok(None),
     }
 }
 
 fn receiver_cell_from_value(value: &Value) -> Option<Rc<RefCell<Value>>> {
     match value {
-        Value::Pointer(rc) | Value::MutPointer(rc) => Some(Rc::clone(rc)),
+        Value::Reference(rc) | Value::MutReference(rc) => Some(Rc::clone(rc)),
         _ => None,
     }
 }
@@ -919,8 +919,8 @@ fn runtime_type_key(ty: &TypeExpr) -> String {
         ),
         TypeExpr::Array(inner) => format!("{}[]", runtime_type_key(inner)),
         TypeExpr::SizedArray(inner, size) => format!("[{}; {}]", runtime_type_key(inner), size),
-        TypeExpr::Pointer(inner) => format!("*{}", runtime_type_key(inner)),
-        TypeExpr::MutPointer(inner) => format!("*mut {}", runtime_type_key(inner)),
+        TypeExpr::Reference(inner) => format!("&{}", runtime_type_key(inner)),
+        TypeExpr::MutReference(inner) => format!("&mut {}", runtime_type_key(inner)),
         TypeExpr::Fun(params, ret) => {
             let params = params
                 .iter()
@@ -1016,7 +1016,7 @@ fn lvalue_field_cell(
     let root_cell = env.get_rc(&root)?;
     let struct_cell = {
         let inner = match &*root_cell.borrow() {
-            Value::Pointer(c) | Value::MutPointer(c) => Some(Rc::clone(c)),
+            Value::Reference(c) | Value::MutReference(c) => Some(Rc::clone(c)),
             _ => None,
         };
         inner.unwrap_or(root_cell)
@@ -2049,23 +2049,23 @@ pub fn eval_expr(
             match op {
                 UnaryOp::Ref => return match &**operand {
                     TypedExpr::Ident(name, _, _) => env.get_rc(name)
-                        .map(|rc| Signal::Value(Value::Pointer(rc)))
+                        .map(|rc| Signal::Value(Value::Reference(rc)))
                         .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0003, format!("undefined variable `{name}`"), span)),
                     other if is_lvalue_path_typed(other) => {
                         let v = eval_expr(operand, env, runtime)?.into_value();
-                        Ok(Signal::Value(Value::Pointer(Rc::new(RefCell::new(v)))))
+                        Ok(Signal::Value(Value::Reference(Rc::new(RefCell::new(v)))))
                     }
                     _ => Err(MetelError::internal("address-of requires an addressable lvalue (identifier, field access, tuple access, or array index)")),
                 },
                 UnaryOp::RefMut => return match &**operand {
                     TypedExpr::Ident(name, _, _) => env.get_rc(name)
-                        .map(|rc| Signal::Value(Value::MutPointer(rc)))
+                        .map(|rc| Signal::Value(Value::MutReference(rc)))
                         .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0003, format!("undefined variable `{name}`"), span)),
                     other if is_lvalue_path_typed(other) => {
                         let (root_name, path) = build_mut_path(other, env, runtime, span)?;
                         let root = env.get_rc(&root_name).ok_or_else(|| MetelError::panic(
                             RuntimeErrorCode::R0003, format!("undefined variable `{root_name}`"), span))?;
-                        Ok(Signal::Value(Value::MutFieldPointer { root, path }))
+                        Ok(Signal::Value(Value::MutFieldReference { root, path }))
                     }
                     _ => Err(MetelError::internal("mutable address-of requires an addressable lvalue")),
                 },
@@ -2081,9 +2081,9 @@ pub fn eval_expr(
                     (UnaryOp::Neg, Value::F64(f)) => Value::F64(-f),
                     (UnaryOp::Neg, Value::F32(f)) => Value::F32(-f),
                     (UnaryOp::Not, Value::Boolean(b)) => Value::Boolean(!b),
-                    (UnaryOp::Deref, Value::Pointer(rc))
-                    | (UnaryOp::Deref, Value::MutPointer(rc)) => rc.borrow().clone(),
-                    (UnaryOp::Deref, Value::MutFieldPointer { root, path }) => {
+                    (UnaryOp::Deref, Value::Reference(rc))
+                    | (UnaryOp::Deref, Value::MutReference(rc)) => rc.borrow().clone(),
+                    (UnaryOp::Deref, Value::MutFieldReference { root, path }) => {
                         read_path(&root.borrow(), &path, span)?
                     }
                     (UnaryOp::Neg, _) => return Err(MetelError::internal(
@@ -2293,7 +2293,7 @@ pub fn eval_expr(
                 } => {
                     let ptr = eval_expr(object, env, runtime)?.into_value();
                     match ptr {
-                        Value::Pointer(rc) | Value::MutPointer(rc) => {
+                        Value::Reference(rc) | Value::MutReference(rc) => {
                             let new_val = if matches!(op, AssignOp::Assign) {
                                 rhs
                             } else {
@@ -2302,7 +2302,7 @@ pub fn eval_expr(
                             };
                             *rc.borrow_mut() = new_val;
                         }
-                        Value::MutFieldPointer { root, path } => {
+                        Value::MutFieldReference { root, path } => {
                             let new_val = if matches!(op, AssignOp::Assign) {
                                 rhs
                             } else {
@@ -2524,7 +2524,7 @@ pub fn eval_expr(
                         TypedExpr::Ident(name, _, _) => {
                             match env.get_rc(name).map(|cell| {
                                 let inner = match &*cell.borrow() {
-                                    Value::Pointer(inner) | Value::MutPointer(inner) => {
+                                    Value::Reference(inner) | Value::MutReference(inner) => {
                                         Some(Rc::clone(inner))
                                     }
                                     _ => None,

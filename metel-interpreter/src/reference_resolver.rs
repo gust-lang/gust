@@ -390,7 +390,7 @@ impl Walker<'_, '_> {
             // A bare assignment target names a place (local or mutable binding); it is
             // not a value reference to a top-level declaration, so do not record it.
             AssignTarget::Ident(_, _) => {}
-            AssignTarget::Deref { object, .. } | AssignTarget::FieldAccess { object, .. } => {
+            AssignTarget::FieldAccess { object, .. } => {
                 self.resolve_expr(object);
             }
             AssignTarget::Index { object, index, .. } => {

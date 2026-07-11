@@ -5,8 +5,8 @@ fun main() {
     let mut x = 10;
 
     let f = () -> () {
-        let p: *mut i64 = &mut x;
-        *p = 42;
+        let p: &mut i64 = &mut x;
+        p = 42;
     };
 
     f();

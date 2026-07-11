@@ -97,9 +97,9 @@ pub enum InferType {
     /// A fixed-size array type `[T; N]`.
     SizedArray(Box<InferType>, u64),
     /// A shared pointer type.
-    Pointer(Box<InferType>),
+    Reference(Box<InferType>),
     /// A mutable pointer type.
-    MutPointer(Box<InferType>),
+    MutReference(Box<InferType>),
     /// A named type (struct, enum) with type arguments.
     Named(String, Vec<InferType>),
 }
@@ -157,8 +157,8 @@ impl std::fmt::Display for InferType {
             }
             InferType::Array(t) => write!(f, "{}[]", t),
             InferType::SizedArray(t, n) => write!(f, "[{}; {}]", t, n),
-            InferType::Pointer(t) => write!(f, "*{}", t),
-            InferType::MutPointer(t) => write!(f, "*mut {}", t),
+            InferType::Reference(t) => write!(f, "&{}", t),
+            InferType::MutReference(t) => write!(f, "&mut {}", t),
             InferType::Named(name, args) => {
                 write!(f, "{}", name)?;
                 if !args.is_empty() {
@@ -226,8 +226,8 @@ impl Substitution {
             InferType::Tuple(ts) => InferType::Tuple(ts.iter().map(|t| self.apply(t)).collect()),
             InferType::Array(t) => InferType::Array(Box::new(self.apply(t))),
             InferType::SizedArray(t, n) => InferType::SizedArray(Box::new(self.apply(t)), *n),
-            InferType::Pointer(t) => InferType::Pointer(Box::new(self.apply(t))),
-            InferType::MutPointer(t) => InferType::MutPointer(Box::new(self.apply(t))),
+            InferType::Reference(t) => InferType::Reference(Box::new(self.apply(t))),
+            InferType::MutReference(t) => InferType::MutReference(Box::new(self.apply(t))),
             InferType::Named(name, args) => {
                 InferType::Named(name.clone(), args.iter().map(|a| self.apply(a)).collect())
             }
@@ -283,7 +283,7 @@ fn occurs_in(var: TypeVar, ty: &InferType) -> bool {
         InferType::Tuple(ts) => ts.iter().any(|t| occurs_in(var, t)),
         InferType::Array(t) => occurs_in(var, t),
         InferType::SizedArray(t, _) => occurs_in(var, t),
-        InferType::Pointer(t) | InferType::MutPointer(t) => occurs_in(var, t),
+        InferType::Reference(t) | InferType::MutReference(t) => occurs_in(var, t),
         InferType::Named(_, args) => args.iter().any(|a| occurs_in(var, a)),
     }
 }
@@ -369,10 +369,10 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
         // [T; N] coerces to T[] (one-directional)
         (InferType::SizedArray(t1, _), InferType::Array(t2))
         | (InferType::Array(t1), InferType::SizedArray(t2, _)) => unify(t1, t2),
-        (InferType::Pointer(t1), InferType::Pointer(t2))
-        | (InferType::MutPointer(t1), InferType::MutPointer(t2))
-        | (InferType::Pointer(t1), InferType::MutPointer(t2))
-        | (InferType::MutPointer(t1), InferType::Pointer(t2)) => unify(t1, t2),
+        (InferType::Reference(t1), InferType::Reference(t2))
+        | (InferType::MutReference(t1), InferType::MutReference(t2))
+        | (InferType::Reference(t1), InferType::MutReference(t2))
+        | (InferType::MutReference(t1), InferType::Reference(t2)) => unify(t1, t2),
         (InferType::Named(n1, args1), InferType::Named(n2, args2)) => {
             if n1 != n2 || args1.len() != args2.len() {
                 return Err(MetelError::internal(format!(
@@ -524,8 +524,8 @@ fn collect_free_vars(ty: &InferType, vars: &mut HashSet<TypeVar>) {
         }
         InferType::Array(t)
         | InferType::SizedArray(t, _)
-        | InferType::Pointer(t)
-        | InferType::MutPointer(t) => collect_free_vars(t, vars),
+        | InferType::Reference(t)
+        | InferType::MutReference(t) => collect_free_vars(t, vars),
     }
 }
 
@@ -1227,6 +1227,13 @@ pub struct InferContext {
     /// Free-function overload sets for the current module (METEL-180). Names with
     /// a single definition never appear here. Built by `typechecker::overload`.
     overloads: OverloadTable,
+    /// Spans of `Expr::Assign` nodes resolved as RFC-0067a write-through (assigning
+    /// to a non-`mut` binding of type `&mut T` writes through the reference rather
+    /// than erroring on immutability). `ConstructCtx` has no mutability tracking of
+    /// its own (see `construction.rs`), so this is threaded through as the single
+    /// fact pass 2 needs to synthesize `TypedPlace::Deref` instead of the ordinary
+    /// identifier target for these specific assignments.
+    write_through_assigns: HashSet<Span>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -1283,6 +1290,7 @@ impl InferContext {
             solved_constraint_count: 0,
             solve_stats: SolveStats::default(),
             overloads: OverloadTable::new(),
+            write_through_assigns: HashSet::new(),
         };
         for (name, scheme) in imported_schemes {
             ctx.bind_poly(name, scheme.clone());
@@ -1605,6 +1613,29 @@ impl InferContext {
                 .find_map(|scope| scope.get(name))
                 .map(|(ty, _)| ty.clone())
         }
+    }
+
+    /// Look up a name's type regardless of its mutability, or `None` if it isn't bound.
+    /// Used by RFC-0067a's write-through rule: a non-`mut` binding of type `&mut T` may
+    /// still be written through (the exclusivity comes from the reference, not the
+    /// binding), so `lookup_for_write`'s immutability check must be bypassed to inspect
+    /// the raw type before deciding whether that applies.
+    pub fn lookup_mono_raw(&self, name: &str) -> Option<InferType> {
+        self.mono_env
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name))
+            .map(|(ty, _)| ty.clone())
+    }
+
+    /// Record that the `Expr::Assign` at `span` resolved as RFC-0067a write-through.
+    pub fn mark_write_through(&mut self, span: Span) {
+        self.write_through_assigns.insert(span);
+    }
+
+    /// Spans of every `Expr::Assign` resolved as write-through, for pass 2 to consult.
+    pub fn write_through_assigns(&self) -> &HashSet<Span> {
+        &self.write_through_assigns
     }
 
     /// Look up a name for writing (assignment). Returns the binding's type on success.

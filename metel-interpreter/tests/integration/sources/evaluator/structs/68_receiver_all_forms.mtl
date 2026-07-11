@@ -89,23 +89,23 @@ fun test_interleaved_receivers() {
     assert(c.is_positive() == false);
 }
 
-// ── Calling through a *T pointer (auto-deref, &self methods) ─────────────────
+// ── Calling through a &T reference (auto-deref, &self methods) ─────────────────
 
 fun test_ref_through_pointer() {
     let mut c = Counter::new(1);
     c.tick();
     c.tick();
-    let p: *Counter = &c;
-    // &self method accessible through *T
+    let p: &Counter = &c;
+    // &self method accessible through &T
     assert(p.get() == 2);
     assert(p.is_positive() == true);
 }
 
-// ── Calling through a *mut T pointer (auto-deref, &mut self methods) ─────────
+// ── Calling through a &mut T reference (auto-deref, &mut self methods) ─────────
 
 fun test_mut_ref_through_mut_pointer() {
     let mut c = Counter::new(5);
-    let p: *mut Counter = &mut c;
+    let p: &mut Counter = &mut c;
     p.tick();          // 5
     p.tick();          // 10
     assert(c.get() == 10);
@@ -113,11 +113,11 @@ fun test_mut_ref_through_mut_pointer() {
     assert(c.get() == 13);
 }
 
-// ── Pointer and direct call see the same storage ─────────────────────────────
+// ── Reference and direct call see the same storage ─────────────────────────────
 
 fun test_pointer_and_direct_share_storage() {
     let mut c = Counter::new(1);
-    let p: *mut Counter = &mut c;
+    let p: &mut Counter = &mut c;
     p.tick();          // p increments through the pointer
     c.tick();          // direct call increments same counter
     assert(c.get() == 2);
@@ -162,8 +162,8 @@ fun test_builder_pattern() {
 fun test_independent_pointers() {
     let mut a = Counter::new(1);
     let mut b = Counter::new(10);
-    let pa: *mut Counter = &mut a;
-    let pb: *mut Counter = &mut b;
+    let pa: &mut Counter = &mut a;
+    let pb: &mut Counter = &mut b;
     pa.tick();
     pb.tick();
     pb.tick();

@@ -77,8 +77,8 @@ enum CanonicalType {
     Tuple(Vec<CanonicalType>),
     Array(Box<CanonicalType>),
     SizedArray(Box<CanonicalType>, u64),
-    Pointer(Box<CanonicalType>),
-    MutPointer(Box<CanonicalType>),
+    Reference(Box<CanonicalType>),
+    MutReference(Box<CanonicalType>),
     Fun(Vec<CanonicalType>, Option<Box<CanonicalType>>),
     /// `impl Aspect` in parameter position — not expected in an impl's own
     /// target type, kept only so canonicalization stays total.
@@ -99,8 +99,8 @@ fn canonicalize(names: &ResolvedNames, current_module: &[String], ty: &TypeExpr)
         TypeExpr::Tuple(items) => CanonicalType::Tuple(items.iter().map(go).collect()),
         TypeExpr::Array(inner) => CanonicalType::Array(Box::new(go(inner))),
         TypeExpr::SizedArray(inner, n) => CanonicalType::SizedArray(Box::new(go(inner)), *n),
-        TypeExpr::Pointer(inner) => CanonicalType::Pointer(Box::new(go(inner))),
-        TypeExpr::MutPointer(inner) => CanonicalType::MutPointer(Box::new(go(inner))),
+        TypeExpr::Reference(inner) => CanonicalType::Reference(Box::new(go(inner))),
+        TypeExpr::MutReference(inner) => CanonicalType::MutReference(Box::new(go(inner))),
         TypeExpr::Fun(params, ret) => CanonicalType::Fun(
             params.iter().map(go).collect(),
             ret.as_deref().map(go).map(Box::new),

@@ -25,8 +25,8 @@ pub enum Type {
     Tuple(Vec<Type>),
     Array(Box<Type>),
     SizedArray(Box<Type>, u64),
-    Pointer(Box<Type>),
-    MutPointer(Box<Type>),
+    Reference(Box<Type>),
+    MutReference(Box<Type>),
     Fun(Vec<Type>, Box<Type>),
     /// A named type (struct, enum) with concrete type arguments after monomorphisation.
     Named(String, Vec<Type>),
@@ -89,8 +89,8 @@ impl std::fmt::Display for Type {
             }
             Type::Array(t) => write!(f, "{}[]", t),
             Type::SizedArray(t, n) => write!(f, "[{}; {}]", t, n),
-            Type::Pointer(t) => write!(f, "*{}", t),
-            Type::MutPointer(t) => write!(f, "*mut {}", t),
+            Type::Reference(t) => write!(f, "&{}", t),
+            Type::MutReference(t) => write!(f, "&mut {}", t),
             Type::Fun(params, ret) => {
                 write!(f, "(")?;
                 for (i, t) in params.iter().enumerate() {

@@ -1,5 +1,5 @@
 // TYPECHECK_ERROR[T0006]
-// Calling a &mut self method through a *T (immutable) pointer is rejected.
+// Calling a &mut self method through a &T (immutable) reference is rejected.
 
 struct Counter {
     value: i64,
@@ -13,6 +13,6 @@ impl Counter {
 
 fun main() {
     let mut c = Counter { value: 0 };
-    let p: *Counter = &c;
+    let p: &Counter = &c;
     p.increment();
 }

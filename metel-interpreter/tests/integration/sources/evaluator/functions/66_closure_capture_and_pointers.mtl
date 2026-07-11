@@ -8,8 +8,8 @@ fun main() {
     let mut shared = 0;
     let ptr = &mut shared;
     let bump = () -> i64 {
-        *ptr += 1;
-        *ptr
+        ptr += 1;
+        ptr
     };
 
     let first = bump();

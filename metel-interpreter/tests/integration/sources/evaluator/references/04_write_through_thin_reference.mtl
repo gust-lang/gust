@@ -1,0 +1,12 @@
+// RFC-0067a §1/§3: write-through for a thin reference (Value::MutReference, not a
+// fat MutFieldReference — every existing fixture's write-through case is a
+// field/tuple/array-element reference; this covers a plain scalar binding directly).
+fun main() {
+    let mut n = 1;
+    let p: &mut i64 = &mut n;
+    p = 4;
+    assert(n == 4);
+
+    p += 6;
+    assert(n == 10);
+}

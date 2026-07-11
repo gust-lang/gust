@@ -48,10 +48,10 @@ impl Counter {
 
 fun main() {
     let mut value = 0;
-    let ptr: *mut i64 = &mut value;
-    *ptr += 1;
-    let read_only: *i64 = ptr;
-    let _snapshot = *read_only;
+    let ptr: &mut i64 = &mut value;
+    ptr += 1;
+    let read_only: &i64 = ptr;
+    let _snapshot: i64 = read_only;
 }
 "#;
     parser::parse(source, "pointer_and_receiver_syntax.mtl").unwrap_or_else(|e| panic!("{e}"));

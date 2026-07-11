@@ -205,9 +205,12 @@ fn infer_decl(
         Decl::Let(ld) => {
             let env_fvs = ctx.env_free_vars();
             let val_ty = infer_expr(&ld.value, ctx, fun_generalizations)?;
-            if let Some(ann) = &ld.type_ann {
-                ctx.add_constraint(val_ty.clone(), ann_to_infer(ann, ctx), ld.span.clone());
-            }
+            let bound_ty = if let Some(ann) = &ld.type_ann {
+                let declared = ann_to_infer(ann, ctx);
+                constrain_with_read_copy(ctx, val_ty.clone(), declared, ld.span.clone())
+            } else {
+                val_ty.clone()
+            };
             // Let-polymorphism: generalize unannotated closure-valued let bindings.
             // If the resolved type still has free variables, they are quantified into a
             // polymorphic scheme so each call site gets a fresh instantiation.
@@ -228,15 +231,18 @@ fn infer_decl(
                     return Ok(InferType::unit());
                 }
             }
-            ctx.bind_mono(&ld.name, val_ty, false);
+            ctx.bind_mono(&ld.name, bound_ty, false);
             Ok(InferType::unit())
         }
         Decl::Mut(md) => {
             let val_ty = infer_expr(&md.value, ctx, fun_generalizations)?;
-            if let Some(ann) = &md.type_ann {
-                ctx.add_constraint(val_ty.clone(), ann_to_infer(ann, ctx), md.span.clone());
-            }
-            ctx.bind_mono(&md.name, val_ty, true);
+            let bound_ty = if let Some(ann) = &md.type_ann {
+                let declared = ann_to_infer(ann, ctx);
+                constrain_with_read_copy(ctx, val_ty, declared, md.span.clone())
+            } else {
+                val_ty
+            };
+            ctx.bind_mono(&md.name, bound_ty, true);
             Ok(InferType::unit())
         }
         Decl::Fun(fd) => {
@@ -367,7 +373,7 @@ fn infer_fun_decl(
     let saved_ret = ctx.push_return_type(ret_ty.clone());
     let body_ty = infer_block(&fun.body, ctx, fun_generalizations)?;
 
-    ctx.add_constraint(body_ty, ret_ty.clone(), fun.body.span.clone());
+    constrain_with_read_copy(ctx, body_ty, ret_ty.clone(), fun.body.span.clone());
 
     ctx.pop_return_type(saved_ret);
     ctx.swap_type_param_bounds(saved_tp_bounds);
@@ -531,7 +537,7 @@ fn infer_impl_method(
         let saved_tp_bounds = ctx.swap_type_param_bounds(struct_bounds);
         let saved_ret = ctx.push_return_type(ret_ty.clone());
         let body_ty = infer_block(&method.body, ctx, fun_generalizations)?;
-        ctx.add_constraint(body_ty, ret_ty.clone(), method.body.span.clone());
+        constrain_with_read_copy(ctx, body_ty, ret_ty.clone(), method.body.span.clone());
         ctx.pop_return_type(saved_ret);
         ctx.swap_type_param_bounds(saved_tp_bounds);
         ctx.swap_type_params(saved_type_params);
@@ -640,7 +646,7 @@ fn infer_default_aspect_method(
     let saved_type_params = ctx.swap_type_params(generic_map);
     let saved_ret = ctx.push_return_type(ret_ty.clone());
     let body_ty = infer_block(body, ctx, fun_generalizations)?;
-    ctx.add_constraint(body_ty, ret_ty.clone(), body.span.clone());
+    constrain_with_read_copy(ctx, body_ty, ret_ty.clone(), body.span.clone());
     ctx.pop_return_type(saved_ret);
     ctx.swap_type_params(saved_type_params);
     ctx.pop_scope();
@@ -740,7 +746,7 @@ fn infer_stmt(
                 None => InferType::unit(),
             };
             if let Some(expected) = ctx.current_return_type().cloned() {
-                ctx.add_constraint(ret_ty, expected, r.span.clone());
+                constrain_with_read_copy(ctx, ret_ty, expected, r.span.clone());
             }
             Ok(InferType::never())
         }
@@ -750,7 +756,7 @@ fn infer_stmt(
                 None => InferType::unit(),
             };
             if let Some(expected) = ctx.current_break_type().cloned() {
-                ctx.add_constraint(break_ty, expected, bs.span.clone());
+                constrain_with_read_copy(ctx, break_ty, expected, bs.span.clone());
             }
             Ok(InferType::never())
         }
@@ -767,25 +773,23 @@ fn infer_stmt(
                 match init {
                     ForInit::Let(ld) => {
                         let val_ty = infer_expr(&ld.value, ctx, fun_generalizations)?;
-                        if let Some(ann) = &ld.type_ann {
-                            ctx.add_constraint(
-                                val_ty.clone(),
-                                ann_to_infer(ann, ctx),
-                                ld.span.clone(),
-                            );
-                        }
-                        ctx.bind_mono(&ld.name, val_ty, false);
+                        let bound_ty = if let Some(ann) = &ld.type_ann {
+                            let declared = ann_to_infer(ann, ctx);
+                            constrain_with_read_copy(ctx, val_ty, declared, ld.span.clone())
+                        } else {
+                            val_ty
+                        };
+                        ctx.bind_mono(&ld.name, bound_ty, false);
                     }
                     ForInit::Mut(md) => {
                         let val_ty = infer_expr(&md.value, ctx, fun_generalizations)?;
-                        if let Some(ann) = &md.type_ann {
-                            ctx.add_constraint(
-                                val_ty.clone(),
-                                ann_to_infer(ann, ctx),
-                                md.span.clone(),
-                            );
-                        }
-                        ctx.bind_mono(&md.name, val_ty, true);
+                        let bound_ty = if let Some(ann) = &md.type_ann {
+                            let declared = ann_to_infer(ann, ctx);
+                            constrain_with_read_copy(ctx, val_ty, declared, md.span.clone())
+                        } else {
+                            val_ty
+                        };
+                        ctx.bind_mono(&md.name, bound_ty, true);
                     }
                     ForInit::Expr(e) => {
                         infer_expr(e, ctx, fun_generalizations)?;
@@ -1003,9 +1007,9 @@ fn infer_expr(
                 }
             }
             let callee_ty = infer_expr(callee, ctx, fun_generalizations)?;
-            // Auto-deref: *(() -> T) and *mut (() -> T) are callable directly.
+            // Auto-deref: &(() -> T) and &mut (() -> T) are callable directly.
             let callee_ty = match ctx.solve()?.apply(&callee_ty) {
-                InferType::Pointer(inner) | InferType::MutPointer(inner)
+                InferType::Reference(inner) | InferType::MutReference(inner)
                     if matches!(*inner, InferType::Fun(..)) =>
                 {
                     *inner
@@ -1083,22 +1087,20 @@ fn infer_expr(
         } => {
             let target_ty = match target {
                 AssignTarget::Ident(name, target_span) => {
-                    ctx.lookup_for_write(name, target_span)?
-                }
-                AssignTarget::Deref {
-                    object,
-                    span: target_span,
-                } => {
-                    let obj_ty = infer_expr(object, ctx, fun_generalizations)?;
-                    match ctx.solve()?.apply(&obj_ty) {
-                        InferType::Pointer(inner) | InferType::MutPointer(inner) => *inner,
-                        other => {
-                            return Err(MetelError::type_error(
-                                TypeErrorCode::T0002,
-                                format!("cannot assign through non-pointer type `{other}`"),
-                                target_span,
-                            ));
+                    // RFC-0067a write-through: assigning to a binding of type `&mut T`
+                    // writes through the reference to `T` — the exclusivity comes from
+                    // the reference, not the binding, so this applies whether or not
+                    // the binding itself is `mut` (no fixture in this corpus ever
+                    // reassigns a reference binding to a *different* reference, so
+                    // there is no competing "repoint" interpretation to preserve here).
+                    // A binding of type `&T` (shared) is never written through — that
+                    // still requires ordinary `mut` reassignment of the binding itself.
+                    match ctx.lookup_mono_raw(name) {
+                        Some(InferType::MutReference(inner)) => {
+                            ctx.mark_write_through(span.clone());
+                            *inner
                         }
+                        _ => ctx.lookup_for_write(name, target_span)?,
                     }
                 }
                 AssignTarget::Index {
@@ -1156,7 +1158,7 @@ fn infer_expr(
             })?;
             let type_args = match &obj_ty {
                 InferType::Named(_, args) => args.clone(),
-                InferType::Pointer(inner) | InferType::MutPointer(inner) => match inner.as_ref() {
+                InferType::Reference(inner) | InferType::MutReference(inner) => match inner.as_ref() {
                     InferType::Named(_, args) => args.clone(),
                     _ => vec![],
                 },
@@ -1240,7 +1242,7 @@ fn infer_expr(
             if let Some(struct_name) = named_type_name(&recv_ty) {
                 let recv_type_args = match &recv_ty {
                     InferType::Named(_, args) => args.clone(),
-                    InferType::Pointer(inner) | InferType::MutPointer(inner) => {
+                    InferType::Reference(inner) | InferType::MutReference(inner) => {
                         match inner.as_ref() {
                             InferType::Named(_, args) => args.clone(),
                             _ => vec![],
@@ -1291,7 +1293,7 @@ fn infer_expr(
                 if matches!(
                     ctx.get_method_receiver_kind(&struct_name, method),
                     Some(crate::ast::ReceiverKind::RefMut)
-                ) && !matches!(recv_ty, InferType::MutPointer(_))
+                ) && !matches!(recv_ty, InferType::MutReference(_))
                 {
                     if let Expr::Ident(name, recv_span) = receiver.as_ref() {
                         let _ = ctx.lookup_for_write(name, recv_span)?;
@@ -1300,7 +1302,7 @@ fn infer_expr(
 
                 let ret_var = ctx.fresh_var();
                 let receiver_ty_for_method = match &recv_ty {
-                    InferType::Pointer(inner) | InferType::MutPointer(inner) => *inner.clone(),
+                    InferType::Reference(inner) | InferType::MutReference(inner) => *inner.clone(),
                     _ => recv_ty.clone(),
                 };
                 let expected = InferType::Fun(
@@ -1413,8 +1415,7 @@ fn infer_expr(
         Expr::Ascribe { expr, ann, span } => {
             let inner_ty = infer_expr(expr, ctx, fun_generalizations)?;
             let ascribed_ty = ann_to_infer(ann, ctx);
-            ctx.add_constraint(inner_ty.clone(), ascribed_ty, span.clone());
-            Ok(inner_ty)
+            Ok(constrain_with_read_copy(ctx, inner_ty, ascribed_ty, span.clone()))
         }
 
         Expr::Cast {
@@ -1550,7 +1551,7 @@ fn infer_expr(
             }
             let saved_ret = ctx.push_return_type(ret_ty.clone());
             let body_ty = infer_block(body, ctx, fun_generalizations)?;
-            ctx.add_constraint(body_ty, ret_ty.clone(), body.span.clone());
+            constrain_with_read_copy(ctx, body_ty, ret_ty.clone(), body.span.clone());
             ctx.pop_return_type(saved_ret);
             ctx.pop_scope();
             Ok(InferType::Fun(param_types, Box::new(ret_ty)))
@@ -1690,7 +1691,7 @@ fn pattern_span(pattern: &Pattern) -> &Span {
 fn named_type_name(ty: &InferType) -> Option<String> {
     match ty {
         InferType::Named(name, _) => Some(name.clone()),
-        InferType::Pointer(inner) | InferType::MutPointer(inner) => named_type_name(inner),
+        InferType::Reference(inner) | InferType::MutReference(inner) => named_type_name(inner),
         InferType::Concrete(c) => primitive_type_name(c),
         _ => None,
     }
@@ -1943,21 +1944,80 @@ fn infer_unaryop(
             ctx.add_constraint(ty, InferType::bool(), span.clone());
             Ok(InferType::bool())
         }
-        UnaryOp::Ref => Ok(InferType::Pointer(Box::new(ty))),
+        UnaryOp::Ref => Ok(InferType::Reference(Box::new(ty))),
         UnaryOp::RefMut => {
             if let Expr::Ident(name, ident_span) = operand {
                 let _ = ctx.lookup_for_write(name, ident_span)?;
             }
-            Ok(InferType::MutPointer(Box::new(ty)))
+            Ok(InferType::MutReference(Box::new(ty)))
         }
         UnaryOp::Deref => match ctx.solve()?.apply(&ty) {
-            InferType::Pointer(inner) | InferType::MutPointer(inner) => Ok(*inner),
+            InferType::Reference(inner) | InferType::MutReference(inner) => Ok(*inner),
             other => Err(MetelError::type_error(
                 TypeErrorCode::T0002,
                 format!("cannot dereference non-pointer type `{other}`"),
                 span,
             )),
         },
+    }
+}
+
+/// RFC-0067a §3a: constrain `actual` against `declared`, except when `actual` is
+/// *syntactically* a reference and `declared` isn't — then constrain the *referent*
+/// against `declared` instead (a type-directed copy out of the reference). Only
+/// applies where a literal declared type is known (`let`/`mut`, ascription, `return`,
+/// `break`, and a function/method/closure body against its declared return type) —
+/// never inside `unify()` itself, which stays a strict match everywhere else (call
+/// arguments included).
+///
+/// Deliberately does **not** resolve `actual` through `ctx.solve()` first: `solve()` is
+/// incremental and stateful (it advances `solved_constraint_count` and commits
+/// `cached_subst`), so calling it eagerly at every annotated `let`/`return`/etc. across
+/// a whole program — rather than only once, at the end, as before this rule existed —
+/// changed constraint-processing order for unrelated code and broke an unrelated,
+/// pre-existing test (a sized-array pattern arity mismatch started reporting a raw
+/// unify failure, T0001, instead of the intended non-exhaustive-match diagnostic,
+/// T0008). Matching on `actual` directly instead is sufficient for every real case:
+/// `&expr`/`&mut expr` (`infer_unaryop`'s `Ref`/`RefMut` arms) produce `InferType::
+/// Reference`/`MutReference` directly with no `Var` indirection, and reading an
+/// existing reference-typed binding (`ctx.lookup`) returns its stored `InferType`
+/// as-is, not a variable standing in for it.
+///
+/// `declared` being an unresolved `InferType::Var` means there is no real declared
+/// type at this site (e.g. a function/closure with no return-type annotation, where
+/// `ret_ty` is just a fresh var to be solved from the body) — that case must fall
+/// through to plain unification so the body's own reference-ness flows out normally,
+/// not be mistaken for "declared as a non-reference."
+///
+/// Returns `declared` only when read-copy actually fires; otherwise returns `actual`
+/// unchanged, matching what every call site did before this rule existed. This isn't
+/// cosmetic: binding a `let` to a freshly-reconstructed `declared` (from `ann_to_infer`)
+/// instead of the value's own `actual` — even though the two are constrained equal —
+/// swaps in a structurally-equal but not type-variable-identical `InferType`. That
+/// broke an unrelated test (a sized-array pattern arity mismatch started reporting a
+/// raw unify failure, T0001, instead of the intended non-exhaustive-match diagnostic,
+/// T0008), caught only by running the full suite, not by reasoning about the rule
+/// in isolation.
+fn constrain_with_read_copy(
+    ctx: &mut InferContext,
+    actual: InferType,
+    declared: InferType,
+    span: Span,
+) -> InferType {
+    match actual.clone() {
+        InferType::Reference(inner) | InferType::MutReference(inner)
+            if !matches!(
+                declared,
+                InferType::Reference(_) | InferType::MutReference(_) | InferType::Var(_)
+            ) =>
+        {
+            ctx.add_constraint(*inner, declared.clone(), span);
+            declared
+        }
+        _ => {
+            ctx.add_constraint(actual.clone(), declared, span);
+            actual
+        }
     }
 }
 
@@ -2159,9 +2219,21 @@ fn infer_field_assign_type(
 ) -> Result<InferType, MetelError> {
     let obj_ty = infer_expr(object, ctx, fun_generalizations)?;
     let obj_ty = ctx.solve()?.apply(&obj_ty);
-    // Auto-deref through *mut T: writing via a mutable pointer doesn't require
-    // the pointer binding itself to be mutable — only the pointee is being written.
-    let is_through_mut_ptr = matches!(&obj_ty, InferType::MutPointer(_));
+    // Auto-deref through &mut T: writing via a mutable reference doesn't require
+    // the reference binding itself to be mutable — only the referent is being written.
+    // This must also cover a *chain* rooted in a reference (`optr.inner.x = 42` where
+    // `optr: &mut Outer`): `obj_ty` here is `optr.inner`'s own type (`Point`), which no
+    // longer shows any reference at all — auto-deref already stripped it one level up.
+    // So the check isn't just "is `obj_ty` itself a reference," it's "is the write
+    // access for this whole chain conferred by a reference anywhere along it" — which
+    // reduces to asking whether the chain's *root* binding is reference-typed, since a
+    // reference confers write access to everything reachable through it regardless of
+    // projection depth.
+    let is_through_mut_ptr = matches!(&obj_ty, InferType::MutReference(_))
+        || matches!(
+            root_binding_for_write(object).and_then(|(name, _)| ctx.lookup_mono_raw(name)),
+            Some(InferType::MutReference(_))
+        );
     if !is_through_mut_ptr {
         if let Some((name, span)) = root_binding_for_write(object) {
             let _ = ctx.lookup_for_write(name, span)?;
@@ -2176,7 +2248,7 @@ fn infer_field_assign_type(
     })?;
     let type_args = match &obj_ty {
         InferType::Named(_, args) => args.clone(),
-        InferType::Pointer(inner) | InferType::MutPointer(inner) => match inner.as_ref() {
+        InferType::Reference(inner) | InferType::MutReference(inner) => match inner.as_ref() {
             InferType::Named(_, args) => args.clone(),
             _ => vec![],
         },

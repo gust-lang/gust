@@ -146,7 +146,7 @@ mul_op           = { "*" | "/" | "%" }
 cast_expr        = { asc_expr ~ (cast_op ~ type_expr)* }
 cast_op          = { "as" }
 asc_expr         = { unary_expr ~ (":" ~ type_expr)? }
-unary_expr       = { ("!" | "-" | "*" | "&" ~ mut_kw?) ~ unary_expr | postfix_expr }
+unary_expr       = { ("!" | "-" | "&" ~ mut_kw?) ~ unary_expr | postfix_expr }
 
 postfix_expr     = { primary_expr ~ postfix* }
 postfix          = {
@@ -227,8 +227,8 @@ bind_pattern    = { ident }
 
 type_expr = {
     fun_type
-  | mut_pointer_type
-  | pointer_type
+  | mut_reference_type
+  | reference_type
   | sized_array_type  // must come before array_type — both start with "["
   | array_type        // atom "[]" — must precede the unit/tuple/named atoms it wraps
   | unit_type
@@ -242,8 +242,8 @@ impl_type = { "impl" ~ type_expr }
 unit_type  = { "()" }
 tuple_type = { "(" ~ type_expr ~ ("," ~ type_expr)+ ~ ")" }
 fun_type   = { "(" ~ type_list? ~ ")" ~ "->" ~ type_expr }
-pointer_type = { "*" ~ type_expr }
-mut_pointer_type = { "*" ~ mut_kw ~ type_expr }
+reference_type = { "&" ~ type_expr }
+mut_reference_type = { "&" ~ mut_kw ~ type_expr }
 sized_array_type = { "[" ~ type_expr ~ ";" ~ decimal_int ~ "]" }
 array_type = { array_atom ~ "[]" }
 // The element of a postfix `[]` array: a unit, tuple, or named type. Silent so

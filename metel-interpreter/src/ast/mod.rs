@@ -541,10 +541,6 @@ pub enum AssignOp {
 #[derive(Debug, Clone)]
 pub enum AssignTarget {
     Ident(String, Span),
-    Deref {
-        object: Box<Expr>,
-        span: Span,
-    },
     FieldAccess {
         object: Box<Expr>,
         field: String,
@@ -566,8 +562,8 @@ pub enum TypeExpr {
     Tuple(Vec<TypeExpr>),
     Array(Box<TypeExpr>),
     SizedArray(Box<TypeExpr>, u64),
-    Pointer(Box<TypeExpr>),
-    MutPointer(Box<TypeExpr>),
+    Reference(Box<TypeExpr>),
+    MutReference(Box<TypeExpr>),
     Fun(Vec<TypeExpr>, Option<Box<TypeExpr>>),
     /// `impl Aspect` in parameter position. Lowered to a fresh anonymous type param before
     /// inference. Retained in the AST only until the lowering pass runs.

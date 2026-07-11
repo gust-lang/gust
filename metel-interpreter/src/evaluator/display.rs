@@ -120,8 +120,8 @@ pub(super) fn format_value(val: &Value) -> String {
         Value::Callable(super::RuntimeCallable::Intrinsic { label, .. }) => {
             format!("<intrinsic:{}>", label)
         }
-        Value::Pointer(rc) => format!("*{}", format_value(&rc.borrow())),
-        Value::MutPointer(rc) => format!("*mut {}", format_value(&rc.borrow())),
-        Value::MutFieldPointer { .. } => "<*mut field-path>".to_string(),
+        Value::Reference(rc) => format!("&{}", format_value(&rc.borrow())),
+        Value::MutReference(rc) => format!("&mut {}", format_value(&rc.borrow())),
+        Value::MutFieldReference { .. } => "<&mut field-path>".to_string(),
     }
 }

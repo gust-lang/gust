@@ -2,6 +2,6 @@
 // TYPECHECK_ERROR[immutable binding]
 fun main() {
     let x = 10;
-    let p: *mut i64 = &mut x;
-    *p = 42;
+    let p: &mut i64 = &mut x;
+    p = 42;
 }

@@ -145,8 +145,8 @@ fn receiver_type_name(ty: &Type) -> Option<String> {
         Type::U64 => Some("u64".to_string()),
         Type::F32 => Some("f32".to_string()),
         Type::F64 => Some("f64".to_string()),
-        // Pointers: dispatch through the pointee type (deref_value unwraps them at runtime).
-        Type::Pointer(inner) | Type::MutPointer(inner) => receiver_type_name(inner),
+        // References: dispatch through the referent type (deref_value unwraps them at runtime).
+        Type::Reference(inner) | Type::MutReference(inner) => receiver_type_name(inner),
         _ => None,
     }
 }

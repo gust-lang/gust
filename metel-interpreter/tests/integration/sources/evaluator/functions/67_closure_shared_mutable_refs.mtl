@@ -1,16 +1,16 @@
 fun get_closures() {
     let mut shared = 0;
-    let mut ptr = &mut shared; 
+    let mut ptr = &mut shared;
     let first_closure = () -> {
-        *ptr += 1;
+        ptr += 1;
     };
 
     let second_closure = () -> {
-        *ptr += 2;
+        ptr += 2;
     };
 
-    let third_closure = () -> {
-        return *ptr;
+    let third_closure = () -> i64 {
+        return ptr;
     };
 
     return (first_closure, second_closure, third_closure);

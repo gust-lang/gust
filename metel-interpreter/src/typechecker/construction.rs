@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::ast::*;
 use crate::error::{MetelError, TypeErrorCode};
@@ -111,9 +111,16 @@ struct ConstructCtx<'a> {
     /// span → referent `SymbolId`. Used to stamp `Call::callee_id` so direct calls to
     /// top-level functions dispatch by id. `None` for the single-program path.
     references: Option<&'a HashMap<Span, SymbolId>>,
+    /// Spans of `Expr::Assign` nodes pass 1 resolved as RFC-0067a write-through
+    /// (assigning to a non-`mut` binding of type `&mut T` writes through the
+    /// reference). `ConstructCtx.env` carries no mutability info at all, so this is
+    /// threaded in from `InferContext::write_through_assigns` rather than
+    /// duplicating mutability tracking across every `bind` call site here.
+    write_through: &'a HashSet<Span>,
 }
 
 impl<'a> ConstructCtx<'a> {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         subst: &'a Substitution,
         scheme_env: &'a SchemeEnv,
@@ -123,6 +130,7 @@ impl<'a> ConstructCtx<'a> {
         overloads: &'a crate::typeinference::OverloadTable,
         current_module: &'a [String],
         references: Option<&'a HashMap<Span, SymbolId>>,
+        write_through: &'a HashSet<Span>,
     ) -> Result<Self, MetelError> {
         let concrete_struct_env = build_concrete_struct_env(registry, subst)?;
         let method_env = build_concrete_method_env(registry, subst)?;
@@ -141,6 +149,7 @@ impl<'a> ConstructCtx<'a> {
             overloads,
             current_module,
             references,
+            write_through,
         };
         // Derive concrete types for all monomorphic entries in scheme_env.
         // Both builtins and user functions are populated here — no second registration site.
@@ -336,7 +345,9 @@ pub(super) fn construct_generic_body(
     // generic, so there is no overload table to consult here.
     let empty_overloads = crate::typeinference::OverloadTable::new();
     // Generic bodies are reconstructed at runtime; their inner direct calls are
-    // re-resolved here without a reference table (callee_id stamping is skipped).
+    // re-resolved here without a reference table (callee_id stamping is skipped),
+    // and without pass 1's write-through analysis (empty set — same limitation).
+    let empty_write_through = HashSet::new();
     let mut ctx = ConstructCtx::new(
         &subst,
         &type_ctx.scheme_env,
@@ -346,6 +357,7 @@ pub(super) fn construct_generic_body(
         &empty_overloads,
         &[],
         None,
+        &empty_write_through,
     )?;
 
     // Build name → fresh TypeVar mapping so type annotations like `T[]` in the body
@@ -386,6 +398,7 @@ pub(super) fn construct_program(
     overloads: &crate::typeinference::OverloadTable,
     current_module: &[String],
     references: Option<&HashMap<Span, SymbolId>>,
+    write_through: &HashSet<Span>,
 ) -> Result<TypedProgram, MetelError> {
     let mut ctx = ConstructCtx::new(
         subst,
@@ -396,6 +409,7 @@ pub(super) fn construct_program(
         overloads,
         current_module,
         references,
+        write_through,
     )?;
 
     let mut out = vec![];
@@ -470,6 +484,10 @@ fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<TypedDecl, Mete
                 .map(|ann| resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, &ld.span))
                 .transpose()?;
             let value = construct_expr(&ld.value, expected_ty.as_ref(), ctx)?;
+            let value = match &expected_ty {
+                Some(t) => maybe_read_copy(t, value, &ld.span),
+                None => value,
+            };
             let ty = expected_ty.unwrap_or_else(|| value.ty().clone());
             ctx.bind(&ld.name, ty);
             Ok(TypedDecl::Let(TypedLetDecl {
@@ -487,6 +505,10 @@ fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<TypedDecl, Mete
                 .map(|ann| resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, &md.span))
                 .transpose()?;
             let value = construct_expr(&md.value, expected_ty.as_ref(), ctx)?;
+            let value = match &expected_ty {
+                Some(t) => maybe_read_copy(t, value, &md.span),
+                None => value,
+            };
             let ty = expected_ty.unwrap_or_else(|| value.ty().clone());
             ctx.bind(&md.name, ty);
             Ok(TypedDecl::Mut(TypedMutDecl {
@@ -866,7 +888,14 @@ fn construct_block(
         stmts.push(construct_decl(stmt, ctx)?);
     }
     let tail = match &block.tail {
-        Some(e) => Some(Box::new(construct_expr(e, expected_tail_ty, ctx)?)),
+        Some(e) => {
+            let constructed = construct_expr(e, expected_tail_ty, ctx)?;
+            let constructed = match expected_tail_ty {
+                Some(t) => maybe_read_copy(t, constructed, e.span()),
+                None => constructed,
+            };
+            Some(Box::new(constructed))
+        }
         None => None,
     };
     ctx.pop_struct_scope();
@@ -884,7 +913,13 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
         Stmt::Return(r) => {
             let return_ty = ctx.current_return_ty.clone();
             let value = match &r.value {
-                Some(e) => Some(construct_expr(e, return_ty.as_ref(), ctx)?),
+                Some(e) => {
+                    let constructed = construct_expr(e, return_ty.as_ref(), ctx)?;
+                    Some(match &return_ty {
+                        Some(t) => maybe_read_copy(t, constructed, e.span()),
+                        None => constructed,
+                    })
+                }
                 None => None,
             };
             Ok(TypedStmt::Return(TypedReturnStmt {
@@ -895,7 +930,13 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
         Stmt::Break(bs) => {
             let break_ty = ctx.current_break_ty.clone();
             let value = match &bs.value {
-                Some(e) => Some(construct_expr(e, break_ty.as_ref(), ctx)?),
+                Some(e) => {
+                    let constructed = construct_expr(e, break_ty.as_ref(), ctx)?;
+                    Some(match &break_ty {
+                        Some(t) => maybe_read_copy(t, constructed, e.span()),
+                        None => constructed,
+                    })
+                }
                 None => None,
             };
             Ok(TypedStmt::Break(TypedBreakStmt {
@@ -917,8 +958,19 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
             ctx.push_scope();
             let init = match &fs.init {
                 Some(ForInit::Let(ld)) => {
-                    let value = construct_expr(&ld.value, None, ctx)?;
-                    let ty = value.ty().clone();
+                    let expected_ty = ld
+                        .type_ann
+                        .as_ref()
+                        .map(|ann| {
+                            resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, &ld.span)
+                        })
+                        .transpose()?;
+                    let value = construct_expr(&ld.value, expected_ty.as_ref(), ctx)?;
+                    let value = match &expected_ty {
+                        Some(t) => maybe_read_copy(t, value, &ld.span),
+                        None => value,
+                    };
+                    let ty = expected_ty.unwrap_or_else(|| value.ty().clone());
                     ctx.bind(&ld.name, ty);
                     let typed_ld = TypedLetDecl {
                         name: ld.name.clone(),
@@ -930,8 +982,19 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
                     Some(TypedForInit::Let(typed_ld))
                 }
                 Some(ForInit::Mut(md)) => {
-                    let value = construct_expr(&md.value, None, ctx)?;
-                    let ty = value.ty().clone();
+                    let expected_ty = md
+                        .type_ann
+                        .as_ref()
+                        .map(|ann| {
+                            resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, &md.span)
+                        })
+                        .transpose()?;
+                    let value = construct_expr(&md.value, expected_ty.as_ref(), ctx)?;
+                    let value = match &expected_ty {
+                        Some(t) => maybe_read_copy(t, value, &md.span),
+                        None => value,
+                    };
+                    let ty = expected_ty.unwrap_or_else(|| value.ty().clone());
                     ctx.bind(&md.name, ty);
                     let typed_md = TypedMutDecl {
                         name: md.name.clone(),
@@ -1202,13 +1265,44 @@ fn construct_expr(
             value,
             span,
         } => {
+            // RFC-0067a write-through: assigning to a non-`mut` binding of type
+            // `&mut T` writes through the reference (pass 1 already confirmed this
+            // and recorded the span — see `InferContext::write_through_assigns`).
+            let write_through = ctx.write_through.contains(span);
             let value_hint: Option<Type> = if let AssignTarget::Ident(name, _) = target {
-                ctx.lookup(name).cloned()
+                match ctx.lookup(name).cloned() {
+                    Some(Type::MutReference(inner)) if write_through => Some(*inner),
+                    other => other,
+                }
             } else {
                 None
             };
             let typed_value = construct_expr(value, value_hint.as_ref(), ctx)?;
-            let typed_place = assign_target_to_typed_place(target, ctx)?;
+            let typed_place = if write_through {
+                let AssignTarget::Ident(name, ident_span) = target else {
+                    unreachable!(
+                        "write_through is only ever recorded for AssignTarget::Ident (see \
+                         pass 1's Expr::Assign handling)"
+                    )
+                };
+                let ptr_ty = ctx.lookup(name).cloned().ok_or_else(|| {
+                    MetelError::type_error(
+                        TypeErrorCode::T0003,
+                        format!("use of undeclared variable `{name}`"),
+                        ident_span,
+                    )
+                })?;
+                TypedPlace::Deref {
+                    object: Box::new(TypedExpr::Ident(
+                        name.clone(),
+                        ptr_ty,
+                        ident_span.clone(),
+                    )),
+                    span: ident_span.clone(),
+                }
+            } else {
+                assign_target_to_typed_place(target, ctx)?
+            };
             Ok(TypedExpr::Assign {
                 target: typed_place,
                 op: op.clone(),
@@ -1225,7 +1319,7 @@ fn construct_expr(
             let typed_obj = construct_expr(object, None, ctx)?;
             let (struct_name, type_args) = match typed_obj.ty() {
                 Type::Named(name, args) => (name.clone(), args.clone()),
-                Type::Pointer(inner) | Type::MutPointer(inner) => match inner.as_ref() {
+                Type::Reference(inner) | Type::MutReference(inner) => match inner.as_ref() {
                     Type::Named(name, args) => (name.clone(), args.clone()),
                     t => {
                         return Err(MetelError::internal(format!(
@@ -1298,7 +1392,7 @@ fn construct_expr(
             }
             let (struct_name, receiver_type_args) = match typed_receiver.ty() {
                 Type::Named(name, targs) => (name.clone(), targs.clone()),
-                Type::Pointer(inner) | Type::MutPointer(inner) => match inner.as_ref() {
+                Type::Reference(inner) | Type::MutReference(inner) => match inner.as_ref() {
                     Type::Named(name, targs) => (name.clone(), targs.clone()),
                     t => match super::inference::primitive_type_name(t) {
                         Some(name) => (name, vec![]),
@@ -1637,7 +1731,15 @@ fn construct_expr(
             // Without this, unmentioned type params in variant literals (e.g. the
             // E in Result::Ok inside a ()->Result<T,E>) have no hint and fail T0002.
             let body_expected = return_type.as_ref().map(|_| &ret_ty);
+            // Push the closure's own return type so an explicit `return` inside its
+            // body (constructed via `construct_stmt`'s `Stmt::Return` arm) compares
+            // against the closure's declared type, not whatever enclosing function's
+            // return type happened to be in scope (RFC-0067a's read-copy relies on
+            // this being correct — without it, `return`ing a reference out of a
+            // closure declared to return the referent type silently skipped the copy).
+            let saved_return = ctx.push_return_type(return_type.as_ref().map(|_| ret_ty.clone()));
             let typed_body = construct_block(body, body_expected, ctx)?;
+            ctx.pop_return_type(saved_return);
             ctx.pop_scope();
             let ty = Type::Fun(param_types, Box::new(ret_ty));
             Ok(TypedExpr::Closure {
@@ -1652,7 +1754,8 @@ fn construct_expr(
         Expr::PropagateError { expr, span } => construct_propagate_error(expr, span, ctx),
         Expr::Ascribe { expr, ann, span } => {
             let ty = resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, span)?;
-            construct_expr(expr, Some(&ty), ctx)
+            let constructed = construct_expr(expr, Some(&ty), ctx)?;
+            Ok(maybe_read_copy(&ty, constructed, span))
         }
 
         Expr::Cast {
@@ -2356,7 +2459,7 @@ fn construct_call(
     // pre-construction defaulting diverged (e.g. unsuffixed integer literals in
     // turbofish calls: clamp::<i32>(5, 0, 10) would have built I64 args).
     let fun_ty_for_hints = match &fun_ty {
-        Type::Pointer(inner) | Type::MutPointer(inner)
+        Type::Reference(inner) | Type::MutReference(inner)
             if matches!(inner.as_ref(), Type::Fun(..)) =>
         {
             inner.as_ref()
@@ -2381,9 +2484,9 @@ fn construct_call(
         typed_args
     };
 
-    // Auto-deref: calling through a *Fun or *mut Fun is allowed.
+    // Auto-deref: calling through a &Fun or &mut Fun is allowed.
     let fun_ty_inner = match &fun_ty {
-        Type::Pointer(inner) | Type::MutPointer(inner)
+        Type::Reference(inner) | Type::MutReference(inner)
             if matches!(inner.as_ref(), Type::Fun(..)) =>
         {
             inner.as_ref()
@@ -2775,8 +2878,8 @@ fn type_to_type_expr(ty: &Type) -> TypeExpr {
         Type::Tuple(items) => TypeExpr::Tuple(items.iter().map(type_to_type_expr).collect()),
         Type::Array(item) => TypeExpr::Array(Box::new(type_to_type_expr(item))),
         Type::SizedArray(item, n) => TypeExpr::SizedArray(Box::new(type_to_type_expr(item)), *n),
-        Type::Pointer(item) => TypeExpr::Pointer(Box::new(type_to_type_expr(item))),
-        Type::MutPointer(item) => TypeExpr::MutPointer(Box::new(type_to_type_expr(item))),
+        Type::Reference(item) => TypeExpr::Reference(Box::new(type_to_type_expr(item))),
+        Type::MutReference(item) => TypeExpr::MutReference(Box::new(type_to_type_expr(item))),
         Type::Fun(params, ret) => TypeExpr::Fun(
             params.iter().map(type_to_type_expr).collect(),
             Some(Box::new(type_to_type_expr(ret))),
@@ -2914,10 +3017,10 @@ fn construct_unaryop(
             t.clone()
         }
         UnaryOp::Not => Type::Boolean,
-        UnaryOp::Ref => Type::Pointer(Box::new(operand.ty().clone())),
-        UnaryOp::RefMut => Type::MutPointer(Box::new(operand.ty().clone())),
+        UnaryOp::Ref => Type::Reference(Box::new(operand.ty().clone())),
+        UnaryOp::RefMut => Type::MutReference(Box::new(operand.ty().clone())),
         UnaryOp::Deref => match operand.ty() {
-            Type::Pointer(inner) | Type::MutPointer(inner) => *inner.clone(),
+            Type::Reference(inner) | Type::MutReference(inner) => *inner.clone(),
             t => {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0002,
@@ -2935,6 +3038,23 @@ fn construct_unaryop(
     ))
 }
 
+/// RFC-0067a §3a: if `actual`'s type is a reference to exactly `expected`, synthesize
+/// the internal deref-copy node so the value is copied out of the reference. The parser
+/// never produces `UnaryOp::Deref` any more (§3 removed explicit `*p`); this is the only
+/// place it's constructed post-RFC-0067a. Only called from sites that have a genuine
+/// declared/expected type in hand (`construct_block`'s tail, `Stmt::Return`/`Break`,
+/// `Decl::Let`/`Mut`, `Expr::Ascribe`) — never from `construct_expr`'s or
+/// `construct_unaryop`'s generic dispatch, which call-argument construction also goes
+/// through and must not gain this coercion.
+fn maybe_read_copy(expected: &Type, actual: TypedExpr, span: &Span) -> TypedExpr {
+    match actual.ty() {
+        Type::Reference(inner) | Type::MutReference(inner) if inner.as_ref() == expected => {
+            TypedExpr::UnaryOp(UnaryOp::Deref, Box::new(actual), expected.clone(), span.clone())
+        }
+        _ => actual,
+    }
+}
+
 // ── Typed place construction ──────────────────────────────────────────────────
 
 fn assign_target_to_typed_place(
@@ -2943,10 +3063,6 @@ fn assign_target_to_typed_place(
 ) -> Result<TypedPlace, MetelError> {
     match target {
         AssignTarget::Ident(name, span) => Ok(TypedPlace::Ident(name.clone(), span.clone())),
-        AssignTarget::Deref { object, span } => Ok(TypedPlace::Deref {
-            object: Box::new(construct_expr(object, None, ctx)?),
-            span: span.clone(),
-        }),
         AssignTarget::FieldAccess {
             object,
             field,

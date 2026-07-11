@@ -61,12 +61,12 @@ fn type_expr_to_infer_in_context(
             Box::new(type_expr_to_infer_in_context(t, generics, self_ty_name)),
             *n,
         ),
-        TypeExpr::Pointer(t) => InferType::Pointer(Box::new(type_expr_to_infer_in_context(
+        TypeExpr::Reference(t) => InferType::Reference(Box::new(type_expr_to_infer_in_context(
             t,
             generics,
             self_ty_name,
         ))),
-        TypeExpr::MutPointer(t) => InferType::MutPointer(Box::new(type_expr_to_infer_in_context(
+        TypeExpr::MutReference(t) => InferType::MutReference(Box::new(type_expr_to_infer_in_context(
             t,
             generics,
             self_ty_name,
@@ -139,8 +139,8 @@ pub(super) fn infer_type_to_type(ty: &InferType, span: &Span) -> Result<Type, Me
         InferType::SizedArray(t, n) => {
             Ok(Type::SizedArray(Box::new(infer_type_to_type(t, span)?), *n))
         }
-        InferType::Pointer(t) => Ok(Type::Pointer(Box::new(infer_type_to_type(t, span)?))),
-        InferType::MutPointer(t) => Ok(Type::MutPointer(Box::new(infer_type_to_type(t, span)?))),
+        InferType::Reference(t) => Ok(Type::Reference(Box::new(infer_type_to_type(t, span)?))),
+        InferType::MutReference(t) => Ok(Type::MutReference(Box::new(infer_type_to_type(t, span)?))),
         InferType::Named(name, args) => {
             let a: Result<Vec<_>, _> = args.iter().map(|a| infer_type_to_type(a, span)).collect();
             let args = a?;
@@ -163,8 +163,8 @@ pub(super) fn type_to_infer(ty: &Type) -> InferType {
         Type::Array(t) => InferType::Array(Box::new(type_to_infer(t))),
         Type::SizedArray(t, n) => InferType::SizedArray(Box::new(type_to_infer(t)), *n),
         Type::Tuple(ts) => InferType::Tuple(ts.iter().map(type_to_infer).collect()),
-        Type::Pointer(t) => InferType::Pointer(Box::new(type_to_infer(t))),
-        Type::MutPointer(t) => InferType::MutPointer(Box::new(type_to_infer(t))),
+        Type::Reference(t) => InferType::Reference(Box::new(type_to_infer(t))),
+        Type::MutReference(t) => InferType::MutReference(Box::new(type_to_infer(t))),
         Type::Fun(ps, ret) => InferType::Fun(
             ps.iter().map(type_to_infer).collect(),
             Box::new(type_to_infer(ret)),
