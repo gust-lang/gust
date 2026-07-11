@@ -842,13 +842,25 @@ fn write_path(
     }
 }
 
-/// Like `Reference`/`MutReference` deref but also handles `MutFieldReference` with a proper span.
+/// Like `Reference`/`MutReference` deref but also handles `MutFieldReference` with a
+/// proper span. Peels every layer of a reference chain (RFC-0067a §3's auto-deref
+/// chain guarantee — `&&T` derefs through both levels) down to the first non-reference
+/// value: both call sites (field access, method-dispatch value lookup) want the fully
+/// dereferenced value, never an intermediate reference-to-a-reference.
 fn deref_value(value: &Value, span: &Span) -> Result<Option<Value>, MetelError> {
-    match value {
-        Value::Reference(rc) | Value::MutReference(rc) => Ok(Some(rc.borrow().clone())),
-        Value::MutFieldReference { root, path } => Ok(Some(read_path(&root.borrow(), path, span)?)),
-        _ => Ok(None),
+    let mut current = match value {
+        Value::Reference(rc) | Value::MutReference(rc) => rc.borrow().clone(),
+        Value::MutFieldReference { root, path } => read_path(&root.borrow(), path, span)?,
+        _ => return Ok(None),
+    };
+    loop {
+        current = match &current {
+            Value::Reference(rc) | Value::MutReference(rc) => rc.borrow().clone(),
+            Value::MutFieldReference { root, path } => read_path(&root.borrow(), path, span)?,
+            _ => break,
+        };
     }
+    Ok(Some(current))
 }
 
 fn receiver_cell_from_value(value: &Value) -> Option<Rc<RefCell<Value>>> {
@@ -2523,13 +2535,25 @@ pub fn eval_expr(
                     let receiver_binding = match receiver.as_ref() {
                         TypedExpr::Ident(name, _, _) => {
                             match env.get_rc(name).map(|cell| {
-                                let inner = match &*cell.borrow() {
-                                    Value::Reference(inner) | Value::MutReference(inner) => {
-                                        Some(Rc::clone(inner))
+                                // Follow every reference layer of a chain (RFC-0067a
+                                // §3's auto-deref chain guarantee), not just one —
+                                // `&&mut Counter` must reach the innermost cell that
+                                // actually holds the struct, not stop at the cell
+                                // holding the intermediate `&mut Counter` reference.
+                                let mut current = cell;
+                                loop {
+                                    let inner = match &*current.borrow() {
+                                        Value::Reference(inner) | Value::MutReference(inner) => {
+                                            Some(Rc::clone(inner))
+                                        }
+                                        _ => None,
+                                    };
+                                    match inner {
+                                        Some(inner) => current = inner,
+                                        None => break,
                                     }
-                                    _ => None,
-                                };
-                                inner.unwrap_or(cell)
+                                }
+                                current
                             }) {
                                 Some(cell) => call::ReceiverBinding::Shared(cell),
                                 None => call::ReceiverBinding::Value(recv_type_view.clone()),

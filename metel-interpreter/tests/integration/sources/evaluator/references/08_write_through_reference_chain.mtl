@@ -1,0 +1,13 @@
+// RFC-0067a: write-through peels every `&mut` layer of a chain, matching
+// read-copy's own chain handling for the same auto-deref guarantee.
+fun main() {
+    let mut n = 1;
+    let mut p: &mut i64 = &mut n;
+    let pp: &mut &mut i64 = &mut p;
+
+    pp = 5;
+    assert(n == 5);
+
+    pp += 10;
+    assert(n == 15);
+}

@@ -1268,10 +1268,18 @@ fn construct_expr(
             // RFC-0067a write-through: assigning to a non-`mut` binding of type
             // `&mut T` writes through the reference (pass 1 already confirmed this
             // and recorded the span — see `InferContext::write_through_assigns`).
+            // Peels every `&mut` layer of a chain (`&mut &mut T`), matching
+            // read-copy's own chain handling for the same auto-deref guarantee.
             let write_through = ctx.write_through.contains(span);
             let value_hint: Option<Type> = if let AssignTarget::Ident(name, _) = target {
                 match ctx.lookup(name).cloned() {
-                    Some(Type::MutReference(inner)) if write_through => Some(*inner),
+                    Some(Type::MutReference(inner)) if write_through => {
+                        let mut peeled = *inner;
+                        while let Type::MutReference(next) = peeled {
+                            peeled = *next;
+                        }
+                        Some(peeled)
+                    }
                     other => other,
                 }
             } else {
@@ -1292,12 +1300,29 @@ fn construct_expr(
                         ident_span,
                     )
                 })?;
-                TypedPlace::Deref {
-                    object: Box::new(TypedExpr::Ident(
-                        name.clone(),
-                        ptr_ty,
+                // Peel all but the last `&mut` layer via explicit intermediate `Deref`
+                // expressions; the final layer is peeled by `TypedPlace::Deref` itself
+                // at assignment time (matching the evaluator's one-layer-per-node
+                // dereferencing). For the common single-layer case this loop never
+                // runs, leaving `obj_expr` the plain `Ident` exactly as before.
+                let mut obj_expr = TypedExpr::Ident(name.clone(), ptr_ty, ident_span.clone());
+                #[allow(clippy::while_let_loop)] // second break condition below the pattern match
+                loop {
+                    let Type::MutReference(inner) = obj_expr.ty().clone() else {
+                        break;
+                    };
+                    if !matches!(inner.as_ref(), Type::MutReference(_)) {
+                        break;
+                    }
+                    obj_expr = TypedExpr::UnaryOp(
+                        UnaryOp::Deref,
+                        Box::new(obj_expr),
+                        *inner,
                         ident_span.clone(),
-                    )),
+                    );
+                }
+                TypedPlace::Deref {
+                    object: Box::new(obj_expr),
                     span: ident_span.clone(),
                 }
             } else {
@@ -1317,16 +1342,8 @@ fn construct_expr(
             span,
         } => {
             let typed_obj = construct_expr(object, None, ctx)?;
-            let (struct_name, type_args) = match typed_obj.ty() {
+            let (struct_name, type_args) = match peel_type_references(typed_obj.ty()) {
                 Type::Named(name, args) => (name.clone(), args.clone()),
-                Type::Reference(inner) | Type::MutReference(inner) => match inner.as_ref() {
-                    Type::Named(name, args) => (name.clone(), args.clone()),
-                    t => {
-                        return Err(MetelError::internal(format!(
-                            "field access on non-struct pointer target {t}"
-                        )))
-                    }
-                },
                 t => {
                     return Err(MetelError::internal(format!(
                         "field access on non-struct type {t}"
@@ -1390,19 +1407,9 @@ fn construct_expr(
                     return result;
                 }
             }
-            let (struct_name, receiver_type_args) = match typed_receiver.ty() {
+            let (struct_name, receiver_type_args) = match peel_type_references(typed_receiver.ty())
+            {
                 Type::Named(name, targs) => (name.clone(), targs.clone()),
-                Type::Reference(inner) | Type::MutReference(inner) => match inner.as_ref() {
-                    Type::Named(name, targs) => (name.clone(), targs.clone()),
-                    t => match super::inference::primitive_type_name(t) {
-                        Some(name) => (name, vec![]),
-                        None => {
-                            return Err(MetelError::internal(format!(
-                                "method call on non-struct pointer target {t}"
-                            )))
-                        }
-                    },
-                },
                 Type::Array(_) | Type::SizedArray(_, _) => {
                     return Err(MetelError::internal(
                         "array pattern methods handled before nominal lookup",
@@ -3038,6 +3045,17 @@ fn construct_unaryop(
     ))
 }
 
+/// Peels every reference layer of a chain down to the first non-reference type
+/// (RFC-0067a §3's auto-deref chain guarantee — `&&T` derefs through both levels —
+/// applies uniformly to field access, method dispatch, and read-copy; a single-level
+/// peel leaves a receiver like `&&mut Counter` still wrapped after one step).
+fn peel_type_references(ty: &Type) -> &Type {
+    match ty {
+        Type::Reference(inner) | Type::MutReference(inner) => peel_type_references(inner),
+        other => other,
+    }
+}
+
 /// RFC-0067a §3a: if `actual`'s type is a reference to exactly `expected`, synthesize
 /// the internal deref-copy node so the value is copied out of the reference. The parser
 /// never produces `UnaryOp::Deref` any more (§3 removed explicit `*p`); this is the only
@@ -3046,13 +3064,28 @@ fn construct_unaryop(
 /// `Decl::Let`/`Mut`, `Expr::Ascribe`) — never from `construct_expr`'s or
 /// `construct_unaryop`'s generic dispatch, which call-argument construction also goes
 /// through and must not gain this coercion.
+/// Peels *every* reference layer needed to reach `expected`, not just one — RFC-0067a
+/// §3's auto-deref chain guarantee (`&&T` derefs through both levels) applies to
+/// read-copy the same as ordinary auto-deref: `let x: i64 = rr;` where `rr: &&i64`
+/// synthesizes two nested internal `Deref` nodes, one per layer, matching how the
+/// evaluator already unwraps one `Value::Reference`/`MutReference` per node.
 fn maybe_read_copy(expected: &Type, actual: TypedExpr, span: &Span) -> TypedExpr {
-    match actual.ty() {
-        Type::Reference(inner) | Type::MutReference(inner) if inner.as_ref() == expected => {
-            TypedExpr::UnaryOp(UnaryOp::Deref, Box::new(actual), expected.clone(), span.clone())
-        }
-        _ => actual,
+    // If `expected` is itself a reference type, this isn't read-copy at all — it's the
+    // ordinary `&mut T` -> `&T` widening coercion (unify() already accepts it; nothing
+    // to synthesize here). Peeling anyway would over-run past the intended coercion
+    // down to the fully-dereferenced value, which is wrong.
+    if matches!(expected, Type::Reference(_) | Type::MutReference(_)) {
+        return actual;
     }
+    let mut current = actual;
+    while current.ty() != expected {
+        let inner = match current.ty() {
+            Type::Reference(inner) | Type::MutReference(inner) => (**inner).clone(),
+            _ => break,
+        };
+        current = TypedExpr::UnaryOp(UnaryOp::Deref, Box::new(current), inner, span.clone());
+    }
+    current
 }
 
 // ── Typed place construction ──────────────────────────────────────────────────

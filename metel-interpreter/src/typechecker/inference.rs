@@ -1095,10 +1095,16 @@ fn infer_expr(
                     // there is no competing "repoint" interpretation to preserve here).
                     // A binding of type `&T` (shared) is never written through — that
                     // still requires ordinary `mut` reassignment of the binding itself.
+                    // Peels every `&mut` layer of a chain (`&mut &mut T`), matching
+                    // read-copy's own chain handling for the same auto-deref guarantee.
                     match ctx.lookup_mono_raw(name) {
                         Some(InferType::MutReference(inner)) => {
                             ctx.mark_write_through(span.clone());
-                            *inner
+                            let mut peeled = *inner;
+                            while let InferType::MutReference(next) = peeled {
+                                peeled = *next;
+                            }
+                            peeled
                         }
                         _ => ctx.lookup_for_write(name, target_span)?,
                     }
@@ -1293,7 +1299,7 @@ fn infer_expr(
                 if matches!(
                     ctx.get_method_receiver_kind(&struct_name, method),
                     Some(crate::ast::ReceiverKind::RefMut)
-                ) && !matches!(recv_ty, InferType::MutReference(_))
+                ) && !chain_provides_mut_access(&recv_ty)
                 {
                     if let Expr::Ident(name, recv_span) = receiver.as_ref() {
                         let _ = ctx.lookup_for_write(name, recv_span)?;
@@ -1301,10 +1307,7 @@ fn infer_expr(
                 }
 
                 let ret_var = ctx.fresh_var();
-                let receiver_ty_for_method = match &recv_ty {
-                    InferType::Reference(inner) | InferType::MutReference(inner) => *inner.clone(),
-                    _ => recv_ty.clone(),
-                };
+                let receiver_ty_for_method = peel_all_references(&recv_ty);
                 let expected = InferType::Fun(
                     std::iter::once(receiver_ty_for_method)
                         .chain(arg_tys)
@@ -1697,6 +1700,30 @@ fn named_type_name(ty: &InferType) -> Option<String> {
     }
 }
 
+/// Peels every reference layer of a chain (RFC-0067a §3's auto-deref chain
+/// guarantee applies to method dispatch the same as field access — mirrors
+/// `named_type_name`'s own recursion, which already handles arbitrary depth).
+fn peel_all_references(ty: &InferType) -> InferType {
+    match ty {
+        InferType::Reference(inner) | InferType::MutReference(inner) => peel_all_references(inner),
+        other => other.clone(),
+    }
+}
+
+/// Whether a `&mut self` method call through this receiver type has write access
+/// *somewhere* along the chain — true the moment a `MutReference` layer is found,
+/// regardless of how many shared `Reference` layers wrap it from the outside (a
+/// shared reference to a `&mut T` still carries that inner `&mut T`'s own write
+/// capability; reading it out doesn't downgrade it). All-`Reference` chains with
+/// no `MutReference` anywhere have no write access at all.
+fn chain_provides_mut_access(ty: &InferType) -> bool {
+    match ty {
+        InferType::MutReference(_) => true,
+        InferType::Reference(inner) => chain_provides_mut_access(inner),
+        _ => false,
+    }
+}
+
 /// Canonical registry name for a primitive [`Type`], or `None` for non-primitive
 /// types (tuples, arrays, functions, …). This is the single source of truth for
 /// mapping a concrete primitive to the string key used in method and aspect-impl
@@ -1998,26 +2025,38 @@ fn infer_unaryop(
 /// raw unify failure, T0001, instead of the intended non-exhaustive-match diagnostic,
 /// T0008), caught only by running the full suite, not by reasoning about the rule
 /// in isolation.
+///
+/// Peels *every* reference layer, not just one: RFC-0067a §3 guarantees auto-deref
+/// chains through arbitrary depth (`&&T` derefs through both levels), and read-copy
+/// is specified as the same auto-deref/copy story applied at a declared-type boundary
+/// rather than a separate, shallower mechanism — `let x: i64 = rr;` where
+/// `rr: &&i64` must copy through both layers, not stop after one and fail to unify
+/// `&i64` against `i64`.
 fn constrain_with_read_copy(
     ctx: &mut InferContext,
     actual: InferType,
     declared: InferType,
     span: Span,
 ) -> InferType {
-    match actual.clone() {
-        InferType::Reference(inner) | InferType::MutReference(inner)
-            if !matches!(
-                declared,
-                InferType::Reference(_) | InferType::MutReference(_) | InferType::Var(_)
-            ) =>
-        {
-            ctx.add_constraint(*inner, declared.clone(), span);
-            declared
-        }
-        _ => {
-            ctx.add_constraint(actual.clone(), declared, span);
-            actual
-        }
+    if matches!(
+        declared,
+        InferType::Reference(_) | InferType::MutReference(_) | InferType::Var(_)
+    ) {
+        ctx.add_constraint(actual.clone(), declared, span);
+        return actual;
+    }
+    let mut peeled = actual.clone();
+    let mut any_peel = false;
+    while let InferType::Reference(inner) | InferType::MutReference(inner) = peeled {
+        peeled = *inner;
+        any_peel = true;
+    }
+    if any_peel {
+        ctx.add_constraint(peeled, declared.clone(), span);
+        declared
+    } else {
+        ctx.add_constraint(actual.clone(), declared, span);
+        actual
     }
 }
 
