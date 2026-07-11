@@ -70,7 +70,7 @@ impl Perhaps<T> {
     pub fun yolo(self) -> T {
         match self {
             Perhaps::Some { value } => value,
-            _ => yolo_none::<T>(),
+            _ => yolo_none(),
         }
     }
     // Converts to `Result<T, E>`: `Some { value }` becomes `Ok { value }`; `None`
@@ -137,7 +137,7 @@ impl Result<T, E> {
     pub fun yolo(self) -> T {
         match self {
             Result::Ok { value } => value,
-            Result::Err { error } => yolo_err::<T, E>(error),
+            Result::Err { error } => yolo_err(error),
         }
     }
     // Applies `f` to the `Err` value, leaving `Ok` unchanged. Useful for
@@ -330,9 +330,9 @@ native(@std.core.assert_msg) pub fun assert(cond: boolean, msg: String);
 native(@std.core.clock)      pub fun clock() -> i64;
 
 // `.yolo()`'s two panicking arms (issue #232). Both always panic — there is no
-// well-typed "success" case. Callers must supply generics via turbofish
-// (e.g. `yolo_none::<T>()`); unlike enum variant construction, a generic function
-// call's return type doesn't get inferred from surrounding match-arm unification.
+// well-typed "success" case — so `T` is inferred from the enclosing function's
+// declared return type at each call site, the same way `Perhaps::None` itself
+// infers `T` with no value argument at all.
 native(@std.core.yolo_none) fun yolo_none<T>() -> T;
 native(@std.core.yolo_err)  fun yolo_err<T, E>(error: E) -> T;
 

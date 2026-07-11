@@ -115,9 +115,11 @@ fn native_assert_msg(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value,
 }
 
 /// `Perhaps::yolo()`'s `None` arm. Always panics — there is no value to report,
-/// unlike `yolo_err` below. Callers must supply `T` via turbofish
-/// (`yolo_none::<T>()`) — unlike enum variant construction, a generic function
-/// call's return type isn't inferred from surrounding match-arm unification alone.
+/// unlike `yolo_err` below. Its declared return type `T` is resolved at each call
+/// site from the enclosing function's declared return type (see
+/// `construct_call`'s bare-identifier branch in `src/typechecker/construction.rs`,
+/// which falls back to `instantiate_scheme_with_expected_ret` when arg-based
+/// instantiation leaves a free type variable).
 fn native_yolo_none(_args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
     Err(MetelError::panic(
         RuntimeErrorCode::R0014,

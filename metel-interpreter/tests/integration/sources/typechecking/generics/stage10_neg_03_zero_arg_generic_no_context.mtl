@@ -1,0 +1,13 @@
+// Negative: a zero-argument generic function call still requires either an
+// explicit turbofish or a caller-supplied expected type. The fallback added for
+// `construct_call`'s bare-identifier branch (see stage10_09) resolves `T` from
+// the caller's expected type when one is available -- it does not manufacture
+// one out of nothing when the result is discarded entirely.
+
+fun make<T>() -> T {
+    return make();
+}
+
+fun main() {
+    make(); // ERROR[T0002]
+}

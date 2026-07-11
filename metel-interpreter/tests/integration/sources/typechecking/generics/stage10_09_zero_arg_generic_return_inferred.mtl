@@ -1,0 +1,15 @@
+// Positive: a zero-argument generic function call infers its return type from
+// the caller's expected type (here, a `let` annotation), not just from argument
+// types. Regression for `construct_call`'s bare-identifier branch, which used to
+// lack the expected-type fallback that qualified-path calls (e.g. `List::new()`)
+// already had -- previously the only way to resolve `T` here was an explicit
+// turbofish (`loop_forever::<T>()`).
+
+fun loop_forever<T>() -> T {
+    return loop_forever();
+}
+
+fun main() {
+    let x: i64 = loop_forever();
+    let y: boolean = loop_forever();
+}

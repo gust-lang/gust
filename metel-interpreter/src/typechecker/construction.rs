@@ -2372,7 +2372,28 @@ fn construct_call(
             })?;
             let (concrete, var_map) = match &explicit_tys {
                 Some(tys) => instantiate_scheme_with_turbofish(scheme, tys, span)?,
-                None => instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen)?,
+                None => {
+                    match instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen) {
+                        Ok(result) => result,
+                        Err(e) => {
+                            // Arg-based instantiation failed (e.g. zero-arg generic call
+                            // whose only free type variable appears in the return type).
+                            // Try resolving it from the expected type via unification,
+                            // same fallback as the qualified-path call branch below.
+                            match expected_ty {
+                                Some(expected) => instantiate_scheme_with_expected_ret(
+                                    scheme,
+                                    &arg_types,
+                                    expected,
+                                    span,
+                                    &mut ctx.gen,
+                                )
+                                .map_err(|_| e)?,
+                                None => return Err(e),
+                            }
+                        }
+                    }
+                }
             };
             check_fun_call_bounds(name, &var_map, span, ctx.registry, ctx.current_module)?;
             check_scheme_bounds(name, scheme, &var_map, span, ctx.registry, ctx.current_module)?;
