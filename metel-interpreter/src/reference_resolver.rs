@@ -489,4 +489,27 @@ mod tests {
             "a local `foo` must shadow the top-level `foo`, so no reference resolves to it"
         );
     }
+
+    #[test]
+    fn overloaded_name_reference_does_not_resolve_to_a_stale_id() {
+        // ADR-0042 regression: an overloaded name has no single unambiguous
+        // declaration — `symbols[(module, "print")]` is a leftover artifact of the
+        // initial interning pass (whichever overload happened to be interned last),
+        // never a real identity anything registers a runtime value under. A bare
+        // reference to it (here, used as a first-class value, not a call — call
+        // sites go through the separate overload-selection path in
+        // `typechecker::overload` entirely) must not resolve to that stale id.
+        let graph = single_module_graph(
+            "fun print(x: i64) {}\n\
+             fun print(x: String) {}\n\
+             fun main() { let f = print; }",
+        );
+        let names = resolve(&graph).unwrap();
+        let stale_id = names.symbols[&(vec![], "print".to_string())];
+        assert!(
+            !names.references.values().any(|&id| id == stale_id),
+            "a reference to an overloaded name must not resolve to the interning \
+             pass's leftover single-declaration id"
+        );
+    }
 }

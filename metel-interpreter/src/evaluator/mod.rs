@@ -1487,16 +1487,29 @@ fn run_passes(
     for decl in decls {
         if !matches!(decl, TypedDecl::Fun(_) | TypedDecl::Impl(_)) {
             eval_decl(decl, env, runtime)?;
-            // ADR-0042: register a top-level let/mut's value by SymbolId too, right
+            // ADR-0042: register a top-level `let`'s value by SymbolId too, right
             // after its initializer runs — the same moment `env.define` already binds
             // it by name. This is what lets `Call::callee_id` dispatch work for a
             // module-level first-class function value the same way it already does
             // for `fn` declarations, without changing when the binding becomes
             // available (a call before this line executes still misses, exactly as
             // it does today via `env`).
+            //
+            // Deliberately `Let` only, not `Mut`: a `let` is immutable, so caching its
+            // value once is permanently correct. A top-level `mut` can be reassigned
+            // later (`TypedPlace::Ident` assignment updates `env` only, never
+            // `symbol_values` — reworking that is a bigger change than this fix
+            // warrants), so caching its value here would go stale and silently
+            // resurrect an old value through `Call::callee_id` dispatch after a
+            // reassignment, exactly the kind of silent-wrong-behavior bug this ADR
+            // exists to close, not reintroduce. A `mut`'s id is still marked in
+            // `let_mut_def_ids` (Pass 0) so a miss on it is correctly treated as
+            // legitimate rather than an internal-error bug — it's simply never
+            // registered, so every call through it falls back to `env`, same as
+            // before this ADR's work, which is the only place its current value
+            // actually lives.
             let stamped = match decl {
                 TypedDecl::Let(d) => d.def_id.map(|id| (id, d.name.as_str())),
-                TypedDecl::Mut(d) => d.def_id.map(|id| (id, d.name.as_str())),
                 _ => None,
             };
             if let Some((id, name)) = stamped {

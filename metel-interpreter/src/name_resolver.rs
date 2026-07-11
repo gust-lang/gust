@@ -1086,6 +1086,15 @@ mod tests {
             .get("Ast")
             .expect("Ast should be importable from facade");
         assert_eq!(binding.source_module, vec!["parser", "ast"]);
+        // The real regression check (ADR-0042): this binding's id must be the *same*
+        // id `Ast`'s own declaration was interned under — not a fresh id minted for
+        // `(["parser"], "Ast")`, which nothing would ever register a runtime value
+        // under, since `Ast` isn't actually declared in `parser` itself.
+        let real_id = names.symbols[&(vec!["parser".to_string(), "ast".to_string()], "Ast".to_string())];
+        assert_eq!(
+            binding.symbol_id, real_id,
+            "an import of a re-exported name must reuse its real declaration's id"
+        );
     }
 
     #[test]

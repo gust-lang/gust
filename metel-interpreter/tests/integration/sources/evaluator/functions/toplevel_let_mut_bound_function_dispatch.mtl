@@ -1,0 +1,26 @@
+// Regression test for ADR-0042 (Call::callee_id fallback closure): a top-level
+// let/mut bound directly to a function value must dispatch correctly through
+// Call::callee_id, the same path an ordinary top-level `fn` call already uses.
+//
+// The `mut` case specifically guards against a bug introduced and fixed during
+// that same work: a top-level `mut` can be reassigned after its initial value
+// is registered, and `Call::callee_id` dispatch must see the *current* value,
+// not a stale cached one from the mut's initial declaration.
+
+fun add_one(x: i64) -> i64 { x + 1 }
+fun add_two(x: i64) -> i64 { x + 2 }
+
+let apply_fn = add_one;
+let mut reassignable_fn = add_one;
+
+fun main() {
+    // A plain top-level `let` bound to a function value dispatches by id.
+    assert(apply_fn(41) == 42);
+
+    // A top-level `mut` bound to a function value also dispatches by id ...
+    assert(reassignable_fn(40) == 41);
+    // ... and a later reassignment is visible through the same call site —
+    // Call::callee_id dispatch must not resurrect the mut's original value.
+    reassignable_fn = add_two;
+    assert(reassignable_fn(40) == 42);
+}
