@@ -6,7 +6,7 @@ Metel is a statically typed, expression-oriented language. This repository conta
 
 The interpreter is the shipped runtime. Treat it as the current product surface, not as throwaway compiler scaffolding. The language specification is the contract the interpreter must satisfy.
 
-The repository remote is Codeberg (`codeberg.org/metel-lang/metel`). Task tracking is in Plane, not GitHub Projects.
+The repository remote is Codeberg (`codeberg.org/metel-lang/metel-core`). Task tracking is in **Codeberg Issues** on this repository, not GitHub Projects, and not Plane — see "Task Tracking: Codeberg Issues" below. This repo previously used Plane; that migration is complete and Plane is no longer the source of truth for anything.
 
 ---
 
@@ -22,13 +22,18 @@ The repository remote is Codeberg (`codeberg.org/metel-lang/metel`). Task tracki
 | `docs/public/reference/spec/` | Spec sections: lexical, types, declarations, functions, expressions, modules, runtime, grammar |
 | `docs/public/reference/error-codes.md` | Error code reference |
 | `docs/public/release-notes/changelog.md` | Version changelog and release notes |
-| `docs/internal/versioning.md` | Version numbering, RFC lifecycle, and doc conventions |
+| `docs/internal/versioning.md` | Version numbering and doc/changelog conventions. **Not** the RFC lifecycle — see below. |
+| `docs/internal/rfcs/PROCESS.md` | **Authoritative RFC lifecycle, working rules, and tooling reference.** Read this before touching any RFC. |
+| `docs/internal/rfcs/INDEX.md` | Thematic snapshot of all RFCs by cluster and status — check before opening a new RFC to avoid duplicating one that already exists. |
+| `docs/internal/rfcs/tools/rfc.py` | The lifecycle tool (`new`/`transition`/`supersede`/`check`/`index`) — mechanizes the procedural parts of PROCESS.md. Run `rfc.py check` after any manual RFC edit. |
 | `docs/internal/rfcs/0-draft/` | Draft RFCs being written |
 | `docs/internal/rfcs/1-under-review/` | RFCs ready for evaluation |
-| `docs/internal/rfcs/2-accepted/` | Accepted RFCs assigned to a target version |
-| `docs/internal/rfcs/3-implemented/` | RFCs implemented and shipped |
-| `docs/internal/rfcs/4-superseded/` | RFCs replaced by later RFCs |
-| `docs/internal/rfcs/5-refused/` | RFCs refused with a recorded decision |
+| `docs/internal/rfcs/2-accepted/` | Design settled; not yet integrated into the spec |
+| `docs/internal/rfcs/3-integrated/` | Merged into `docs/public/reference/spec/` with worked examples checked for soundness against everything else already integrated; not yet implemented — see `impl_status`/`impl_tracking` below |
+| `docs/internal/rfcs/4-implemented/` | Implemented and shipped |
+| `docs/internal/rfcs/5-superseded/` | RFCs replaced by later RFCs |
+| `docs/internal/rfcs/6-refused/` | RFCs refused with a recorded decision |
+| `docs/reports/strategy/OBJECTIVES.md` | **Living long-term objectives, current priorities, and open triggers** — persists across planning cycles; see "Strategic Planning" below. |
 | `docs/reports/` | Design reports and longer-form research notes |
 | `metel-interpreter/docs/architecture.md` | Interpreter pipeline and component boundaries |
 | `metel-interpreter/docs/typechecker.md` | Typechecker theory and implementation notes |
@@ -37,103 +42,71 @@ The repository remote is Codeberg (`codeberg.org/metel-lang/metel`). Task tracki
 
 Public docs no longer live at `docs/public/spec.md`, `docs/public/spec/`, or `docs/public/changelog.md`. Those paths are stale.
 
+**Known stale content, not yet fixed:** `docs/public/reference/spec.md`'s frontmatter still says `version: v0.7.0` and its Overview still describes the memory model as "reference counting, no ownership semantics required" — both predate the affine-ownership/allocator RFC cluster (RFC-0063/0065/0066/0067/0068/0071/0073/0077, accepted; RFC-0067a/0072/0078/0081/0082/0083, integrated) and need a real update pass, tracked as its own piece of work, not folded into this one.
+
 ---
 
-## Task Tracking: Plane
+## Task Tracking: Codeberg Issues
 
-Plane is the source of truth for tasks, RFC tracking, sprint cycles, and version milestones.
+Codeberg Issues on this repository (`codeberg.org/metel-lang/metel-core`) are the source of
+truth for implementation tasks, labels, and version milestones. This replaces Plane
+(migrated away from for the same reason Plane replaced an earlier tool: avoid vendor
+lock-in on task state that lives nowhere in the repo itself). It also replaces
+ClickUp, which was used briefly between Plane and this migration but was never
+written down here.
 
-Current Plane identifiers:
+**RFC lifecycle tracking no longer needs a mirrored issue type or synced custom
+property.** Plane needed a custom `RFC` work-item type plus an `RFC Status` property
+kept in sync with the RFC file by hand (or by API call) because Plane had no native
+notion of "this issue's status lives in a git file." Codeberg issues don't try to
+mirror RFC status at all — the RFC file's own directory and frontmatter (`status`,
+and from `3-integrated` onward, `impl_status`/`impl_tracking`) are already the single
+source of truth, per `docs/internal/rfcs/PROCESS.md`. An RFC gets an issue only once
+it reaches `3-integrated` and needs real implementation tracked — one issue per RFC
+(or per tightly-coupled cluster), linked back via that RFC's `impl_tracking` field.
+There is nothing to keep in sync in the other direction; the issue never needs to
+restate the RFC's lifecycle stage.
 
-| Field | Value |
-|---|---|
-| Project identifier | `METEL` |
-| Project ID | `ec7904a4-cd24-40bd-8089-19a5eb8875ab` |
-| Task states | `Backlog`, `Todo`, `In Progress`, `Done`, `Cancelled` |
-| RFC Status values | `draft`, `under-review`, `accepted`, `implemented`, `superseded`, `refused` |
-| Work item types | `Task`, `RFC`, `Epic` |
-| RFC work item type ID | `6b00ca94-017d-45e2-81eb-f7b6bed6ac89` |
-| RFC Status property ID | `4d858d79-066b-4948-b1bd-7f166b7cd024` |
-| Product modules | `Interpreter`, `Wiki`, `Compiler`, `Playground`, `LSP` |
+**Labels** — carry over Plane's "Product modules" as labels: `interpreter`, `wiki`,
+`compiler`, `playground`, `lsp`. Add labels for cross-cutting concerns as they
+recur (e.g. `blocked`, `needs-design`) rather than up front — don't pre-invent a
+taxonomy nothing has asked for yet.
 
-Use Plane work item identifiers in user-facing references and commit messages, for example `METEL-57`. When a tool requires the UUID, use the project ID above.
+**Milestones** — version milestones (`v0.10.0`, `v0.11.0`, ...) map directly from
+Plane's version-milestone use; no change in concept, just in host.
 
-Common Plane actions:
+**Sprints stay git branches, unchanged** — `sprint/N`, exactly as in "Sprint
+Workflow" below. A sprint's issues are whichever open issues are actually being
+worked against that branch; there is no separate "cycle" object to keep updated
+the way Plane's cycles needed one. If grouping sprint issues visually is wanted, use
+a `sprint-N` label or a Codeberg Project (kanban) board — neither is required.
 
-- Read a task: retrieve work item by project identifier `METEL` and sequence number.
-- Search tasks: list work items with a query, label, milestone, state, cycle, or module filter.
-- Start task work: set the task work item state to `In Progress`.
-- Finish task work: set the task work item state to `Done` only after acceptance criteria and tests pass.
-- Move RFC work: use the custom `RFC` work item type and set its `RFC Status` custom property to the state represented by the RFC file directory.
-- Track dependencies: use work item relations (`blocked_by`, `blocking`, `relates_to`) rather than encoding dependency state in files.
-- Version planning: use Plane milestones such as `v0.6.4`, `0.7.0`, `v0.8.0`.
-- Sprint planning: use Plane cycles such as `Sprint 17 - Aspect Bounds`.
+**Dependencies** between issues: reference by number in the issue body (`Blocked by
+#42`, `Blocks #57`) — Gitea/Codeberg's issue references render these as links but
+don't enforce blocking; treat the same as Plane's `blocked_by`/`blocking` relations
+were treated, as documentation, not enforcement.
 
-Do not rely on `.github/` automation or GitHub issue labels. This checkout no longer has `.github/` workflow or issue-template files.
+Common actions:
 
-### Plane RFC API Steps
+- Read a task: fetch the issue by number.
+- Search tasks: filter issues by label, milestone, or state (`open`/`closed`).
+- Start task work: leave the issue open, reference it in commits as work proceeds.
+- Finish task work: close the issue only after acceptance criteria and tests pass.
+- Version planning: assign the milestone.
 
-Use the Plane MCP tools for ordinary work item reads, creation, updates, links, and relations. Use the Plane REST API directly for RFC custom property values.
-
-Reason: the MCP work item tools expose standard work item fields but do not expose a custom-property-value upsert tool. The MCP property listing path can also fail response validation on Plane properties with nullable fields. Direct API calls use Plane's official custom property endpoints and are the reliable way to keep `RFC Status` and `RFC Number` synchronized with the RFC file.
-
-Use `https://api.plane.so/api/v1/workspaces/vladastos` with header `x-api-key: $PLANE_API_KEY`. Never write the API key into a tracked file.
-
-When creating a new RFC:
-
-1. Create the RFC document in the directory matching its lifecycle state, for example `docs/internal/rfcs/0-draft/rfc-0042-let-mut-bindings.md`.
-2. Create a Plane work item with type `RFC` using `type_id: 6b00ca94-017d-45e2-81eb-f7b6bed6ac89`. Put the work item on the normal task board state that best matches the planning workflow, usually `Backlog` for a draft RFC.
-3. Do not set the Plane `Doc Path` property. RFC paths include the lifecycle directory and therefore change whenever an RFC changes state. Derive the current path by scanning `docs/internal/rfcs/*/` for the RFC frontmatter `id`.
-4. Do not add direct Codeberg file links for stateful RFC paths unless a stable redirect or generated RFC index URL exists. Direct file links include the lifecycle directory and become stale on every state change.
-5. Query RFC work item properties if IDs need confirmation:
-
-```bash
-curl -sS \
-  -H "x-api-key: $PLANE_API_KEY" \
-  "https://api.plane.so/api/v1/workspaces/vladastos/projects/ec7904a4-cd24-40bd-8089-19a5eb8875ab/work-item-types/6b00ca94-017d-45e2-81eb-f7b6bed6ac89/work-item-properties/"
-```
-
-6. Upsert custom property values with:
-
-```bash
-curl -sS -X POST \
-  -H "x-api-key: $PLANE_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"value":"<value-or-option-id>"}' \
-  "https://api.plane.so/api/v1/workspaces/vladastos/projects/ec7904a4-cd24-40bd-8089-19a5eb8875ab/work-items/<work_item_id>/work-item-properties/<property_id>/values/"
-```
-
-Known RFC custom properties:
-
-| Property | Property ID | Value |
-|---|---|---|
-| `RFC Number` | `71ccf8fa-9926-4216-8786-7f70e6eaec87` | decimal number, for example `42` |
-| `RFC Status` | `4d858d79-066b-4948-b1bd-7f166b7cd024` | option ID from the table below |
-
-Do not use the Plane `Doc Path` property for RFCs. The current path is derived from `RFC Number` plus the RFC file's frontmatter `id`.
-
-Known `RFC Status` option IDs:
-
-| Status | Option ID |
-|---|---|
-| `draft` | `bd6dc307-d1de-4363-a2ca-c99964258c49` |
-| `under-review` | `de40e974-2b7e-4d7f-a070-165c28ee40f0` |
-| `accepted` | `9fa2ac30-e5b0-4965-b83c-82bc92415218` |
-| `implemented` | `e90b9ab6-b177-48bf-a356-fc1da3be2c89` |
-| `superseded` | `63606434-211c-41ae-8f1e-7544b2d43d19` |
-| `refused` | `d0f15e96-e5f0-4cc3-8c86-b876c8ae9f0c` |
+Do not rely on `.github/` automation or GitHub issue labels — this is a Codeberg
+(Gitea/Forgejo) repository, not GitHub; there is no `.github/` directory here.
 
 ---
 
 ## Sprint Workflow
 
-Sprints are Plane cycles and repository branches. Sprint branches still use the `sprint/<N>` convention.
+Sprints are repository branches; issues track the work within them. Sprint branches still use the `sprint/<N>` convention.
 
 ### Starting a Sprint
 
-1. Create or confirm the Plane cycle (`Sprint N - Theme`).
-2. Add planned Plane work items to the cycle with state `Todo`.
-3. Create the branch from current `main`:
+1. Confirm the milestone this sprint targets, and which open issues belong to it.
+2. Create the branch from current `main`:
 
 ```bash
 git checkout main
@@ -142,12 +115,11 @@ git checkout -b sprint/N
 git push -u origin sprint/N
 ```
 
-4. Keep all sprint code, docs pointer updates, and release-prep commits on `sprint/N`.
+3. Keep all sprint code, docs pointer updates, and release-prep commits on `sprint/N`.
 
 ### During a Sprint
 
-- Read the Plane work item before editing code.
-- Move only actively worked items to `In Progress`.
+- Read the relevant issue before editing code.
 - Keep commits on the sprint branch.
 - Push after each logical unit of completed work.
 - If public docs changed, commit in `docs/` first, then commit the updated submodule pointer in this repo.
@@ -165,10 +137,10 @@ Before opening a pull request from `sprint/N` to `main`, run the quality gate be
    - Module graph/name-resolution changes: `tests/module_loading/` or `tests/module_semantics/`.
 4. **Spec accuracy** - every language-visible change is documented in `docs/public/reference/spec.md` and the linked spec section.
 5. **Changelog** - version-visible work is recorded in `docs/public/release-notes/changelog.md`.
-6. **RFC state** - RFC files are in the directory for their current state, frontmatter agrees with that directory, and Plane `RFC` work items have the matching `RFC Status` custom property.
+6. **RFC state** - `python3 docs/internal/rfcs/tools/rfc.py check` reports clean (frontmatter matches directory, no dangling references); any RFC at `3-integrated` or beyond has `impl_status`/`impl_tracking` set correctly per `docs/internal/rfcs/PROCESS.md`.
 7. **Internal docs** - update `metel-interpreter/docs/architecture.md`, `typechecker.md`, or `evaluator.md` when the corresponding pipeline, inference, construction, runtime, or builtin behavior changes.
 8. **Decision records** - add a new ADR in `metel-interpreter/docs/decisions/` for non-obvious architectural decisions, reversals, or workarounds future contributors must know.
-9. **Plane** - completed work items have satisfied acceptance criteria and are set to `Done`; deferred work is explicit in Plane, not hidden in comments.
+9. **Issues** - completed issues have satisfied acceptance criteria and are closed; deferred work is an explicit open issue, not hidden in a comment.
 
 After the gate passes, open a pull request from `sprint/N` to `main` on Codeberg. The pull request diff is the authoritative sprint deliverable.
 
@@ -178,18 +150,18 @@ After the gate passes, open a pull request from `sprint/N` to `main` on Codeberg
 
 ### Before Starting a Task
 
-1. Retrieve and read the full Plane work item, including acceptance criteria, dependencies, labels, milestone, cycle, and module.
+1. Retrieve and read the full issue, including acceptance criteria, dependencies (referenced issue numbers), labels, and milestone.
 2. Read every spec section the task touches. The spec entry point is `docs/public/reference/spec.md`.
 3. Read relevant RFCs in `docs/internal/rfcs/` and ADRs in `metel-interpreter/docs/decisions/`.
-4. Check dependency work items and confirm their implementation matches the contract this task depends on.
+4. Check dependency issues and confirm their implementation matches the contract this task depends on.
 5. If the spec is missing or ambiguous, update the spec first. If the choice is non-obvious, write an ADR before implementation.
-6. Move the Plane work item to `In Progress`.
+6. Note in the issue (a comment, or just the first commit) that work has started.
 
 ### During Implementation
 
 - Follow the spec exactly. If behavior is not in the spec, it does not exist yet.
 - Do not implement undocumented behavior and plan to fix docs later.
-- Keep scope tight. If required work falls outside the task, create or update a Plane work item and only proceed if it is a real blocker.
+- Keep scope tight. If required work falls outside the task, open or update an issue and only proceed if it is a real blocker.
 - Preserve user changes in the worktree. Never revert unrelated dirty files.
 - Keep docs submodule changes and root-repo pointer changes distinct.
 
@@ -198,42 +170,85 @@ After the gate passes, open a pull request from `sprint/N` to `main` on Codeberg
 1. All acceptance criteria are satisfied.
 2. Relevant tests pass; for typechecker or inference changes, the full `cargo test` suite passes.
 3. Spec, changelog, RFC, internal docs, and ADR updates are complete where required.
-4. The work item is moved to `Done` in Plane.
+4. Close the issue.
 
 ---
 
 ## RFC Workflow
 
-RFCs live in `docs/internal/rfcs/` and are tracked in Plane with work item type `RFC`.
+RFCs live in `docs/internal/rfcs/`. **`docs/internal/rfcs/PROCESS.md` is the sole
+authority on the RFC lifecycle, working rules, and tooling** — read it, don't rely on
+the summary below for anything beyond a quick orientation. `docs/internal/versioning.md`
+covers version numbering and changelog conventions only; it does **not** define the RFC
+lifecycle (its own RFC-lifecycle section is stale and superseded by PROCESS.md — see the
+note in that file).
 
-Follow `docs/internal/versioning.md` for the lifecycle and frontmatter requirements. An RFC has exactly one of these states, represented primarily by its directory:
+An RFC has exactly one state, represented by its directory:
 
 - `0-draft/` - `draft`
 - `1-under-review/` - `under-review`
 - `2-accepted/` - `accepted`
-- `3-implemented/` - `implemented`
-- `4-superseded/` - `superseded`
-- `5-refused/` - `refused`
+- `3-integrated/` - `integrated` — merged into `docs/public/reference/spec/`, worked
+  examples checked against everything else already integrated; not yet implemented
+- `4-implemented/` - `implemented`
+- `5-superseded/` - `superseded`
+- `6-refused/` - `refused`
 
 Rules:
 
 - The RFC document is the source of truth for design details.
-- The directory is the source of truth for the RFC's lifecycle state. The RFC frontmatter and the Plane `RFC Status` custom property must reflect that directory exactly.
-- The Plane item must use the custom `RFC` work item type, summarize the topic, link to the RFC file, and set `RFC Status` to the same state as the RFC directory; do not duplicate the whole RFC body in Plane.
-- Accepted RFCs must have the relevant spec or internal architecture docs updated before implementation work begins.
-- Implementation tasks should relate back to the RFC work item.
-- When the target version ships, accepted RFCs that shipped must be moved to `3-implemented/` and their Plane `RFC Status` custom property must be set to `implemented`.
+- The directory is the source of truth for the RFC's lifecycle state; frontmatter
+  `status` must match it. Run `python3 docs/internal/rfcs/tools/rfc.py check` after any
+  manual edit — it validates this and more (dangling references, duplicate ids).
+- Accepted RFCs must reach `3-integrated` (spec updated, worked examples written) before
+  implementation work begins — this is what used to be tracked by the now-retired
+  `spec_status: pending/done` field; `3-integrated` is the actual lifecycle stage that
+  replaced it, not a parallel field to also keep in sync.
+- From `3-integrated` onward, the RFC's frontmatter carries `impl_status`
+  (`not-started`/`in-progress`/`implemented`) and `impl_tracking` (the Codeberg issue
+  link). `rfc.py transition <id> --to integrated` refuses to run without
+  `--tracking <issue-url>` — no RFC enters integrated without one.
+- Implementation issues should reference the RFC file they implement in the issue body.
+- When implementation lands, run `rfc.py transition <id> --to implemented` — this also
+  sets `impl_status: implemented`.
 
-If an existing RFC's folder, frontmatter status, or `spec_status` contradicts `docs/internal/versioning.md`, stop and resolve the documentation workflow inconsistency before implementing against it.
+If an existing RFC's folder, frontmatter status, or `impl_status` contradicts
+`docs/internal/rfcs/PROCESS.md`, stop and resolve the documentation workflow
+inconsistency before implementing against it.
+
+---
+
+## Strategic Planning
+
+Long-term objectives, current priorities, and open triggers (watch-list items that
+should prompt a re-check when conditions change) live in
+`docs/reports/strategy/OBJECTIVES.md` — a living document, updated in place, not a
+dated snapshot. Periodic dated narrative snapshots (`docs/reports/strategy/
+strategic-overview-YYYY-MM-DD.md`) remain the point-in-time record of what was found
+and decided each planning cycle; `OBJECTIVES.md` is what each cycle reads from and
+writes back to, so priorities and triggers persist between cycles instead of being
+reconstructed from whichever dated file is most recent.
+
+Rules (content lives in `OBJECTIVES.md` itself, not duplicated here):
+
+- Before starting non-trivial design or planning work, check `OBJECTIVES.md`'s current
+  priorities (§2) and open triggers (§3) for relevance.
+- A strategic-overview cycle checks triggers against real progress, updates priorities
+  in place, adds anything new, and appends to the review log — *then* decides whether a
+  new dated snapshot is warranted. Triggering a new dated snapshot is event-based (a
+  real inflection point), not calendar-based.
+- `OBJECTIVES.md` does not replace `docs/internal/rfcs/INDEX.md` (RFC-level thematic
+  state) or `PROCESS.md` (RFC lifecycle mechanics) — it's the layer above both, tracking
+  why priorities are what they are, not RFC-by-RFC status.
 
 ---
 
 ## Commit Convention
 
-Every commit related to a Plane task should reference the work item identifier:
+Every commit related to a tracked issue should reference the issue number:
 
 ```text
-<type>(METEL-<number>): <description>
+<type>(#<number>): <description>
 ```
 
 Types: `feat`, `fix`, `refactor`, `test`, `docs`.
@@ -241,23 +256,23 @@ Types: `feat`, `fix`, `refactor`, `test`, `docs`.
 Examples:
 
 ```text
-feat(METEL-57): enforce function aspect bounds
-docs(METEL-58): update aspect bound spec text
-test(METEL-60): cover generic bound regressions
+feat(#57): enforce function aspect bounds
+docs(#58): update aspect bound spec text
+test(#60): cover generic bound regressions
 ```
 
 Commits not tied to a tracked item may omit the reference, for example `docs: point CLAUDE.md to AGENTS.md`.
 
-When a commit is intended to close work after merge, include a body describing what changed and reference the work item:
+When a commit is intended to close work after merge, include a body describing what changed and reference the issue — Codeberg closes an issue automatically on merge to `main` when the body contains `Closes #<number>` (or `Fixes`/`Resolves`):
 
 ```text
-feat(METEL-57): enforce function aspect bounds
+feat(#57): enforce function aspect bounds
 
 - Check call-site type arguments against declared bounds
 - Seed bound methods during function body inference
 - Add stage12 typechecking regressions
 
-Completes METEL-57
+Closes #57
 ```
 
 During an active sprint, commit only on `sprint/N`, not directly on `main`.
@@ -383,7 +398,7 @@ Stop before proceeding when:
 
 - A design decision has multiple plausible options with architectural consequences.
 - The spec is ambiguous in a way that affects implementation.
-- The task description contradicts current code, docs, or Plane state.
+- The task description contradicts current code, docs, or issue state.
 - A dependency is incomplete or wrong.
 - Completing the task requires a scope expansion that could affect other work.
 - You are about to make an irreversible or hard-to-reverse change.
@@ -397,7 +412,8 @@ When stopping, explain what you found, the options, and the recommended path.
 - Do not implement behavior that is not in the spec.
 - Do not let implementation and docs diverge.
 - Do not add rationale or history to the spec.
-- Do not use GitHub Projects, GitHub issue labels, or `.github/` workflows as the current process.
-- Do not create new tracking documents for open work; use Plane.
-- Do not mark a Plane work item `Done` with unchecked acceptance criteria.
+- Do not use GitHub Projects or `.github/` workflows as the current process — this is a Codeberg repo, GitHub tooling doesn't apply.
+- Do not create new tracking documents for open work; use Codeberg Issues.
+- Do not close an issue with unchecked acceptance criteria.
 - Do not commit sprint work directly to `main`.
+- Do not re-introduce a synced "RFC status" field on an issue or elsewhere — the RFC file's own directory/frontmatter is the only source of truth for RFC lifecycle state (see RFC Workflow above); this is a deliberate simplification versus how Plane was used, not an oversight.
