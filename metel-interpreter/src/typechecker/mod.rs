@@ -181,6 +181,7 @@ fn refresh_scheme_for_export(
         param_names: scheme.param_names.clone(),
         // Order is preserved by the renaming, so positional bounds stay valid.
         bounds: scheme.bounds.clone(),
+        neg_bounds: scheme.neg_bounds.clone(),
         ty,
     }
 }

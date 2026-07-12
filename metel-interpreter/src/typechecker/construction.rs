@@ -601,6 +601,7 @@ fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl
             quantified_vars: vec![],
             param_names: vec![],
             bounds: vec![],
+            neg_bounds: vec![],
             ty: InferType::Fun(
                 entry
                     .params

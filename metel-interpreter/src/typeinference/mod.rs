@@ -679,6 +679,10 @@ pub struct TypeScheme {
     /// the export alpha-renaming, unlike the TypeVar-keyed `fun_bounds`
     /// registry (which only works within the defining module).
     pub bounds: Vec<Vec<String>>,
+    /// Negative aspect bounds per quantified var (same order as `quantified_vars`).
+    /// `T: !Aspect` means the type must NOT implement `Aspect`. Checked by
+    /// inverting the `impl_aspect_env_has` query (RFC-0072, issue #243).
+    pub neg_bounds: Vec<Vec<String>>,
     pub ty: InferType,
 }
 
@@ -690,6 +694,7 @@ impl TypeScheme {
             quantified_vars: vec![],
             param_names: vec![],
             bounds: vec![],
+            neg_bounds: vec![],
             ty,
         }
     }
@@ -702,6 +707,20 @@ impl TypeScheme {
             return self;
         }
         self.bounds = self
+            .quantified_vars
+            .iter()
+            .map(|v| by_var.get(v).cloned().unwrap_or_default())
+            .collect();
+        self
+    }
+
+    /// Attach per-var negative aspect bounds, mirroring `with_bounds`.
+    #[must_use]
+    pub fn with_neg_bounds(mut self, by_var: &std::collections::HashMap<TypeVar, Vec<String>>) -> Self {
+        if by_var.values().all(std::vec::Vec::is_empty) {
+            return self;
+        }
+        self.neg_bounds = self
             .quantified_vars
             .iter()
             .map(|v| by_var.get(v).cloned().unwrap_or_default())
@@ -742,6 +761,7 @@ pub fn generalize(ty: InferType, env_free_vars: &HashSet<TypeVar>) -> TypeScheme
         quantified_vars: quantified,
         param_names: vec![],
         bounds: vec![],
+        neg_bounds: vec![],
         ty,
     }
 }
@@ -853,9 +873,17 @@ pub struct TypeDefinitionRegistry {
     /// Key: type name. Value: one Vec<String> per type param (same order as `struct_type_params`),
     /// each containing the aspect names that param must satisfy.
     type_param_bounds: HashMap<String, Vec<Vec<String>>>,
+    /// Negative per-type-param aspect bounds (`T: !Aspect`) for generic structs and enums.
+    /// Key: type name. Value: one Vec<String> per type param, each containing the
+    /// aspect names that param must NOT satisfy (RFC-0072, issue #243).
+    neg_type_param_bounds: HashMap<String, Vec<Vec<String>>>,
     /// Aspect bounds per generic function. Key: function name.
     /// Value: map from each quantified `TypeVar` to the list of required aspect names.
     fun_bounds: HashMap<String, HashMap<TypeVar, Vec<String>>>,
+    /// Negative aspect bounds per generic function (`T: !Aspect`). Key: function name.
+    /// Value: map from each quantified `TypeVar` to the list of negated aspect names
+    /// (RFC-0072, issue #243).
+    neg_fun_bounds: HashMap<String, HashMap<TypeVar, Vec<String>>>,
     /// Tracks which struct names were registered in each lexical scope so they
     /// can be removed on scope exit. Empty when outside any scoped block.
     struct_scope_stack: Vec<Vec<String>>,
@@ -911,7 +939,9 @@ impl TypeDefinitionRegistry {
             struct_generic_names: HashMap::new(),
             method_scheme_env: HashMap::new(),
             type_param_bounds: HashMap::new(),
+            neg_type_param_bounds: HashMap::new(),
             fun_bounds: HashMap::new(),
+            neg_fun_bounds: HashMap::new(),
             struct_scope_stack: Vec::new(),
             method_env: HashMap::new(),
             method_receiver_env: HashMap::new(),
@@ -1060,6 +1090,15 @@ impl TypeDefinitionRegistry {
         self.type_param_bounds.get(name)
     }
 
+    pub fn register_neg_type_param_bounds(&mut self, name: String, bounds: Vec<Vec<String>>) {
+        self.neg_type_param_bounds.insert(name, bounds);
+    }
+
+    #[must_use]
+    pub fn neg_type_param_bounds_for(&self, name: &str) -> Option<&Vec<Vec<String>>> {
+        self.neg_type_param_bounds.get(name)
+    }
+
     /// Returns true if `type_name` has a registered `impl AspectName` in the env.
     /// `type_name` is resolved from `current_module`'s own scope (see
     /// `resolve_type_position_id`); `aspect_name` is matched literally by name — see
@@ -1087,6 +1126,17 @@ impl TypeDefinitionRegistry {
     #[must_use]
     pub fn fun_bounds_for(&self, name: &str) -> Option<&HashMap<TypeVar, Vec<String>>> {
         self.fun_bounds.get(name)
+    }
+
+    pub fn register_neg_fun_bounds(&mut self, name: String, bounds: HashMap<TypeVar, Vec<String>>) {
+        if !bounds.is_empty() {
+            self.neg_fun_bounds.insert(name, bounds);
+        }
+    }
+
+    #[must_use]
+    pub fn neg_fun_bounds_for(&self, name: &str) -> Option<&HashMap<TypeVar, Vec<String>>> {
+        self.neg_fun_bounds.get(name)
     }
 
     pub fn register_enum(&mut self, name: String, info: EnumInfo, declaring_module: Vec<String>) {
@@ -1284,8 +1334,18 @@ impl TypeDefinitionRegistry {
                 .entry(k.clone())
                 .or_insert_with(|| v.clone());
         }
+        for (k, v) in &other.neg_type_param_bounds {
+            self.neg_type_param_bounds
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
+        }
         for (k, v) in &other.fun_bounds {
             self.fun_bounds
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
+        }
+        for (k, v) in &other.neg_fun_bounds {
+            self.neg_fun_bounds
                 .entry(k.clone())
                 .or_insert_with(|| v.clone());
         }
@@ -1606,6 +1666,10 @@ impl InferContext {
 
     pub fn register_fun_bounds(&mut self, name: String, bounds: HashMap<TypeVar, Vec<String>>) {
         self.registry.register_fun_bounds(name, bounds);
+    }
+
+    pub fn register_neg_fun_bounds(&mut self, name: String, bounds: HashMap<TypeVar, Vec<String>>) {
+        self.registry.register_neg_fun_bounds(name, bounds);
     }
 
     #[must_use]

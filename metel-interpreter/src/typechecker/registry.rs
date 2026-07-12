@@ -512,6 +512,7 @@ fn register_generic_impl_method_schemes(
                 quantified_vars: quantified,
                 param_names: vec![],
                 bounds: vec![],
+                neg_bounds: vec![],
                 ty: InferType::Fun(param_types, Box::new(ret_ty)),
             },
             // struct_tvars: only the type's params are pinned from the receiver;
