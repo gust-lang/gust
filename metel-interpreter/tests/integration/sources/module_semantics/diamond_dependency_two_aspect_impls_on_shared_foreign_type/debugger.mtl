@@ -1,0 +1,11 @@
+import base::Point;
+
+pub aspect Debugger {
+    fun dbg(self) -> String;
+}
+
+impl Debugger for Point {
+    fun dbg(self) -> String {
+        return "point-debug";
+    }
+}

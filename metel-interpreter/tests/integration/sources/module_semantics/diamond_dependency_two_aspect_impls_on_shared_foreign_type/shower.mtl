@@ -1,0 +1,11 @@
+import base::Point;
+
+pub aspect Shower {
+    fun show(self) -> String;
+}
+
+impl Shower for Point {
+    fun show(self) -> String {
+        return "point";
+    }
+}

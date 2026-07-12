@@ -1290,14 +1290,23 @@ impl TypeDefinitionRegistry {
                 .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.method_env {
-            self.method_env
-                .entry(k.clone())
-                .or_insert_with(|| v.clone());
+            // Merge per-method, not per-type (see `method_scheme_env` above): two
+            // independent modules can each implement a different aspect for the
+            // same foreign type (e.g. `impl Shower for Point` in one module and
+            // `impl Debugger for Point` in another). A type-level or_insert would
+            // silently drop whichever one is merged second.
+            let entry = self.method_env.entry(k.clone()).or_default();
+            for (method_name, ty) in v {
+                entry.entry(method_name.clone()).or_insert_with(|| ty.clone());
+            }
         }
         for (k, v) in &other.method_receiver_env {
-            self.method_receiver_env
-                .entry(k.clone())
-                .or_insert_with(|| v.clone());
+            let entry = self.method_receiver_env.entry(k.clone()).or_default();
+            for (method_name, receiver) in v {
+                entry
+                    .entry(method_name.clone())
+                    .or_insert_with(|| receiver.clone());
+            }
         }
         for (k, v) in &other.enum_env {
             self.enum_env.entry(k.clone()).or_insert_with(|| v.clone());
