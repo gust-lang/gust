@@ -684,11 +684,13 @@ pub struct TypeScheme {
     /// inverting the `impl_aspect_env_has` query (RFC-0072, issue #243).
     pub neg_bounds: Vec<Vec<String>>,
     /// Per-quantified-var projection metadata (RFC-0082). Index-aligned with
-    /// `quantified_vars`. `Some((position, aspect_name, assoc_name))` means the
+    /// `quantified_vars`. `Some((position, aspect_name, assoc_name, placeholder_tv))` means the
     /// i-th quantified var has a projection `T::AssocName` through `aspect_name`.
+    /// `placeholder_tv` is the original TypeVar of the projection placeholder (before renaming),
+    /// used at instantiation time to find the fresh copy and bind it.
     /// `None` means no projection declared for this position. The `position` is
     /// the 0-based index into `quantified_vars` (redundant but explicit).
-    pub assoc_projections: Vec<Option<(usize, String, String)>>,
+    pub assoc_projections: Vec<Option<(usize, String, String, TypeVar)>>,
     /// Per-quantified-var equality constraints (RFC-0082 §4).
     /// `assoc_eq_constraints[i]` lists `(left_proj, right_proj, type)` constraints
     /// where both sides resolve to the i-th quantified var's projection.
@@ -741,11 +743,12 @@ impl TypeScheme {
     }
 
     /// Attach per-quantified-var associated-type projection metadata (RFC-0082).
-    /// Each entry in `proj_map` maps a quantified `TypeVar` to its projection info.
+    /// Each entry in `proj_map` maps a quantified `TypeVar` to its projection info
+    /// including the placeholder TypeVar for the projection.
     #[must_use]
     pub fn with_assoc_projections(
         mut self,
-        proj_map: &std::collections::HashMap<TypeVar, (usize, String, String)>,
+        proj_map: &std::collections::HashMap<TypeVar, (usize, String, String, TypeVar)>,
     ) -> Self {
         if proj_map.is_empty() {
             return self;
@@ -755,8 +758,7 @@ impl TypeScheme {
             .iter()
             .enumerate()
             .map(|(i, v)| proj_map.get(v).cloned().or_else(|| {
-                // Still allow position-based lookup for robustness
-                proj_map.values().find(|(pos, _, _)| *pos == i).cloned()
+                proj_map.values().find(|(pos, _, _, _)| *pos == i).cloned()
             }))
             .collect();
         self

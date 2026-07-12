@@ -18,6 +18,31 @@ use super::conversions::{
 };
 use super::FunGeneralization;
 
+/// Build the per-quantified-var assoc_projections map from the body's recorded
+/// projection log and the post-solve substitution. Each entry
+/// `(base_tv, aspect, assoc, placeholder)` is resolved through `subst`; if
+/// `base_tv` is still a free `Var` after resolution, it's a quantified var in
+/// the scheme and gets its projection info attached.
+fn build_assoc_projection_map(
+    body_assoc_log: &[(TypeVar, String, String, TypeVar)],
+    subst: &crate::typeinference::Substitution,
+    scheme: &crate::typeinference::TypeScheme,
+) -> std::collections::HashMap<TypeVar, (usize, String, String, TypeVar)> {
+    use std::collections::HashMap;
+    let mut map: HashMap<TypeVar, (usize, String, String, TypeVar)> = HashMap::new();
+    for (base_tv, aspect, assoc, placeholder) in body_assoc_log {
+        let resolved = match subst.apply(&InferType::Var(*base_tv)) {
+            InferType::Var(v) => v,
+            _ => continue,
+        };
+        if let Some(pos) = scheme.quantified_vars.iter().position(|&v| v == resolved) {
+            map.entry(resolved)
+                .or_insert_with(|| (pos, aspect.clone(), assoc.clone(), *placeholder));
+        }
+    }
+    map
+}
+
 /// Resolve a type annotation, substituting any name that matches the current
 /// function's generic type params with the corresponding `TypeVar` rather than
 /// producing a Named type.  Must be used for all annotations inside function
@@ -633,6 +658,8 @@ fn infer_fun_decl(
     ctx.pop_return_type(saved_ret);
     ctx.swap_type_param_bounds(saved_tp_bounds);
     ctx.swap_type_params(saved_type_params);
+    // Capture the projection log recorded during this function's body BEFORE restoring.
+    let body_assoc_log = ctx.take_recorded_assoc_projections();
     ctx.restore_assoc_projections(saved_assoc_memo, saved_assoc_log);
     ctx.pop_scope();
 
@@ -664,6 +691,13 @@ fn infer_fun_decl(
     }
 
     let scheme = generalize(resolved_ty.clone(), &env_fvs);
+    // Attach assoc_projections if any projections were recorded during body inference.
+    let scheme = if !body_assoc_log.is_empty() {
+        let proj_map = build_assoc_projection_map(&body_assoc_log, &partial_subst, &scheme);
+        scheme.with_assoc_projections(&proj_map)
+    } else {
+        scheme
+    };
     ctx.bind_poly(fun.name.clone(), scheme);
 
     // After solving, the original TypeVars may have been unified with others.
@@ -823,6 +857,7 @@ fn infer_impl_method(
     // Native methods have no Metel body; their signature comes entirely from
     // annotations (METEL-181). Skip body inference but still register the
     // method scheme below so call sites resolve.
+    let mut body_assoc_log = Vec::new();
     if method.native.is_none() {
         ctx.push_scope();
         for (p, pt) in method.params.iter().zip(param_types.iter()) {
@@ -839,8 +874,10 @@ fn infer_impl_method(
         ctx.pop_return_type(saved_ret);
         ctx.swap_type_param_bounds(saved_tp_bounds);
         ctx.swap_type_params(saved_type_params);
+        let body_assoc_log_inner = ctx.take_recorded_assoc_projections();
         ctx.restore_assoc_projections(saved_assoc_memo, saved_assoc_log);
         ctx.pop_scope();
+        body_assoc_log = body_assoc_log_inner;
     }
 
     let solved = ctx.solve()?;
@@ -871,6 +908,12 @@ fn infer_impl_method(
             .any(|v| struct_tvars_free.contains(v))
     {
         let scheme = generalize(resolved_fun_ty, &std::collections::HashSet::new());
+        let scheme = if !body_assoc_log.is_empty() {
+            let proj_map = build_assoc_projection_map(&body_assoc_log, &partial_subst, &scheme);
+            scheme.with_assoc_projections(&proj_map)
+        } else {
+            scheme
+        };
         ctx.register_method_scheme(
             target_name.to_string(),
             method.name.clone(),

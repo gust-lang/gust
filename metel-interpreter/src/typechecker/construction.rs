@@ -602,6 +602,8 @@ fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl
             param_names: vec![],
             bounds: vec![],
             neg_bounds: vec![],
+            assoc_projections: vec![],
+            assoc_eq_constraints: vec![],
             ty: InferType::Fun(
                 entry
                     .params
@@ -2645,9 +2647,9 @@ fn construct_call(
                 )
             })?;
             let (concrete, var_map) = match &explicit_tys {
-                Some(tys) => instantiate_scheme_with_turbofish(scheme, tys, span)?,
+                Some(tys) => instantiate_scheme_with_turbofish(scheme, tys, span, ctx.registry, ctx.current_module)?,
                 None => {
-                    match instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen) {
+                    match instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen, ctx.registry, ctx.current_module) {
                         Ok(result) => result,
                         Err(e) => {
                             // Arg-based instantiation failed (e.g. zero-arg generic call
@@ -2661,6 +2663,8 @@ fn construct_call(
                                     expected,
                                     span,
                                     &mut ctx.gen,
+                                    ctx.registry,
+                                    ctx.current_module,
                                 )
                                 .map_err(|_| e)?,
                                 None => return Err(e),
@@ -2700,9 +2704,9 @@ fn construct_call(
             let joined = segments.join("::");
             let scheme = ctx.scheme_env.get(joined.as_str()).unwrap();
             let (concrete, var_map) = match &explicit_tys {
-                Some(tys) => instantiate_scheme_with_turbofish(scheme, tys, span)?,
+                Some(tys) => instantiate_scheme_with_turbofish(scheme, tys, span, ctx.registry, ctx.current_module)?,
                 None => {
-                    match instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen) {
+                    match instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen, ctx.registry, ctx.current_module) {
                         Ok(result) => result,
                         Err(e) => {
                             // Arg-based instantiation failed (e.g. zero-arg generic constructor).
@@ -2714,6 +2718,8 @@ fn construct_call(
                                     expected,
                                     span,
                                     &mut ctx.gen,
+                                    ctx.registry,
+                                    ctx.current_module,
                                 )
                                 .map_err(|_| e)?,
                                 None => return Err(e),
@@ -2758,8 +2764,8 @@ fn construct_call(
             let last = segments.last().unwrap().clone();
             let scheme = ctx.scheme_env.get(last.as_str()).unwrap();
             let (concrete, var_map) = match &explicit_tys {
-                Some(tys) => instantiate_scheme_with_turbofish(scheme, tys, span)?,
-                None => instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen)?,
+                Some(tys) => instantiate_scheme_with_turbofish(scheme, tys, span, ctx.registry, ctx.current_module)?,
+                None => instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen, ctx.registry, ctx.current_module)?,
             };
             check_fun_call_bounds(&last, &var_map, span, ctx.registry, ctx.current_module)?;
             check_scheme_bounds(
@@ -2790,8 +2796,8 @@ fn construct_call(
         } if ctx.lookup(resolved).is_none() && ctx.scheme_env.contains_key(resolved.as_str()) => {
             let scheme = ctx.scheme_env.get(resolved.as_str()).unwrap();
             let (concrete, var_map) = match &explicit_tys {
-                Some(tys) => instantiate_scheme_with_turbofish(scheme, tys, span)?,
-                None => instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen)?,
+                Some(tys) => instantiate_scheme_with_turbofish(scheme, tys, span, ctx.registry, ctx.current_module)?,
+                None => instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen, ctx.registry, ctx.current_module)?,
             };
             check_fun_call_bounds(resolved, &var_map, span, ctx.registry, ctx.current_module)?;
             check_scheme_bounds(
@@ -3087,6 +3093,8 @@ fn instantiate_scheme_for_call(
     arg_types: &[&Type],
     span: &Span,
     gen: &mut TypeVarGenerator,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
 ) -> Result<(Type, HashMap<TypeVar, Type>), MetelError> {
     let (instance, renaming) = typeinference::instantiate_with_renaming(scheme, gen);
 
@@ -3102,6 +3110,28 @@ fn instantiate_scheme_for_call(
             MetelError::type_error(TypeErrorCode::T0001, "argument type mismatch", span)
         })?;
         subst = subst.compose(&s);
+    }
+
+    // RFC-0082 backfill: for each projection in the scheme, resolve the base
+    // type param to a concrete type and bind the projection's placeholder var
+    // to the concrete associated type from the impl.
+    for proj in &scheme.assoc_projections {
+        if let Some((base_pos, aspect, assoc, placeholder_tv)) = proj {
+            let base_orig = scheme.quantified_vars[*base_pos];
+            let fresh_base = renaming.get(&base_orig).copied().unwrap_or(base_orig);
+            if let InferType::Named(base_name, _) = subst.apply(&InferType::Var(fresh_base)) {
+                if let Some(concrete_ty) =
+                    registry.impl_assoc_type(current_module, &base_name, aspect, assoc)
+                {
+                    if let Some(fresh_placeholder) = renaming.get(placeholder_tv) {
+                        subst.bind(
+                            *fresh_placeholder,
+                            InferType::Concrete(concrete_ty.clone()),
+                        );
+                    }
+                }
+            }
+        }
     }
 
     let concrete_params: Vec<Type> = params
@@ -3128,6 +3158,8 @@ fn instantiate_scheme_with_turbofish(
     scheme: &TypeScheme,
     explicit_types: &[Type],
     span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
 ) -> Result<(Type, HashMap<TypeVar, Type>), MetelError> {
     if explicit_types.len() != scheme.quantified_vars.len() {
         return Err(MetelError::type_error(
@@ -3146,6 +3178,20 @@ fn instantiate_scheme_with_turbofish(
         subst.bind(qvar, type_to_infer(concrete_ty));
         var_to_concrete.insert(qvar, concrete_ty.clone());
     }
+    // RFC-0082 backfill: bind projection placeholder vars to their concrete associated types.
+    for proj in &scheme.assoc_projections {
+        if let Some((_base_pos, aspect, assoc, placeholder_tv)) = proj {
+            if let Some(base_concrete) = var_to_concrete.get(&scheme.quantified_vars[*_base_pos]) {
+                if let Type::Named(base_name, _) = base_concrete {
+                    if let Some(concrete_ty) =
+                        registry.impl_assoc_type(current_module, base_name, aspect, assoc)
+                    {
+                        subst.bind(*placeholder_tv, InferType::Concrete(concrete_ty.clone()));
+                    }
+                }
+            }
+        }
+    }
     let instantiated = subst.apply(&scheme.ty);
     let concrete_ty = infer_type_to_type(&instantiated, span)?;
     Ok((concrete_ty, var_to_concrete))
@@ -3160,6 +3206,8 @@ fn instantiate_scheme_with_expected_ret(
     expected_ret: &Type,
     span: &Span,
     gen: &mut TypeVarGenerator,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
 ) -> Result<(Type, HashMap<TypeVar, Type>), MetelError> {
     let (instance, renaming) = typeinference::instantiate_with_renaming(scheme, gen);
     let InferType::Fun(params, ret) = instance else {
@@ -3182,6 +3230,25 @@ fn instantiate_scheme_with_expected_ret(
         )
     })?;
     subst = subst.compose(&s);
+    // RFC-0082 backfill: bind projection placeholder vars to their concrete associated types.
+    for proj in &scheme.assoc_projections {
+        if let Some((base_pos, aspect, assoc, placeholder_tv)) = proj {
+            let base_orig = scheme.quantified_vars[*base_pos];
+            let fresh_base = renaming.get(&base_orig).copied().unwrap_or(base_orig);
+            if let InferType::Named(base_name, _) = subst.apply(&InferType::Var(fresh_base)) {
+                if let Some(concrete_ty) =
+                    registry.impl_assoc_type(current_module, &base_name, aspect, assoc)
+                {
+                    if let Some(fresh_placeholder) = renaming.get(placeholder_tv) {
+                        subst.bind(
+                            *fresh_placeholder,
+                            InferType::Concrete(concrete_ty.clone()),
+                        );
+                    }
+                }
+            }
+        }
+    }
     let concrete_params: Vec<Type> = params
         .iter()
         .map(|p| infer_type_to_type(&subst.apply(p), span))
