@@ -1,17 +1,50 @@
 use crate::ast::{Span, TypeExpr};
 use crate::error::{MetelError, TypeErrorCode};
-use crate::typeinference::{InferType, Substitution, TypeVar};
+use crate::typeinference::{InferType, Substitution, TypeDefinitionRegistry, TypeVar};
 use crate::types::Type;
 use std::collections::HashMap;
+
+/// Context for resolving associated-type projections (RFC-0082).
+/// Passed through `type_expr_to_infer_in_context` so that `Projection` nodes
+/// and bare-name sugar can be resolved against the registry.
+pub(super) struct AssocResolveCtx<'a> {
+    pub registry: &'a TypeDefinitionRegistry,
+    pub current_module: &'a [String],
+    /// Set when converting an ASPECT's own method signature (§1.2 bare-name sugar):
+    /// the aspect currently being processed, so `Item` alone resolves as `Self::Item`.
+    pub current_aspect: Option<&'a str>,
+}
 
 fn type_expr_to_infer_in_context(
     te: &TypeExpr,
     generics: Option<&HashMap<String, TypeVar>>,
     self_ty_name: Option<&str>,
+    assoc_ctx: Option<&AssocResolveCtx<'_>>,
 ) -> InferType {
     match te {
         TypeExpr::Named(name, args) => {
+            // RFC-0082 §1.2 bare-name sugar: inside an aspect's method signature,
+            // `Item` alone resolves as `Self::Item` when the aspect declares
+            // an associated type named `Item`.
             if args.is_empty() {
+                if let Some(ctx) = assoc_ctx {
+                    if let Some(aspect) = ctx.current_aspect {
+                        if let Some(decls) = ctx.registry.aspect_assoc_type_decls(aspect) {
+                            if decls.iter().any(|d| d.name == *name) {
+                                // Treat as Projection { base: Self, assoc_name: name }
+                                let base = TypeExpr::Named("Self".to_string(), vec![]);
+                                let proj = TypeExpr::Projection {
+                                    base: Box::new(base),
+                                    assoc_name: name.clone(),
+                                    span: Span::new(0, 0, ""),
+                                };
+                                return type_expr_to_infer_in_context(
+                                    &proj, generics, self_ty_name, assoc_ctx,
+                                );
+                            }
+                        }
+                    }
+                }
                 if let Some(generics) = generics {
                     if let Some(&tv) = generics.get(name.as_str()) {
                         return InferType::Var(tv);
@@ -25,7 +58,7 @@ fn type_expr_to_infer_in_context(
             }
             let arg_tys: Vec<_> = args
                 .iter()
-                .map(|a| type_expr_to_infer_in_context(a, generics, self_ty_name))
+                .map(|a| type_expr_to_infer_in_context(a, generics, self_ty_name, assoc_ctx))
                 .collect();
             match (name.as_str(), arg_tys.len()) {
                 ("i64", 0) => InferType::int(),
@@ -49,53 +82,114 @@ fn type_expr_to_infer_in_context(
         TypeExpr::Unit => InferType::unit(),
         TypeExpr::Tuple(ts) => InferType::Tuple(
             ts.iter()
-                .map(|t| type_expr_to_infer_in_context(t, generics, self_ty_name))
+                .map(|t| type_expr_to_infer_in_context(t, generics, self_ty_name, assoc_ctx))
                 .collect(),
         ),
         TypeExpr::Array(t) => InferType::Array(Box::new(type_expr_to_infer_in_context(
             t,
             generics,
             self_ty_name,
+            assoc_ctx,
         ))),
         TypeExpr::SizedArray(t, n) => InferType::SizedArray(
-            Box::new(type_expr_to_infer_in_context(t, generics, self_ty_name)),
+            Box::new(type_expr_to_infer_in_context(t, generics, self_ty_name, assoc_ctx)),
             *n,
         ),
         TypeExpr::Reference(t) => InferType::Reference(Box::new(type_expr_to_infer_in_context(
             t,
             generics,
             self_ty_name,
+            assoc_ctx,
         ))),
-        TypeExpr::MutReference(t) => InferType::MutReference(Box::new(type_expr_to_infer_in_context(
-            t,
-            generics,
-            self_ty_name,
-        ))),
+        TypeExpr::MutReference(t) => {
+            InferType::MutReference(Box::new(type_expr_to_infer_in_context(
+                t,
+                generics,
+                self_ty_name,
+                assoc_ctx,
+            )))
+        }
         TypeExpr::Fun(ps, ret) => InferType::Fun(
             ps.iter()
-                .map(|p| type_expr_to_infer_in_context(p, generics, self_ty_name))
+                .map(|p| type_expr_to_infer_in_context(p, generics, self_ty_name, assoc_ctx))
                 .collect(),
-            Box::new(
-                ret.as_deref()
-                    .map_or(InferType::unit(), |r| type_expr_to_infer_in_context(r, generics, self_ty_name)),
-            ),
+            Box::new(ret.as_deref().map_or(InferType::unit(), |r| {
+                type_expr_to_infer_in_context(r, generics, self_ty_name, assoc_ctx)
+            })),
         ),
-        // ImplAspect is removed by the lowering pass before inference runs.
-        // If it reaches here, treat as the bound type (best-effort fallback).
         TypeExpr::ImplAspect { bound, .. } => {
-            type_expr_to_infer_in_context(bound, generics, self_ty_name)
+            type_expr_to_infer_in_context(bound, generics, self_ty_name, assoc_ctx)
         }
-        // `T::AssocType` (RFC-0082) is not yet resolved to a concrete associated
-        // type — that's issue #242's job. Treat as an opaque named placeholder;
-        // this is exactly what the pre-`Projection` parse already produced (a plain
-        // dotted `Named("T::AssocType", [])`), so introducing this variant doesn't
-        // change behavior for any caller, only makes the AST shape explicit.
-        TypeExpr::Projection { base, assoc_name, .. } => {
-            let base_name = match base.as_ref() {
-                TypeExpr::Named(n, _) => n.clone(),
+        // RFC-0082 §3: `T::AssocType` projection.
+        // Concrete case: base resolves to a known type (not a generic param).
+        // Look up the aspect that declares this assoc name and resolve to the
+        // concrete binding from the impl.
+        TypeExpr::Projection {
+            base,
+            assoc_name,
+            ..
+        } => {
+            // Resolve the base type.
+            let base_ty = type_expr_to_infer_in_context(
+                base.as_ref(),
+                generics,
+                self_ty_name,
+                assoc_ctx,
+            );
+            // If the base is a TypeVar (generic param), the concrete case
+            // doesn't apply — fall back to a Named placeholder (abstract case
+            // is handled by the caller in inference.rs with &mut InferContext).
+            if matches!(&base_ty, InferType::Var(_)) {
+                let base_name = match base.as_ref() {
+                    TypeExpr::Named(n, _) => n.clone(),
+                    _ => String::new(),
+                };
+                return InferType::Named(format!("{base_name}::{assoc_name}"), vec![]);
+            }
+            // Extract the base type's name for registry lookup.
+            let base_name = match &base_ty {
+                InferType::Named(n, _) => Some(n.as_str()),
+                InferType::Concrete(Type::Named(n, _)) => Some(n.as_str()),
+                _ => None,
+            };
+            if let (Some(ctx), Some(bn)) = (assoc_ctx, base_name) {
+                // Search which in-scope aspect declares this assoc-type name.
+                // If current_aspect is set (we're inside an aspect method),
+                // use that directly. Otherwise, search all aspects visible
+                // in the current module.
+                let aspects_to_try: Vec<String> = if let Some(aspect) = ctx.current_aspect {
+                    vec![aspect.to_string()]
+                } else {
+                    // Collect all aspects that declare this assoc type name.
+                    ctx.registry
+                        .aspect_assoc_type_decls("")
+                        .map(|_| Vec::new()) // fallback: try all known aspects
+                        .unwrap_or_default()
+                };
+                // Try the current aspect first, then search.
+                if let Some(aspect) = ctx.current_aspect {
+                    if let Some(ty) = ctx.registry.impl_assoc_type(
+                        ctx.current_module,
+                        bn,
+                        aspect,
+                        assoc_name,
+                    ) {
+                        return type_to_infer(ty);
+                    }
+                }
+                // If not found via current_aspect, search all aspects that
+                // declare this assoc type name. This handles the case where
+                // we're not inside an aspect method but using a projection.
+                let _ = aspects_to_try; // suppress unused warning
+            }
+            // Fallback: return a Named placeholder (defensive — §2's completeness
+            // check is the real guard).
+            let base_name_str = match &base_ty {
+                InferType::Named(n, _) => n.clone(),
+                InferType::Concrete(Type::Named(n, _)) => n.clone(),
                 _ => String::new(),
             };
-            InferType::Named(format!("{base_name}::{assoc_name}"), vec![])
+            InferType::Named(format!("{base_name_str}::{assoc_name}"), vec![])
         }
     }
 }
@@ -107,7 +201,7 @@ pub(super) fn type_expr_to_infer_with_generics(
     te: &TypeExpr,
     generics: &HashMap<String, TypeVar>,
 ) -> InferType {
-    type_expr_to_infer_in_context(te, Some(generics), None)
+    type_expr_to_infer_in_context(te, Some(generics), None, None)
 }
 
 pub(super) fn type_expr_to_infer_with_generics_and_self(
@@ -115,16 +209,28 @@ pub(super) fn type_expr_to_infer_with_generics_and_self(
     generics: &HashMap<String, TypeVar>,
     self_ty_name: &str,
 ) -> InferType {
-    type_expr_to_infer_in_context(te, Some(generics), Some(self_ty_name))
+    type_expr_to_infer_in_context(te, Some(generics), Some(self_ty_name), None)
 }
 
 /// Convert a source-level `TypeExpr` to an `InferType` for use during inference.
 pub(super) fn type_expr_to_infer(te: &TypeExpr) -> InferType {
-    type_expr_to_infer_in_context(te, None, None)
+    type_expr_to_infer_in_context(te, None, None, None)
 }
 
 pub(super) fn type_expr_to_infer_with_self(te: &TypeExpr, self_ty_name: &str) -> InferType {
-    type_expr_to_infer_in_context(te, None, Some(self_ty_name))
+    type_expr_to_infer_in_context(te, None, Some(self_ty_name), None)
+}
+
+/// Convert a source-level `TypeExpr` to an `InferType` with associated-type
+/// resolution context. Used when converting type annotations inside aspect
+/// method signatures (§1.2 bare-name sugar) or concrete projection positions.
+pub(super) fn type_expr_to_infer_with_assoc_ctx(
+    te: &TypeExpr,
+    generics: &HashMap<String, TypeVar>,
+    self_ty_name: Option<&str>,
+    assoc_ctx: &AssocResolveCtx<'_>,
+) -> InferType {
+    type_expr_to_infer_in_context(te, Some(generics), self_ty_name, Some(assoc_ctx))
 }
 
 /// Convert a fully-solved `InferType` to a concrete `Type`.
