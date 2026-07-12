@@ -142,7 +142,13 @@ git push -u origin sprint/N
 - Read the relevant issue before editing code.
 - Keep commits on the sprint branch.
 - Push after each logical unit of completed work.
-- If public docs changed, commit in `docs/` first, then commit the updated submodule pointer in this repo.
+- If public docs changed, commit in `docs/` first — straight to `metel-docs main`; that
+  repo is trunk-based with no branch tier of its own, see its `README.md` — then
+  commit the updated submodule pointer here, on `sprint/N`. The pointer is never
+  bumped directly on `develop` or `main`: `develop`'s pointer only moves as a side
+  effect of a sprint merging in (it's fine for it to lag `metel-docs main` between
+  sprints — treat it like a dependency pin, not a freshness target), and `main`'s
+  only moves at release time (see "Release Workflow" below).
 - **Update `docs/public/release-notes/changelog.md` in the same commit/session that lands the feature or fix, not later.** Add the entry under the current in-progress version's section (create it, marked "in progress on `sprint/N` — not yet released", if this is the first change of the sprint targeting a new version). The sprint-close gate below re-checks completeness; it is not when the changelog is first touched.
 
 ### Closing a Sprint
@@ -193,9 +199,12 @@ mode this workflow is designed against — not to re-run the sprint-close gate.
    Any RFC the release actually implements end-to-end should be at `4-implemented`
    (`rfc.py transition <id> --to implemented`), not left at `3-integrated` with
    stale "Not yet implemented" spec callouts.
-4. **Docs submodule in lockstep** - the `docs` submodule pointer in this repo
-   points at the exact `metel-docs` commit the changelog/spec entries above were
-   written against.
+4. **Docs submodule in lockstep** - bump the `docs` submodule pointer to
+   `metel-docs main`'s current tip as part of the release commit (this is the
+   only time `main`'s pointer moves at all). Since `metel-docs` is trunk-based
+   with no long-lived branches of its own, its `main` should already hold
+   everything the changelog/spec entries above were written against — this step
+   should never require reconciling an unmerged docs branch first.
 5. **Spec correctness** - spot-check that `docs/public/reference/spec.md` and its
    linked sections actually describe the behavior being released, not a stale or
    aspirational version of it.
