@@ -129,21 +129,6 @@ fn normalize_stmt(
 ) -> Result<(), MetelError> {
     match stmt {
         Stmt::Expr(e) => normalize_expr(e, scope, module_names, symbols),
-        Stmt::Return(r) => {
-            if let Some(v) = &mut r.value {
-                normalize_expr(v, scope, module_names, symbols)
-            } else {
-                Ok(())
-            }
-        }
-        Stmt::Break(b) => {
-            if let Some(v) = &mut b.value {
-                normalize_expr(v, scope, module_names, symbols)
-            } else {
-                Ok(())
-            }
-        }
-        Stmt::Continue(_) => Ok(()),
         Stmt::While(w) => {
             normalize_expr(&mut w.condition, scope, module_names, symbols)?;
             normalize_block(&mut w.body, scope, module_names, symbols)
@@ -294,6 +279,15 @@ fn normalize_expr(
             Ok(())
         }
         Expr::PropagateError { expr, .. } => normalize_expr(expr, scope, module_names, symbols),
+        Expr::Return(r) => match &mut r.value {
+            Some(v) => normalize_expr(v, scope, module_names, symbols),
+            None => Ok(()),
+        },
+        Expr::Break(b) => match &mut b.value {
+            Some(v) => normalize_expr(v, scope, module_names, symbols),
+            None => Ok(()),
+        },
+        Expr::Continue(_) => Ok(()),
     }
 }
 

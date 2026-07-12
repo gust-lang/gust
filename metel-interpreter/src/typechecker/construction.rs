@@ -930,47 +930,6 @@ fn construct_block(
 fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, MetelError> {
     match stmt {
         Stmt::Expr(e) => Ok(TypedStmt::Expr(construct_expr(e, None, ctx)?)),
-        Stmt::Return(r) => {
-            let return_ty = ctx.current_return_ty.clone();
-            let value = match &r.value {
-                Some(e) => {
-                    let constructed = construct_expr(e, return_ty.as_ref(), ctx)?;
-                    Some(match &return_ty {
-                        Some(t) => {
-                            let constructed = maybe_read_copy(t, constructed, e.span());
-                            maybe_singleton_coerce(t, constructed, e.span(), ctx.registry)?
-                        }
-                        None => constructed,
-                    })
-                }
-                None => None,
-            };
-            Ok(TypedStmt::Return(TypedReturnStmt {
-                value,
-                span: r.span.clone(),
-            }))
-        }
-        Stmt::Break(bs) => {
-            let break_ty = ctx.current_break_ty.clone();
-            let value = match &bs.value {
-                Some(e) => {
-                    let constructed = construct_expr(e, break_ty.as_ref(), ctx)?;
-                    Some(match &break_ty {
-                        Some(t) => {
-                            let constructed = maybe_read_copy(t, constructed, e.span());
-                            maybe_singleton_coerce(t, constructed, e.span(), ctx.registry)?
-                        }
-                        None => constructed,
-                    })
-                }
-                None => None,
-            };
-            Ok(TypedStmt::Break(TypedBreakStmt {
-                value,
-                span: bs.span.clone(),
-            }))
-        }
-        Stmt::Continue(span) => Ok(TypedStmt::Continue(span.clone())),
         Stmt::While(ws) => {
             let condition = construct_expr(&ws.condition, None, ctx)?;
             let body = construct_block(&ws.body, None, ctx)?;
@@ -1845,6 +1804,50 @@ fn construct_expr(
                 span: span.clone(),
             })
         }
+        // Issue #229: `return`/`break`/`continue` as expressions of type `!`,
+        // reachable anywhere (not just as a braced statement). Direct port of
+        // the former `Stmt::Return`/`Break`/`Continue` construction.
+        Expr::Return(r) => {
+            let return_ty = ctx.current_return_ty.clone();
+            let value = match &r.value {
+                Some(e) => {
+                    let constructed = construct_expr(e, return_ty.as_ref(), ctx)?;
+                    Some(Box::new(match &return_ty {
+                        Some(t) => {
+                            let constructed = maybe_read_copy(t, constructed, e.span());
+                            maybe_singleton_coerce(t, constructed, e.span(), ctx.registry)?
+                        }
+                        None => constructed,
+                    }))
+                }
+                None => None,
+            };
+            Ok(TypedExpr::Return(TypedReturnExpr {
+                value,
+                span: r.span.clone(),
+            }))
+        }
+        Expr::Break(b) => {
+            let break_ty = ctx.current_break_ty.clone();
+            let value = match &b.value {
+                Some(e) => {
+                    let constructed = construct_expr(e, break_ty.as_ref(), ctx)?;
+                    Some(Box::new(match &break_ty {
+                        Some(t) => {
+                            let constructed = maybe_read_copy(t, constructed, e.span());
+                            maybe_singleton_coerce(t, constructed, e.span(), ctx.registry)?
+                        }
+                        None => constructed,
+                    }))
+                }
+                None => None,
+            };
+            Ok(TypedExpr::Break(TypedBreakExpr {
+                value,
+                span: b.span.clone(),
+            }))
+        }
+        Expr::Continue(span) => Ok(TypedExpr::Continue(span.clone())),
     }
 }
 
@@ -1875,7 +1878,15 @@ fn builtin_pattern_method_expr(
     None
 }
 
+/// Issue #229: `break` can now be a block's own tail expression (e.g.
+/// `loop { if (c) { break 5 } }`, no longer requiring `break 5;` as a
+/// statement), so the tail must be checked too, not just `block.stmts`.
 fn find_loop_break_type(block: &TypedBlock) -> Option<Type> {
+    if let Some(tail) = &block.tail {
+        if let Some(ty) = find_break_in_expr(tail) {
+            return Some(ty);
+        }
+    }
     block.stmts.iter().find_map(find_break_in_decl)
 }
 
@@ -1888,22 +1899,25 @@ fn find_break_in_decl(decl: &TypedDecl) -> Option<Type> {
 
 fn find_break_in_stmt(stmt: &TypedStmt) -> Option<Type> {
     match stmt {
-        TypedStmt::Break(bs) => bs.value.as_ref().map(|v| v.ty().clone()),
         TypedStmt::Expr(expr) => find_break_in_expr(expr),
         // break inside a nested while/for/for-in exits that loop, not the outer loop
         TypedStmt::While(_) | TypedStmt::For(_) | TypedStmt::ForIn(_) => None,
-        TypedStmt::Return(_) | TypedStmt::Continue(_) => None,
     }
 }
 
 fn find_break_in_expr(expr: &TypedExpr) -> Option<Type> {
     match expr {
+        TypedExpr::Break(b) => Some(b.value.as_ref().map(|v| v.ty().clone()).unwrap_or(Type::Unit)),
         TypedExpr::If {
             then_branch,
             else_branch,
             ..
         } => find_loop_break_type(then_branch)
             .or_else(|| else_branch.as_ref().and_then(find_loop_break_type)),
+        // A `break` written as a match-arm body -- same shape as an `if`
+        // branch, previously never checked (a pre-existing gap, fixed here
+        // since #229 unifies match-arm bodies through the same mechanism).
+        TypedExpr::Match(m) => m.arms.iter().find_map(|a| find_loop_break_type(&a.body)),
         // break inside a nested loop exits the inner loop, not the outer
         TypedExpr::Loop { .. } => None,
         // break inside a closure doesn't escape to the enclosing loop
@@ -1965,17 +1979,21 @@ fn construct_match(
 
 /// RFC-0078: a block's own type when used as an expression (`if`/`match` branch
 /// body). The tail expression's type if there is one; else `!` if the block's
-/// last statement diverges (`return`/`break`/`continue`) — mirroring pass 1's
-/// tail-less handling (`infer_block`, `src/typechecker/inference.rs`) which
-/// construction previously didn't replicate, silently defaulting such blocks to
-/// `Unit` instead; else `Unit` for an ordinary non-diverging statement-only block.
+/// last statement is a `Never`-typed expression statement (`return`/`break`/
+/// `continue`, or any other diverging expression like `panic(msg)`) — mirroring
+/// pass 1's tail-less handling (`infer_block`, `src/typechecker/inference.rs`);
+/// else `Unit` for an ordinary non-diverging statement-only block. Since issue
+/// #229, `return`/`break`/`continue` are ordinary `Expr`s reached only through
+/// `TypedStmt::Expr`/a tail expression — the type check is generic rather than
+/// naming those variants specifically, which also means a bare `panic(msg);`
+/// (semicolon, not tail position) is correctly recognized as diverging too.
 fn block_result_type(block: &TypedBlock) -> Type {
     if let Some(tail) = &block.tail {
         return tail.ty().clone();
     }
     match block.stmts.last() {
         Some(TypedDecl::Stmt(stmt)) => match &**stmt {
-            TypedStmt::Return(_) | TypedStmt::Break(_) | TypedStmt::Continue(_) => Type::Never,
+            TypedStmt::Expr(e) if *e.ty() == Type::Never => Type::Never,
             _ => Type::Unit,
         },
         _ => Type::Unit,
@@ -1987,17 +2005,25 @@ fn block_result_type(block: &TypedBlock) -> Type {
 /// expression? These differ precisely for `return`: `block_result_type` above
 /// correctly treats a `return`-terminated block as `!`-typed for match/if
 /// arm-merging purposes (code after it is unreachable, sound at any type) — but
-/// a *function* ending in a reachable, ordinary `return 5;` does not diverge; it
-/// returns, which is exactly what `-> !` forbids. `return <expr>;` only counts
+/// a *function* ending in a reachable, ordinary `return 5` does not diverge; it
+/// returns, which is exactly what `-> !` forbids. `return <expr>` only counts
 /// as divergence here if `<expr>` itself never produces a value (e.g.
-/// `return panic(msg);`), same principle as the tail-expression case.
+/// `return panic(msg)`) — checked wherever `Return` appears, since issue #229
+/// lets it be either the block's tail expression or (wrapped in
+/// `TypedStmt::Expr`) an ordinary statement.
 fn fun_body_diverges(block: &TypedBlock) -> bool {
+    fn is_divergent_return(e: &TypedExpr) -> bool {
+        match e {
+            TypedExpr::Return(r) => r.value.as_ref().is_some_and(|v| *v.ty() == Type::Never),
+            other => *other.ty() == Type::Never,
+        }
+    }
     if let Some(tail) = &block.tail {
-        return *tail.ty() == Type::Never;
+        return is_divergent_return(tail);
     }
     match block.stmts.last() {
         Some(TypedDecl::Stmt(stmt)) => match &**stmt {
-            TypedStmt::Return(r) => r.value.as_ref().is_some_and(|v| *v.ty() == Type::Never),
+            TypedStmt::Expr(e) => is_divergent_return(e),
             _ => false,
         },
         _ => false,
@@ -3102,17 +3128,17 @@ fn construct_propagate_error(
         },
         guard: None,
         body: TypedBlock {
-            stmts: vec![TypedDecl::Stmt(Box::new(TypedStmt::Return(
-                TypedReturnStmt {
-                    value: Some(TypedExpr::StructLiteral {
+            stmts: vec![TypedDecl::Stmt(Box::new(TypedStmt::Expr(
+                TypedExpr::Return(TypedReturnExpr {
+                    value: Some(Box::new(TypedExpr::StructLiteral {
                         path: vec!["Result".to_string(), "Err".to_string()],
                         fields: vec![("error".to_string(), err_value)],
                         ty: return_ty,
                         type_id: Some(crate::symbols::SYM_TYPE_RESULT),
                         span: span.clone(),
-                    }),
+                    })),
                     span: span.clone(),
-                },
+                }),
             )))],
             tail: None,
             span: span.clone(),

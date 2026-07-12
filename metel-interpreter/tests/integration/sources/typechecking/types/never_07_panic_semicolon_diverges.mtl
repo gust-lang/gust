@@ -1,0 +1,12 @@
+// Issue #229/RFC-0078 §6: a bare `panic(msg);` (trailing `;`, not tail
+// position) as a function's last statement must still be recognized as
+// divergent. Previously `fun_body_diverges` only special-cased the removed
+// `TypedStmt::Return`/`Break`/`Continue` variants directly and otherwise
+// always returned `false` for any other last-statement shape -- a latent gap
+// that made this exact case (a semicolon-terminated diverging call, not a
+// tail expression) incorrectly rejected under `-> !`.
+fun abort_stmt(msg: String) -> ! {
+    panic(msg);
+}
+
+fun main() {}

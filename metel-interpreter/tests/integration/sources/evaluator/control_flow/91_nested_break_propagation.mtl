@@ -1,0 +1,24 @@
+// Issue #229: a `break` written as a nested `if`-tail or match-arm-tail must
+// still correctly propagate to the enclosing loop's own inferred type --
+// `find_loop_break_type` previously only checked `block.stmts`, never
+// `block.tail` and never recursed into `Match`, both pre-existing gaps only
+// reachable in practice once `break` could be a tail expression at all.
+fun via_if(c: boolean) -> i64 {
+    loop {
+        if (c) { break 7 }
+    }
+}
+
+fun via_match(c: boolean) -> i64 {
+    loop {
+        match c {
+            true => break 8,
+            false => break 8,
+        }
+    }
+}
+
+fun main() {
+    assert(via_if(true) == 7);
+    assert(via_match(true) == 8);
+}

@@ -692,9 +692,6 @@ fn parse_stmt(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Stmt,
         Rule::while_stmt => Ok(Stmt::While(parse_while_stmt(inner, filename)?)),
         Rule::for_stmt => Ok(Stmt::For(Box::new(parse_for_stmt(inner, filename)?))),
         Rule::for_in_stmt => Ok(Stmt::ForIn(Box::new(parse_for_in_stmt(inner, filename)?))),
-        Rule::return_stmt => Ok(Stmt::Return(parse_return_stmt(inner, filename)?)),
-        Rule::break_stmt => Ok(Stmt::Break(parse_break_stmt(inner, filename)?)),
-        Rule::continue_stmt => Ok(Stmt::Continue(Span::of(&inner, filename))),
         Rule::expr_stmt => {
             let expr_pair = inner
                 .into_inner()
@@ -787,30 +784,33 @@ fn parse_for_stmt(
     })
 }
 
-fn parse_return_stmt(
+fn parse_return_expr(
     pair: pest::iterators::Pair<Rule>,
     filename: &str,
-) -> Result<ReturnStmt, MetelError> {
+) -> Result<ReturnExpr, MetelError> {
     let span = Span::of(&pair, filename);
+    // `.into_inner()`'s first pair is the atomic `return_kw` marker (needed for
+    // its own word-boundary lookahead, see grammar.pest) — skip to the actual
+    // `expr` pair, if the value was present at all.
     let value = pair
         .into_inner()
-        .next()
-        .map(|p| parse_expr(p, filename))
+        .find(|p| p.as_rule() == Rule::expr)
+        .map(|p| parse_expr(p, filename).map(Box::new))
         .transpose()?;
-    Ok(ReturnStmt { value, span })
+    Ok(ReturnExpr { value, span })
 }
 
-fn parse_break_stmt(
+fn parse_break_expr(
     pair: pest::iterators::Pair<Rule>,
     filename: &str,
-) -> Result<BreakStmt, MetelError> {
+) -> Result<BreakExpr, MetelError> {
     let span = Span::of(&pair, filename);
     let value = pair
         .into_inner()
-        .next()
-        .map(|p| parse_expr(p, filename))
+        .find(|p| p.as_rule() == Rule::expr)
+        .map(|p| parse_expr(p, filename).map(Box::new))
         .transpose()?;
-    Ok(BreakStmt { value, span })
+    Ok(BreakExpr { value, span })
 }
 
 /// Entry point: consumes one `expr` pair.
@@ -858,6 +858,9 @@ fn parse_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr,
         Rule::match_expr => Ok(Expr::Match(parse_match_expr(pair, filename)?)),
         Rule::if_expr => parse_if_expr(pair, filename),
         Rule::loop_expr => parse_loop_expr(pair, filename),
+        Rule::return_expr => Ok(Expr::Return(parse_return_expr(pair, filename)?)),
+        Rule::break_expr => Ok(Expr::Break(parse_break_expr(pair, filename)?)),
+        Rule::continue_expr => Ok(Expr::Continue(Span::of(&pair, filename))),
         Rule::closure_expr => parse_closure_expr(pair, filename),
         Rule::struct_literal => parse_struct_literal(pair, filename),
         r => Err(MetelError::internal(format!(
@@ -1364,6 +1367,19 @@ fn shift_expr_span(expr: &mut Expr, base_start: usize, base_line: u32, base_col:
             }
             shift_span(span, base_start, base_line, base_col);
         }
+        Expr::Return(ret) => {
+            if let Some(expr) = &mut ret.value {
+                shift_expr_span(expr, base_start, base_line, base_col);
+            }
+            shift_span(&mut ret.span, base_start, base_line, base_col);
+        }
+        Expr::Break(brk) => {
+            if let Some(expr) = &mut brk.value {
+                shift_expr_span(expr, base_start, base_line, base_col);
+            }
+            shift_span(&mut brk.span, base_start, base_line, base_col);
+        }
+        Expr::Continue(span) => shift_span(span, base_start, base_line, base_col),
     }
 }
 
@@ -1494,19 +1510,6 @@ fn shift_stmt_span(stmt: &mut Stmt, base_start: usize, base_line: u32, base_col:
             shift_block_span(&mut fi.body, base_start, base_line, base_col);
             shift_span(&mut fi.span, base_start, base_line, base_col);
         }
-        Stmt::Return(ret) => {
-            if let Some(expr) = &mut ret.value {
-                shift_expr_span(expr, base_start, base_line, base_col);
-            }
-            shift_span(&mut ret.span, base_start, base_line, base_col);
-        }
-        Stmt::Break(brk) => {
-            if let Some(expr) = &mut brk.value {
-                shift_expr_span(expr, base_start, base_line, base_col);
-            }
-            shift_span(&mut brk.span, base_start, base_line, base_col);
-        }
-        Stmt::Continue(span) => shift_span(span, base_start, base_line, base_col),
         Stmt::Expr(expr) => shift_expr_span(expr, base_start, base_line, base_col),
     }
 }
@@ -2151,30 +2154,6 @@ fn parse_match_arm(
             Block {
                 stmts: vec![],
                 tail: Some(Box::new(expr)),
-                span: body_span,
-            }
-        }
-        Rule::return_arm => {
-            let body_span = Span::of(body_pair, filename);
-            let stmt = Decl::Stmt(Box::new(Stmt::Return(parse_return_stmt(
-                body_pair.clone(),
-                filename,
-            )?)));
-            Block {
-                stmts: vec![stmt],
-                tail: None,
-                span: body_span,
-            }
-        }
-        Rule::break_arm => {
-            let body_span = Span::of(body_pair, filename);
-            let stmt = Decl::Stmt(Box::new(Stmt::Break(parse_break_stmt(
-                body_pair.clone(),
-                filename,
-            )?)));
-            Block {
-                stmts: vec![stmt],
-                tail: None,
                 span: body_span,
             }
         }

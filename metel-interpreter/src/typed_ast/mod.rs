@@ -208,9 +208,6 @@ pub enum TypedStmt {
     While(TypedWhileStmt),
     For(Box<TypedForStmt>),
     ForIn(Box<TypedForInStmt>),
-    Return(TypedReturnStmt),
-    Break(TypedBreakStmt),
-    Continue(#[allow(dead_code)] Span),
     Expr(TypedExpr),
 }
 
@@ -249,15 +246,15 @@ pub struct TypedForInStmt {
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedReturnStmt {
-    pub value: Option<TypedExpr>,
+pub struct TypedReturnExpr {
+    pub value: Option<Box<TypedExpr>>,
     #[allow(dead_code)] // kept for future error messages
     pub span: Span,
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedBreakStmt {
-    pub value: Option<TypedExpr>,
+pub struct TypedBreakExpr {
+    pub value: Option<Box<TypedExpr>>,
     #[allow(dead_code)] // kept for future error messages
     pub span: Span,
 }
@@ -420,6 +417,13 @@ pub enum TypedExpr {
         ty: Type,
         span: Span,
     },
+    /// Issue #229: `return`/`break`/`continue` as expressions, always of type
+    /// `!` (RFC-0078) — reachable anywhere an expression is valid, not just as
+    /// a braced statement. `ty()` returns `&Type::Never` directly rather than
+    /// storing a redundant `ty` field on every node, since it never varies.
+    Return(TypedReturnExpr),
+    Break(TypedBreakExpr),
+    Continue(Span),
 }
 
 impl TypedExpr {
@@ -448,6 +452,7 @@ impl TypedExpr {
             | TypedExpr::StructLiteral { ty, .. }
             | TypedExpr::SingletonCoerce { ty, .. } => ty,
             TypedExpr::Match(m) => &m.expr_type,
+            TypedExpr::Return(_) | TypedExpr::Break(_) | TypedExpr::Continue(_) => &Type::Never,
         }
     }
 
@@ -476,6 +481,9 @@ impl TypedExpr {
             | TypedExpr::StructLiteral { span, .. }
             | TypedExpr::SingletonCoerce { span, .. } => span,
             TypedExpr::Match(m) => &m.span,
+            TypedExpr::Return(r) => &r.span,
+            TypedExpr::Break(b) => &b.span,
+            TypedExpr::Continue(s) => s,
         }
     }
 }

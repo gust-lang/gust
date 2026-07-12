@@ -273,9 +273,6 @@ pub enum Stmt {
     While(WhileStmt),
     For(Box<ForStmt>),
     ForIn(Box<ForInStmt>),
-    Return(ReturnStmt),
-    Break(BreakStmt),
-    Continue(Span),
     Expr(Expr),
 }
 
@@ -312,14 +309,14 @@ pub struct ForInStmt {
 }
 
 #[derive(Debug, Clone)]
-pub struct ReturnStmt {
-    pub value: Option<Expr>,
+pub struct ReturnExpr {
+    pub value: Option<Box<Expr>>,
     pub span: Span,
 }
 
 #[derive(Debug, Clone)]
-pub struct BreakStmt {
-    pub value: Option<Expr>,
+pub struct BreakExpr {
+    pub value: Option<Box<Expr>>,
     pub span: Span,
 }
 
@@ -426,6 +423,12 @@ pub enum Expr {
         expr: Box<Expr>,
         span: Span,
     },
+    /// Issue #229: `return`/`break`/`continue` are expressions of type `!`
+    /// (RFC-0078 bottom-type subtyping/coercion), reachable anywhere an
+    /// expression is valid, not just inside a braced statement.
+    Return(ReturnExpr),
+    Break(BreakExpr),
+    Continue(Span),
 }
 
 impl Expr {
@@ -452,7 +455,10 @@ impl Expr {
             | Expr::Loop { span: s, .. }
             | Expr::Closure { span: s, .. }
             | Expr::StructLiteral { span: s, .. }
-            | Expr::PropagateError { span: s, .. } => s,
+            | Expr::PropagateError { span: s, .. }
+            | Expr::Continue(s) => s,
+            Expr::Return(r) => &r.span,
+            Expr::Break(b) => &b.span,
             Expr::Match(m) => &m.span,
         }
     }

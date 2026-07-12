@@ -198,17 +198,6 @@ fn elaborate_block(block: &mut TypedBlock, map: &DispatchMap) {
 fn elaborate_stmt(stmt: &mut TypedStmt, map: &DispatchMap) {
     match stmt {
         TypedStmt::Expr(e) => elaborate_expr(e, map),
-        TypedStmt::Return(r) => {
-            if let Some(v) = &mut r.value {
-                elaborate_expr(v, map);
-            }
-        }
-        TypedStmt::Break(b) => {
-            if let Some(v) = &mut b.value {
-                elaborate_expr(v, map);
-            }
-        }
-        TypedStmt::Continue(_) => {}
         TypedStmt::While(w) => {
             elaborate_expr(&mut w.condition, map);
             elaborate_block(&mut w.body, map);
@@ -317,6 +306,17 @@ fn elaborate_expr(expr: &mut TypedExpr, map: &DispatchMap) {
             }
         }
         TypedExpr::SingletonCoerce { inner, .. } => elaborate_expr(inner, map),
+        TypedExpr::Return(r) => {
+            if let Some(v) = &mut r.value {
+                elaborate_expr(v, map);
+            }
+        }
+        TypedExpr::Break(b) => {
+            if let Some(v) = &mut b.value {
+                elaborate_expr(v, map);
+            }
+        }
+        TypedExpr::Continue(_) => {}
         TypedExpr::Literal(..) | TypedExpr::Ident(..) | TypedExpr::Path(..) => {}
     }
 }

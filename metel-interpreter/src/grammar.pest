@@ -7,14 +7,19 @@
 //   keywords are matched as atomic rules to avoid consuming identifier prefixes
 //
 // Ordering invariant:
-//   `expr_stmt` is tried before `return_stmt` and `break_stmt` in `stmt` so
-//   that identifiers whose names start with a keyword prefix (e.g. `break_sum`,
-//   `return_value`) are treated as expressions, not as control-flow statements.
-//   This works because `break` / `return` alone fail `ident`'s `!keyword` guard,
-//   so `expr_stmt` never mis-parses actual break/return statements.
+//   `stmt` is tried before binding declarations in `decl` so that `let_x = 5;`
+//   is an assignment, not a declaration.
 //
-//   Similarly, `stmt` is tried before binding declarations in `decl` so
-//   that `let_x = 5;` is an assignment, not a declaration.
+//   `return`/`break`/`continue` are expressions (issue #229), living in
+//   `primary_expr` alongside `if`/`loop`/`match`. Unlike those three, their
+//   trailing component is optional (`return_expr`/`break_expr`) or absent
+//   entirely (`continue_expr`), so a prefix match like `"break"` followed by
+//   garbage can't be forced to fail-and-backtrack the way `"loop"` followed by
+//   non-`block` input can. Each rule therefore carries its own explicit
+//   word-boundary lookahead (`!(ASCII_ALPHANUMERIC | "_")`), matching the
+//   convention already used for `std_kw`/`self_kw`/`super_kw` and `keyword`
+//   below — correct regardless of alternation order, so `break_sum`/
+//   `return_value`/`continued` are never mis-parsed as a keyword plus garbage.
 
 // ── Whitespace and comments ───────────────────────────────────────────────────
 
@@ -96,10 +101,7 @@ stmt = {
     while_stmt
   | for_stmt
   | for_in_stmt
-  | continue_stmt
-  | expr_stmt         // before return/break so break_sum/return_val parse as exprs
-  | return_stmt
-  | break_stmt
+  | expr_stmt
 }
 
 block      = { "{" ~ block_item* ~ expr? ~ "}" }
@@ -117,10 +119,6 @@ for_stmt   = { "for" ~ "(" ~ for_init ~ expr? ~ ";" ~ expr? ~ ")" ~ block }
 for_init   = { expr_stmt | let_mut_decl | let_decl | ";" }
 
 for_in_stmt  = { "for" ~ "(" ~ "let" ~ mut_kw? ~ ident ~ "in" ~ expr ~ ")" ~ block }
-
-return_stmt   = { "return" ~ expr? ~ ";" }
-break_stmt    = { "break" ~ expr? ~ ";" }
-continue_stmt = { "continue" ~ ";" }
 
 // ── Expressions (precedence via layering) ─────────────────────────────────────
 
@@ -179,9 +177,29 @@ primary_expr = {
   | match_expr
   | if_expr
   | loop_expr
+  | return_expr
+  | break_expr
+  | continue_expr
   | struct_literal
   | path_expr
 }
+
+// Issue #229: `return`/`break`/`continue` as first-class expressions of type `!`,
+// reachable anywhere an expression is (block tail, braceless if-arm, match arm,
+// nested position) via the ordinary `!` subtyping rule (RFC-0078). The keyword
+// itself is a separate atomic (`@`) sub-rule, like `std_kw`/`self_kw`/`super_kw`
+// above — needed because a *non*-atomic rule (plain `{ }`) auto-inserts
+// whitespace between `~`-separated components, which would skip right past a
+// space before the word-boundary lookahead ran and check the wrong position
+// (e.g. `return Foo { .. }` would see the guard test "F", not the space right
+// after "return", wrongly rejecting it as if "return" were immediately
+// followed by an identifier character).
+return_expr   = { return_kw ~ expr? }
+break_expr    = { break_kw ~ expr? }
+continue_expr = { continue_kw }
+return_kw     = @{ "return" ~ !(ASCII_ALPHANUMERIC | "_") }
+break_kw      = @{ "break" ~ !(ASCII_ALPHANUMERIC | "_") }
+continue_kw   = @{ "continue" ~ !(ASCII_ALPHANUMERIC | "_") }
 
 tuple_or_paren = { "(" ~ expr ~ ("," ~ expr)+ ~ ")" | "(" ~ expr ~ ")" }
 repeat_array   = { "[" ~ expr ~ ";" ~ decimal_int ~ "]" }
@@ -190,9 +208,9 @@ array_lit      = { "[" ~ (expr ~ ("," ~ expr)* ~ ","?)? ~ "]" }
 // RFC-0078 §3.1: a match on a `!`-typed scrutinee is vacuously exhaustive with
 // zero arms — the arm list is optional to allow `match x { }`.
 match_expr  = { "match" ~ expr ~ "{" ~ (match_arm ~ ("," ~ match_arm)* ~ ","?)? ~ "}" }
-match_arm   = { pattern ~ ("if" ~ expr)? ~ "=>" ~ (block | return_arm | break_arm | expr) }
-return_arm  = { "return" ~ expr? }
-break_arm   = { "break" ~ expr? }
+// return_expr/break_expr/continue_expr are reachable through plain `expr` now
+// (issue #229) — no more return_arm/break_arm special-case needed here.
+match_arm   = { pattern ~ ("if" ~ expr)? ~ "=>" ~ (block | expr) }
 
 if_expr     = { "if" ~ "(" ~ expr ~ ")" ~ (block | expr) ~ ("else" ~ (if_expr | block | expr))? }
 loop_expr   = { "loop" ~ block }

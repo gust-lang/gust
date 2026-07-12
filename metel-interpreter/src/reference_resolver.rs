@@ -255,17 +255,6 @@ impl Walker<'_, '_> {
     fn resolve_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::Expr(e) => self.resolve_expr(e),
-            Stmt::Return(r) => {
-                if let Some(v) = &r.value {
-                    self.resolve_expr(v);
-                }
-            }
-            Stmt::Break(b) => {
-                if let Some(v) = &b.value {
-                    self.resolve_expr(v);
-                }
-            }
-            Stmt::Continue(_) => {}
             Stmt::While(w) => {
                 self.resolve_expr(&w.condition);
                 self.resolve_block(&w.body);
@@ -382,6 +371,17 @@ impl Walker<'_, '_> {
                     self.resolve_expr(v);
                 }
             }
+            Expr::Return(r) => {
+                if let Some(v) = &r.value {
+                    self.resolve_expr(v);
+                }
+            }
+            Expr::Break(b) => {
+                if let Some(v) = &b.value {
+                    self.resolve_expr(v);
+                }
+            }
+            Expr::Continue(_) => {}
         }
     }
 

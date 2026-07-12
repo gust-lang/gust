@@ -736,31 +736,21 @@ fn infer_stmt(
     fun_generalizations: &mut Vec<FunGeneralization>,
 ) -> Result<InferType, MetelError> {
     match stmt {
+        // Issue #229: `return`/`break`/`continue` are now `Expr` variants, so a
+        // bare `return 5;` used as a mid-block statement reaches here as an
+        // ordinary `Stmt::Expr`. Propagate `Never` when the inner expression
+        // is genuinely `Never`-typed (return/break/continue, or any other
+        // diverging expression like `panic(msg)`) rather than always
+        // discarding to `unit()` — needed so `infer_block`'s tail-less "last
+        // statement" type correctly reflects divergence.
         Stmt::Expr(e) => {
-            infer_expr(e, ctx, fun_generalizations)?;
-            Ok(InferType::unit())
+            let ty = infer_expr(e, ctx, fun_generalizations)?;
+            Ok(if ty == InferType::Never {
+                InferType::never()
+            } else {
+                InferType::unit()
+            })
         }
-        Stmt::Return(r) => {
-            let ret_ty = match &r.value {
-                Some(e) => infer_expr(e, ctx, fun_generalizations)?,
-                None => InferType::unit(),
-            };
-            if let Some(expected) = ctx.current_return_type().cloned() {
-                constrain_with_read_copy(ctx, ret_ty, expected, r.span.clone());
-            }
-            Ok(InferType::never())
-        }
-        Stmt::Break(bs) => {
-            let break_ty = match &bs.value {
-                Some(e) => infer_expr(e, ctx, fun_generalizations)?,
-                None => InferType::unit(),
-            };
-            if let Some(expected) = ctx.current_break_type().cloned() {
-                constrain_with_read_copy(ctx, break_ty, expected, bs.span.clone());
-            }
-            Ok(InferType::never())
-        }
-        Stmt::Continue(_) => Ok(InferType::never()),
         Stmt::While(ws) => {
             let cond_ty = infer_expr(&ws.condition, ctx, fun_generalizations)?;
             ctx.add_constraint(cond_ty, InferType::bool(), ws.span.clone());
@@ -1563,6 +1553,28 @@ fn infer_expr(
         Expr::PropagateError { expr, span } => {
             infer_propagate_error(expr, span, ctx, fun_generalizations)
         }
+        // Issue #229: `return`/`break`/`continue` as expressions of type `!`.
+        Expr::Return(r) => {
+            let ret_ty = match &r.value {
+                Some(e) => infer_expr(e, ctx, fun_generalizations)?,
+                None => InferType::unit(),
+            };
+            if let Some(expected) = ctx.current_return_type().cloned() {
+                constrain_with_read_copy(ctx, ret_ty, expected, r.span.clone());
+            }
+            Ok(InferType::never())
+        }
+        Expr::Break(b) => {
+            let break_ty = match &b.value {
+                Some(e) => infer_expr(e, ctx, fun_generalizations)?,
+                None => InferType::unit(),
+            };
+            if let Some(expected) = ctx.current_break_type().cloned() {
+                constrain_with_read_copy(ctx, break_ty, expected, b.span.clone());
+            }
+            Ok(InferType::never())
+        }
+        Expr::Continue(_) => Ok(InferType::never()),
     }
 }
 

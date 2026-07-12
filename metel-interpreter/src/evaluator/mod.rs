@@ -1689,22 +1689,6 @@ pub fn eval_stmt(
                 other => Ok(other),
             }
         }
-        TypedStmt::Return(r) => {
-            let val = match &r.value {
-                Some(e) => eval_expr(e, env, runtime)?.into_value(),
-                None => Value::Unit,
-            };
-            Ok(Signal::Return(val))
-        }
-        TypedStmt::Break(b) => {
-            let val = match &b.value {
-                Some(e) => eval_expr(e, env, runtime)?.into_value(),
-                None => Value::Unit,
-            };
-            Ok(Signal::Break(val))
-        }
-        TypedStmt::Continue(_) => Ok(Signal::Continue),
-
         TypedStmt::While(w) => {
             loop {
                 match eval_expr(&w.condition, env, runtime)? {
@@ -2282,6 +2266,25 @@ pub fn eval_expr(
                 )),
             }
         }
+
+        // Issue #229: `return`/`break`/`continue` as expressions. Mechanical
+        // port of the former `eval_stmt` bodies -- `eval_block`/`TypedExpr::If`/
+        // `TypedExpr::Loop` already thread arbitrary `Signal`s transparently.
+        TypedExpr::Return(r) => {
+            let val = match &r.value {
+                Some(e) => eval_expr(e, env, runtime)?.into_value(),
+                None => Value::Unit,
+            };
+            Ok(Signal::Return(val))
+        }
+        TypedExpr::Break(b) => {
+            let val = match &b.value {
+                Some(e) => eval_expr(e, env, runtime)?.into_value(),
+                None => Value::Unit,
+            };
+            Ok(Signal::Break(val))
+        }
+        TypedExpr::Continue(_) => Ok(Signal::Continue),
 
         TypedExpr::Assign {
             target,

@@ -1,0 +1,16 @@
+// Issue #229: `break` is a first-class expression of type `!`, so it's valid
+// as a loop-body tail expression with no trailing `;` (previously required
+// `break computed_value;`).
+fun compute() -> i64 {
+    let mut i: i64 = 0;
+    loop {
+        i = i + 1;
+        if (i == 5) {
+            break i * 10
+        }
+    }
+}
+
+fun main() {
+    assert(compute() == 50);
+}

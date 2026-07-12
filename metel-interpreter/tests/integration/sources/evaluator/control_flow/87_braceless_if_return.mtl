@@ -1,0 +1,11 @@
+// Issue #229: `return` is a first-class expression of type `!`, so it's valid
+// as a braceless if-arm (previously required a braced block).
+fun pick(ok: boolean) -> i64 {
+    if (ok) return 42;
+    0
+}
+
+fun main() {
+    assert(pick(true) == 42);
+    assert(pick(false) == 0);
+}
