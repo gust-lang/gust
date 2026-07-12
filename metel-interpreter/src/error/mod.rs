@@ -37,6 +37,7 @@ pub enum TypeErrorCode {
     T0014, // Orphan implementation
     T0015, // Conflicting implementation
     T0016, // Function declared `-> !` does not diverge on all paths
+    T0017, // Impl missing a required associated type definition (RFC-0082 §2)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
