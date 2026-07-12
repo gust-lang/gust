@@ -113,15 +113,23 @@ Do not rely on `.github/` automation or GitHub issue labels — this is a Codebe
 
 ## Sprint Workflow
 
+Three branch tiers, in order: `sprint/N` (active work) -> `develop` (accumulates
+finished sprints) -> `main` (released only). This exists so `main` always reflects
+an actual release, `develop` is a real "done, not yet released" staging area
+instead of the ad hoc gap that used to sit between a sprint branch and `main`, and
+per-issue branches/PRs stay unnecessary for solo work — a sprint branch is already
+the unit of review.
+
 Sprints are repository branches; issues track the work within them. Sprint branches still use the `sprint/<N>` convention.
 
 ### Starting a Sprint
 
 1. Confirm the milestone this sprint targets, and which open issues belong to it.
-2. Create the branch from current `main`:
+2. Create the branch from current `develop` (not `main` — `main` only moves at
+   release time and may lag `develop` by more than one sprint):
 
 ```bash
-git checkout main
+git checkout develop
 git pull --recurse-submodules
 git checkout -b sprint/N
 git push -u origin sprint/N
@@ -135,26 +143,74 @@ git push -u origin sprint/N
 - Keep commits on the sprint branch.
 - Push after each logical unit of completed work.
 - If public docs changed, commit in `docs/` first, then commit the updated submodule pointer in this repo.
+- **Update `docs/public/release-notes/changelog.md` in the same commit/session that lands the feature or fix, not later.** Add the entry under the current in-progress version's section (create it, marked "in progress on `sprint/N` — not yet released", if this is the first change of the sprint targeting a new version). The sprint-close gate below re-checks completeness; it is not when the changelog is first touched.
 
 ### Closing a Sprint
 
-Before opening a pull request from `sprint/N` to `main`, run the quality gate below. If any gate fails, fix it on the sprint branch and run the gate again.
+Before opening a pull request from `sprint/N` to `develop`, run the quality gate below. If any gate fails, fix it on the sprint branch and run the gate again.
 
 1. **Tests** - `cargo test` from `metel-interpreter/` must pass with zero failures.
-2. **Code quality** - review every file in `git diff main..HEAD --name-only` for stale code, dead branches, accidental `todo!()`, `unimplemented!()`, `unreachable!()`, and fallible `unwrap()`/`expect()` paths.
+2. **Code quality** - review every file in `git diff develop..HEAD --name-only` for stale code, dead branches, accidental `todo!()`, `unimplemented!()`, `unreachable!()`, and fallible `unwrap()`/`expect()` paths.
 3. **Coverage** - every feature or fix needs a focused regression test:
    - Parser or grammar changes: parsing tests or typechecking tests.
    - Type system changes: typechecking tests in `tests/typechecking/sources/`.
    - Evaluator/runtime changes: evaluator tests in `tests/evaluator/sources/` or module semantics tests.
    - Module graph/name-resolution changes: `tests/module_loading/` or `tests/module_semantics/`.
 4. **Spec accuracy** - every language-visible change is documented in `docs/public/reference/spec.md` and the linked spec section.
-5. **Changelog** - version-visible work is recorded in `docs/public/release-notes/changelog.md`.
+5. **Changelog** - confirm `docs/public/release-notes/changelog.md`'s in-progress section is actually complete against what this sprint shipped. This is a completeness check, not first authorship — see "During a Sprint" above.
 6. **RFC state** - `python3 docs/internal/rfcs/tools/rfc.py check` reports clean (frontmatter matches directory, no dangling references); any RFC at `3-integrated` or beyond has `impl_status`/`impl_tracking` set correctly per `docs/internal/rfcs/PROCESS.md`.
 7. **Internal docs** - update `metel-interpreter/docs/architecture.md`, `typechecker.md`, or `evaluator.md` when the corresponding pipeline, inference, construction, runtime, or builtin behavior changes.
 8. **Decision records** - add a new ADR in `metel-interpreter/docs/decisions/` for non-obvious architectural decisions, reversals, or workarounds future contributors must know.
 9. **Issues** - completed issues have satisfied acceptance criteria and are closed; deferred work is an explicit open issue, not hidden in a comment.
 
-After the gate passes, open a pull request from `sprint/N` to `main` on Codeberg. The pull request diff is the authoritative sprint deliverable.
+After the gate passes, open a pull request from `sprint/N` to `develop` on Codeberg (not `main` — see "Release Workflow" below for how `develop` reaches `main`). The pull request diff is the authoritative sprint deliverable.
+
+---
+
+## Release Workflow
+
+A release is the `develop -> main` merge, tag, and Codeberg Release together —
+distinct from, and less frequent than, a sprint merging into `develop`. `develop`
+may sit ahead of `main` across several completed sprints before a release is cut;
+there is no fixed cadence requirement, though in practice a release tends to line
+up with a version milestone (`docs/internal/versioning.md`) reaching completion.
+
+### Release Gate
+
+Before merging `develop` into `main`, run this gate. It exists specifically to
+catch changelog/spec drift relative to what's actually merged — the exact failure
+mode this workflow is designed against — not to re-run the sprint-close gate.
+
+1. **Changelog finalized** - `docs/public/release-notes/changelog.md`'s in-progress
+   section is complete and accurate against everything merged into `develop` since
+   the last release. Reword for clarity if needed, then replace the "in progress on
+   `sprint/N` — not yet released" line with the release date.
+2. **Version number chosen** - per `docs/internal/versioning.md`'s major/minor/patch
+   rule (spec changes require at least a minor bump; a patch must not touch
+   language-visible behavior at all). Bump `metel-interpreter/Cargo.toml`'s
+   `version` to match, in the same commit as the changelog finalization.
+3. **RFC state** - `python3 docs/internal/rfcs/tools/rfc.py check` reports clean.
+   Any RFC the release actually implements end-to-end should be at `4-implemented`
+   (`rfc.py transition <id> --to implemented`), not left at `3-integrated` with
+   stale "Not yet implemented" spec callouts.
+4. **Docs submodule in lockstep** - the `docs` submodule pointer in this repo
+   points at the exact `metel-docs` commit the changelog/spec entries above were
+   written against.
+5. **Spec correctness** - spot-check that `docs/public/reference/spec.md` and its
+   linked sections actually describe the behavior being released, not a stale or
+   aspirational version of it.
+
+### Cutting the Release
+
+1. Merge `develop` into `main` (a real merge commit, not a rebase — `main`'s
+   history should show exactly which sprints/PRs went into each release).
+2. Tag `main` at the merge commit: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+3. Create a Codeberg Release from that tag, with the release body sourced from
+   the changelog section just finalized (not regenerated separately — the
+   changelog is the single source of truth for release notes).
+4. If public documentation changed, follow "Wiki and Public Docs Release
+   Workflow" below (`metel-website` pointer, versioned snapshot) as part of the
+   same release, not a separate later step.
 
 ---
 
@@ -263,7 +319,7 @@ Every commit related to a tracked issue should reference the issue number:
 <type>(#<number>): <description>
 ```
 
-Types: `feat`, `fix`, `refactor`, `test`, `docs`.
+Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`.
 
 Examples:
 
@@ -287,7 +343,7 @@ feat(#57): enforce function aspect bounds
 Closes #57
 ```
 
-During an active sprint, commit only on `sprint/N`, not directly on `main`.
+During an active sprint, commit only on `sprint/N`, not directly on `develop` or `main`.
 
 ---
 
@@ -297,7 +353,7 @@ During an active sprint, commit only on `sprint/N`, not directly on `main`.
 - The spec contains rules and syntax, not rationale, history, or open questions. Put rationale in RFCs or ADRs.
 - New public behavior must be documented in `docs/public/reference/spec/`.
 - Runtime builtins documented in `docs/public/reference/spec/runtime.md` must match what the interpreter registers.
-- Version-visible changes must be reflected in `docs/public/release-notes/changelog.md`.
+- Version-visible changes must be reflected in `docs/public/release-notes/changelog.md` when the change lands, not batched for later — see "Sprint Workflow" above.
 - Patch releases must not introduce spec changes; see `docs/internal/versioning.md`.
 
 ---
@@ -427,5 +483,6 @@ When stopping, explain what you found, the options, and the recommended path.
 - Do not use GitHub Projects or `.github/` workflows as the current process — this is a Codeberg repo, GitHub tooling doesn't apply.
 - Do not create new tracking documents for open work; use Codeberg Issues.
 - Do not close an issue with unchecked acceptance criteria.
-- Do not commit sprint work directly to `main`.
+- Do not commit sprint work directly to `develop` or `main`.
+- Do not merge `develop` into `main` outside the Release Workflow's gate — `main` only moves at an actual release.
 - Do not re-introduce a synced "RFC status" field on an issue or elsewhere — the RFC file's own directory/frontmatter is the only source of truth for RFC lifecycle state (see RFC Workflow above); this is a deliberate simplification versus how Plane was used, not an oversight.
