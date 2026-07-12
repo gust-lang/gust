@@ -3,7 +3,7 @@
 //! Implements Hindley-Milner type inference with let-polymorphism.
 //! See `docs/internal/typechecker.md` for theory background and implementation notes.
 
-use crate::ast::{AspectMethod, ReceiverKind, Span, Visibility};
+use crate::ast::{AspectMethod, AssocTypeDecl, ReceiverKind, Span, Visibility};
 use crate::error::MetelError;
 use crate::name_resolver::{GlobTier, ModuleScope};
 use crate::symbols::SymbolId;
@@ -927,6 +927,11 @@ pub struct TypeDefinitionRegistry {
     symbols: Rc<HashMap<(Vec<String>, String), SymbolId>>,
     /// Every module's resolved import scope. See `impl_aspect_env`'s doc.
     scopes: Rc<HashMap<Vec<String>, ModuleScope>>,
+    /// Aspect name → its declared associated-type members (name + optional bound), RFC-0082 §1.
+    aspect_assoc_type_decls: HashMap<String, Vec<AssocTypeDecl>>,
+    /// (target_type_id, aspect_name) → assoc-type-name → concrete Type, RFC-0082 §2.
+    /// Populated only for concrete (non-generic) impls.
+    impl_assoc_types: HashMap<(SymbolId, String), HashMap<String, Type>>,
 }
 
 impl TypeDefinitionRegistry {
@@ -953,6 +958,8 @@ impl TypeDefinitionRegistry {
             impl_aspect_env: HashMap::new(),
             symbols: Rc::new(HashMap::new()),
             scopes: Rc::new(HashMap::new()),
+            aspect_assoc_type_decls: HashMap::new(),
+            impl_assoc_types: HashMap::new(),
         }
     }
 
@@ -1213,6 +1220,54 @@ impl TypeDefinitionRegistry {
         self.aspect_method_defs.get(name)
     }
 
+    /// Register the associated-type declarations of an aspect (RFC-0082 §1).
+    pub fn register_aspect_assoc_types(&mut self, name: String, decls: Vec<AssocTypeDecl>) {
+        if !decls.is_empty() {
+            self.aspect_assoc_type_decls.insert(name, decls);
+        }
+    }
+
+    /// Return the associated-type declarations for `aspect_name`, if any.
+    #[must_use]
+    pub fn aspect_assoc_type_decls(&self, aspect_name: &str) -> Option<&Vec<AssocTypeDecl>> {
+        self.aspect_assoc_type_decls.get(aspect_name)
+    }
+
+    /// Register the concrete associated-type bindings for `impl Aspect for Target`
+    /// (RFC-0082 §2). `target` is resolved from `current_module`'s scope — same
+    /// convention as `register_aspect_impl`.
+    pub fn register_impl_assoc_types(
+        &mut self,
+        current_module: &[String],
+        target: &str,
+        aspect: &str,
+        bindings: HashMap<String, Type>,
+    ) {
+        let Some(target_id) = self.resolve_type_position_id(current_module, target) else {
+            return;
+        };
+        self.impl_assoc_types
+            .entry((target_id, aspect.to_string()))
+            .or_default()
+            .extend(bindings);
+    }
+
+    /// Look up a concrete associated-type binding for a specific impl.
+    /// Returns `Some(ty)` if `Target: Aspect` has `type AssocName = ty`.
+    #[must_use]
+    pub fn impl_assoc_type(
+        &self,
+        current_module: &[String],
+        target: &str,
+        aspect: &str,
+        assoc_name: &str,
+    ) -> Option<&Type> {
+        let target_id = self.resolve_type_position_id(current_module, target)?;
+        self.impl_assoc_types
+            .get(&(target_id, aspect.to_string()))?
+            .get(assoc_name)
+    }
+
     /// Registers `impl aspect for target` with `type_args`. `target` is resolved from
     /// `current_module`'s scope to its `SymbolId`; `aspect` stays a literal name (see
     /// `impl_aspect_env`'s doc). A no-op if `target` can't be resolved from that
@@ -1393,6 +1448,16 @@ impl TypeDefinitionRegistry {
         }
         for (k, v) in &other.impl_aspect_env {
             self.impl_aspect_env
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
+        }
+        for (k, v) in &other.aspect_assoc_type_decls {
+            self.aspect_assoc_type_decls
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
+        }
+        for (k, v) in &other.impl_assoc_types {
+            self.impl_assoc_types
                 .entry(k.clone())
                 .or_insert_with(|| v.clone());
         }

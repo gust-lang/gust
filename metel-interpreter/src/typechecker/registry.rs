@@ -5,7 +5,7 @@ use super::conversions::{
     type_expr_to_infer, type_expr_to_infer_with_generics, type_expr_to_infer_with_self,
 };
 use crate::ast::{
-    AspectDecl, AspectMethod, Decl, GenericParam, Polarity, Program, TypeExpr, WhereClause,
+    AspectDecl, AspectMethod, Decl, GenericParam, Polarity, Program, Span, TypeExpr, WhereClause,
 };
 use crate::name_resolver::ModuleScope;
 use crate::symbols::SymbolId;
@@ -463,6 +463,31 @@ fn register_program_decls(
                         aspect_name,
                         type_args,
                     );
+                    // RFC-0082 §2: register concrete associated-type bindings for
+                    // non-generic impls. Generic impls are deferred to #241.
+                    if !is_generic_target && !ib.assoc_type_defs.is_empty() {
+                        let mut bindings = HashMap::new();
+                        for def in &ib.assoc_type_defs {
+                            let infer_ty = super::conversions::type_expr_to_infer_with_self(
+                                &def.ty,
+                                &target_name,
+                            );
+                            let dummy = Span::new(0, 0, "");
+                            if let Ok(concrete_ty) =
+                                super::conversions::infer_type_to_type(&infer_ty, &dummy)
+                            {
+                                bindings.insert(def.name.clone(), concrete_ty);
+                            }
+                        }
+                        if !bindings.is_empty() {
+                            registry.register_impl_assoc_types(
+                                current_module_path,
+                                &target_name,
+                                aspect_name,
+                                bindings,
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -478,6 +503,7 @@ fn register_aspect_decl(
     registry.register_aspect(ad.name.clone(), method_names);
     registry.register_aspect_method_defs(ad.name.clone(), ad.methods.clone());
     registry.register_aspect_declaring_module(ad.name.clone(), declaring_module.to_vec());
+    registry.register_aspect_assoc_types(ad.name.clone(), ad.assoc_types.clone());
 }
 
 /// Register the annotated signatures of NATIVE methods in an impl block on a
