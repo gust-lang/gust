@@ -1,0 +1,31 @@
+// Negative: two aspects declare the same associated type name, both bound on
+// the same generic T → T0013 fires naming both aspects.
+
+aspect A {
+    type Item: Display;
+}
+
+aspect B {
+    type Item: Display;
+}
+
+struct Wrapper {
+    value: i64,
+}
+
+impl A for Wrapper {
+    type Item = i64;
+}
+
+impl B for Wrapper {
+    type Item = i64;
+}
+
+fun use_item<T: A + B>(x: T) -> T::Item { // ERROR[T0013]
+    return 0;
+}
+
+fun main() {
+    let w = Wrapper { value: 42 };
+    let _: i64 = use_item(w);
+}

@@ -172,12 +172,12 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                 }
 
                 let te_to_infer = |te: &TypeExpr, ctx: &mut InferContext| -> InferType {
-                    if let TypeExpr::Projection {
-                        base,
-                        ref assoc_name,
-                        ..
-                    } = te
-                    {
+        if let TypeExpr::Projection {
+            base,
+            ref assoc_name,
+            ..
+        } = te
+        {
                         if let TypeExpr::Named(ref n, _) = **base {
                             if let Some(&base_tv) = generic_map.get(n.as_str()) {
                                 if let Some(bounds) = ctx.bounds_for_type_var(base_tv) {
@@ -582,41 +582,55 @@ fn infer_fun_decl(
         ctx.register_neg_fun_bounds(fun.name.clone(), neg_type_var_bounds.clone());
     }
 
-    let te_to_infer = |te: &TypeExpr, ctx: &mut InferContext| -> InferType {
+    let te_to_infer = |te: &TypeExpr, ctx: &mut InferContext| -> Result<InferType, MetelError> {
         // RFC-0082 §2 abstract-case: T::AssocType where T is a generic param.
         if let TypeExpr::Projection {
             base,
             ref assoc_name,
+            span: proj_span,
             ..
         } = te
         {
             if let TypeExpr::Named(ref n, _) = **base {
                 if let Some(&base_tv) = generic_map.get(n.as_str()) {
-                    // Find the aspect that declares this assoc type.
-                    // Try each bound on the base type param.
-                    if let Some(bounds) = ctx.bounds_for_type_var(base_tv) {
+                    // Find the aspect(s) that declare this assoc type.
+                    let mut matching_aspects: Vec<String> = Vec::new();
+                    if let Some(bounds) = type_var_bounds.get(&base_tv) {
                         for aspect in bounds {
                             if let Some(decls) = ctx.registry().aspect_assoc_type_decls(aspect) {
                                 if decls.iter().any(|d| d.name == *assoc_name) {
-                                    return InferType::Var(ctx.fresh_assoc_projection_var(
-                                        base_tv,
-                                        aspect.clone(),
-                                        assoc_name.clone(),
-                                    ));
+                                    matching_aspects.push(aspect.clone());
                                 }
                             }
                         }
                     }
+                    if matching_aspects.len() > 1 {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0013,
+                            format!(
+                                "ambiguous associated type `{assoc_name}`: multiple aspects declare it: {}",
+                                matching_aspects.join(", ")
+                            ),
+                            &*proj_span,
+                        ));
+                    }
+                    if let Some(aspect) = matching_aspects.into_iter().next() {
+                        return Ok(InferType::Var(ctx.fresh_assoc_projection_var(
+                            base_tv,
+                            aspect,
+                            assoc_name.clone(),
+                        )));
+                    }
                     // Fallback: named placeholder
-                    return InferType::Named(format!("{n}::{assoc_name}"), vec![]);
+                    return Ok(InferType::Named(format!("{n}::{assoc_name}"), vec![]));
                 }
             }
         }
-        if generic_map.is_empty() {
+        Ok(if generic_map.is_empty() {
             type_expr_to_infer(te)
         } else {
             type_expr_to_infer_with_generics(te, &generic_map)
-        }
+        })
     };
 
     let param_types: Vec<InferType> = fun
@@ -626,13 +640,13 @@ fn infer_fun_decl(
             if let Some(ann) = &p.type_ann {
                 te_to_infer(ann, ctx)
             } else {
-                ctx.fresh_var()
+                Ok(ctx.fresh_var())
             }
         })
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
 
     let ret_ty = if let Some(ann) = &fun.return_type {
-        te_to_infer(ann, ctx)
+        te_to_infer(ann, ctx)?
     } else {
         ctx.fresh_var()
     };
@@ -785,38 +799,53 @@ fn infer_impl_method(
         }
     }
 
-    let te_to_infer = |te: &TypeExpr, ctx: &mut InferContext| -> InferType {
+    let te_to_infer = |te: &TypeExpr, ctx: &mut InferContext| -> Result<InferType, MetelError> {
         // RFC-0082 §2 abstract-case: T::AssocType where T is a generic param.
         if let TypeExpr::Projection {
             base,
             ref assoc_name,
+            span: proj_span,
             ..
         } = te
         {
             if let TypeExpr::Named(ref n, _) = **base {
                 if let Some(&base_tv) = generic_map.get(n.as_str()) {
-                    if let Some(bounds) = ctx.bounds_for_type_var(base_tv) {
+                    let mut matching_aspects: Vec<String> = Vec::new();
+                    if let Some(bounds) = struct_bounds.get(&base_tv) {
                         for aspect in bounds {
                             if let Some(decls) = ctx.registry().aspect_assoc_type_decls(aspect) {
                                 if decls.iter().any(|d| d.name == *assoc_name) {
-                                    return InferType::Var(ctx.fresh_assoc_projection_var(
-                                        base_tv,
-                                        aspect.clone(),
-                                        assoc_name.clone(),
-                                    ));
+                                    matching_aspects.push(aspect.clone());
                                 }
                             }
                         }
                     }
-                    return InferType::Named(format!("{n}::{assoc_name}"), vec![]);
+                    if matching_aspects.len() > 1 {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0013,
+                            format!(
+                                "ambiguous associated type `{assoc_name}`: multiple aspects declare it: {}",
+                                matching_aspects.join(", ")
+                            ),
+                            &*proj_span,
+                        ));
+                    }
+                    if let Some(aspect) = matching_aspects.into_iter().next() {
+                        return Ok(InferType::Var(ctx.fresh_assoc_projection_var(
+                            base_tv,
+                            aspect,
+                            assoc_name.clone(),
+                        )));
+                    }
+                    return Ok(InferType::Named(format!("{n}::{assoc_name}"), vec![]));
                 }
             }
         }
-        if generic_map.is_empty() {
+        Ok(if generic_map.is_empty() {
             type_expr_to_infer_with_self(te, target_name)
         } else {
             type_expr_to_infer_with_generics_and_self(te, &generic_map, target_name)
-        }
+        })
     };
 
     // Include struct TypeVars in self type so call-site unification resolves correctly.
@@ -841,18 +870,18 @@ fn infer_impl_method(
         .iter()
         .map(|p| {
             if p.name == "self" {
-                self_ty.clone()
+                Ok(self_ty.clone())
             } else if let Some(ann) = &p.type_ann {
                 te_to_infer(ann, ctx)
             } else {
-                ctx.fresh_var()
+                Ok(ctx.fresh_var())
             }
         })
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
     let ret_ty = method
         .return_type
         .as_ref()
-        .map_or_else(InferType::unit, |t| te_to_infer(t, ctx));
+        .map_or_else(|| Ok(InferType::unit()), |t| te_to_infer(t, ctx))?;
 
     // Native methods have no Metel body; their signature comes entirely from
     // annotations (METEL-181). Skip body inference but still register the
