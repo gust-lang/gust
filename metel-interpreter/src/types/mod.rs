@@ -34,6 +34,7 @@ pub enum Type {
 
 impl Type {
     /// Returns true if this is any integer type (signed or unsigned, any width).
+    #[must_use]
     pub fn is_integer(&self) -> bool {
         matches!(
             self,
@@ -49,11 +50,13 @@ impl Type {
     }
 
     /// Returns true if this is any float type.
+    #[must_use]
     pub fn is_float(&self) -> bool {
         matches!(self, Type::F64 | Type::F32)
     }
 
     /// Returns true if this is any numeric type (integer or float).
+    #[must_use]
     pub fn is_numeric(&self) -> bool {
         self.is_integer() || self.is_float()
     }
@@ -83,33 +86,33 @@ impl std::fmt::Display for Type {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", t)?;
+                    write!(f, "{t}")?;
                 }
                 write!(f, ")")
             }
-            Type::Array(t) => write!(f, "{}[]", t),
-            Type::SizedArray(t, n) => write!(f, "[{}; {}]", t, n),
-            Type::Reference(t) => write!(f, "&{}", t),
-            Type::MutReference(t) => write!(f, "&mut {}", t),
+            Type::Array(t) => write!(f, "{t}[]"),
+            Type::SizedArray(t, n) => write!(f, "[{t}; {n}]"),
+            Type::Reference(t) => write!(f, "&{t}"),
+            Type::MutReference(t) => write!(f, "&mut {t}"),
             Type::Fun(params, ret) => {
                 write!(f, "(")?;
                 for (i, t) in params.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", t)?;
+                    write!(f, "{t}")?;
                 }
-                write!(f, ") -> {}", ret)
+                write!(f, ") -> {ret}")
             }
             Type::Named(name, args) => {
-                write!(f, "{}", name)?;
+                write!(f, "{name}")?;
                 if !args.is_empty() {
                     write!(f, "<")?;
                     for (i, a) in args.iter().enumerate() {
                         if i > 0 {
                             write!(f, ", ")?;
                         }
-                        write!(f, "{}", a)?;
+                        write!(f, "{a}")?;
                     }
                     write!(f, ">")?;
                 }

@@ -32,11 +32,10 @@ pub(super) fn value_to_type(value: &Value) -> Type {
         Value::Tuple(elems) => Type::Tuple(elems.iter().map(value_to_type).collect()),
         Value::Array(rc) => {
             let borrowed = rc.borrow();
-            let elem_ty = borrowed.first().map(value_to_type).unwrap_or(Type::Unit);
+            let elem_ty = borrowed.first().map_or(Type::Unit, value_to_type);
             Type::Array(Box::new(elem_ty))
         }
-        Value::Struct { name, .. } => Type::Named(name.clone(), vec![]),
-        Value::Enum { name, .. } => Type::Named(name.clone(), vec![]),
+        Value::Struct { name, .. } | Value::Enum { name, .. } => Type::Named(name.clone(), vec![]),
         Value::Callable(callable) => match callable {
             super::RuntimeCallable::Closure(rc) => rc
                 .fun_type
@@ -55,8 +54,7 @@ pub(super) fn value_to_type(value: &Value) -> Type {
                     (super::PathSegment::Field(f), Type::Named(name, _)) => {
                         Type::Named(format!("{name}.{f}"), vec![])
                     }
-                    (super::PathSegment::TupleIndex(_), t)
-                    | (super::PathSegment::ArrayIndex(_), t) => t,
+                    (super::PathSegment::TupleIndex(_) | super::PathSegment::ArrayIndex(_), t) => t,
                     _ => Type::Unit,
                 };
             }

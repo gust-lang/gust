@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -44,10 +45,10 @@ fn main() {
                 .strip_prefix(&manifest_dir)
                 .expect("fixture path should be under manifest dir");
             let relative_str = relative.to_string_lossy().replace('\\', "/");
-            generated.push_str(&format!(
-                "register_integration_test!({}, \"{}\", \"{}\");\n",
-                test_name, suite, relative_str
-            ));
+            let _ = writeln!(
+                generated,
+                "register_integration_test!({test_name}, \"{suite}\", \"{relative_str}\");"
+            );
         }
     }
 
@@ -87,9 +88,7 @@ fn generate_embedded_stdlib(manifest_dir: &Path, out_dir: &Path) {
                 .collect::<Vec<_>>()
                 .join(", ");
             let abs = file.to_string_lossy().replace('\\', "/");
-            entries.push_str(&format!(
-                "    (&[{seg_lits}], include_str!({abs:?})),\n"
-            ));
+            let _ = writeln!(entries, "    (&[{seg_lits}], include_str!({abs:?})),");
         }
     }
 
@@ -129,7 +128,7 @@ fn discover_dir(suite: &str, dir: &Path, fixtures: &mut Vec<PathBuf>) {
             entry.unwrap_or_else(|e| panic!("failed to read dir entry in {}: {e}", dir.display()))
         })
         .collect();
-    entries.sort_by_key(|entry| entry.path());
+    entries.sort_by_key(std::fs::DirEntry::path);
 
     for entry in entries {
         let path = entry.path();

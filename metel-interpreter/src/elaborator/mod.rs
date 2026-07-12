@@ -37,6 +37,10 @@ pub struct ElaboratedModuleGraph(pub TypedModuleGraph);
 ///
 /// Each `MethodCall::dispatch` field starts as `Dynamic`; this pass upgrades it to
 /// `Aspect { aspect_id }` or `Inherent` where the target can be statically determined.
+///
+/// # Errors
+/// Returns an error if two different aspects provide the same method name for the
+/// same type, making dispatch ambiguous (T0013).
 pub fn elaborate(
     mut graph: TypedModuleGraph,
     names: &ResolvedNames,
@@ -283,7 +287,9 @@ fn elaborate_expr(expr: &mut TypedExpr, map: &DispatchMap) {
             elaborate_expr(object, map);
             elaborate_expr(index, map);
         }
-        TypedExpr::Cast { expr: inner, .. } => elaborate_expr(inner, map),
+        TypedExpr::Cast { expr: inner, .. } | TypedExpr::SingletonCoerce { inner, .. } => {
+            elaborate_expr(inner, map);
+        }
         TypedExpr::If {
             condition,
             then_branch,
@@ -296,16 +302,15 @@ fn elaborate_expr(expr: &mut TypedExpr, map: &DispatchMap) {
                 elaborate_block(b, map);
             }
         }
-        TypedExpr::Loop { body, .. } => elaborate_block(body, map),
-        TypedExpr::Closure { body, .. } => elaborate_block(body, map),
-        TypedExpr::GenericClosure { .. } => {}
+        TypedExpr::Loop { body, .. } | TypedExpr::Closure { body, .. } => {
+            elaborate_block(body, map);
+        }
         TypedExpr::Match(m) => elaborate_match(m, map),
         TypedExpr::StructLiteral { fields, .. } => {
             for (_, e) in fields.iter_mut() {
                 elaborate_expr(e, map);
             }
         }
-        TypedExpr::SingletonCoerce { inner, .. } => elaborate_expr(inner, map),
         TypedExpr::Return(r) => {
             if let Some(v) = &mut r.value {
                 elaborate_expr(v, map);
@@ -316,8 +321,11 @@ fn elaborate_expr(expr: &mut TypedExpr, map: &DispatchMap) {
                 elaborate_expr(v, map);
             }
         }
-        TypedExpr::Continue(_) => {}
-        TypedExpr::Literal(..) | TypedExpr::Ident(..) | TypedExpr::Path(..) => {}
+        TypedExpr::GenericClosure { .. }
+        | TypedExpr::Continue(_)
+        | TypedExpr::Literal(..)
+        | TypedExpr::Ident(..)
+        | TypedExpr::Path(..) => {}
     }
 }
 

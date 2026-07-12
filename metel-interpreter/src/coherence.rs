@@ -136,13 +136,16 @@ struct CollectedImpl<'a> {
 
 fn is_local(declaring: &HashMap<SymbolId, Vec<String>>, id: Option<SymbolId>, module: &[String]) -> bool {
     id.and_then(|id| declaring.get(&id))
-        .map(|m| m.as_slice() == module)
-        .unwrap_or(false)
+        .is_some_and(|m| m.as_slice() == module)
 }
 
 /// Check the orphan rule (T0014) and overlap detection (T0015) for every
 /// concrete `impl Aspect for Type` block in the program. See RFC-0060 / the
 /// "Aspect Implementation Coherence" section of `declarations.md`.
+///
+/// # Errors
+/// Returns an error if any `impl` violates the orphan rule (T0014) or overlaps
+/// with another `impl` of the same aspect/type instantiation (T0015).
 pub fn check(graph: &NormalizedModuleGraph, names: &ResolvedNames) -> Result<(), MetelError> {
     let declaring = declaring_modules(names);
 

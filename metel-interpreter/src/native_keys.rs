@@ -219,6 +219,7 @@ impl NativeKey {
     }
 
     /// The surface id this key lowers from, for diagnostics.
+    #[must_use]
     pub fn surface_id(&self) -> &'static str {
         match self {
             NativeKey::StdCorePrint => "@std.core.print",

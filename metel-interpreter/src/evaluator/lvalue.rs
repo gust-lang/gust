@@ -66,7 +66,7 @@ pub(super) fn resolve_field_assign_root<'a>(
                 path.push(field.as_str());
                 Ok(root_rc)
             }
-            _ => Err(MetelError::panic(
+            TypedPlace::Index { .. } => Err(MetelError::panic(
                 RuntimeErrorCode::R0003,
                 "field assign: unsupported receiver form",
                 span,
@@ -190,6 +190,13 @@ pub(super) fn apply_assign_op(
     eval_binop(&fake_binop, cur, rhs, span).map(Signal::into_value)
 }
 
+// Metel's `==`/`!=` on f32/f64 are specified as exact IEEE-754 comparison, not
+// epsilon-tolerant — this is the language's own equality semantics, not a bug.
+#[allow(clippy::float_cmp)]
+// Exhaustive match over every BinOp/Value combination; splitting it up would
+// scatter one coherent dispatch table across many small functions with no
+// real gain in clarity.
+#[allow(clippy::too_many_lines)]
 pub(super) fn eval_binop(
     op: &BinOp,
     lv: Value,

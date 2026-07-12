@@ -1,21 +1,28 @@
+// A handful of `native_*` functions here (native_clock, native_list_new,
+// native_env_vars, native_process_args, ...) never actually fail, but all
+// native functions share the fixed `NativeFn` signature (`-> Result<Value,
+// MetelError>`) required for uniform dispatch through `NativeKey`, so their
+// `Result` wrapping cannot be dropped on a per-function basis.
+#![allow(clippy::unnecessary_wraps)]
+
 use crate::error::{MetelError, RuntimeErrorCode};
 
 use super::display::{format_value, value_to_display_string};
 use super::{
-    RuntimeCallable, RuntimeMethod, RuntimeRegistry, RuntimeSignature, RuntimeTypePattern,
-    RuntimeTypeRef, Value,
+    NativeFn, RuntimeCallable, RuntimeMethod, RuntimeRegistry, RuntimeSignature,
+    RuntimeTypePattern, RuntimeTypeRef, Value,
 };
 
 fn numeric_as_i128(v: &Value) -> Option<i128> {
     match v {
-        Value::I8(n) => Some(*n as i128),
-        Value::I16(n) => Some(*n as i128),
-        Value::I32(n) => Some(*n as i128),
-        Value::I64(n) => Some(*n as i128),
-        Value::U8(n) => Some(*n as i128),
-        Value::U16(n) => Some(*n as i128),
-        Value::U32(n) => Some(*n as i128),
-        Value::U64(n) => Some(*n as i128),
+        Value::I8(n) => Some(i128::from(*n)),
+        Value::I16(n) => Some(i128::from(*n)),
+        Value::I32(n) => Some(i128::from(*n)),
+        Value::I64(n) => Some(i128::from(*n)),
+        Value::U8(n) => Some(i128::from(*n)),
+        Value::U16(n) => Some(i128::from(*n)),
+        Value::U32(n) => Some(i128::from(*n)),
+        Value::U64(n) => Some(i128::from(*n)),
         Value::F32(f) => Some(*f as i128),
         Value::F64(f) => Some(*f as i128),
         _ => None,
@@ -24,15 +31,15 @@ fn numeric_as_i128(v: &Value) -> Option<i128> {
 
 fn numeric_as_f64_val(v: &Value) -> Option<f64> {
     match v {
-        Value::I8(n) => Some(*n as f64),
-        Value::I16(n) => Some(*n as f64),
-        Value::I32(n) => Some(*n as f64),
+        Value::I8(n) => Some(f64::from(*n)),
+        Value::I16(n) => Some(f64::from(*n)),
+        Value::I32(n) => Some(f64::from(*n)),
         Value::I64(n) => Some(*n as f64),
-        Value::U8(n) => Some(*n as f64),
-        Value::U16(n) => Some(*n as f64),
-        Value::U32(n) => Some(*n as f64),
+        Value::U8(n) => Some(f64::from(*n)),
+        Value::U16(n) => Some(f64::from(*n)),
+        Value::U32(n) => Some(f64::from(*n)),
         Value::U64(n) => Some(*n as f64),
-        Value::F32(f) => Some(*f as f64),
+        Value::F32(f) => Some(f64::from(*f)),
         Value::F64(f) => Some(*f),
         _ => None,
     }
@@ -45,7 +52,7 @@ fn numeric_as_f64_val(v: &Value) -> Option<f64> {
 
 use crate::native_keys::NativeKey;
 
-fn native_print(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_print(args: &[Value], span: &crate::ast::Span) -> Result<Value, MetelError> {
     let v = args
         .first()
         .ok_or_else(|| MetelError::internal("print: expected one argument"))?;
@@ -60,7 +67,7 @@ fn native_print(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, Mete
     Ok(Value::Unit)
 }
 
-fn native_println(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_println(args: &[Value], span: &crate::ast::Span) -> Result<Value, MetelError> {
     let v = args
         .first()
         .ok_or_else(|| MetelError::internal("println: expected one argument"))?;
@@ -75,7 +82,7 @@ fn native_println(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, Me
     Ok(Value::Unit)
 }
 
-fn native_dbg(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_dbg(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     match args.first() {
         Some(val) => {
             eprintln!("[dbg] {}", format_value(val));
@@ -85,7 +92,7 @@ fn native_dbg(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, Metel
     }
 }
 
-fn native_assert(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_assert(args: &[Value], span: &crate::ast::Span) -> Result<Value, MetelError> {
     match args.first() {
         Some(Value::Boolean(true)) => Ok(Value::Unit),
         Some(Value::Boolean(false)) => Err(MetelError::panic(
@@ -97,7 +104,7 @@ fn native_assert(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, Met
     }
 }
 
-fn native_assert_msg(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_assert_msg(args: &[Value], span: &crate::ast::Span) -> Result<Value, MetelError> {
     match (args.first(), args.get(1)) {
         (Some(Value::Boolean(true)), _) => Ok(Value::Unit),
         (Some(Value::Boolean(false)), Some(Value::Str(msg))) => {
@@ -120,7 +127,7 @@ fn native_assert_msg(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value,
 /// `construct_call`'s bare-identifier branch in `src/typechecker/construction.rs`,
 /// which falls back to `instantiate_scheme_with_expected_ret` when arg-based
 /// instantiation leaves a free type variable).
-fn native_yolo_none(_args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_yolo_none(_args: &[Value], span: &crate::ast::Span) -> Result<Value, MetelError> {
     Err(MetelError::panic(
         RuntimeErrorCode::R0014,
         "called `.yolo()` on a `None` value",
@@ -132,7 +139,7 @@ fn native_yolo_none(_args: Vec<Value>, span: &crate::ast::Span) -> Result<Value,
 /// representation via `format_value` — the same formatter `dbg` uses — so this
 /// needs no `E: Display` bound on the caller (not even expressible today; `impl`
 /// blocks have no per-method bounds syntax).
-fn native_yolo_err(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_yolo_err(args: &[Value], span: &crate::ast::Span) -> Result<Value, MetelError> {
     match args.first() {
         Some(error) => Err(MetelError::panic(
             RuntimeErrorCode::R0014,
@@ -144,14 +151,14 @@ fn native_yolo_err(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, M
 }
 
 /// `std::core::panic(msg: String) -> !` (RFC-0078). Always panics with `msg`.
-fn native_panic(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_panic(args: &[Value], span: &crate::ast::Span) -> Result<Value, MetelError> {
     match args.first() {
         Some(Value::Str(msg)) => Err(MetelError::panic(RuntimeErrorCode::R0015, msg.clone(), span)),
         _ => Err(MetelError::internal("panic: expected one String argument")),
     }
 }
 
-fn native_clock(_args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_clock(_args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     use std::time::{SystemTime, UNIX_EPOCH};
     let ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -160,7 +167,7 @@ fn native_clock(_args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, Me
     Ok(Value::I64(ms))
 }
 
-fn native_string_len(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_string_len(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     match args.first() {
         Some(Value::Str(s)) => Ok(Value::I64(s.chars().count() as i64)),
         _ => Err(MetelError::internal("string_len: expected String argument")),
@@ -189,63 +196,63 @@ fn string_array_value(strings: Vec<String>) -> Value {
     )))
 }
 
-fn native_string_is_empty(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    Ok(Value::Boolean(str_at(&args, 0, "string_is_empty")?.is_empty()))
+fn native_string_is_empty(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    Ok(Value::Boolean(str_at(args, 0, "string_is_empty")?.is_empty()))
 }
 
-fn native_string_to_upper(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    Ok(Value::Str(str_at(&args, 0, "string_to_upper")?.to_uppercase()))
+fn native_string_to_upper(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    Ok(Value::Str(str_at(args, 0, "string_to_upper")?.to_uppercase()))
 }
 
-fn native_string_to_lower(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    Ok(Value::Str(str_at(&args, 0, "string_to_lower")?.to_lowercase()))
+fn native_string_to_lower(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    Ok(Value::Str(str_at(args, 0, "string_to_lower")?.to_lowercase()))
 }
 
-fn native_string_trim(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    Ok(Value::Str(str_at(&args, 0, "string_trim")?.trim().to_string()))
+fn native_string_trim(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    Ok(Value::Str(str_at(args, 0, "string_trim")?.trim().to_string()))
 }
 
 fn native_string_trim_start(
-    args: Vec<Value>,
+    args: &[Value],
     _span: &crate::ast::Span,
 ) -> Result<Value, MetelError> {
     Ok(Value::Str(
-        str_at(&args, 0, "string_trim_start")?
+        str_at(args, 0, "string_trim_start")?
             .trim_start()
             .to_string(),
     ))
 }
 
-fn native_string_trim_end(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_string_trim_end(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     Ok(Value::Str(
-        str_at(&args, 0, "string_trim_end")?.trim_end().to_string(),
+        str_at(args, 0, "string_trim_end")?.trim_end().to_string(),
     ))
 }
 
-fn native_string_contains(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    let s = str_at(&args, 0, "string_contains")?;
-    let needle = str_at(&args, 1, "string_contains")?;
+fn native_string_contains(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let s = str_at(args, 0, "string_contains")?;
+    let needle = str_at(args, 1, "string_contains")?;
     Ok(Value::Boolean(s.contains(&needle)))
 }
 
 fn native_string_starts_with(
-    args: Vec<Value>,
+    args: &[Value],
     _span: &crate::ast::Span,
 ) -> Result<Value, MetelError> {
-    let s = str_at(&args, 0, "string_starts_with")?;
-    let prefix = str_at(&args, 1, "string_starts_with")?;
+    let s = str_at(args, 0, "string_starts_with")?;
+    let prefix = str_at(args, 1, "string_starts_with")?;
     Ok(Value::Boolean(s.starts_with(&prefix)))
 }
 
-fn native_string_ends_with(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    let s = str_at(&args, 0, "string_ends_with")?;
-    let suffix = str_at(&args, 1, "string_ends_with")?;
+fn native_string_ends_with(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let s = str_at(args, 0, "string_ends_with")?;
+    let suffix = str_at(args, 1, "string_ends_with")?;
     Ok(Value::Boolean(s.ends_with(&suffix)))
 }
 
-fn native_string_index_of(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    let s = str_at(&args, 0, "string_index_of")?;
-    let needle = str_at(&args, 1, "string_index_of")?;
+fn native_string_index_of(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let s = str_at(args, 0, "string_index_of")?;
+    let needle = str_at(args, 1, "string_index_of")?;
     // Convert the byte offset of the match to a scalar (char) index.
     let found = s
         .find(&needle)
@@ -253,9 +260,9 @@ fn native_string_index_of(args: Vec<Value>, _span: &crate::ast::Span) -> Result<
     Ok(perhaps_value(found))
 }
 
-fn native_string_split(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    let s = str_at(&args, 0, "string_split")?;
-    let sep = str_at(&args, 1, "string_split")?;
+fn native_string_split(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let s = str_at(args, 0, "string_split")?;
+    let sep = str_at(args, 1, "string_split")?;
     let parts: Vec<String> = if sep.is_empty() {
         vec![s]
     } else {
@@ -264,16 +271,16 @@ fn native_string_split(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Val
     Ok(string_array_value(parts))
 }
 
-fn native_string_replace(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    let s = str_at(&args, 0, "string_replace")?;
-    let from = str_at(&args, 1, "string_replace")?;
-    let to = str_at(&args, 2, "string_replace")?;
+fn native_string_replace(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let s = str_at(args, 0, "string_replace")?;
+    let from = str_at(args, 1, "string_replace")?;
+    let to = str_at(args, 2, "string_replace")?;
     Ok(Value::Str(s.replace(from.as_str(), to.as_str())))
 }
 
-fn native_string_repeat(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    let s = str_at(&args, 0, "string_repeat")?;
-    let n = i64_at(&args, 1, "string_repeat")?;
+fn native_string_repeat(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let s = str_at(args, 0, "string_repeat")?;
+    let n = i64_at(args, 1, "string_repeat")?;
     Ok(Value::Str(if n <= 0 {
         String::new()
     } else {
@@ -281,7 +288,7 @@ fn native_string_repeat(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Va
     }))
 }
 
-fn native_string_join(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_string_join(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     let parts: Vec<String> = match args.first() {
         Some(Value::Array(arr)) => arr
             .borrow()
@@ -299,21 +306,21 @@ fn native_string_join(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Valu
             ))
         }
     };
-    let sep = str_at(&args, 1, "String::join")?;
+    let sep = str_at(args, 1, "String::join")?;
     Ok(Value::Str(parts.join(sep.as_str())))
 }
 
-fn native_string_chars(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_string_chars(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     use std::cell::RefCell;
     use std::rc::Rc;
-    let s = str_at(&args, 0, "string_chars")?;
+    let s = str_at(args, 0, "string_chars")?;
     let chars: Vec<Value> = s.chars().map(Value::Char).collect();
     Ok(Value::Array(Rc::new(RefCell::new(chars))))
 }
 
-fn native_string_char_at(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    let s = str_at(&args, 0, "string_char_at")?;
-    let i = i64_at(&args, 1, "string_char_at")?;
+fn native_string_char_at(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let s = str_at(args, 0, "string_char_at")?;
+    let i = i64_at(args, 1, "string_char_at")?;
     let found = if i < 0 {
         None
     } else {
@@ -322,12 +329,12 @@ fn native_string_char_at(args: Vec<Value>, _span: &crate::ast::Span) -> Result<V
     Ok(perhaps_value(found))
 }
 
-fn native_string_substring(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    let s = str_at(&args, 0, "string_substring")?;
+fn native_string_substring(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let s = str_at(args, 0, "string_substring")?;
     let chars: Vec<char> = s.chars().collect();
     let len = chars.len() as i64;
-    let start = i64_at(&args, 1, "string_substring")?.clamp(0, len) as usize;
-    let end = i64_at(&args, 2, "string_substring")?.clamp(0, len) as usize;
+    let start = i64_at(args, 1, "string_substring")?.clamp(0, len) as usize;
+    let end = i64_at(args, 2, "string_substring")?.clamp(0, len) as usize;
     let sub: String = if start < end {
         chars[start..end].iter().collect()
     } else {
@@ -338,7 +345,7 @@ fn native_string_substring(args: Vec<Value>, _span: &crate::ast::Span) -> Result
 
 // `Display::to_string` for every displayable primitive: one host fn formats the
 // receiver by its runtime value, so all 13 std::core impls share one NativeKey.
-fn native_to_string(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_to_string(args: &[Value], span: &crate::ast::Span) -> Result<Value, MetelError> {
     match args.first() {
         Some(v) => value_to_display_string(v).map(Value::Str).ok_or_else(|| {
             MetelError::panic(
@@ -357,7 +364,7 @@ fn native_to_string(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, 
 // semantics as the per-pair builtins these replace.
 macro_rules! native_int_from {
     ($fn_name:ident, $label:literal, $out:expr) => {
-        fn $fn_name(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+        fn $fn_name(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
             match args.first().and_then(numeric_as_i128) {
                 Some(n) => Ok($out(n)),
                 None => Err(MetelError::internal(concat!(
@@ -370,7 +377,7 @@ macro_rules! native_int_from {
 }
 macro_rules! native_float_from {
     ($fn_name:ident, $label:literal, $out:expr) => {
-        fn $fn_name(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+        fn $fn_name(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
             match args.first().and_then(numeric_as_f64_val) {
                 Some(f) => Ok($out(f)),
                 None => Err(MetelError::internal(concat!(
@@ -392,7 +399,7 @@ native_float_from!(native_f32_from, "f32", |f: f64| Value::F32(f as f32));
 native_float_from!(native_f64_from, "f64", |f: f64| Value::F64(f));
 
 // u32 additionally accepts a Char (its Unicode code point).
-fn native_u32_from(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_u32_from(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     match args.first() {
         Some(Value::Char(c)) => Ok(Value::U32(*c as u32)),
         Some(v) => match numeric_as_i128(v) {
@@ -405,7 +412,7 @@ fn native_u32_from(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, 
     }
 }
 
-fn native_char_from(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_char_from(args: &[Value], span: &crate::ast::Span) -> Result<Value, MetelError> {
     match args.first() {
         Some(Value::U32(n)) => char::from_u32(*n).map(Value::Char).ok_or_else(|| {
             MetelError::panic(
@@ -473,19 +480,19 @@ fn list_inner(
     }
 }
 
-fn native_list_new(_args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_list_new(_args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     Ok(list_value(vec![]))
 }
 
-fn native_list_from(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_list_from(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     match args.first() {
         Some(Value::Array(src)) => Ok(list_value(src.borrow().clone())),
         _ => Err(MetelError::internal("List::from: expected array argument")),
     }
 }
 
-fn native_list_push(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    let inner = list_inner(&args, "List::push")?;
+fn native_list_push(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let inner = list_inner(args, "List::push")?;
     match args.get(1) {
         Some(val) => {
             inner.borrow_mut().push(val.clone());
@@ -495,20 +502,20 @@ fn native_list_push(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value,
     }
 }
 
-fn native_list_pop(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    let inner = list_inner(&args, "List::pop")?;
+fn native_list_pop(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let inner = list_inner(args, "List::pop")?;
     let popped = inner.borrow_mut().pop();
     Ok(perhaps_value(popped))
 }
 
-fn native_list_len(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    let inner = list_inner(&args, "List::len")?;
+fn native_list_len(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let inner = list_inner(args, "List::len")?;
     let len = inner.borrow().len() as i64;
     Ok(Value::I64(len))
 }
 
-fn native_list_get(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    let inner = list_inner(&args, "List::get")?;
+fn native_list_get(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let inner = list_inner(args, "List::get")?;
     match args.get(1) {
         Some(Value::I64(idx)) => {
             let got = inner.borrow().get(*idx as usize).cloned();
@@ -518,14 +525,14 @@ fn native_list_get(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, 
     }
 }
 
-fn native_list_as_slice(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    let inner = list_inner(&args, "List::as_slice")?;
+fn native_list_as_slice(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let inner = list_inner(args, "List::as_slice")?;
     Ok(Value::Array(inner))
 }
 
 // ── std::env host implementations ──────────────────────────────────────────
 
-fn native_env_var(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_env_var(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     match args.first() {
         Some(Value::Str(name)) => {
             Ok(perhaps_value(std::env::var(name).ok().map(Value::Str)))
@@ -534,7 +541,7 @@ fn native_env_var(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, M
     }
 }
 
-fn native_env_vars(_args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_env_vars(_args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     use std::cell::RefCell;
     use std::rc::Rc;
     let entries: Vec<Value> = std::env::vars()
@@ -556,7 +563,7 @@ fn native_env_vars(_args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value,
 
 // ── std::fs host implementations ───────────────────────────────────────────
 
-/// Build a std::core `OsError { message }` value.
+/// Build a `std::core` `OsError { message }` value.
 fn os_error_value(message: String) -> Value {
     let mut fields = std::collections::HashMap::new();
     fields.insert("message".to_string(), Value::Str(message));
@@ -567,7 +574,7 @@ fn os_error_value(message: String) -> Value {
     }
 }
 
-/// Build a std::core `Result::Ok { value }` / `Result::Err { error }` value.
+/// Build a `std::core` `Result::Ok { value }` / `Result::Err { error }` value.
 fn result_value(r: Result<Value, Value>) -> Value {
     let (variant, field, val) = match r {
         Ok(v) => ("Ok", "value", v),
@@ -599,44 +606,44 @@ fn str_at(args: &[Value], idx: usize, label: &str) -> Result<String, MetelError>
 }
 
 fn native_fs_read_to_string(
-    args: Vec<Value>,
+    args: &[Value],
     _span: &crate::ast::Span,
 ) -> Result<Value, MetelError> {
-    let path = str_at(&args, 0, "std::fs::read_to_string")?;
+    let path = str_at(args, 0, "std::fs::read_to_string")?;
     Ok(io_result(std::fs::read_to_string(&path).map(Value::Str)))
 }
 
-fn native_fs_write_string(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    let path = str_at(&args, 0, "std::fs::write_string")?;
-    let contents = str_at(&args, 1, "std::fs::write_string")?;
-    Ok(io_result(std::fs::write(&path, contents).map(|_| Value::Unit)))
+fn native_fs_write_string(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let path = str_at(args, 0, "std::fs::write_string")?;
+    let contents = str_at(args, 1, "std::fs::write_string")?;
+    Ok(io_result(std::fs::write(&path, contents).map(|()| Value::Unit)))
 }
 
 fn native_fs_append_string(
-    args: Vec<Value>,
+    args: &[Value],
     _span: &crate::ast::Span,
 ) -> Result<Value, MetelError> {
     use std::io::Write;
-    let path = str_at(&args, 0, "std::fs::append_string")?;
-    let contents = str_at(&args, 1, "std::fs::append_string")?;
+    let path = str_at(args, 0, "std::fs::append_string")?;
+    let contents = str_at(args, 1, "std::fs::append_string")?;
     let appended = std::fs::OpenOptions::new()
         .append(true)
         .create(true)
         .open(&path)
         .and_then(|mut f| f.write_all(contents.as_bytes()))
-        .map(|_| Value::Unit);
+        .map(|()| Value::Unit);
     Ok(io_result(appended))
 }
 
-fn native_fs_exists(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    let path = str_at(&args, 0, "std::fs::exists")?;
+fn native_fs_exists(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let path = str_at(args, 0, "std::fs::exists")?;
     Ok(Value::Boolean(std::path::Path::new(&path).exists()))
 }
 
-fn native_fs_read_dir(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_fs_read_dir(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     use std::cell::RefCell;
     use std::rc::Rc;
-    let path = str_at(&args, 0, "std::fs::read_dir")?;
+    let path = str_at(args, 0, "std::fs::read_dir")?;
     let listed = std::fs::read_dir(&path).and_then(|entries| {
         let mut names = Vec::new();
         for entry in entries {
@@ -648,40 +655,40 @@ fn native_fs_read_dir(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Valu
     Ok(io_result(listed))
 }
 
-fn native_fs_create_dir(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    let path = str_at(&args, 0, "std::fs::create_dir")?;
-    Ok(io_result(std::fs::create_dir(&path).map(|_| Value::Unit)))
+fn native_fs_create_dir(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let path = str_at(args, 0, "std::fs::create_dir")?;
+    Ok(io_result(std::fs::create_dir(&path).map(|()| Value::Unit)))
 }
 
 fn native_fs_create_dir_all(
-    args: Vec<Value>,
+    args: &[Value],
     _span: &crate::ast::Span,
 ) -> Result<Value, MetelError> {
-    let path = str_at(&args, 0, "std::fs::create_dir_all")?;
-    Ok(io_result(std::fs::create_dir_all(&path).map(|_| Value::Unit)))
+    let path = str_at(args, 0, "std::fs::create_dir_all")?;
+    Ok(io_result(std::fs::create_dir_all(&path).map(|()| Value::Unit)))
 }
 
-fn native_fs_remove_file(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    let path = str_at(&args, 0, "std::fs::remove_file")?;
-    Ok(io_result(std::fs::remove_file(&path).map(|_| Value::Unit)))
+fn native_fs_remove_file(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let path = str_at(args, 0, "std::fs::remove_file")?;
+    Ok(io_result(std::fs::remove_file(&path).map(|()| Value::Unit)))
 }
 
-fn native_fs_remove_dir(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    let path = str_at(&args, 0, "std::fs::remove_dir")?;
-    Ok(io_result(std::fs::remove_dir(&path).map(|_| Value::Unit)))
+fn native_fs_remove_dir(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let path = str_at(args, 0, "std::fs::remove_dir")?;
+    Ok(io_result(std::fs::remove_dir(&path).map(|()| Value::Unit)))
 }
 
 fn native_fs_remove_dir_all(
-    args: Vec<Value>,
+    args: &[Value],
     _span: &crate::ast::Span,
 ) -> Result<Value, MetelError> {
-    let path = str_at(&args, 0, "std::fs::remove_dir_all")?;
-    Ok(io_result(std::fs::remove_dir_all(&path).map(|_| Value::Unit)))
+    let path = str_at(args, 0, "std::fs::remove_dir_all")?;
+    Ok(io_result(std::fs::remove_dir_all(&path).map(|()| Value::Unit)))
 }
 
 // ── std::process host implementations ──────────────────────────────────────
 
-/// Build a std::process `ProcessOutput { status, stdout, stderr }` value.
+/// Build a `std::process` `ProcessOutput { status, stdout, stderr }` value.
 fn process_output_value(status: i64, stdout: String, stderr: String) -> Value {
     let mut fields = std::collections::HashMap::new();
     fields.insert("status".to_string(), Value::I64(status));
@@ -694,15 +701,15 @@ fn process_output_value(status: i64, stdout: String, stderr: String) -> Value {
     }
 }
 
-fn native_process_args(_args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
+fn native_process_args(_args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     use std::cell::RefCell;
     use std::rc::Rc;
     let argv: Vec<Value> = std::env::args().map(Value::Str).collect();
     Ok(Value::Array(Rc::new(RefCell::new(argv))))
 }
 
-fn native_process_run(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    let command = str_at(&args, 0, "std::process::run")?;
+fn native_process_run(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let command = str_at(args, 0, "std::process::run")?;
     // The second argument is a String[] of arguments; the API is shell-free —
     // the command and its arguments are passed directly, with no shell parsing.
     let cmd_args: Vec<String> = match args.get(1) {
@@ -728,7 +735,7 @@ fn native_process_run(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Valu
     Ok(result_value(
         output
             .map(|out| {
-                let status = out.status.code().map(|c| c as i64).unwrap_or(-1);
+                let status = out.status.code().map_or(-1, i64::from);
                 let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
                 let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
                 process_output_value(status, stdout, stderr)
@@ -741,7 +748,7 @@ fn native_process_run(args: Vec<Value>, _span: &crate::ast::Span) -> Result<Valu
 /// lowered [`NativeKey`]. Total over the closed enum — every variant maps to a
 /// host fn (enforced by the coverage test).
 pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
-    let (label, fun): (&str, fn(Vec<Value>, &crate::ast::Span) -> Result<Value, MetelError>) =
+    let (label, fun): (&str, NativeFn) =
         match key {
             NativeKey::StdCorePrint => ("std::core::print", native_print),
             NativeKey::StdCorePrintln => ("std::core::println", native_println),
@@ -822,13 +829,13 @@ pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
     }
 }
 
-/// Register the std::core free functions by parsing the embedded core.mtl and
+/// Register the `std::core` free functions by parsing the embedded core.mtl and
 /// binding each `native` declaration to its host implementation (METEL-181).
 /// `stdlib/core.mtl` + the `NativeKey` enum are the single source of truth;
 /// there is no hand-maintained list to keep in sync with the typechecker (the
 /// prelude derives its schemes from the same source). This serves the
 /// single-program pipeline; the module-graph pipeline additionally evaluates
-/// std::core as a real module.
+/// `std::core` as a real module.
 /// The well-known `SymbolId` of a builtin `std::core` aspect, matching the id the
 /// name resolver assigns it (the `SymbolTable` pre-seeds these). Lets embedded-core
 /// seeding register builtin aspect impls under the same id elaboration stamps into
@@ -847,7 +854,7 @@ pub(super) fn builtin_aspect_id(aspect_name: &str) -> Option<crate::symbols::Sym
 /// seeding register builtin type entries under the same id the rest of the
 /// pipeline uses, so the runtime type registry is keyed purely by id (METEL-185).
 pub(super) fn builtin_type_id(type_name: &str) -> Option<crate::symbols::SymbolId> {
-    use crate::symbols::*;
+    use crate::symbols::{SYM_TYPE_BOOLEAN, SYM_TYPE_STRING, SYM_TYPE_CHAR, SYM_TYPE_I8, SYM_TYPE_I16, SYM_TYPE_I32, SYM_TYPE_I64, SYM_TYPE_U8, SYM_TYPE_U16, SYM_TYPE_U32, SYM_TYPE_U64, SYM_TYPE_F32, SYM_TYPE_F64, SYM_TYPE_LIST, SYM_TYPE_PERHAPS, SYM_TYPE_RESULT, SYM_TYPE_RANGE, SYM_TYPE_RANGE_INCLUSIVE};
     Some(match type_name {
         "boolean" => SYM_TYPE_BOOLEAN,
         "String" => SYM_TYPE_STRING,
@@ -872,12 +879,6 @@ pub(super) fn builtin_type_id(type_name: &str) -> Option<crate::symbols::SymbolI
 }
 
 fn register_core_natives_from_embedded(runtime: &mut RuntimeRegistry) {
-    let core_path = ["std".to_string(), "core".to_string()];
-    let Some(source) = crate::stdlib::lookup(&core_path) else {
-        return;
-    };
-    let program = crate::parser::parse(source, "<embedded std::core>")
-        .expect("embedded std::core must parse; it is compiled into the binary");
     fn key_for(binding: &crate::ast::NativeBinding) -> NativeKey {
         NativeKey::from_path(&binding.key_path).unwrap_or_else(|| {
             panic!(
@@ -886,6 +887,12 @@ fn register_core_natives_from_embedded(runtime: &mut RuntimeRegistry) {
             )
         })
     }
+    let core_path = ["std".to_string(), "core".to_string()];
+    let Some(source) = crate::stdlib::lookup(&core_path) else {
+        return;
+    };
+    let program = crate::parser::parse(source, "<embedded std::core>")
+        .expect("embedded std::core must parse; it is compiled into the binary");
     for decl in &program.decls {
         match decl {
             crate::ast::Decl::Fun(fun) => {
@@ -996,7 +1003,7 @@ pub(super) fn register_builtins(runtime: &mut RuntimeRegistry) {
 
     fn intrinsic(
         label: &str,
-        fun: fn(Vec<Value>, &crate::ast::Span) -> Result<Value, MetelError>,
+        fun: NativeFn,
     ) -> RuntimeCallable {
         RuntimeCallable::Intrinsic {
             label: label.to_string(),
@@ -1006,7 +1013,7 @@ pub(super) fn register_builtins(runtime: &mut RuntimeRegistry) {
 
     fn builtin_value(
         label: &str,
-        fun: fn(Vec<Value>, &crate::ast::Span) -> Result<Value, MetelError>,
+        fun: NativeFn,
     ) -> RuntimeCallable {
         intrinsic(label, fun)
     }

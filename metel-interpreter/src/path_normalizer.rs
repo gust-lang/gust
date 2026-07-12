@@ -28,6 +28,7 @@ use crate::symbols::SymbolId;
 pub struct NormalizedModuleGraph(pub(crate) ModuleGraph);
 
 impl NormalizedModuleGraph {
+    #[must_use]
     pub fn modules(&self) -> &[LoadedModule] {
         &self.0.modules
     }
@@ -38,6 +39,10 @@ impl NormalizedModuleGraph {
 ///
 /// Returns `NormalizedModuleGraph` — a newtype that downstream passes must accept
 /// to enforce that normalization ran before typechecking.
+///
+/// # Errors
+/// Returns an error if a qualified path cannot be resolved against `names`
+/// (e.g. references an unknown module or name).
 pub fn normalize(
     mut graph: ModuleGraph,
     names: &ResolvedNames,
@@ -45,7 +50,7 @@ pub fn normalize(
     let module_names: HashSet<String> = graph
         .modules
         .iter()
-        .flat_map(|m| m.module_path.first().cloned())
+        .filter_map(|m| m.module_path.first().cloned())
         .collect();
 
     for loaded in &mut graph.modules {
@@ -174,6 +179,10 @@ fn normalize_let_decl(
     normalize_expr(&mut ld.value, scope, module_names, symbols)
 }
 
+// Exhaustive match over every AST/type-system variant; splitting it up would
+// scatter one coherent dispatch table across many small functions with no
+// real gain in clarity.
+#[allow(clippy::too_many_lines)]
 fn normalize_expr(
     expr: &mut Expr,
     scope: Option<&ModuleScope>,
@@ -181,7 +190,9 @@ fn normalize_expr(
     symbols: &std::collections::HashMap<(Vec<String>, String), crate::symbols::SymbolId>,
 ) -> Result<(), MetelError> {
     match expr {
-        Expr::Literal(_, _) | Expr::Ident(_, _) | Expr::ResolvedPath { .. } => Ok(()),
+        Expr::Literal(_, _) | Expr::Ident(_, _) | Expr::ResolvedPath { .. } | Expr::Continue(_) => {
+            Ok(())
+        }
 
         Expr::Path(segments, span) => {
             if let Some((resolved, symbol_id)) = try_resolve_path(segments, scope, module_names, symbols) {
@@ -196,13 +207,7 @@ fn normalize_expr(
             Ok(())
         }
 
-        Expr::Tuple(elems, _) => {
-            for e in elems {
-                normalize_expr(e, scope, module_names, symbols)?;
-            }
-            Ok(())
-        }
-        Expr::Array(elems, _) => {
+        Expr::Tuple(elems, _) | Expr::Array(elems, _) => {
             for e in elems {
                 normalize_expr(e, scope, module_names, symbols)?;
             }
@@ -252,8 +257,9 @@ fn normalize_expr(
             }
             Ok(())
         }
-        Expr::Loop { body, .. } => normalize_block(body, scope, module_names, symbols),
-        Expr::Closure { body, .. } => normalize_block(body, scope, module_names, symbols),
+        Expr::Loop { body, .. } | Expr::Closure { body, .. } => {
+            normalize_block(body, scope, module_names, symbols)
+        }
         Expr::Match(m) => {
             normalize_expr(&mut m.scrutinee, scope, module_names, symbols)?;
             for arm in &mut m.arms {
@@ -287,7 +293,6 @@ fn normalize_expr(
             Some(v) => normalize_expr(v, scope, module_names, symbols),
             None => Ok(()),
         },
-        Expr::Continue(_) => Ok(()),
     }
 }
 
@@ -346,7 +351,7 @@ fn try_resolve_path(
         || scope.is_some_and(|s| {
             s.globs
                 .iter()
-                .any(|(_, g)| g.first().map(|s| s.as_str()) == Some(first.as_str()))
+                .any(|(_, g)| g.first().map(std::string::String::as_str) == Some(first.as_str()))
         });
 
     if !is_known_prefix {
@@ -357,7 +362,7 @@ fn try_resolve_path(
     if let Some(s) = scope {
         // 1. Explicit import with matching source
         for (local_name, binding) in &s.explicit {
-            if binding.source_module.first().map(|s| s.as_str()) == Some(first.as_str())
+            if binding.source_module.first().map(std::string::String::as_str) == Some(first.as_str())
                 && &binding.source_name == declared_name
             {
                 return Some((local_name.clone(), Some(binding.symbol_id)));
@@ -366,7 +371,7 @@ fn try_resolve_path(
         // 2. Glob import from this module — local name == source name
         let source_module: Vec<String> = segments[..segments.len() - 1].to_vec();
         if s.globs.iter().any(|(_, g)| {
-            g == &source_module || g.first().map(|s| s.as_str()) == Some(first.as_str())
+            g == &source_module || g.first().map(std::string::String::as_str) == Some(first.as_str())
         }) {
             return Some((declared_name.clone(), None));
         }
@@ -396,7 +401,7 @@ fn try_normalize_struct_path(
         || scope.is_some_and(|s| {
             s.globs
                 .iter()
-                .any(|(_, g)| g.first().map(|s| s.as_str()) == Some(first.as_str()))
+                .any(|(_, g)| g.first().map(std::string::String::as_str) == Some(first.as_str()))
         });
     if !is_known_prefix {
         return None;

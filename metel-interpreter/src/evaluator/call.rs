@@ -31,7 +31,7 @@ fn receiver_type_name(ty: &crate::types::Type) -> Option<&str> {
 
 fn call_runtime_callable(
     callable: RuntimeCallable,
-    args: Vec<Value>,
+    args: &[Value],
     span: &Span,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
@@ -59,8 +59,7 @@ fn call_runtime_callable(
                 ClosureBody::Untyped(b) => {
                     let scheme_and_ctx = closure
                         .name
-                        .as_deref()
-                        .and_then(|name| closure.type_ctx.as_ref().map(|ctx| (name, ctx)))
+                        .as_deref().zip(closure.type_ctx.as_ref())
                         .and_then(|(name, type_ctx)| {
                             type_ctx.scheme_env.get(name).map(|s| (s, type_ctx))
                         });
@@ -96,7 +95,7 @@ fn call_runtime_callable(
 /// Converts `Signal::Return` at the function boundary.
 pub(super) fn call_function(
     func: Value,
-    args: Vec<Value>,
+    args: &[Value],
     span: &Span,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
@@ -208,13 +207,13 @@ pub(super) fn call_method_function(
                 other => other,
             })
         }
-        callable => {
+        callable @ RuntimeCallable::Intrinsic { .. } => {
             let receiver_value = match receiver {
                 ReceiverBinding::Value(value) => value,
                 ReceiverBinding::Shared(cell) => cell.borrow().clone(),
             };
             args.insert(0, receiver_value);
-            call_runtime_callable(callable, args, span, runtime)
+            call_runtime_callable(callable, &args, span, runtime)
         }
     }
 }

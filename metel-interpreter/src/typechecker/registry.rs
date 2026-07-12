@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::ast::{
@@ -100,12 +100,10 @@ fn populate_schemes_from_embedded_core(
                     .collect();
                 let ret = fun
                     .return_type
-                    .as_ref()
-                    .map(&te)
-                    .unwrap_or_else(InferType::unit);
+                    .as_ref().map_or_else(InferType::unit, &te);
                 let fun_ty = InferType::Fun(params, Box::new(ret));
                 let bounds = super::inference::collect_fun_type_var_bounds(fun, &generic_map);
-                let scheme = crate::typeinference::generalize(fun_ty, &Default::default())
+                let scheme = crate::typeinference::generalize(fun_ty, &HashSet::default())
                     .with_bounds(&bounds);
                 map.insert(fun.name.clone(), scheme);
             }
@@ -147,11 +145,9 @@ fn populate_schemes_from_embedded_core(
                         .collect();
                     let ret = method
                         .return_type
-                        .as_ref()
-                        .map(|ann| type_expr_to_infer_with_generics(ann, &generic_map))
-                        .unwrap_or_else(InferType::unit);
+                        .as_ref().map_or_else(InferType::unit, |ann| type_expr_to_infer_with_generics(ann, &generic_map));
                     let fun_ty = InferType::Fun(params, Box::new(ret));
-                    let scheme = crate::typeinference::generalize(fun_ty, &Default::default());
+                    let scheme = crate::typeinference::generalize(fun_ty, &HashSet::default());
                     map.insert(format!("{target_name}::{}", method.name), scheme);
                 }
             }
@@ -179,8 +175,8 @@ fn register_builtin_aspect_impls(registry: &mut TypeDefinitionRegistry) {
 }
 
 /// Build the `TypeDefinitionRegistry` from the program's declarations and built-in types.
-/// Allocates TypeVars from `gen`; the caller must pass the same `gen` to
-/// `InferContext::new` so that all TypeVar IDs are globally unique.
+/// Allocates `TypeVars` from `gen`; the caller must pass the same `gen` to
+/// `InferContext::new` so that all `TypeVar` IDs are globally unique.
 pub(super) fn build_registry(
     program: &Program,
     gen: &mut TypeVarGenerator,
@@ -220,7 +216,11 @@ pub(super) fn build_registry(
 
 /// Register a program's type-level declarations (structs, enums, aspects, impl
 /// signatures) into the registry. Used both for the module being checked and
-/// for the embedded std::core decls, which seed every module's registry.
+/// for the embedded `std::core` decls, which seed every module's registry.
+// Exhaustive match over every AST/type-system variant; splitting it up would
+// scatter one coherent dispatch table across many small functions with no
+// real gain in clarity.
+#[allow(clippy::too_many_lines)]
 fn register_program_decls(
     decls: &[Decl],
     current_module_path: &[String],
@@ -349,8 +349,7 @@ fn register_program_decls(
             // over the type's params (List<T> in std::core).
             let is_generic_target = registry
                 .struct_generic_names_for(target_name.as_str())
-                .map(|names| !names.is_empty())
-                .unwrap_or(false);
+                .is_some_and(|names| !names.is_empty());
             if is_generic_target {
                 register_generic_impl_method_schemes(ib, &target_name, gen, registry);
             } else {
@@ -399,19 +398,19 @@ fn register_aspect_decl(
 }
 
 /// Register the annotated signatures of NATIVE methods in an impl block on a
-/// generic struct (e.g. `impl List<T>` in std::core) as polymorphic schemes
+/// generic struct (e.g. `impl List<T>` in `std::core`) as polymorphic schemes
 /// over the struct's registered type params. Metel-bodied methods are handled
-/// by infer_impl_method instead; static native methods (no receiver) are
+/// by `infer_impl_method` instead; static native methods (no receiver) are
 /// exposed as joined-key prelude schemes (`List::new`), not method schemes.
 /// Register polymorphic method schemes for instance methods on a generic struct
 /// or enum, derived from their (fully required) parameter/return annotations.
 ///
 /// This covers both native methods (which have no body to infer) and Metel-bodied
 /// methods. Deriving the scheme from annotations is what lets the single-program
-/// path (`check_with_ctx`, no module loading) resolve std::core's bodied generic
-/// methods like `Perhaps::map` / `List::filter` — there is no separate std::core
+/// path (`check_with_ctx`, no module loading) resolve `std::core`'s bodied generic
+/// methods like `Perhaps::map` / `List::filter` — there is no separate `std::core`
 /// module check there to run `infer_impl_method`. In the graph path the inferred
-/// scheme later overwrites this one for std::core's own module; downstream modules
+/// scheme later overwrites this one for `std::core`'s own module; downstream modules
 /// use this annotation-derived scheme directly. Static methods (no receiver) are
 /// handled as joined-key schemes elsewhere and skipped here.
 fn register_generic_impl_method_schemes(
@@ -470,9 +469,7 @@ fn register_generic_impl_method_schemes(
         }
         let ret_ty = method
             .return_type
-            .as_ref()
-            .map(|ann| type_expr_to_infer_with_generics(ann, &gen_map))
-            .unwrap_or_else(InferType::unit);
+            .as_ref().map_or_else(InferType::unit, |ann| type_expr_to_infer_with_generics(ann, &gen_map));
         registry.register_method_scheme(
             target_name.to_string(),
             method.name.clone(),
@@ -499,9 +496,7 @@ fn register_impl_methods<'a>(
     // `self` on a primitive target must be the concrete primitive type
     // (e.g. Concrete(I32), not Named("i32")) so call sites unify (METEL-181).
     let self_ty = || {
-        super::inference::primitive_type_from_name(target_name)
-            .map(InferType::Concrete)
-            .unwrap_or_else(|| InferType::Named(target_name.to_string(), vec![]))
+        super::inference::primitive_type_from_name(target_name).map_or_else(|| InferType::Named(target_name.to_string(), vec![]), InferType::Concrete)
     };
     for method in methods {
         let mut param_types = vec![];
@@ -517,9 +512,7 @@ fn register_impl_methods<'a>(
         }
         let ret_ty = method
             .return_type
-            .as_ref()
-            .map(|ann| type_expr_to_infer_with_self(ann, target_name))
-            .unwrap_or_else(InferType::unit);
+            .as_ref().map_or_else(InferType::unit, |ann| type_expr_to_infer_with_self(ann, target_name));
         registry.register_method(
             target_name.to_string(),
             method.name.clone(),
@@ -567,9 +560,7 @@ fn register_default_aspect_method(
     let mut param_types = vec![];
     for p in &method.params {
         let pt = if p.name == "self" {
-            super::inference::primitive_type_from_name(target_name)
-                .map(InferType::Concrete)
-                .unwrap_or_else(|| InferType::Named(target_name.to_string(), vec![]))
+            super::inference::primitive_type_from_name(target_name).map_or_else(|| InferType::Named(target_name.to_string(), vec![]), InferType::Concrete)
         } else if let Some(ann) = &p.type_ann {
             type_expr_to_infer_with_self(ann, target_name)
         } else {
@@ -579,9 +570,7 @@ fn register_default_aspect_method(
     }
     let ret_ty = method
         .return_type
-        .as_ref()
-        .map(|ann| type_expr_to_infer_with_self(ann, target_name))
-        .unwrap_or_else(InferType::unit);
+        .as_ref().map_or_else(InferType::unit, |ann| type_expr_to_infer_with_self(ann, target_name));
     registry.register_method(
         target_name.to_string(),
         method.name.clone(),

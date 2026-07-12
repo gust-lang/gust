@@ -15,6 +15,9 @@ use crate::parser;
 /// keyed lookups, e.g. embedded stdlib) and the resolved filesystem path (for
 /// disk reads); a given implementation uses whichever it needs.
 pub trait SourceProvider {
+    /// # Errors
+    /// Returns an error if the module's source cannot be located or read
+    /// (implementation-defined: e.g. a missing file or a missing embedded entry).
     fn read(&self, module_path: &[String], file_path: &Path) -> Result<String, MetelError>;
 }
 
@@ -72,11 +75,20 @@ pub struct ModuleGraph {
 
 /// Load a module graph from `path` using the default provider: embedded stdlib
 /// for `std::…` modules, filesystem for everything else (RFC-0058 / METEL-181).
+///
+/// # Errors
+/// Returns an error if `path` does not exist, if any reachable module fails to
+/// read or parse, or if the import graph contains a circular dependency.
 pub fn load_root(path: impl AsRef<Path>) -> Result<ModuleGraph, MetelError> {
     load_root_with(path, &EmbeddedStdlibProvider::default())
 }
 
 /// Load a module graph from `path`, reading source through `provider` (RFC-0058).
+///
+/// # Errors
+/// Returns an error if `path` does not exist, if any reachable module fails to
+/// read (via `provider`) or parse, or if the import graph contains a circular
+/// dependency.
 pub fn load_root_with<P: SourceProvider>(
     path: impl AsRef<Path>,
     provider: &P,
@@ -101,6 +113,9 @@ pub fn load_root_with<P: SourceProvider>(
 
 /// Parse a single `.mtl` file and return its `Program`.
 /// Single-file shim for tests that only need one-module typechecking.
+///
+/// # Errors
+/// Returns an error if `path` does not exist, cannot be read, or fails to parse.
 #[allow(dead_code)] // public API used by module-loading test harness
 pub fn load_program(path: impl AsRef<Path>) -> Result<Program, MetelError> {
     let path = canonicalize_existing(path.as_ref())?;
@@ -137,7 +152,7 @@ impl<'a> Loader<'a> {
 }
 
 impl Loader<'_> {
-    /// Parse the binary-embedded std:: sources and add them to the graph as real
+    /// Parse the binary-embedded `std::` sources and add them to the graph as real
     /// modules (METEL-181). Their `module_path` is the logical path (e.g.
     /// `["std","core"]`); the synthetic `file_path` is for diagnostics only.
     /// Source is read through the provider so overlays (e.g. an LSP buffer
@@ -335,7 +350,7 @@ fn resolve_in_dir(
 
 /// Collect all identifier segments from an import tree in path order.
 /// Stops at the terminal item(s) — returns their names as the last segment(s).
-/// For `ast::Ast` → ["ast", "Ast"]; for `ast::{A, B}` → ["ast"]; for `*` → [].
+/// For `ast::Ast` → `["ast", "Ast"]`; for `ast::{A, B}` → `["ast"]`; for `*` → `[]`.
 fn import_tree_segments(tree: &ImportTree) -> Vec<String> {
     match tree {
         ImportTree::Name { name, .. } => vec![name.clone()],

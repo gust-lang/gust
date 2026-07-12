@@ -124,16 +124,16 @@ pub enum ClosureBody {
     Untyped(Block),
 }
 
+/// Signature of every native (host-implemented) `std::core` function.
+pub(super) type NativeFn = fn(&[Value], &Span) -> Result<Value, MetelError>;
+
 #[derive(Debug, Clone)]
 pub enum RuntimeCallable {
     Closure(Rc<ClosureValue>),
-    Intrinsic {
-        label: String,
-        fun: fn(Vec<Value>, &Span) -> Result<Value, MetelError>,
-    },
+    Intrinsic { label: String, fun: NativeFn },
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Copy, Default, Serialize)]
 pub struct EvaluationOptions {
     pub collect_profile: bool,
 }
@@ -311,7 +311,7 @@ pub(super) fn profiler_exit() {
 }
 
 fn duration_ns(duration: Duration) -> u64 {
-    duration.as_nanos().min(u64::MAX as u128) as u64
+    duration.as_nanos().min(u128::from(u64::MAX)) as u64
 }
 
 #[derive(Debug, Clone, Default)]
@@ -379,7 +379,7 @@ pub struct RuntimeRegistry {
     /// lookup — it only maps a name to an id, which then keys `types`.
     type_ids: HashMap<String, SymbolId>,
     pattern_methods: HashMap<RuntimeTypePattern, HashMap<String, RuntimeMethod>>,
-    /// Callables dispatched by stable SymbolId rather than by name — overloaded
+    /// Callables dispatched by stable `SymbolId` rather than by name — overloaded
     /// free-function definitions (METEL-180) and ordinary top-level functions
     /// (METEL-187), whose surface name cannot always identify a single definition.
     symbol_values: HashMap<SymbolId, Value>,
@@ -397,6 +397,7 @@ pub struct RuntimeRegistry {
 type FieldWriteback = (Rc<RefCell<Value>>, Vec<String>, Rc<RefCell<Value>>);
 
 impl RuntimeRegistry {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -405,6 +406,7 @@ impl RuntimeRegistry {
         self.symbol_values.insert(id, value);
     }
 
+    #[must_use]
     pub fn get_symbol_value(&self, id: SymbolId) -> Option<&Value> {
         self.symbol_values.get(&id)
     }
@@ -418,6 +420,7 @@ impl RuntimeRegistry {
     /// Whether `id` is a top-level `let`/`mut`'s identity, i.e. a `symbol_values` miss
     /// on it can be a legitimate "used before it was defined" runtime error rather
     /// than an internal bug.
+    #[must_use]
     pub fn is_let_mut_def_id(&self, id: SymbolId) -> bool {
         self.let_mut_def_ids.contains(&id)
     }
@@ -515,6 +518,7 @@ impl RuntimeRegistry {
     /// `SymbolId`. Selection is purely id-based: builtin aspect impls are seeded with
     /// their `SYM_ASPECT_*` ids and user impls carry the elaboration-stamped id, so
     /// no surface-name fallback is needed (METEL-185 / ADR-0041).
+    #[must_use]
     pub fn get_aspect_method_by_id(
         &self,
         type_id: SymbolId,
@@ -545,10 +549,12 @@ impl RuntimeRegistry {
             .insert(method_name.into(), value);
     }
 
+    #[must_use]
     pub fn get_module_value(&self, module_path: &[String], name: &str) -> Option<Value> {
         self.modules.get(module_path)?.values.get(name).cloned()
     }
 
+    #[must_use]
     pub fn get_type_value(&self, type_name: &str, name: &str) -> Option<Value> {
         let type_entry = self.types.get(&self.type_id_for_name(type_name)?)?;
         type_entry
@@ -570,6 +576,7 @@ impl RuntimeRegistry {
             })
     }
 
+    #[must_use]
     pub fn get_inherent_method(
         &self,
         type_id: SymbolId,
@@ -583,6 +590,7 @@ impl RuntimeRegistry {
             .filter(|method| method.receiver.is_some())
     }
 
+    #[must_use]
     pub fn get_regular_method(
         &self,
         type_id: SymbolId,
@@ -604,6 +612,7 @@ impl RuntimeRegistry {
         })
     }
 
+    #[must_use]
     pub fn get_method_for_value(&self, value: &Value, method_name: &str) -> Option<RuntimeMethod> {
         self.resolve_value_type_id(value)
             .and_then(|type_id| self.get_regular_method(type_id, method_name))
@@ -631,6 +640,7 @@ impl RuntimeRegistry {
         }
     }
 
+    #[must_use]
     pub fn get_from_method(&self, target: &str, source: &str) -> Option<RuntimeMethod> {
         let target_id = self.type_id_for_name(target)?;
         self.types
@@ -668,6 +678,7 @@ impl RuntimeRegistry {
             .filter(|method| method.receiver.is_none())
     }
 
+    #[must_use]
     pub fn resolve_module_export(&self, module_path: &[String], local_name: &str) -> Option<Value> {
         self.get_module_value(module_path, local_name).or_else(|| {
             let mut segments = local_name.split("::");
@@ -680,6 +691,7 @@ impl RuntimeRegistry {
         })
     }
 
+    #[must_use]
     pub fn resolve_path_value(&self, segments: &[String]) -> Option<Value> {
         if segments.len() >= 3 {
             let module_path = segments[..2].to_vec();
@@ -1105,7 +1117,7 @@ fn build_mut_path(
 // ── Control flow signals ──────────────────────────────────────────────────────
 
 /// Returned by evaluation functions to handle non-local control flow.
-/// Regular expression evaluation returns Signal::Value.
+/// Regular expression evaluation returns `Signal::Value`.
 #[derive(Debug)]
 pub enum Signal {
     Value(Value),
@@ -1116,7 +1128,11 @@ pub enum Signal {
 
 impl Signal {
     /// Extract the inner `Value`, consuming the signal.
-    /// Panics for non-Value signals — callers that need the full signal must match directly.
+    ///
+    /// # Panics
+    /// Panics for non-`Value` signals (`Return`/`Break`/`Continue`) — callers that
+    /// need the full signal must match directly instead.
+    #[must_use]
     pub fn into_value(self) -> Value {
         match self {
             Signal::Value(v) => v,
@@ -1146,6 +1162,7 @@ impl Default for Environment {
 }
 
 impl Environment {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             scopes: vec![HashMap::new()],
@@ -1163,6 +1180,11 @@ impl Environment {
 
     /// Define a new binding in the current scope.
     /// Arrays are deep-cloned so each binding has an independent copy.
+    ///
+    /// # Panics
+    /// Panics if called with no scope pushed — cannot happen through normal use,
+    /// since `Environment::new` always starts with one scope and callers never pop
+    /// past it.
     pub fn define(&mut self, name: &str, value: Value) {
         let cell = Rc::new(RefCell::new(deep_clone_value(value)));
         self.scopes
@@ -1171,6 +1193,8 @@ impl Environment {
             .insert(name.to_string(), cell);
     }
 
+    /// # Panics
+    /// Panics if called with no scope pushed — see [`Environment::define`].
     pub fn define_rc(&mut self, name: &str, cell: Rc<RefCell<Value>>) {
         self.scopes
             .last_mut()
@@ -1179,6 +1203,7 @@ impl Environment {
     }
 
     /// Look up a binding, searching from innermost to outermost scope.
+    #[must_use]
     pub fn get(&self, name: &str) -> Option<Value> {
         for scope in self.scopes.iter().rev() {
             if let Some(cell) = scope.get(name) {
@@ -1190,6 +1215,7 @@ impl Environment {
 
     /// Assign to an existing binding anywhere in the scope chain.
     /// Arrays are deep-cloned so each binding has an independent copy.
+    #[must_use]
     pub fn set(&self, name: &str, value: Value) -> bool {
         for scope in self.scopes.iter().rev() {
             if let Some(cell) = scope.get(name) {
@@ -1201,6 +1227,7 @@ impl Environment {
     }
 
     /// Return the Rc for a binding (used by closures to share mutable state).
+    #[must_use]
     pub fn get_rc(&self, name: &str) -> Option<Rc<RefCell<Value>>> {
         for scope in self.scopes.iter().rev() {
             if let Some(cell) = scope.get(name) {
@@ -1210,6 +1237,7 @@ impl Environment {
         None
     }
 
+    #[must_use]
     pub fn capture_clone(&self) -> Self {
         let scopes = self
             .scopes
@@ -1239,10 +1267,15 @@ impl Environment {
 /// then cross-linked via the `imported_names` table populated by `check_graph`.
 /// Modules are processed in topological order (dependencies before dependents).
 /// See ADR-0029 for the isolation design and ADR-0019 for the superseded flat-merge approach.
+///
+/// # Errors
+/// Returns an error if evaluating any module raises an unhandled runtime error.
 pub fn evaluate_graph(elaborated: ElaboratedModuleGraph) -> Result<(), MetelError> {
     evaluate_graph_with_options(elaborated, EvaluationOptions::default()).map(|_| ())
 }
 
+/// # Errors
+/// Returns an error if evaluating any module raises an unhandled runtime error.
 pub fn evaluate_graph_with_options(
     elaborated: ElaboratedModuleGraph,
     options: EvaluationOptions,
@@ -1324,6 +1357,10 @@ pub fn evaluate_graph_with_options(
 ///
 /// `type_ctx` must be set on `env` before calling so that generic function bodies
 /// capture it for construction-at-call-time.
+// Exhaustive match over every AST/type-system variant; splitting it up would
+// scatter one coherent dispatch table across many small functions with no
+// real gain in clarity.
+#[allow(clippy::too_many_lines)]
 fn run_passes(
     decls: &TypedProgram,
     aliases: &std::collections::HashMap<String, String>,
@@ -1331,7 +1368,7 @@ fn run_passes(
     runtime: &mut RuntimeRegistry,
     type_ctx: Option<std::rc::Rc<TypeCtx>>,
 ) -> Result<(), MetelError> {
-    env.type_ctx = type_ctx.clone();
+    env.type_ctx = type_ctx;
     // Pass 0 (ADR-0042): record this module's top-level let/mut identities before
     // anything else runs, so a later `Call::callee_id` miss on one of them can be
     // recognized as "not registered yet" rather than an internal-error bug.
@@ -1369,17 +1406,14 @@ fn run_passes(
                 if let FunBody::Native(key) = &f.body {
                     let value =
                         Value::Callable(crate::evaluator::builtins::native_host_impl(*key));
-                    match f.symbol_id {
-                        Some(id) => runtime.register_symbol_value(id, value),
-                        None => {
-                            // Ordinary top-level fn: bind by name (first-class uses) and,
-                            // when it has a stable identity, also register it by SymbolId so
-                            // direct calls dispatch through `callee_id` (METEL-187).
-                            if let Some(id) = f.def_id {
-                                runtime.register_symbol_value(id, value.clone());
-                            }
-                            env.set(&f.name, value);
+                    if let Some(id) = f.symbol_id { runtime.register_symbol_value(id, value) } else {
+                        // Ordinary top-level fn: bind by name (first-class uses) and,
+                        // when it has a stable identity, also register it by SymbolId so
+                        // direct calls dispatch through `callee_id` (METEL-187).
+                        if let Some(id) = f.def_id {
+                            runtime.register_symbol_value(id, value.clone());
                         }
+                        let _ = env.set(&f.name, value);
                     }
                     continue;
                 }
@@ -1397,14 +1431,11 @@ fn run_passes(
                     type_ctx: ctx,
                     fun_type: None,
                 })));
-                match f.symbol_id {
-                    Some(id) => runtime.register_symbol_value(id, value),
-                    None => {
-                        if let Some(id) = f.def_id {
-                            runtime.register_symbol_value(id, value.clone());
-                        }
-                        env.set(&f.name, value);
+                if let Some(id) = f.symbol_id { runtime.register_symbol_value(id, value) } else {
+                    if let Some(id) = f.def_id {
+                        runtime.register_symbol_value(id, value.clone());
                     }
+                    let _ = env.set(&f.name, value);
                 }
             }
             TypedDecl::Impl(impl_block) => {
@@ -1593,6 +1624,10 @@ fn run_main(env: &mut Environment, runtime: &RuntimeRegistry) -> Result<(), Mete
 
 /// Evaluate a block: push scope, run stmts, return tail (or Unit).
 /// Non-Value signals (Return, Break, Continue) short-circuit and propagate out.
+///
+/// # Errors
+/// Returns an error if evaluating any statement or the tail expression raises
+/// an unhandled runtime error.
 pub fn eval_block(
     block: &TypedBlock,
     env: &mut Environment,
@@ -1662,7 +1697,7 @@ fn eval_decl(
                 type_ctx: ctx,
                 fun_type: None,
             })));
-            env.set(&f.name, closure);
+            let _ = env.set(&f.name, closure);
             Ok(Signal::Value(Value::Unit))
         }
         TypedDecl::Stmt(s) => eval_stmt(s, env, runtime),
@@ -1675,6 +1710,9 @@ fn eval_decl(
 
 // ── Statement evaluation ──────────────────────────────────────────────────────
 
+/// # Errors
+/// Returns an error if evaluating the statement's inner expression(s) raises an
+/// unhandled runtime error.
 pub fn eval_stmt(
     stmt: &TypedStmt,
     env: &mut Environment,
@@ -1893,6 +1931,18 @@ fn range_field(
 
 // ── Expression evaluation ─────────────────────────────────────────────────────
 
+// Exhaustive match over every AST/type-system variant; splitting it up would
+// scatter one coherent dispatch table across many small functions with no
+// real gain in clarity.
+#[allow(clippy::too_many_lines)]
+/// # Errors
+/// Returns an error if evaluating `expr` (or any subexpression) raises an
+/// unhandled runtime error.
+///
+/// # Panics
+/// Panics only on internal invariant violations (e.g. a resolved path with no
+/// segments), which indicate a bug in an earlier compiler pass rather than a
+/// user-reachable condition.
 pub fn eval_expr(
     expr: &TypedExpr,
     env: &mut Environment,
@@ -2077,8 +2127,7 @@ pub fn eval_expr(
                     (UnaryOp::Neg, Value::F64(f)) => Value::F64(-f),
                     (UnaryOp::Neg, Value::F32(f)) => Value::F32(-f),
                     (UnaryOp::Not, Value::Boolean(b)) => Value::Boolean(!b),
-                    (UnaryOp::Deref, Value::Reference(rc))
-                    | (UnaryOp::Deref, Value::MutReference(rc)) => rc.borrow().clone(),
+                    (UnaryOp::Deref, Value::Reference(rc) | Value::MutReference(rc)) => rc.borrow().clone(),
                     (UnaryOp::Deref, Value::MutFieldReference { root, path }) => {
                         read_path(&root.borrow(), &path, span)?
                     }
@@ -2114,7 +2163,7 @@ pub fn eval_expr(
                 let from_fn = runtime_type_name(&v)
                     .and_then(|source| runtime.get_from_method(target_name, source));
                 if let Some(f) = from_fn {
-                    return call::call_function(Value::Callable(f.body), vec![v], span, runtime);
+                    return call::call_function(Value::Callable(f.body), &[v], span, runtime);
                 }
             }
             // Identity cast fallback (same type, no from registered).
@@ -2420,11 +2469,10 @@ pub fn eval_expr(
                             }
                         };
                     }
-                    let fields = match cur {
-                        Value::Struct { fields, .. } | Value::Enum { fields, .. } => fields,
-                        _ => return Err(MetelError::internal(
+                    let (Value::Struct { fields, .. } | Value::Enum { fields, .. }) = cur else {
+                        return Err(MetelError::internal(
                             "field assign: receiver is not a struct/enum (typechecker should have caught this)",
-                        )),
+                        ));
                     };
                     let leaf = path.last().expect("path is non-empty");
                     let new_val = if matches!(op, AssignOp::Assign) {
@@ -2486,13 +2534,10 @@ pub fn eval_expr(
             if let Some(deref) = deref_value(&val, span)? {
                 val = deref;
             }
-            let fields = match &val {
-                Value::Struct { fields, .. } | Value::Enum { fields, .. } => fields,
-                _ => {
-                    return Err(MetelError::internal(
-                        "field access on non-struct/enum (typechecker should have caught this)",
-                    ))
-                }
+            let (Value::Struct { fields, .. } | Value::Enum { fields, .. }) = &val else {
+                return Err(MetelError::internal(
+                    "field access on non-struct/enum (typechecker should have caught this)",
+                ));
             };
             fields
                 .get(field)
@@ -2689,7 +2734,7 @@ pub fn eval_expr(
                 .iter()
                 .map(|a| eval_expr(a, env, runtime).map(Signal::into_value))
                 .collect::<Result<_, _>>()?;
-            call::call_function(func_val, arg_vals, span, runtime)
+            call::call_function(func_val, &arg_vals, span, runtime)
         }
 
         TypedExpr::Closure {

@@ -48,7 +48,7 @@ pub const SYM_ASPECT_FROM: SymbolId = SymbolId(52);
 
 // 100–999 reserved for stdlib expansion.
 
-/// First SymbolId assigned to user-defined declarations by the name resolver.
+/// First `SymbolId` assigned to user-defined declarations by the name resolver.
 pub const USER_SYM_START: u32 = 1000;
 
 /// Start of the range allocated to free-function overload definitions
@@ -69,7 +69,14 @@ pub struct SymbolTable {
     next_id: u32,
 }
 
+impl Default for SymbolTable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SymbolTable {
+    #[must_use]
     pub fn new() -> Self {
         let mut map = HashMap::new();
         let sc = || vec!["std".to_string(), "core".to_string()];

@@ -27,7 +27,7 @@ impl std::fmt::Display for TypeVar {
 
 /// Counter for generating fresh type variables.
 ///
-/// # Invariant: TypeVar identity is global
+/// # Invariant: `TypeVar` identity is global
 ///
 /// `TypeVar` equality means identity — two vars with the same `u32` are the *same* variable.
 /// All `TypeVarGenerator` instances within a single type-check run must therefore be
@@ -47,10 +47,12 @@ pub struct TypeVarGenerator {
 
 impl TypeVarGenerator {
     /// Create a new type variable generator.
+    #[must_use]
     pub fn new() -> Self {
         TypeVarGenerator { counter: 0 }
     }
 
+    #[must_use]
     pub fn with_counter(start: u32) -> Self {
         TypeVarGenerator { counter: start }
     }
@@ -63,6 +65,7 @@ impl TypeVarGenerator {
     }
 
     /// Get the current counter state (for testing).
+    #[must_use]
     pub fn counter(&self) -> u32 {
         self.counter
     }
@@ -105,25 +108,32 @@ pub enum InferType {
 }
 
 impl InferType {
+    #[must_use]
     pub fn int() -> Self {
         InferType::Concrete(Type::I64)
     }
+    #[must_use]
     pub fn float() -> Self {
         InferType::Concrete(Type::F64)
     }
+    #[must_use]
     pub fn bool() -> Self {
         InferType::Concrete(Type::Boolean)
     }
+    #[must_use]
     pub fn str() -> Self {
         InferType::Concrete(Type::Str)
     }
+    #[must_use]
     pub fn unit() -> Self {
         InferType::Concrete(Type::Unit)
     }
+    #[must_use]
     pub fn never() -> Self {
         InferType::Never
     }
     #[allow(dead_code)] // public API used by typeinference test suite
+    #[must_use]
     pub fn var(v: TypeVar) -> Self {
         InferType::Var(v)
     }
@@ -132,8 +142,8 @@ impl InferType {
 impl std::fmt::Display for InferType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            InferType::Concrete(t) => write!(f, "{}", t),
-            InferType::Var(v) => write!(f, "{}", v),
+            InferType::Concrete(t) => write!(f, "{t}"),
+            InferType::Var(v) => write!(f, "{v}"),
             InferType::Never => write!(f, "!"),
             InferType::Fun(params, ret) => {
                 write!(f, "(")?;
@@ -141,9 +151,9 @@ impl std::fmt::Display for InferType {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", p)?;
+                    write!(f, "{p}")?;
                 }
-                write!(f, ") -> {}", ret)
+                write!(f, ") -> {ret}")
             }
             InferType::Tuple(ts) => {
                 write!(f, "(")?;
@@ -151,23 +161,23 @@ impl std::fmt::Display for InferType {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", t)?;
+                    write!(f, "{t}")?;
                 }
                 write!(f, ")")
             }
-            InferType::Array(t) => write!(f, "{}[]", t),
-            InferType::SizedArray(t, n) => write!(f, "[{}; {}]", t, n),
-            InferType::Reference(t) => write!(f, "&{}", t),
-            InferType::MutReference(t) => write!(f, "&mut {}", t),
+            InferType::Array(t) => write!(f, "{t}[]"),
+            InferType::SizedArray(t, n) => write!(f, "[{t}; {n}]"),
+            InferType::Reference(t) => write!(f, "&{t}"),
+            InferType::MutReference(t) => write!(f, "&mut {t}"),
             InferType::Named(name, args) => {
-                write!(f, "{}", name)?;
+                write!(f, "{name}")?;
                 if !args.is_empty() {
                     write!(f, "<")?;
                     for (i, a) in args.iter().enumerate() {
                         if i > 0 {
                             write!(f, ", ")?;
                         }
-                        write!(f, "{}", a)?;
+                        write!(f, "{a}")?;
                     }
                     write!(f, ">")?;
                 }
@@ -187,6 +197,7 @@ pub struct Substitution {
 }
 
 impl Substitution {
+    #[must_use]
     pub fn new() -> Self {
         Substitution {
             bindings: HashMap::new(),
@@ -207,11 +218,13 @@ impl Substitution {
     }
 
     /// Look up the direct binding for `var`, if any.
+    #[must_use]
     pub fn lookup(&self, var: TypeVar) -> Option<&InferType> {
         self.bindings.get(&var)
     }
 
     /// Recursively replace all type variables in `ty` using this substitution.
+    #[must_use]
     pub fn apply(&self, ty: &InferType) -> InferType {
         match ty {
             InferType::Concrete(_) | InferType::Never => ty.clone(),
@@ -242,6 +255,7 @@ impl Substitution {
     /// `self` passes through `other` unchanged. This matches Algorithm W, where a
     /// variable is unified at most once and later substitutions refine free variables
     /// in the *values*, not the *keys*.
+    #[must_use]
     pub fn compose(&self, other: &Substitution) -> Substitution {
         let mut result = Substitution::new();
         for (var, ty) in &self.bindings {
@@ -281,9 +295,10 @@ fn occurs_in(var: TypeVar, ty: &InferType) -> bool {
             params.iter().any(|p| occurs_in(var, p)) || occurs_in(var, ret)
         }
         InferType::Tuple(ts) => ts.iter().any(|t| occurs_in(var, t)),
-        InferType::Array(t) => occurs_in(var, t),
-        InferType::SizedArray(t, _) => occurs_in(var, t),
-        InferType::Reference(t) | InferType::MutReference(t) => occurs_in(var, t),
+        InferType::Array(t)
+        | InferType::SizedArray(t, _)
+        | InferType::Reference(t)
+        | InferType::MutReference(t) => occurs_in(var, t),
         InferType::Named(_, args) => args.iter().any(|a| occurs_in(var, a)),
     }
 }
@@ -297,8 +312,7 @@ fn bind_var(var: TypeVar, ty: &InferType) -> Result<Substitution, MetelError> {
     }
     if occurs_in(var, ty) {
         return Err(MetelError::internal(format!(
-            "occurs check failed: {} occurs in {}",
-            var, ty
+            "occurs check failed: {var} occurs in {ty}"
         )));
     }
     let mut s = Substitution::new();
@@ -308,6 +322,7 @@ fn bind_var(var: TypeVar, ty: &InferType) -> Result<Substitution, MetelError> {
 
 /// Unify two inference types, returning a substitution that makes them equal.
 ///
+/// # Errors
 /// Returns an error if the types are structurally incompatible or if the occurs
 /// check detects an infinite type.
 pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
@@ -319,8 +334,7 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
                 Ok(Substitution::new())
             } else {
                 Err(MetelError::internal(format!(
-                    "cannot unify {} with {}",
-                    a, b
+                    "cannot unify {a} with {b}"
                 )))
             }
         }
@@ -329,8 +343,7 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
         (InferType::Fun(params1, ret1), InferType::Fun(params2, ret2)) => {
             if params1.len() != params2.len() {
                 return Err(MetelError::internal(format!(
-                    "cannot unify {} with {}",
-                    a, b
+                    "cannot unify {a} with {b}"
                 )));
             }
             let mut subst = Substitution::new();
@@ -345,8 +358,7 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
         (InferType::Tuple(ts1), InferType::Tuple(ts2)) => {
             if ts1.len() != ts2.len() {
                 return Err(MetelError::internal(format!(
-                    "cannot unify {} with {}",
-                    a, b
+                    "cannot unify {a} with {b}"
                 )));
             }
             let mut subst = Substitution::new();
@@ -356,28 +368,23 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             }
             Ok(subst)
         }
-        (InferType::Array(t1), InferType::Array(t2)) => unify(t1, t2),
         (InferType::SizedArray(t1, n1), InferType::SizedArray(t2, n2)) => {
             if n1 != n2 {
                 return Err(MetelError::internal(format!(
-                    "cannot unify {} with {}",
-                    a, b
+                    "cannot unify {a} with {b}"
                 )));
             }
             unify(t1, t2)
         }
         // [T; N] coerces to T[] (one-directional)
-        (InferType::SizedArray(t1, _), InferType::Array(t2))
-        | (InferType::Array(t1), InferType::SizedArray(t2, _)) => unify(t1, t2),
-        (InferType::Reference(t1), InferType::Reference(t2))
-        | (InferType::MutReference(t1), InferType::MutReference(t2))
-        | (InferType::Reference(t1), InferType::MutReference(t2))
-        | (InferType::MutReference(t1), InferType::Reference(t2)) => unify(t1, t2),
+        (InferType::Array(t1) | InferType::SizedArray(t1, _), InferType::Array(t2)) |
+(InferType::Array(t1), InferType::SizedArray(t2, _)) |
+(InferType::Reference(t1) | InferType::MutReference(t1),
+InferType::Reference(t2) | InferType::MutReference(t2)) => unify(t1, t2),
         (InferType::Named(n1, args1), InferType::Named(n2, args2)) => {
             if n1 != n2 || args1.len() != args2.len() {
                 return Err(MetelError::internal(format!(
-                    "cannot unify {} with {}",
-                    a, b
+                    "cannot unify {a} with {b}"
                 )));
             }
             let mut subst = Substitution::new();
@@ -388,8 +395,7 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             Ok(subst)
         }
         _ => Err(MetelError::internal(format!(
-            "cannot unify {} with {}",
-            a, b
+            "cannot unify {a} with {b}"
         ))),
     }
 }
@@ -406,6 +412,7 @@ pub struct Constraint {
 }
 
 impl Constraint {
+    #[must_use]
     pub fn new(lhs: InferType, rhs: InferType, span: Span) -> Self {
         Self { lhs, rhs, span }
     }
@@ -428,9 +435,17 @@ fn is_float_type(t: &Type) -> bool {
 /// so that earlier bindings propagate into later constraints. Errors are
 /// reported with the source span of the offending constraint.
 ///
-/// Integer/float literal TypeVars are validated: if one resolves to a concrete
+/// Integer/float literal `TypeVars` are validated: if one resolves to a concrete
 /// non-numeric type, T0001 is raised at the constraint site.
+///
+/// # Errors
+/// Returns an error if any constraint fails to unify, or if an integer/float
+/// literal type variable resolves to a non-numeric concrete type (T0001).
 #[allow(dead_code)] // kept as a standalone solver helper for tests and profiling comparisons
+// Not generalized over `S: BuildHasher` -- this is single-binary interpreter
+// code with one hasher throughout, never swapped; the generic bound would add
+// noise with no real caller benefit.
+#[allow(clippy::implicit_hasher)]
 pub fn solve_constraints(
     constraints: Vec<Constraint>,
     integer_literal_vars: &HashSet<TypeVar>,
@@ -454,7 +469,7 @@ fn apply_constraint(
     let solved = unify(&lhs, &rhs).map_err(|_| {
         MetelError::type_error(
             crate::error::TypeErrorCode::T0001,
-            format!("cannot unify {} with {}", lhs, rhs),
+            format!("cannot unify {lhs} with {rhs}"),
             &constraint.span,
         )
     })?;
@@ -486,49 +501,46 @@ fn apply_constraint_with_coercion(
 ) -> Result<(), MetelError> {
     let lhs = subst.apply(&constraint.lhs);
     let rhs = subst.apply(&constraint.rhs);
-    let solved = match unify(&lhs, &rhs) {
-        Ok(s) => s,
-        Err(_) => {
-            let lhs_field = singleton_coerce_field_ty(registry, &lhs);
-            let rhs_field = singleton_coerce_field_ty(registry, &rhs);
-            let mk_err = || {
-                MetelError::type_error(
-                    crate::error::TypeErrorCode::T0001,
-                    format!("cannot unify {} with {}", lhs, rhs),
-                    &constraint.span,
-                )
-            };
-            if let (Some(lf), Some(rf)) = (&lhs_field, &rhs_field) {
-                let s = unify(lf, rf).map_err(|_| mk_err())?;
-                // `compose_in_place`'s merge keeps the *first* binding for any var
-                // (first-write-wins), so a var already bound earlier to the raw
-                // enum type (e.g. from the call's own return-type instantiation)
-                // would never observe this coercion through composition alone.
-                // Rebind directly: every later use of that var (including through
-                // an environment binding that's itself just this var, unresolved
-                // until use) then sees the coerced type instead of the raw enum.
-                if let InferType::Var(v) = &constraint.lhs {
-                    subst.bind(*v, lf.clone());
-                }
-                if let InferType::Var(v) = &constraint.rhs {
-                    subst.bind(*v, rf.clone());
-                }
-                s
-            } else if let Some(field_ty) = &lhs_field {
-                let s = unify(field_ty, &rhs).map_err(|_| mk_err())?;
-                if let InferType::Var(v) = &constraint.lhs {
-                    subst.bind(*v, field_ty.clone());
-                }
-                s
-            } else if let Some(field_ty) = &rhs_field {
-                let s = unify(&lhs, field_ty).map_err(|_| mk_err())?;
-                if let InferType::Var(v) = &constraint.rhs {
-                    subst.bind(*v, field_ty.clone());
-                }
-                s
-            } else {
-                return Err(mk_err());
+    let solved = if let Ok(s) = unify(&lhs, &rhs) { s } else {
+        let lhs_field = singleton_coerce_field_ty(registry, &lhs);
+        let rhs_field = singleton_coerce_field_ty(registry, &rhs);
+        let mk_err = || {
+            MetelError::type_error(
+                crate::error::TypeErrorCode::T0001,
+                format!("cannot unify {lhs} with {rhs}"),
+                &constraint.span,
+            )
+        };
+        if let (Some(lf), Some(rf)) = (&lhs_field, &rhs_field) {
+            let s = unify(lf, rf).map_err(|_| mk_err())?;
+            // `compose_in_place`'s merge keeps the *first* binding for any var
+            // (first-write-wins), so a var already bound earlier to the raw
+            // enum type (e.g. from the call's own return-type instantiation)
+            // would never observe this coercion through composition alone.
+            // Rebind directly: every later use of that var (including through
+            // an environment binding that's itself just this var, unresolved
+            // until use) then sees the coerced type instead of the raw enum.
+            if let InferType::Var(v) = &constraint.lhs {
+                subst.bind(*v, lf.clone());
             }
+            if let InferType::Var(v) = &constraint.rhs {
+                subst.bind(*v, rf.clone());
+            }
+            s
+        } else if let Some(field_ty) = &lhs_field {
+            let s = unify(field_ty, &rhs).map_err(|_| mk_err())?;
+            if let InferType::Var(v) = &constraint.lhs {
+                subst.bind(*v, field_ty.clone());
+            }
+            s
+        } else if let Some(field_ty) = &rhs_field {
+            let s = unify(&lhs, field_ty).map_err(|_| mk_err())?;
+            if let InferType::Var(v) = &constraint.rhs {
+                subst.bind(*v, field_ty.clone());
+            }
+            s
+        } else {
+            return Err(mk_err());
         }
     };
     subst.compose_in_place(&solved);
@@ -642,6 +654,7 @@ fn collect_free_vars(ty: &InferType, vars: &mut HashSet<TypeVar>) {
     }
 }
 
+#[must_use]
 pub fn free_vars(ty: &InferType) -> HashSet<TypeVar> {
     let mut vars = HashSet::new();
     collect_free_vars(ty, &mut vars);
@@ -671,6 +684,7 @@ pub struct TypeScheme {
 
 impl TypeScheme {
     /// A monomorphic scheme — no quantified variables.
+    #[must_use]
     pub fn mono(ty: InferType) -> Self {
         Self {
             quantified_vars: vec![],
@@ -680,10 +694,11 @@ impl TypeScheme {
         }
     }
 
-    /// Attach per-var aspect bounds, given a TypeVar → bounds map. Robust to
+    /// Attach per-var aspect bounds, given a `TypeVar` → bounds map. Robust to
     /// quantifier ordering: each quantified var looks up its own entry.
+    #[must_use]
     pub fn with_bounds(mut self, by_var: &std::collections::HashMap<TypeVar, Vec<String>>) -> Self {
-        if by_var.values().all(|b| b.is_empty()) {
+        if by_var.values().all(std::vec::Vec::is_empty) {
             return self;
         }
         self.bounds = self
@@ -705,7 +720,7 @@ impl std::fmt::Display for TypeScheme {
                 if i > 0 {
                     write!(f, ", ")?;
                 }
-                write!(f, "{}", v)?;
+                write!(f, "{v}")?;
             }
             write!(f, ". {}", self.ty)
         }
@@ -717,6 +732,9 @@ impl std::fmt::Display for TypeScheme {
 ///
 /// `env_free_vars` is the set of variables that are still being solved in the
 /// surrounding environment — those must not be captured.
+#[must_use]
+// See `solve_constraints` above for why hasher-generalization isn't worthwhile here.
+#[allow(clippy::implicit_hasher)]
 pub fn generalize(ty: InferType, env_free_vars: &HashSet<TypeVar>) -> TypeScheme {
     let mut quantified: Vec<TypeVar> = free_vars(&ty).difference(env_free_vars).copied().collect();
     quantified.sort();
@@ -729,7 +747,9 @@ pub fn generalize(ty: InferType, env_free_vars: &HashSet<TypeVar>) -> TypeScheme
 }
 
 /// Like `generalize` but also records the source-level name for each quantified variable.
-/// `name_map` maps TypeVar ID → param name (e.g. `{5 → "T"}`).
+/// `name_map` maps `TypeVar` ID → param name (e.g. `{5 → "T"}`).
+#[must_use]
+#[allow(clippy::implicit_hasher)]
 pub fn generalize_with_names(
     ty: InferType,
     env_free_vars: &HashSet<TypeVar>,
@@ -755,7 +775,7 @@ pub fn instantiate(scheme: &TypeScheme, gen: &mut TypeVarGenerator) -> InferType
 }
 
 /// Like `instantiate` but also returns the mapping from each original quantified
-/// TypeVar to the fresh TypeVar it was replaced with.
+/// `TypeVar` to the fresh `TypeVar` it was replaced with.
 pub fn instantiate_with_renaming(
     scheme: &TypeScheme,
     gen: &mut TypeVarGenerator,
@@ -811,7 +831,7 @@ pub struct EnumInfo {
 /// - `aspect_declaring_module(name)` — returns the module path that declared `name` as an
 ///   aspect; used to look up the aspect's `SymbolId` in the name-resolver's symbol table.
 ///
-/// That SymbolId is the key stored in `TypedImplBlock::aspect_id` and in
+/// That `SymbolId` is the key stored in `TypedImplBlock::aspect_id` and in
 /// `RuntimeAspectImpl::aspect_id`.  The elaboration pass has no other dependency on this
 /// registry; it does not read or write inference-phase state.
 #[derive(Debug, Clone)]
@@ -820,21 +840,21 @@ pub struct TypeDefinitionRegistry {
     struct_env: HashMap<String, Vec<FieldEntry>>,
     /// struct name → declaring module path.
     struct_decl_modules: HashMap<String, Vec<String>>,
-    /// Ordered type-parameter TypeVars per generic struct (absent for non-generic structs).
+    /// Ordered type-parameter `TypeVars` per generic struct (absent for non-generic structs).
     struct_type_params: HashMap<String, Vec<TypeVar>>,
-    /// Ordered type-parameter names per generic struct/enum. Parallel to struct_type_params.
-    /// Used when setting up impl method scopes so param names resolve to TypeVars.
+    /// Ordered type-parameter names per generic struct/enum. Parallel to `struct_type_params`.
+    /// Used when setting up impl method scopes so param names resolve to `TypeVars`.
     struct_generic_names: HashMap<String, Vec<String>>,
     /// Polymorphic method schemes for methods on generic structs that reference the struct's
-    /// type params. Key: (type_name, method_name) → (scheme, struct_tvars_ordered).
-    /// struct_tvars_ordered[i] corresponds to the i-th type arg of the receiver at the call site.
+    /// type params. Key: (`type_name`, `method_name`) → (scheme, `struct_tvars_ordered`).
+    /// `struct_tvars_ordered`[i] corresponds to the i-th type arg of the receiver at the call site.
     method_scheme_env: HashMap<String, HashMap<String, (TypeScheme, Vec<TypeVar>)>>,
     /// Per-type-param aspect bounds for generic structs and enums.
-    /// Key: type name. Value: one Vec<String> per type param (same order as struct_type_params),
+    /// Key: type name. Value: one Vec<String> per type param (same order as `struct_type_params`),
     /// each containing the aspect names that param must satisfy.
     type_param_bounds: HashMap<String, Vec<Vec<String>>>,
     /// Aspect bounds per generic function. Key: function name.
-    /// Value: map from each quantified TypeVar to the list of required aspect names.
+    /// Value: map from each quantified `TypeVar` to the list of required aspect names.
     fun_bounds: HashMap<String, HashMap<TypeVar, Vec<String>>>,
     /// Tracks which struct names were registered in each lexical scope so they
     /// can be removed on scope exit. Empty when outside any scoped block.
@@ -851,8 +871,8 @@ pub struct TypeDefinitionRegistry {
     aspect_decl_modules: HashMap<String, Vec<String>>,
     /// aspect name → full declared methods, including default bodies.
     aspect_method_defs: HashMap<String, Vec<AspectMethod>>,
-    /// (target_type_id, aspect_name) → list of type-arg vectors, one per registered
-    /// impl. E.g. (Int's id, "From") → [[Type::F64]] means `impl From<Float> for Int`.
+    /// (`target_type_id`, `aspect_name`) → list of type-arg vectors, one per registered
+    /// impl. E.g. (Int's id, "From") → [[`Type::F64`]] means `impl From<Float> for Int`.
     ///
     /// Target is keyed by `SymbolId`, not name (ADR-0042/issue #239): two modules each
     /// declaring a *type* with the same surface name must never conflate their impls,
@@ -882,6 +902,7 @@ pub struct TypeDefinitionRegistry {
 }
 
 impl TypeDefinitionRegistry {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             struct_env: HashMap::new(),
@@ -1003,6 +1024,7 @@ impl TypeDefinitionRegistry {
         self.struct_generic_names.insert(name, param_names);
     }
 
+    #[must_use]
     pub fn struct_generic_names_for(&self, name: &str) -> Option<&Vec<String>> {
         self.struct_generic_names.get(name)
     }
@@ -1020,6 +1042,7 @@ impl TypeDefinitionRegistry {
             .insert(method_name, (scheme, struct_tvars));
     }
 
+    #[must_use]
     pub fn method_scheme_for(
         &self,
         type_name: &str,
@@ -1032,6 +1055,7 @@ impl TypeDefinitionRegistry {
         self.type_param_bounds.insert(name, bounds);
     }
 
+    #[must_use]
     pub fn type_param_bounds_for(&self, name: &str) -> Option<&Vec<Vec<String>>> {
         self.type_param_bounds.get(name)
     }
@@ -1040,6 +1064,7 @@ impl TypeDefinitionRegistry {
     /// `type_name` is resolved from `current_module`'s own scope (see
     /// `resolve_type_position_id`); `aspect_name` is matched literally by name — see
     /// `impl_aspect_env`'s doc for why the aspect half stays name-keyed.
+    #[must_use]
     pub fn impl_aspect_env_has(
         &self,
         current_module: &[String],
@@ -1059,6 +1084,7 @@ impl TypeDefinitionRegistry {
         }
     }
 
+    #[must_use]
     pub fn fun_bounds_for(&self, name: &str) -> Option<&HashMap<TypeVar, Vec<String>>> {
         self.fun_bounds.get(name)
     }
@@ -1068,18 +1094,22 @@ impl TypeDefinitionRegistry {
         self.enum_decl_modules.insert(name, declaring_module);
     }
 
+    #[must_use]
     pub fn struct_fields(&self, name: &str) -> Option<&Vec<FieldEntry>> {
         self.struct_env.get(name)
     }
 
+    #[must_use]
     pub fn struct_type_params_for(&self, name: &str) -> Option<&Vec<TypeVar>> {
         self.struct_type_params.get(name)
     }
 
+    #[must_use]
     pub fn method_type(&self, type_name: &str, method_name: &str) -> Option<&InferType> {
         self.method_env.get(type_name)?.get(method_name)
     }
 
+    #[must_use]
     pub fn method_receiver_kind(
         &self,
         type_name: &str,
@@ -1088,14 +1118,17 @@ impl TypeDefinitionRegistry {
         self.method_receiver_env.get(type_name)?.get(method_name)
     }
 
+    #[must_use]
     pub fn enum_info(&self, name: &str) -> Option<&EnumInfo> {
         self.enum_env.get(name)
     }
 
+    #[must_use]
     pub fn struct_declaring_module(&self, name: &str) -> Option<&Vec<String>> {
         self.struct_decl_modules.get(name)
     }
 
+    #[must_use]
     pub fn enum_declaring_module(&self, name: &str) -> Option<&Vec<String>> {
         self.enum_decl_modules.get(name)
     }
@@ -1116,6 +1149,7 @@ impl TypeDefinitionRegistry {
     /// Used by the **elaboration pass** to look up the aspect's `SymbolId` in the
     /// name-resolver symbol table — the only link between the string-keyed registry and the
     /// stable `SymbolId` world.
+    #[must_use]
     pub fn aspect_declaring_module(&self, name: &str) -> Option<&Vec<String>> {
         self.aspect_decl_modules.get(name)
     }
@@ -1124,6 +1158,7 @@ impl TypeDefinitionRegistry {
         self.aspect_method_defs.insert(name, methods);
     }
 
+    #[must_use]
     pub fn aspect_method_defs(&self, name: &str) -> Option<&Vec<AspectMethod>> {
         self.aspect_method_defs.get(name)
     }
@@ -1170,18 +1205,19 @@ impl TypeDefinitionRegistry {
     /// literally — see `impl_aspect_env`'s doc for why the aspect half stays
     /// name-keyed (a module-local `aspect From<T>` must not shadow the builtin one for
     /// this specific bookkeeping).
+    #[must_use]
     pub fn has_from_impl(&self, current_module: &[String], target: &str, source: &Type) -> bool {
         let Some(target_id) = self.resolve_type_position_id(current_module, target) else {
             return false;
         };
         self.impl_aspect_env
             .get(&(target_id, "From".to_string()))
-            .map(|impls| impls.iter().any(|args| args.first() == Some(source)))
-            .unwrap_or(false)
+            .is_some_and(|impls| impls.iter().any(|args| args.first() == Some(source)))
     }
 
     /// Returns the element type registered for `(target, "Iterable")`, if any. See
     /// `has_from_impl`'s doc for why the aspect half stays name-keyed.
+    #[must_use]
     pub fn iterable_elem_type(&self, current_module: &[String], target: &str) -> Option<&Type> {
         let target_id = self.resolve_type_position_id(current_module, target)?;
         self.impl_aspect_env
@@ -1318,20 +1354,20 @@ pub struct InferContext {
     current_return_type: Option<InferType>,
     current_break_type: Option<InferType>,
     registry: TypeDefinitionRegistry,
-    /// Type-param name → TypeVar for the currently-being-inferred generic function.
+    /// Type-param name → `TypeVar` for the currently-being-inferred generic function.
     /// Empty when inferring a non-generic function or at top level.
     current_type_params: HashMap<String, TypeVar>,
-    /// TypeVar → aspect names for the current generic function's bounded type params.
-    /// Parallel to current_type_params; swapped in/out alongside it.
+    /// `TypeVar` → aspect names for the current generic function's bounded type params.
+    /// Parallel to `current_type_params`; swapped in/out alongside it.
     current_type_param_bounds: HashMap<TypeVar, Vec<String>>,
     current_module_path: Vec<String>,
     /// Names that have same-tier glob conflicts deferred until use. (METEL-98)
     /// Maps name → list of source module paths that both export it.
     deferred_glob_conflicts: HashMap<String, Vec<Vec<String>>>,
-    /// TypeVars introduced by unsuffixed integer literals (`42`, `1_000`).
+    /// `TypeVars` introduced by unsuffixed integer literals (`42`, `1_000`).
     /// Any such var that is still free after constraint solving defaults to `i64`.
     integer_literal_vars: HashSet<TypeVar>,
-    /// TypeVars introduced by unsuffixed float literals (`3.14`, `2.0`).
+    /// `TypeVars` introduced by unsuffixed float literals (`3.14`, `2.0`).
     /// Any such var that is still free after constraint solving defaults to `f64`.
     float_literal_vars: HashSet<TypeVar>,
     cached_subst: Substitution,
@@ -1376,9 +1412,10 @@ pub type OverloadTable = std::collections::HashMap<String, Vec<OverloadEntry>>;
 
 impl InferContext {
     /// Create a new inference context with a pre-built registry, a generator
-    /// that has already been advanced past all TypeVars allocated during registry
-    /// construction (ensuring global TypeVar uniqueness), and the set of imported
-    /// schemes to seed into the poly_env. See ADR-0022.
+    /// that has already been advanced past all `TypeVars` allocated during registry
+    /// construction (ensuring global `TypeVar` uniqueness), and the set of imported
+    /// schemes to seed into the `poly_env`. See ADR-0022.
+    #[must_use]
     pub fn new(
         registry: TypeDefinitionRegistry,
         gen: TypeVarGenerator,
@@ -1418,6 +1455,7 @@ impl InferContext {
 
     /// If `name` has a deferred same-tier glob conflict, return T0011.
     /// Call this at every name use site before `lookup`.
+    #[must_use]
     pub fn check_glob_conflict(&self, name: &str, span: &Span) -> Option<crate::error::MetelError> {
         self.deferred_glob_conflicts.get(name).map(|sources| {
             let m0 = sources.first().map(|m| m.join("::")).unwrap_or_default();
@@ -1443,6 +1481,7 @@ impl InferContext {
             .register_struct_fields(name, fields, self.current_module_path.clone());
     }
 
+    #[must_use]
     pub fn get_struct_type_params(&self, name: &str) -> Option<&Vec<TypeVar>> {
         self.registry.struct_type_params_for(name)
     }
@@ -1459,14 +1498,17 @@ impl InferContext {
             .register_method(type_name, method_name, fun_ty);
     }
 
+    #[must_use]
     pub fn get_struct_fields(&self, name: &str) -> Option<&Vec<crate::typeinference::FieldEntry>> {
         self.registry.struct_fields(name)
     }
 
+    #[must_use]
     pub fn get_method_type(&self, type_name: &str, method_name: &str) -> Option<&InferType> {
         self.registry.method_type(type_name, method_name)
     }
 
+    #[must_use]
     pub fn get_method_receiver_kind(
         &self,
         type_name: &str,
@@ -1480,34 +1522,41 @@ impl InferContext {
             .register_enum(name, info, self.current_module_path.clone());
     }
 
+    #[must_use]
     pub fn get_enum(&self, name: &str) -> Option<&EnumInfo> {
         self.registry.enum_info(name)
     }
 
+    #[must_use]
     pub fn aspect_method_defs(&self, name: &str) -> Option<&Vec<AspectMethod>> {
         self.registry.aspect_method_defs(name)
     }
 
+    #[must_use]
     pub fn has_from_impl(&self, target: &str, source: &Type) -> bool {
         self.registry
             .has_from_impl(&self.current_module_path, target, source)
     }
 
+    #[must_use]
     pub fn iterable_elem_type(&self, target: &str) -> Option<&Type> {
         self.registry
             .iterable_elem_type(&self.current_module_path, target)
     }
 
+    #[must_use]
     pub fn registry(&self) -> &TypeDefinitionRegistry {
         &self.registry
     }
 
+    #[must_use]
     pub fn current_module_path(&self) -> &[String] {
         &self.current_module_path
     }
 
     /// Consume the context and return its registry. Used by `check_graph` to extract
     /// accumulated type definitions after a module is checked. See ADR-0032.
+    #[must_use]
     pub fn into_registry(self) -> TypeDefinitionRegistry {
         self.registry
     }
@@ -1529,16 +1578,19 @@ impl InferContext {
         std::mem::replace(&mut self.current_type_param_bounds, bounds)
     }
 
+    #[must_use]
     pub fn type_params(&self) -> &HashMap<String, TypeVar> {
         &self.current_type_params
     }
 
-    /// Returns the aspect names required by a type param TypeVar in the current function scope.
+    /// Returns the aspect names required by a type param `TypeVar` in the current function scope.
+    #[must_use]
     pub fn bounds_for_type_var(&self, tv: TypeVar) -> Option<&Vec<String>> {
         self.current_type_param_bounds.get(&tv)
     }
 
     /// Returns the aspect method defs from the registry.
+    #[must_use]
     pub fn get_aspect_method_defs(&self, aspect: &str) -> Option<&Vec<crate::ast::AspectMethod>> {
         self.registry.aspect_method_defs(aspect)
     }
@@ -1547,10 +1599,12 @@ impl InferContext {
         self.registry.register_fun_bounds(name, bounds);
     }
 
+    #[must_use]
     pub fn struct_generic_names_for(&self, name: &str) -> Option<&Vec<String>> {
         self.registry.struct_generic_names_for(name)
     }
 
+    #[must_use]
     pub fn get_type_param_bounds(&self, name: &str) -> Option<&Vec<Vec<String>>> {
         self.registry.type_param_bounds_for(name)
     }
@@ -1566,6 +1620,7 @@ impl InferContext {
             .register_method_scheme(type_name, method_name, scheme, struct_tvars);
     }
 
+    #[must_use]
     pub fn method_scheme_for(
         &self,
         type_name: &str,
@@ -1578,6 +1633,7 @@ impl InferContext {
     /// allocated by this context.  Use this to hand off to a subsequent phase
     /// (Pass 2, `register_builtin_poly_schemes`) so that every `TypeVar` ever
     /// produced during a type-check run is globally unique.
+    #[must_use]
     pub fn split_gen(&self) -> TypeVarGenerator {
         TypeVarGenerator::with_counter(self.var_gen.counter())
     }
@@ -1590,6 +1646,8 @@ impl InferContext {
     }
 
     /// Exit the current lexical scope, discarding all bindings introduced in it.
+    ///
+    /// # Panics
     /// Panics if called with no inner scope (i.e. at the root).
     pub fn pop_scope(&mut self) {
         assert!(self.mono_env.len() > 1, "pop_scope called at root scope");
@@ -1603,7 +1661,7 @@ impl InferContext {
         InferType::Var(self.var_gen.fresh())
     }
 
-    /// Create a fresh TypeVar for an unsuffixed integer literal.
+    /// Create a fresh `TypeVar` for an unsuffixed integer literal.
     /// If still free after constraint solving, it defaults to `i64`.
     pub fn fresh_integer_literal_var(&mut self) -> InferType {
         let ty = self.fresh_var();
@@ -1615,7 +1673,7 @@ impl InferContext {
         }
     }
 
-    /// Create a fresh TypeVar for an unsuffixed float literal.
+    /// Create a fresh `TypeVar` for an unsuffixed float literal.
     /// If still free after constraint solving, it defaults to `f64`.
     pub fn fresh_float_literal_var(&mut self) -> InferType {
         let ty = self.fresh_var();
@@ -1627,11 +1685,12 @@ impl InferContext {
         }
     }
 
-    /// Extend `subst` so that any literal TypeVar still free (unbound to a concrete type)
+    /// Extend `subst` so that any literal `TypeVar` still free (unbound to a concrete type)
     /// is defaulted: integer literal vars → `i64`, float literal vars → `f64`.
-    /// Also propagates defaults through TypeVar chains: if a literal var resolves to
-    /// another free TypeVar, both are bound to the default type.
+    /// Also propagates defaults through `TypeVar` chains: if a literal var resolves to
+    /// another free `TypeVar`, both are bound to the default type.
     /// Call this immediately after each `ctx.solve()` before using the substitution.
+    #[must_use]
     pub fn default_literal_vars(&self, subst: &Substitution) -> Substitution {
         let mut extended = subst.clone();
         for &var in &self.integer_literal_vars {
@@ -1649,16 +1708,22 @@ impl InferContext {
         extended
     }
 
+    #[must_use]
     pub fn is_integer_literal_var(&self, tv: TypeVar) -> bool {
         self.integer_literal_vars.contains(&tv)
     }
 
+    #[must_use]
     pub fn is_float_literal_var(&self, tv: TypeVar) -> bool {
         self.float_literal_vars.contains(&tv)
     }
 
     /// Bind a name to a monomorphic type in the current scope.
     /// `is_mutable` is `true` for `mut` bindings, `false` for `let` bindings and parameters.
+    ///
+    /// # Panics
+    /// Panics if called with no scope pushed — cannot happen through normal use,
+    /// since a fresh `InferContext` always starts with one scope.
     pub fn bind_mono(&mut self, name: impl Into<String>, ty: InferType, is_mutable: bool) {
         self.mono_env
             .last_mut()
@@ -1672,16 +1737,21 @@ impl InferContext {
     }
 
     /// Whether `name` has more than one free-function definition in this module.
+    #[must_use]
     pub fn is_overloaded(&self, name: &str) -> bool {
         self.overloads.contains_key(name)
     }
 
     /// The overload candidates for `name`, or `None` if it is not overloaded.
+    #[must_use]
     pub fn overload_candidates(&self, name: &str) -> Option<&[OverloadEntry]> {
-        self.overloads.get(name).map(|v| v.as_slice())
+        self.overloads.get(name).map(std::vec::Vec::as_slice)
     }
 
     /// Bind a name to a polymorphic type scheme in the current scope.
+    ///
+    /// # Panics
+    /// Panics if called with no scope pushed — see [`InferContext::bind_mono`].
     pub fn bind_poly(&mut self, name: impl Into<String>, scheme: TypeScheme) {
         self.poly_env
             .last_mut()
@@ -1691,6 +1761,9 @@ impl InferContext {
 
     /// Bind a polymorphic scheme only if the current scope does not already
     /// contain that name. Used for lower-priority prelude names.
+    ///
+    /// # Panics
+    /// Panics if called with no scope pushed — see [`InferContext::bind_mono`].
     pub fn bind_poly_if_absent(&mut self, name: impl Into<String>, scheme: TypeScheme) {
         self.poly_env
             .last_mut()
@@ -1701,7 +1774,8 @@ impl InferContext {
 
     /// Whether any scope binds `name` (poly or mono), without instantiating.
     /// Used by overload resolution to decide if a failed exact-match can fall
-    /// back to a non-overload binding (e.g. the std::core generic `print`).
+    /// back to a non-overload binding (e.g. the `std::core` generic `print`).
+    #[must_use]
     pub fn has_binding(&self, name: &str) -> bool {
         self.poly_env.iter().any(|sc| sc.contains_key(name))
             || self.mono_env.iter().any(|sc| sc.contains_key(name))
@@ -1733,6 +1807,7 @@ impl InferContext {
     /// still be written through (the exclusivity comes from the reference, not the
     /// binding), so `lookup_for_write`'s immutability check must be bypassed to inspect
     /// the raw type before deciding whether that applies.
+    #[must_use]
     pub fn lookup_mono_raw(&self, name: &str) -> Option<InferType> {
         self.mono_env
             .iter()
@@ -1747,14 +1822,16 @@ impl InferContext {
     }
 
     /// Spans of every `Expr::Assign` resolved as write-through, for pass 2 to consult.
+    #[must_use]
     pub fn write_through_assigns(&self) -> &HashSet<Span> {
         &self.write_through_assigns
     }
 
     /// Look up a name for writing (assignment). Returns the binding's type on success.
-    /// Errors:
-    ///   - E0003 if the name is not in scope
-    ///   - E0006 if the binding is immutable (`let` or parameter)
+    ///
+    /// # Errors
+    /// - T0003 if the name is not in scope
+    /// - T0006 if the binding is immutable (`let` or parameter)
     pub fn lookup_for_write(&self, name: &str, span: &Span) -> Result<InferType, MetelError> {
         match self.mono_env.iter().rev().find_map(|scope| scope.get(name)) {
             None => Err(MetelError::type_error(
@@ -1773,6 +1850,7 @@ impl InferContext {
 
     /// Collect all type variables that appear free across all current mono scopes.
     /// Pass this to `generalize()` to avoid capturing variables still being solved.
+    #[must_use]
     pub fn env_free_vars(&self) -> HashSet<TypeVar> {
         let mut vars = HashSet::new();
         for scope in &self.mono_env {
@@ -1789,6 +1867,9 @@ impl InferContext {
     }
 
     /// Solve all accumulated constraints and return the resulting substitution.
+    ///
+    /// # Errors
+    /// Returns an error if any accumulated constraint fails to unify.
     pub fn solve(&mut self) -> Result<Substitution, MetelError> {
         let started = Instant::now();
         self.solve_stats.solve_calls += 1;
@@ -1806,12 +1887,13 @@ impl InferContext {
 
         self.solve_stats.constraints_processed +=
             (self.constraints.len() - self.solved_constraint_count) as u64;
-        self.solve_stats.solve_ns += started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
+        self.solve_stats.solve_ns += started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
         self.solved_constraint_count = self.constraints.len();
         self.cached_subst = subst.clone();
         Ok(subst)
     }
 
+    #[must_use]
     pub fn solve_stats(&self) -> SolveStats {
         self.solve_stats
     }
@@ -1828,6 +1910,7 @@ impl InferContext {
     }
 
     /// The expected return type of the innermost enclosing function, if any.
+    #[must_use]
     pub fn current_return_type(&self) -> Option<&InferType> {
         self.current_return_type.as_ref()
     }
@@ -1840,6 +1923,7 @@ impl InferContext {
         self.current_break_type = prev;
     }
 
+    #[must_use]
     pub fn current_break_type(&self) -> Option<&InferType> {
         self.current_break_type.as_ref()
     }

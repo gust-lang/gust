@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use crate::ast::*;
+use crate::ast::{TypeExpr, FunDecl, Decl, Program, Expr, AspectMethod, Block, Stmt, ForInit, AssignTarget, AssignOp, Param, MatchExpr, Pattern, Span, Literal, BinOp, UnaryOp, Visibility, GenericParam, ImplBlock};
 use crate::error::{MetelError, TypeErrorCode};
-use crate::typeinference::*;
+use crate::typeinference::{InferContext, InferType, TypeVar, generalize, TypeScheme, free_vars, FieldEntry, VariantInfo, EnumInfo, Substitution};
 use crate::types::Type;
 
 use super::conversions::{
@@ -12,7 +12,7 @@ use super::conversions::{
 use super::FunGeneralization;
 
 /// Resolve a type annotation, substituting any name that matches the current
-/// function's generic type params with the corresponding TypeVar rather than
+/// function's generic type params with the corresponding `TypeVar` rather than
 /// producing a Named type.  Must be used for all annotations inside function
 /// bodies; bare `type_expr_to_infer` ignores the param map.
 fn ann_to_infer(te: &TypeExpr, ctx: &InferContext) -> InferType {
@@ -27,7 +27,7 @@ fn ann_to_infer(te: &TypeExpr, ctx: &InferContext) -> InferType {
 /// Register the names of all direct `FunDecl`s in `decls` with fresh type
 /// variables so that forward references and mutual recursion work.
 /// The function type of a `native` declaration, built from its annotations,
-/// plus the aspect bounds of its generic params keyed by their TypeVars (so
+/// plus the aspect bounds of its generic params keyed by their `TypeVars` (so
 /// the caller can attach them to the generalized scheme).
 fn native_fun_ty(
     fun: &FunDecl,
@@ -294,6 +294,10 @@ fn infer_decl(
     }
 }
 
+// Exhaustive match over every AST/type-system variant; splitting it up would
+// scatter one coherent dispatch table across many small functions with no
+// real gain in clarity.
+#[allow(clippy::too_many_lines)]
 fn infer_fun_decl(
     fun: &FunDecl,
     ctx: &mut InferContext,
@@ -441,6 +445,10 @@ fn infer_fun_decl(
     Ok(())
 }
 
+// Exhaustive match over every AST/type-system variant; splitting it up would
+// scatter one coherent dispatch table across many small functions with no
+// real gain in clarity.
+#[allow(clippy::too_many_lines)]
 fn infer_impl_method(
     method: &FunDecl,
     target_name: &str,
@@ -519,9 +527,7 @@ fn infer_impl_method(
         .collect();
     let ret_ty = method
         .return_type
-        .as_ref()
-        .map(te_to_infer)
-        .unwrap_or_else(InferType::unit);
+        .as_ref().map_or_else(InferType::unit, te_to_infer);
 
     // Native methods have no Metel body; their signature comes entirely from
     // annotations (METEL-181). Skip body inference but still register the
@@ -630,9 +636,7 @@ fn infer_default_aspect_method(
         .collect();
     let ret_ty = method
         .return_type
-        .as_ref()
-        .map(te_to_infer)
-        .unwrap_or_else(InferType::unit);
+        .as_ref().map_or_else(InferType::unit, te_to_infer);
     let body = method
         .default_body
         .as_ref()
@@ -730,6 +734,10 @@ fn infer_block(
     Ok(ty)
 }
 
+// Exhaustive match over every AST/type-system variant; splitting it up would
+// scatter one coherent dispatch table across many small functions with no
+// real gain in clarity.
+#[allow(clippy::too_many_lines)]
 fn infer_stmt(
     stmt: &Stmt,
     ctx: &mut InferContext,
@@ -803,10 +811,7 @@ fn infer_stmt(
             let partial = ctx.solve()?;
             let resolved_iter = partial.apply(&iter_ty);
             match &resolved_iter {
-                InferType::Array(elem) => {
-                    ctx.add_constraint(elem_ty.clone(), *elem.clone(), fi.span.clone());
-                }
-                InferType::SizedArray(elem, _) => {
+                InferType::Array(elem) | InferType::SizedArray(elem, _) => {
                     ctx.add_constraint(elem_ty.clone(), *elem.clone(), fi.span.clone());
                 }
                 InferType::Var(_) => {
@@ -851,6 +856,10 @@ fn infer_stmt(
     }
 }
 
+// Exhaustive match over every AST/type-system variant; splitting it up would
+// scatter one coherent dispatch table across many small functions with no
+// real gain in clarity.
+#[allow(clippy::too_many_lines)]
 fn infer_expr(
     expr: &Expr,
     ctx: &mut InferContext,
@@ -973,17 +982,14 @@ fn infer_expr(
                         }
                     };
                     let entries = ctx.overload_candidates(name).unwrap();
-                    let entry = match super::overload::select(entries, &arg_types) {
-                        Some(entry) => entry.clone(),
-                        None => {
-                            if ctx.has_binding(name) {
-                                return fallback(ctx, &arg_infer);
-                            }
-                            let entries = ctx.overload_candidates(name).unwrap();
-                            return Err(super::overload::no_match_error(
-                                name, &arg_types, entries, span,
-                            ));
+                    let entry = if let Some(entry) = super::overload::select(entries, &arg_types) { entry.clone() } else {
+                        if ctx.has_binding(name) {
+                            return fallback(ctx, &arg_infer);
                         }
+                        let entries = ctx.overload_candidates(name).unwrap();
+                        return Err(super::overload::no_match_error(
+                            name, &arg_types, entries, span,
+                        ));
                     };
                     // Commit the selection: constrain each argument to the chosen
                     // candidate's parameter type so defaulted literal vars resolve
@@ -1057,16 +1063,13 @@ fn infer_expr(
             let cond_ty = infer_expr(condition, ctx, fun_generalizations)?;
             ctx.add_constraint(cond_ty, InferType::bool(), span.clone());
             let then_ty = infer_block(then_branch, ctx, fun_generalizations)?;
-            match else_branch {
-                Some(else_block) => {
-                    let else_ty = infer_block(else_block, ctx, fun_generalizations)?;
-                    ctx.add_constraint(then_ty.clone(), else_ty, span.clone());
-                    Ok(then_ty)
-                }
-                None => {
-                    ctx.add_constraint(then_ty, InferType::unit(), span.clone());
-                    Ok(InferType::unit())
-                }
+            if let Some(else_block) = else_branch {
+                let else_ty = infer_block(else_block, ctx, fun_generalizations)?;
+                ctx.add_constraint(then_ty.clone(), else_ty, span.clone());
+                Ok(then_ty)
+            } else {
+                ctx.add_constraint(then_ty, InferType::unit(), span.clone());
+                Ok(InferType::unit())
             }
         }
         Expr::Assign {
@@ -1318,11 +1321,10 @@ fn infer_expr(
                                 let ret_ty = method_def
                                     .return_type
                                     .as_ref()
-                                    .map(|rt| match rt {
+                                    .map_or(InferType::unit(), |rt| match rt {
                                         TypeExpr::Named(n, _) if n == "Self" => InferType::Var(*tv),
                                         other => type_expr_to_infer(other),
-                                    })
-                                    .unwrap_or(InferType::unit());
+                                    });
 
                                 // Collect declared non-self params for arity + type checking.
                                 let declared_params: Vec<&Param> = method_def
@@ -1534,10 +1536,14 @@ fn infer_expr(
                     }
                 })
                 .collect();
-            let ret_ty = return_type
-                .as_ref()
-                .map(|ann| ann_to_infer(ann, ctx))
-                .unwrap_or_else(|| ctx.fresh_var());
+            // Not rewritten to `map_or_else` (clippy's own suggestion): both
+            // closures would capture `ctx` mutably, and `map_or_else` requires
+            // constructing both simultaneously as arguments, which the borrow
+            // checker rejects (unlike this sequential match).
+            let ret_ty = match &return_type {
+                Some(ann) => ann_to_infer(ann, ctx),
+                None => ctx.fresh_var(),
+            };
             ctx.push_scope();
             for (p, pt) in params.iter().zip(param_types.iter()) {
                 ctx.bind_mono(&p.name, pt.clone(), p.mutable);
@@ -2265,9 +2271,9 @@ fn infer_struct_literal(
 fn root_binding_for_write(expr: &Expr) -> Option<(&str, &Span)> {
     match expr {
         Expr::Ident(name, span) => Some((name.as_str(), span)),
-        Expr::FieldAccess { object, .. } => root_binding_for_write(object),
-        Expr::Index { object, .. } => root_binding_for_write(object),
-        Expr::UnaryOp(UnaryOp::Deref, _, _) => None,
+        Expr::FieldAccess { object, .. } | Expr::Index { object, .. } => {
+            root_binding_for_write(object)
+        }
         _ => None,
     }
 }
@@ -2485,7 +2491,7 @@ pub(super) fn lower_impl_aspect(fun: &FunDecl, counter: &mut usize) -> FunDecl {
                     source_spell: _,
                     ..
                 }) => {
-                    let anon_name = format!("_ImplT{}", counter);
+                    let anon_name = format!("_ImplT{counter}");
                     *counter += 1;
                     extra_generics.push(GenericParam {
                         name: anon_name.clone(),

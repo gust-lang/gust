@@ -23,7 +23,7 @@ fn check_source(source: &str) -> Result<(), MetelError> {
         let graph = module_loader::load_root(&path)?;
         let names = name_resolver::resolve(&graph)?;
         let normalized = path_normalizer::normalize(graph, &names)?;
-        typechecker::check_graph(normalized, &names, typechecker::CorePrelude::default()).map(|_| ())
+        typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default()).map(|_| ())
     })();
     let _ = std::fs::remove_file(&path);
     result

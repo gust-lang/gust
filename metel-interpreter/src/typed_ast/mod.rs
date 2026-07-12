@@ -47,7 +47,7 @@ pub struct TypedModule {
     /// Alias → canonical name for imports declared `import mod::name as alias`.
     /// The evaluator registers these so that `alias` resolves to the same value as `name`.
     pub import_aliases: HashMap<String, String>,
-    /// Every explicitly imported name: local_name → resolved import reference.
+    /// Every explicitly imported name: `local_name` → resolved import reference.
     /// Used by `evaluate_graph` to seed each module's environment from its dependencies.
     pub imported_names: HashMap<String, ResolvedImportRef>,
     /// The full type-scheme environment produced by the typechecker for this module.
@@ -151,7 +151,7 @@ pub struct TypedFunDecl {
     pub span: Span,
 }
 
-/// Carried in TypedDecl for structural completeness; the evaluator produces no
+/// Carried in `TypedDecl` for structural completeness; the evaluator produces no
 /// runtime representation for struct/enum declarations.
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -162,7 +162,7 @@ pub struct TypedStructDecl {
     pub span: Span,
 }
 
-/// Carried in TypedDecl for structural completeness; the evaluator produces no
+/// Carried in `TypedDecl` for structural completeness; the evaluator produces no
 /// runtime representation for struct/enum declarations.
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -189,7 +189,7 @@ pub struct TypedImplBlock {
     pub span: Span,
 }
 
-/// Carried in TypedDecl for structural completeness; the evaluator produces no
+/// Carried in `TypedDecl` for structural completeness; the evaluator produces no
 /// runtime representation for aspect declarations.
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -321,7 +321,7 @@ pub enum TypedExpr {
         ty: Type,
         /// Resolved overload definition (METEL-180): when the callee is an
         /// overloaded free function, construction stamps the selected
-        /// candidate's SymbolId here and the evaluator dispatches through its
+        /// candidate's `SymbolId` here and the evaluator dispatches through its
         /// symbol registry instead of evaluating `callee` by name.
         callee_id: Option<SymbolId>,
         span: Span,
@@ -428,6 +428,7 @@ pub enum TypedExpr {
 
 impl TypedExpr {
     /// Convenience method to get the type of this expression.
+    #[must_use]
     pub fn ty(&self) -> &Type {
         match self {
             TypedExpr::Literal(_, ty, _)
@@ -437,8 +438,8 @@ impl TypedExpr {
             | TypedExpr::Array(_, ty, _)
             | TypedExpr::RepeatArray(_, _, ty, _)
             | TypedExpr::BinOp(_, _, _, ty, _)
-            | TypedExpr::UnaryOp(_, _, ty, _) => ty,
-            TypedExpr::Assign { ty, .. }
+            | TypedExpr::UnaryOp(_, _, ty, _)
+            | TypedExpr::Assign { ty, .. }
             | TypedExpr::Call { ty, .. }
             | TypedExpr::MethodCall { ty, .. }
             | TypedExpr::FieldAccess { ty, .. }
@@ -457,6 +458,7 @@ impl TypedExpr {
     }
 
     /// Convenience method to get the span of this expression.
+    #[must_use]
     pub fn span(&self) -> &Span {
         match self {
             TypedExpr::Literal(_, _, s)
@@ -466,24 +468,24 @@ impl TypedExpr {
             | TypedExpr::Array(_, _, s)
             | TypedExpr::RepeatArray(_, _, _, s)
             | TypedExpr::BinOp(_, _, _, _, s)
-            | TypedExpr::UnaryOp(_, _, _, s) => s,
-            TypedExpr::Assign { span, .. }
-            | TypedExpr::Call { span, .. }
-            | TypedExpr::MethodCall { span, .. }
-            | TypedExpr::FieldAccess { span, .. }
-            | TypedExpr::TupleAccess { span, .. }
-            | TypedExpr::Index { span, .. }
-            | TypedExpr::Cast { span, .. }
-            | TypedExpr::If { span, .. }
-            | TypedExpr::Loop { span, .. }
-            | TypedExpr::Closure { span, .. }
-            | TypedExpr::GenericClosure { span, .. }
-            | TypedExpr::StructLiteral { span, .. }
-            | TypedExpr::SingletonCoerce { span, .. } => span,
+            | TypedExpr::UnaryOp(_, _, _, s)
+            | TypedExpr::Assign { span: s, .. }
+            | TypedExpr::Call { span: s, .. }
+            | TypedExpr::MethodCall { span: s, .. }
+            | TypedExpr::FieldAccess { span: s, .. }
+            | TypedExpr::TupleAccess { span: s, .. }
+            | TypedExpr::Index { span: s, .. }
+            | TypedExpr::Cast { span: s, .. }
+            | TypedExpr::If { span: s, .. }
+            | TypedExpr::Loop { span: s, .. }
+            | TypedExpr::Closure { span: s, .. }
+            | TypedExpr::GenericClosure { span: s, .. }
+            | TypedExpr::StructLiteral { span: s, .. }
+            | TypedExpr::SingletonCoerce { span: s, .. }
+            | TypedExpr::Continue(s) => s,
             TypedExpr::Match(m) => &m.span,
             TypedExpr::Return(r) => &r.span,
             TypedExpr::Break(b) => &b.span,
-            TypedExpr::Continue(s) => s,
         }
     }
 }

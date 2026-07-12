@@ -1,3 +1,14 @@
+// See src/lib.rs for the rationale — this binary target re-declares the same
+// modules as a separate crate root, so the same crate-level allow is needed
+// here too.
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_lossless
+)]
+
 use std::process;
 
 use clap::Parser;

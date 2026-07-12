@@ -44,14 +44,14 @@ pub enum BindingKind {
 /// The resolved import scope for a single module.
 #[derive(Debug, Clone)]
 pub struct ModuleScope {
-    /// Explicit bindings: local_name → ImportBinding.
-    /// Two explicit bindings with the same local_name are a compile error.
+    /// Explicit bindings: `local_name` → `ImportBinding`.
+    /// Two explicit bindings with the same `local_name` are a compile error.
     pub explicit: HashMap<String, ImportBinding>,
     /// Glob-imported module paths (`import path::*`), tagged with their priority tier.
     /// Names from these modules are in scope at lower priority than explicit imports.
     /// T0011 fires only for same-tier conflicts; `User` silently wins over `Std`.
     pub globs: Vec<(GlobTier, Vec<String>)>,
-    /// Re-exported names: local_name → source binding.
+    /// Re-exported names: `local_name` → source binding.
     /// These names are part of this module's public API surface for callers.
     pub re_exports: HashMap<String, ImportBinding>,
 }
@@ -110,6 +110,9 @@ fn canonical_path(path: &[String], aliases: &HashMap<Vec<String>, Vec<String>>) 
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
+/// # Errors
+/// Returns an error if an import or export cannot be resolved (e.g. an unknown
+/// module or name) or if a glob-import conflict cannot be settled.
 pub fn resolve(graph: &ModuleGraph) -> Result<ResolvedNames, MetelError> {
     let path_aliases = &graph.path_aliases;
     let known_modules: HashSet<Vec<String>> = graph
@@ -250,6 +253,7 @@ pub fn resolve(graph: &ModuleGraph) -> Result<ResolvedNames, MetelError> {
 ///
 /// Both the resolver (which assigns the id) and later consumers (which look it up)
 /// must build keys through this function so the identities agree.
+#[must_use]
 pub fn method_symbol_name(target: &str, aspect: Option<&str>, method: &str) -> String {
     match aspect {
         Some(aspect) => format!("{target}::{aspect}::{method}"),
@@ -377,7 +381,7 @@ fn resolve_module(
 }
 
 /// Collect re-exported names from a module's `export` declarations.
-/// Returns a map of local_name → binding for each successfully resolved export.
+/// Returns a map of `local_name` → binding for each successfully resolved export.
 fn collect_re_exports(
     loaded: &LoadedModule,
     known_modules: &HashSet<Vec<String>>,
@@ -404,7 +408,8 @@ fn collect_re_exports(
     Ok(re_exports)
 }
 
-/// Walk an export path tree and populate the re_exports map.
+/// Walk an export path tree and populate the `re_exports` map.
+#[allow(clippy::too_many_arguments)] // recursive walker threading full resolution context
 fn process_export_tree(
     base: &[String],
     tree: &ImportTree,
@@ -521,6 +526,7 @@ fn absolute_base(root: &PathRoot, current: &[String]) -> Vec<String> {
     resolve_path_root(root, current)
 }
 
+#[allow(clippy::too_many_arguments)] // recursive walker threading full resolution context
 fn process_tree(
     base: &[String],
     tree: &ImportTree,

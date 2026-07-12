@@ -2,7 +2,7 @@ use pest::iterators::Pairs;
 use pest::Parser;
 use pest_derive::Parser;
 
-use crate::ast::*;
+use crate::ast::{Program, ImportDecl, Span, ExportDecl, ImportPath, PathRoot, ImportTree, Decl, LetDecl, MutDecl, TypeExpr, Expr, FunDecl, NativeBinding, Visibility, Block, StructDecl, EnumDecl, ImplBlock, Param, ReceiverKind, FieldDef, VariantDef, AspectMethod, Stmt, WhileStmt, ForStmt, ForInit, ReturnExpr, BreakExpr, Literal, BinOp, AssignTarget, MatchArm, Pattern, UnaryOp, MatchExpr, AssignOp, ForInStmt, WhereClause, GenericParam, AspectDecl};
 use crate::error::{MetelError, ParseErrorCode};
 
 #[derive(Parser)]
@@ -10,6 +10,9 @@ use crate::error::{MetelError, ParseErrorCode};
 struct MetelParser;
 
 /// Parse a Metel source string into an untyped AST.
+///
+/// # Errors
+/// Returns an error if `source` does not conform to the Metel grammar.
 pub fn parse(source: &str, filename: &str) -> Result<Program, MetelError> {
     let mut pairs = MetelParser::parse(Rule::program, source).map_err(|e| {
         let (start, end) = match e.location {
@@ -17,8 +20,8 @@ pub fn parse(source: &str, filename: &str) -> Result<Program, MetelError> {
             pest::error::InputLocation::Span((s, e)) => (s, e),
         };
         let (line, col) = match &e.line_col {
-            pest::error::LineColLocation::Pos((l, c)) => (*l as u32, *c as u32),
-            pest::error::LineColLocation::Span((l, c), _) => (*l as u32, *c as u32),
+            pest::error::LineColLocation::Pos((l, c))
+            | pest::error::LineColLocation::Span((l, c), _) => (*l as u32, *c as u32),
         };
         MetelError::ParseError {
             code: ParseErrorCode::P0001,
@@ -52,7 +55,6 @@ fn parse_program(pairs: &mut Pairs<Rule>, filename: &str) -> Result<Program, Met
             Rule::import_decl => imports.push(parse_import_decl(pair, filename)?),
             Rule::export_decl => exports.push(parse_export_decl(pair, filename)?),
             Rule::decl => decls.push(parse_decl(pair, filename)?),
-            Rule::EOI => {}
             _ => {}
         }
     }
@@ -281,7 +283,7 @@ fn parse_fun_decl(
 
     // Optional `native(@…)` host-binding attribute.
     let mut native = None;
-    if inner.peek().map(|p| p.as_rule()) == Some(Rule::native_attr) {
+    if inner.peek().map(pest::iterators::Pair::as_rule) == Some(Rule::native_attr) {
         let attr = inner.next().unwrap();
         let attr_span = Span::of(&attr, filename);
         let path_pair = attr
@@ -824,12 +826,12 @@ fn parse_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr,
             parse_expr(inner, filename)
         }
         Rule::assign_expr => parse_assign_expr(pair, filename),
-        Rule::or_expr => parse_lr_binary(pair, filename),
-        Rule::and_expr => parse_lr_binary(pair, filename),
-        Rule::cmp_expr => parse_lr_binary(pair, filename),
-        Rule::range_expr => parse_lr_binary(pair, filename),
-        Rule::add_expr => parse_lr_binary(pair, filename),
-        Rule::mul_expr => parse_lr_binary(pair, filename),
+        Rule::or_expr
+        | Rule::and_expr
+        | Rule::cmp_expr
+        | Rule::range_expr
+        | Rule::add_expr
+        | Rule::mul_expr => parse_lr_binary(pair, filename),
         Rule::cast_expr => parse_cast_expr(pair, filename),
         Rule::asc_expr => parse_asc_expr(pair, filename),
         Rule::unary_expr => parse_unary_expr(pair, filename),
@@ -850,7 +852,7 @@ fn parse_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr,
         | Rule::none_lit
         | Rule::unit_lit
         | Rule::int_lit_suffixed
-        | Rule::float_lit_suffixed => parse_literal_expr(pair, filename),
+        | Rule::float_lit_suffixed => parse_literal_expr(&pair, filename),
         Rule::path_expr => parse_path_expr(pair, filename),
         Rule::tuple_or_paren => parse_tuple_or_paren(pair, filename),
         Rule::array_lit => parse_array_lit(pair, filename),
@@ -869,12 +871,16 @@ fn parse_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr,
     }
 }
 
+// Exhaustive match over every AST/type-system variant; splitting it up would
+// scatter one coherent dispatch table across many small functions with no
+// real gain in clarity.
+#[allow(clippy::too_many_lines)]
 fn parse_literal_expr(
-    pair: pest::iterators::Pair<Rule>,
+    pair: &pest::iterators::Pair<Rule>,
     filename: &str,
 ) -> Result<Expr, MetelError> {
     use crate::ast::{FloatKind, IntKind};
-    let span = Span::of(&pair, filename);
+    let span = Span::of(pair, filename);
     let text = pair.as_str();
     let lit = match pair.as_rule() {
         Rule::int_lit => {
@@ -940,14 +946,14 @@ fn parse_literal_expr(
             let in_range = match kind {
                 // Allow abs(MIN) so that e.g. `-128i8` and `-32768i16` parse correctly;
                 // the extra value wraps to MIN via the two's-complement cast in the evaluator.
-                IntKind::I8 => value <= i8::MAX as i128 + 1,
-                IntKind::I16 => value <= i16::MAX as i128 + 1,
-                IntKind::I32 => value <= i32::MAX as i128 + 1,
-                IntKind::I64 => value <= i64::MAX as i128 + 1,
-                IntKind::U8 => value <= u8::MAX as i128,
-                IntKind::U16 => value <= u16::MAX as i128,
-                IntKind::U32 => value <= u32::MAX as i128,
-                IntKind::U64 => value <= u64::MAX as i128,
+                IntKind::I8 => value <= i128::from(i8::MAX) + 1,
+                IntKind::I16 => value <= i128::from(i16::MAX) + 1,
+                IntKind::I32 => value <= i128::from(i32::MAX) + 1,
+                IntKind::I64 => value <= i128::from(i64::MAX) + 1,
+                IntKind::U8 => value <= i128::from(u8::MAX),
+                IntKind::U16 => value <= i128::from(u16::MAX),
+                IntKind::U32 => value <= i128::from(u32::MAX),
+                IntKind::U64 => value <= i128::from(u64::MAX),
             };
             if !in_range {
                 return Err(MetelError::ParseError {
@@ -1071,7 +1077,7 @@ fn parse_string_literal_expr(text: &str, span: Span, filename: &str) -> Result<E
                 text_start = Some(i);
             }
             text_buf.push(decoded);
-            i = next + escaped.map(char::len_utf8).unwrap_or(0);
+            i = next + escaped.map_or(0, char::len_utf8);
             continue;
         }
 
@@ -1136,8 +1142,8 @@ fn parse_interpolation_expr(source: &str, span: &Span, filename: &str) -> Result
             pest::error::InputLocation::Span((s, e)) => (s, e),
         };
         let (line, col) = match &e.line_col {
-            pest::error::LineColLocation::Pos((l, c)) => (*l as u32, *c as u32),
-            pest::error::LineColLocation::Span((l, c), _) => (*l as u32, *c as u32),
+            pest::error::LineColLocation::Pos((l, c))
+            | pest::error::LineColLocation::Span((l, c), _) => (*l as u32, *c as u32),
         };
         let (line, col) = shift_line_col(line, col, span.line, span.col);
         MetelError::ParseError {
@@ -1264,6 +1270,10 @@ fn shift_span(span: &mut Span, base_start: usize, base_line: u32, base_col: u32)
     span.col = col;
 }
 
+// Exhaustive match over every Expr variant; splitting it up would scatter one
+// coherent dispatch table across many small functions with no real gain in
+// clarity.
+#[allow(clippy::too_many_lines)]
 fn shift_expr_span(expr: &mut Expr, base_start: usize, base_line: u32, base_col: u32) {
     match expr {
         Expr::Literal(_, span)
@@ -1274,10 +1284,8 @@ fn shift_expr_span(expr: &mut Expr, base_start: usize, base_line: u32, base_col:
         | Expr::RepeatArray(_, _, span)
         | Expr::BinOp(_, _, _, span)
         | Expr::UnaryOp(_, _, span)
-        | Expr::PropagateError { span, .. } => {
-            shift_span(span, base_start, base_line, base_col);
-        }
-        Expr::ResolvedPath { span, .. } => {
+        | Expr::PropagateError { span, .. }
+        | Expr::ResolvedPath { span, .. } => {
             shift_span(span, base_start, base_line, base_col);
         }
         Expr::Assign {
@@ -1528,8 +1536,8 @@ fn shift_pattern_span(pattern: &mut Pattern, base_start: usize, base_line: u32, 
         Pattern::Wildcard(span)
         | Pattern::None(span)
         | Pattern::Binding(_, span)
-        | Pattern::Literal(_, span) => shift_span(span, base_start, base_line, base_col),
-        Pattern::EnumVariant { span, .. } => shift_span(span, base_start, base_line, base_col),
+        | Pattern::Literal(_, span)
+        | Pattern::EnumVariant { span, .. } => shift_span(span, base_start, base_line, base_col),
         Pattern::Tuple(items, span) => {
             for item in items {
                 shift_pattern_span(item, base_start, base_line, base_col);
@@ -1826,7 +1834,7 @@ fn parse_assign_expr(
 
 // ── Binary expressions (left-recursive) ──────────────────────────────────────
 
-/// Handles or_expr, and_expr, cmp_expr, range_expr, add_expr, mul_expr.
+/// Handles `or_expr`, `and_expr`, `cmp_expr`, `range_expr`, `add_expr`, `mul_expr`.
 /// All follow the pattern: operand (op operand)* where op is a named rule.
 fn parse_lr_binary(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
     let span = Span::of(&pair, filename);
@@ -1880,17 +1888,13 @@ fn parse_cast_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<
         .ok_or_else(|| MetelError::internal("cast_expr: expected operand"))?;
     let mut expr = parse_expr(first, filename)?;
     for p in inner {
-        match p.as_rule() {
-            Rule::cast_op => {}
-            Rule::type_expr => {
-                let target_type = parse_type_expr(p, filename)?;
-                expr = Expr::Cast {
-                    expr: Box::new(expr),
-                    target_type,
-                    span: span.clone(),
-                };
-            }
-            _ => {}
+        if p.as_rule() == Rule::type_expr {
+            let target_type = parse_type_expr(p, filename)?;
+            expr = Expr::Cast {
+                expr: Box::new(expr),
+                target_type,
+                span: span.clone(),
+            };
         }
     }
     Ok(expr)
@@ -1963,6 +1967,10 @@ fn parse_type_args_pair(
         .collect()
 }
 
+// Exhaustive match over every AST/type-system variant; splitting it up would
+// scatter one coherent dispatch table across many small functions with no
+// real gain in clarity.
+#[allow(clippy::too_many_lines)]
 fn apply_postfix(
     base: Expr,
     pair: pest::iterators::Pair<Rule>,
@@ -2215,13 +2223,10 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
                 .next()
                 .ok_or_else(|| MetelError::internal("literal_pattern: expected literal"))?;
             // Delegate to parse_literal_expr and extract the Literal.
-            let lit = match parse_literal_expr(lit_pair, filename)? {
-                Expr::Literal(l, _) => l,
-                _ => {
-                    return Err(MetelError::internal(
-                        "literal_pattern: expected literal expr",
-                    ))
-                }
+            let Expr::Literal(lit, _) = parse_literal_expr(&lit_pair, filename)? else {
+                return Err(MetelError::internal(
+                    "literal_pattern: expected literal expr",
+                ));
             };
             Ok(Pattern::Literal(lit, span))
         }
@@ -2348,6 +2353,10 @@ fn expr_to_assign_target(expr: Expr) -> Result<AssignTarget, MetelError> {
 }
 
 #[allow(clippy::only_used_in_recursion)]
+// Exhaustive match over every AST/type-system variant; splitting it up would
+// scatter one coherent dispatch table across many small functions with no
+// real gain in clarity.
+#[allow(clippy::too_many_lines)]
 fn parse_type_expr(
     pair: pest::iterators::Pair<Rule>,
     filename: &str,
@@ -2705,14 +2714,13 @@ fn unescape(s: &str) -> String {
                 Some('n') => out.push('\n'),
                 Some('t') => out.push('\t'),
                 Some('r') => out.push('\r'),
-                Some('\\') => out.push('\\'),
+                Some('\\') | None => out.push('\\'),
                 Some('"') => out.push('"'),
                 Some('$') => out.push('$'),
                 Some(c) => {
                     out.push('\\');
                     out.push(c);
                 }
-                None => out.push('\\'),
             }
         } else {
             out.push(c);

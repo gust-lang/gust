@@ -6,6 +6,14 @@ use crate::ast::{Literal, Pattern};
 
 use super::Value;
 
+// Float literal patterns (e.g. `1.0 => ...`) match by exact IEEE-754 equality,
+// matching the same exact-comparison semantics as `==` (see `eval_binop`) --
+// not a bug, so not rewritten to an epsilon comparison.
+#[allow(clippy::float_cmp)]
+// Exhaustive match over every Pattern/Value combination; splitting it up would
+// scatter one coherent dispatch table across many small functions with no
+// real gain in clarity.
+#[allow(clippy::too_many_lines)]
 pub(super) fn match_pattern(
     pattern: &Pattern,
     value: &Value,
@@ -71,7 +79,7 @@ pub(super) fn match_pattern(
             } else {
                 ""
             };
-            let variant_name = path.last().map(String::as_str).unwrap_or("");
+            let variant_name = path.last().map_or("", String::as_str);
             match value {
                 Value::Enum {
                     name,

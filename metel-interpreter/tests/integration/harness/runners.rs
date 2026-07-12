@@ -72,7 +72,7 @@ fn run_typecheck(path: &Path) -> Result<(), MetelError> {
     let names = name_resolver::resolve(&graph)?;
     let normalized = path_normalizer::normalize(graph, &names)?;
     coherence::check(&normalized, &names)?;
-    typechecker::check_graph(normalized, &names, typechecker::CorePrelude::default()).map(|_| ())
+    typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default()).map(|_| ())
 }
 
 fn run_evaluate(path: &Path) -> Result<(), MetelError> {
@@ -80,7 +80,7 @@ fn run_evaluate(path: &Path) -> Result<(), MetelError> {
     let names = name_resolver::resolve(&graph)?;
     let normalized = path_normalizer::normalize(graph, &names)?;
     coherence::check(&normalized, &names)?;
-    let typed = typechecker::check_graph(normalized, &names, typechecker::CorePrelude::default())?;
+    let typed = typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())?;
     let elaborated = elaborator::elaborate(typed, &names)?;
     evaluator::evaluate_graph(elaborated)
 }
@@ -122,7 +122,7 @@ fn run_full_pipeline(
     let names = name_resolver::resolve(&graph)?;
     let normalized = path_normalizer::normalize(graph, &names)?;
     coherence::check(&normalized, &names)?;
-    let typed = typechecker::check_graph(normalized, &names, std_prelude(prelude_mode))?;
+    let typed = typechecker::check_graph(&normalized, &names, &std_prelude(prelude_mode))?;
     let elaborated = elaborator::elaborate(typed, &names)?;
     evaluator::evaluate_graph(elaborated)
 }

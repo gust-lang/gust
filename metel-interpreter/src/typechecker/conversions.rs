@@ -77,8 +77,7 @@ fn type_expr_to_infer_in_context(
                 .collect(),
             Box::new(
                 ret.as_deref()
-                    .map(|r| type_expr_to_infer_in_context(r, generics, self_ty_name))
-                    .unwrap_or(InferType::unit()),
+                    .map_or(InferType::unit(), |r| type_expr_to_infer_in_context(r, generics, self_ty_name)),
             ),
         ),
         // ImplAspect is removed by the lowering pass before inference runs.

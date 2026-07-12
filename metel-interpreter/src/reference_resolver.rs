@@ -301,7 +301,10 @@ impl Walker<'_, '_> {
             // Multi-segment paths are handled by the path normalizer (they become
             // `ResolvedPath` carrying their own `symbol_id`); leave them here.
             // `ResolvedPath` does not exist yet at this stage but is matched for safety.
-            Expr::Path(_, _) | Expr::ResolvedPath { .. } | Expr::Literal(_, _) => {}
+            Expr::Path(_, _)
+            | Expr::ResolvedPath { .. }
+            | Expr::Literal(_, _)
+            | Expr::Continue(_) => {}
             Expr::Tuple(elems, _) | Expr::Array(elems, _) => {
                 for e in elems {
                     self.resolve_expr(e);
@@ -381,7 +384,6 @@ impl Walker<'_, '_> {
                     self.resolve_expr(v);
                 }
             }
-            Expr::Continue(_) => {}
         }
     }
 

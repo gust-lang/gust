@@ -26,7 +26,7 @@ use crate::typeinference::{OverloadEntry, OverloadTable};
 
 use super::conversions::{infer_type_to_type, type_expr_to_infer};
 
-/// Process-global allocator for overload-definition SymbolIds. Overload tables
+/// Process-global allocator for overload-definition `SymbolIds`. Overload tables
 /// are built per module; the global counter keeps ids unique across the whole
 /// graph so the evaluator's symbol registry never collides.
 static NEXT_OVERLOAD_SYM: AtomicU32 = AtomicU32::new(crate::symbols::OVERLOAD_SYM_START);
@@ -35,9 +35,9 @@ fn next_overload_symbol() -> SymbolId {
     SymbolId(NEXT_OVERLOAD_SYM.fetch_add(1, Ordering::Relaxed))
 }
 
-/// The overload table for the embedded std::core declarations, built once per
+/// The overload table for the embedded `std::core` declarations, built once per
 /// process so every module (and the single-program path) sees the SAME
-/// `SymbolId` for each std::core overload — call sites in any module and the
+/// `SymbolId` for each `std::core` overload — call sites in any module and the
 /// runtime registration must agree on the id.
 pub(super) fn core_overload_table() -> &'static OverloadTable {
     use std::sync::OnceLock;
@@ -48,8 +48,8 @@ pub(super) fn core_overload_table() -> &'static OverloadTable {
     })
 }
 
-/// The `SymbolId` of an embedded std::core overloaded definition, or `None`
-/// if the declaration's name is not overloaded in std::core. Used by the
+/// The `SymbolId` of an embedded `std::core` overloaded definition, or `None`
+/// if the declaration's name is not overloaded in `std::core`. Used by the
 /// evaluator's embedded-core seeding to register host impls under the same
 /// ids the typechecker stamps into call sites.
 pub(crate) fn core_native_symbol(fun: &FunDecl) -> Option<SymbolId> {
@@ -57,25 +57,25 @@ pub(crate) fn core_native_symbol(fun: &FunDecl) -> Option<SymbolId> {
 }
 
 /// Build the overload table for a module: the module's own overload groups,
-/// plus the std::core groups (so `assert(cond)` / `assert(cond, msg)` resolve
+/// plus the `std::core` groups (so `assert(cond)` / `assert(cond, msg)` resolve
 /// everywhere) — except where the module declares its own `fun` with the same
-/// name, which shadows the std::core group entirely.
+/// name, which shadows the `std::core` group entirely.
 ///
-/// A module group whose signatures exactly match a std::core group (i.e. the
-/// std::core module checking its own decls) reuses the canonical core entries
-/// so the SymbolIds agree across the whole graph.
+/// A module group whose signatures exactly match a `std::core` group (i.e. the
+/// `std::core` module checking its own decls) reuses the canonical core entries
+/// so the `SymbolIds` agree across the whole graph.
 pub(super) fn build_overload_table(decls: &[Decl]) -> Result<OverloadTable, MetelError> {
     let mut table = build_table_from_decls(decls)?;
     let core = core_overload_table();
 
-    for (name, entries) in table.iter_mut() {
+    for (name, entries) in &mut table {
         if let Some(core_entries) = core.get(name) {
             let same_signatures = entries.len() == core_entries.len()
                 && entries
                     .iter()
                     .all(|e| core_entries.iter().any(|c| c.params == e.params));
             if same_signatures {
-                *entries = core_entries.clone();
+                entries.clone_from(core_entries);
             }
         }
     }
@@ -209,7 +209,7 @@ pub(super) fn callee_name(callee: &Expr) -> Option<&str> {
 pub(super) fn no_match_error(name: &str, arg_types: &[Type], entries: &[OverloadEntry], span: &Span) -> MetelError {
     let got = arg_types
         .iter()
-        .map(|t| t.to_string())
+        .map(std::string::ToString::to_string)
         .collect::<Vec<_>>()
         .join(", ");
     let candidates = entries
@@ -217,7 +217,7 @@ pub(super) fn no_match_error(name: &str, arg_types: &[Type], entries: &[Overload
         .map(|e| {
             format!(
                 "({})",
-                e.params.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(", ")
+                e.params.iter().map(std::string::ToString::to_string).collect::<Vec<_>>().join(", ")
             )
         })
         .collect::<Vec<_>>()

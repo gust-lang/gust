@@ -280,7 +280,8 @@ impl MetelError {
         }
     }
 
-    /// Attach a call stack to a RuntimePanic; no-op if already set or not a panic.
+    /// Attach a call stack to a `RuntimePanic`; no-op if already set or not a panic.
+    #[must_use]
     pub fn with_stack(self, frames: Vec<FrameInfo>) -> Self {
         match self {
             Self::RuntimePanic {
@@ -328,6 +329,7 @@ impl MetelError {
     /// to a source location. Provides a uniform accessor over the per-variant
     /// `start`/`end`/`filename`/`line`/`col` fields so consumers (diagnostics,
     /// tooling) do not need to match every variant. See RFC-0059.
+    #[must_use]
     pub fn primary_span(&self) -> Option<Span> {
         match self {
             Self::ParseError {

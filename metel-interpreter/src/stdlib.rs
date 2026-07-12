@@ -8,6 +8,7 @@ include!(concat!(env!("OUT_DIR"), "/stdlib_embedded.rs"));
 
 /// Embedded source for a logical stdlib module path (e.g. `["std", "core"]`),
 /// or `None` if no embedded module matches.
+#[must_use]
 pub fn lookup(module_path: &[String]) -> Option<&'static str> {
     EMBEDDED_STDLIB
         .iter()
@@ -20,10 +21,11 @@ pub fn lookup(module_path: &[String]) -> Option<&'static str> {
 
 /// Every embedded stdlib module path. Used by the loader to synthesize the
 /// stdlib modules into the module graph ahead of user code.
+#[must_use]
 pub fn module_paths() -> Vec<Vec<String>> {
     EMBEDDED_STDLIB
         .iter()
-        .map(|(segs, _)| segs.iter().map(|s| s.to_string()).collect())
+        .map(|(segs, _)| segs.iter().map(std::string::ToString::to_string).collect())
         .collect()
 }
 
@@ -31,6 +33,10 @@ pub fn module_paths() -> Vec<Vec<String>> {
 /// Consumed by the typechecker registry (builtin type/aspect registration),
 /// the prelude (free-function schemes), and the runtime (host bindings) —
 /// `stdlib/core.mtl` is the single source of truth for the core surface.
+///
+/// # Panics
+/// Panics if `std::core` is missing from the embedded stdlib table or fails to
+/// parse — both indicate a broken build, not a user-reachable condition.
 pub fn core_program() -> &'static crate::ast::Program {
     use std::sync::OnceLock;
     static CORE: OnceLock<crate::ast::Program> = OnceLock::new();

@@ -1,10 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::*;
+use crate::ast::{Span, Expr, TypeExpr, Program, Decl, FunDecl, ImplBlock, AspectMethod, Block, Stmt, ForInit, UnaryOp, AssignTarget, MatchExpr, Pattern, Literal, BinOp};
 use crate::error::{MetelError, TypeErrorCode};
 use crate::symbols::SymbolId;
-use crate::typed_ast::*;
-use crate::typeinference::{self, *};
+use crate::typed_ast::{TypedExpr, TypedProgram, TypedDecl, TypedLetDecl, TypedMutDecl, TypedStructDecl, TypedEnumDecl, TypedAspectDecl, TypedFunDecl, FunBody, TypedImplBlock, TypedBlock, TypedStmt, TypedWhileStmt, TypedForInit, TypedForStmt, TypedForInStmt, TypedPlace, TypedReturnExpr, TypedBreakExpr, TypedMatchArm, TypedMatchExpr};
+use crate::typeinference::{self, TypeDefinitionRegistry, Substitution, TypeVarGenerator, TypeVar, InferType, TypeScheme, EnumInfo, VariantInfo, unify};
 use crate::types::Type;
 
 use super::conversions::{
@@ -47,8 +47,8 @@ pub(super) fn build_concrete_struct_env(
 }
 
 /// Build the concrete method type map from inference results.
-/// Methods that still have free TypeVars (generic struct params) are skipped here;
-/// they are resolved at the call site via method_scheme_env.
+/// Methods that still have free `TypeVars` (generic struct params) are skipped here;
+/// they are resolved at the call site via `method_scheme_env`.
 pub(super) fn build_concrete_method_env(
     registry: &TypeDefinitionRegistry,
     subst: &Substitution,
@@ -76,7 +76,7 @@ pub(super) fn build_concrete_method_env(
         .collect()
 }
 
-/// Scope-aware context for Pass 2. Mirrors InferContext's scope management but
+/// Scope-aware context for Pass 2. Mirrors `InferContext`'s scope management but
 /// holds concrete `Type` values; no constraint emission.
 struct ConstructCtx<'a> {
     subst: &'a Substitution,
@@ -87,13 +87,13 @@ struct ConstructCtx<'a> {
     /// Unified registry — source of truth for type definitions across all passes. See ADR-0025.
     registry: &'a TypeDefinitionRegistry,
     method_env: HashMap<String, HashMap<String, Type>>,
-    /// Shared generator continued from Pass 1; keeps TypeVar identities globally unique.
+    /// Shared generator continued from Pass 1; keeps `TypeVar` identities globally unique.
     gen: TypeVarGenerator,
     /// Return type of the innermost enclosing function (None = unit / unknown).
     current_return_ty: Option<Type>,
     /// Break value type of the innermost enclosing `loop` (None = no loop or bare break).
     current_break_ty: Option<Type>,
-    /// Generic type param name → fresh TypeVar; populated during construction-at-call-time
+    /// Generic type param name → fresh `TypeVar`; populated during construction-at-call-time
     /// so type annotations like `T[]` in a generic body resolve to concrete types.
     generic_params: HashMap<String, TypeVar>,
     /// Symbol intern table from the name resolver; used to populate `TypedImplBlock::aspect_id`.
@@ -101,7 +101,7 @@ struct ConstructCtx<'a> {
     symbols: Option<&'a HashMap<(Vec<String>, String), SymbolId>>,
     /// Free-function overload table for the current module (METEL-180). Used to
     /// identify overloaded declarations and resolve overloaded call sites to
-    /// the selected definition's SymbolId.
+    /// the selected definition's `SymbolId`.
     overloads: &'a crate::typeinference::OverloadTable,
     /// Module path being constructed; used with `symbols` to assign `def_id` to
     /// top-level functions and to resolve constructed struct/enum types to their
@@ -245,7 +245,7 @@ impl<'a> ConstructCtx<'a> {
     }
 
     /// Convert a type expression to an `InferType`, substituting generic param names
-    /// to their TypeVars when `self.generic_params` is populated (construction-at-call-time).
+    /// to their `TypeVars` when `self.generic_params` is populated (construction-at-call-time).
     fn type_expr_to_infer_ctx(&self, te: &TypeExpr) -> InferType {
         if self.generic_params.is_empty() {
             type_expr_to_infer(te)
@@ -303,13 +303,10 @@ pub(super) fn construct_generic_body(
     let mut gen = TypeVarGenerator::with_counter(1_000_000);
 
     let (instance, renaming) = instantiate_with_renaming(scheme, &mut gen);
-    let (param_infertypes, ret_infertype) = match instance {
-        InferType::Fun(p, r) => (p, r),
-        _ => {
-            return Err(crate::error::MetelError::internal(
-                "construct_generic_body: scheme is not a function type",
-            ))
-        }
+    let InferType::Fun(param_infertypes, ret_infertype) = instance else {
+        return Err(crate::error::MetelError::internal(
+            "construct_generic_body: scheme is not a function type",
+        ));
     };
 
     // Unify instantiated param types with concrete arg types from runtime values.
@@ -730,8 +727,7 @@ fn construct_impl_method(
     let is_generic_target = ctx
         .registry
         .struct_generic_names_for(target_name)
-        .map(|names| !names.is_empty())
-        .unwrap_or(false);
+        .is_some_and(|names| !names.is_empty());
     if is_generic_target {
         return Ok(TypedFunDecl {
             name: method.name.clone(),
@@ -756,15 +752,13 @@ fn construct_impl_method(
                 Ok(self_ty.clone())
             } else {
                 p.type_ann
-                    .as_ref()
-                    .map(|ann| resolved_to_type(&te_to_infer(ann), ctx.subst, &p.span))
-                    .unwrap_or_else(|| {
+                    .as_ref().map_or_else(|| {
                         Err(MetelError::type_error(
                             TypeErrorCode::T0002,
                             format!("parameter `{}` needs a type annotation", p.name),
                             &p.span,
                         ))
-                    })
+                    }, |ann| resolved_to_type(&te_to_infer(ann), ctx.subst, &p.span))
             }
         })
         .collect::<Result<_, _>>()?;
@@ -833,15 +827,13 @@ fn construct_default_aspect_method(
                 Ok(self_ty.clone())
             } else {
                 p.type_ann
-                    .as_ref()
-                    .map(|ann| resolved_to_type(&te_to_infer(ann), ctx.subst, &p.span))
-                    .unwrap_or_else(|| {
+                    .as_ref().map_or_else(|| {
                         Err(MetelError::type_error(
                             TypeErrorCode::T0002,
                             format!("parameter `{}` needs a type annotation", p.name),
                             &p.span,
                         ))
-                    })
+                    }, |ann| resolved_to_type(&te_to_infer(ann), ctx.subst, &p.span))
             }
         })
         .collect::<Result<_, _>>()?;
@@ -927,6 +919,10 @@ fn construct_block(
     })
 }
 
+// Exhaustive match over every AST/type-system variant; splitting it up would
+// scatter one coherent dispatch table across many small functions with no
+// real gain in clarity.
+#[allow(clippy::too_many_lines)]
 fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, MetelError> {
     match stmt {
         Stmt::Expr(e) => Ok(TypedStmt::Expr(construct_expr(e, None, ctx)?)),
@@ -1064,6 +1060,10 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
     }
 }
 
+// Exhaustive match over every AST/type-system variant; splitting it up would
+// scatter one coherent dispatch table across many small functions with no
+// real gain in clarity.
+#[allow(clippy::too_many_lines)]
 fn construct_expr(
     expr: &Expr,
     expected_ty: Option<&Type>,
@@ -1106,7 +1106,7 @@ fn construct_expr(
             // negation of an unsigned value is a type error that must stay detectable.
             let inner_hint = if matches!(op, UnaryOp::Neg) {
                 match expected_ty {
-                    Some(Type::U8) | Some(Type::U16) | Some(Type::U32) | Some(Type::U64) => None,
+                    Some(Type::U8 | Type::U16 | Type::U32 | Type::U64) => None,
                     other => other,
                 }
             } else {
@@ -1168,8 +1168,7 @@ fn construct_expr(
         }
         Expr::RepeatArray(elem, n, span) => {
             let elem_hint: Option<&Type> = match expected_ty {
-                Some(Type::SizedArray(elem_ty, _)) => Some(elem_ty.as_ref()),
-                Some(Type::Array(elem_ty)) => Some(elem_ty.as_ref()),
+                Some(Type::SizedArray(elem_ty, _) | Type::Array(elem_ty)) => Some(elem_ty.as_ref()),
                 _ => None,
             };
             let typed_elem = construct_expr(elem, elem_hint, ctx)?;
@@ -1540,7 +1539,7 @@ fn construct_expr(
         } => {
             // Look up field type hints from the struct definition for non-generic structs.
             // Clone to release the borrow on ctx before calling construct_expr below.
-            let type_name = path.last().map(|s| s.as_str()).unwrap_or("");
+            let type_name = path.last().map_or("", std::string::String::as_str);
             let field_hints: HashMap<String, Type> = ctx
                 .get_struct_fields(type_name)
                 .map(|fs| fs.iter().map(|(n, t, _)| (n.clone(), t.clone())).collect())
@@ -1600,9 +1599,8 @@ fn construct_expr(
                             if bounds.is_empty() {
                                 continue;
                             }
-                            let arg = match type_args.get(i) {
-                                Some(a) => a,
-                                None => continue,
+                            let Some(arg) = type_args.get(i) else {
+                                continue;
                             };
                             let type_arg_name = match arg {
                                 Type::Named(n, _) => n.clone(),
@@ -1706,16 +1704,14 @@ fn construct_expr(
                 .iter()
                 .map(|p| {
                     p.type_ann
-                        .as_ref()
-                        .map(|ann| {
-                            resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, &p.span)
-                        })
-                        .unwrap_or_else(|| {
+                        .as_ref().map_or_else(|| {
                             Err(MetelError::type_error(
                                 TypeErrorCode::T0002,
                                 format!("closure parameter `{}` needs a type annotation", p.name),
                                 &p.span,
                             ))
+                        }, |ann| {
+                            resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, &p.span)
                         })
                 })
                 .collect::<Result<_, _>>()?;
@@ -1907,7 +1903,7 @@ fn find_break_in_stmt(stmt: &TypedStmt) -> Option<Type> {
 
 fn find_break_in_expr(expr: &TypedExpr) -> Option<Type> {
     match expr {
-        TypedExpr::Break(b) => Some(b.value.as_ref().map(|v| v.ty().clone()).unwrap_or(Type::Unit)),
+        TypedExpr::Break(b) => Some(b.value.as_ref().map_or(Type::Unit, |v| v.ty().clone())),
         TypedExpr::If {
             then_branch,
             else_branch,
@@ -1918,10 +1914,10 @@ fn find_break_in_expr(expr: &TypedExpr) -> Option<Type> {
         // branch, previously never checked (a pre-existing gap, fixed here
         // since #229 unifies match-arm bodies through the same mechanism).
         TypedExpr::Match(m) => m.arms.iter().find_map(|a| find_loop_break_type(&a.body)),
-        // break inside a nested loop exits the inner loop, not the outer
-        TypedExpr::Loop { .. } => None,
-        // break inside a closure doesn't escape to the enclosing loop
-        TypedExpr::Closure { .. } | TypedExpr::GenericClosure { .. } => None,
+        // Everything else: a nested loop's own `break` exits that inner loop,
+        // not the outer one; a closure's `break` doesn't escape to the
+        // enclosing loop either. Both fall out of the same `None` as any
+        // other non-propagating expression kind.
         _ => None,
     }
 }
@@ -2061,8 +2057,7 @@ fn enum_variant_type_param_remap(enum_info: &EnumInfo, type_args: &[Type]) -> Su
 fn is_variant_uninhabited(variant: &VariantInfo, remap: &Substitution, span: &Span) -> bool {
     variant.fields.iter().any(|f| {
         infer_type_to_type(&remap.apply(&f.ty), span)
-            .map(|t| t == Type::Never)
-            .unwrap_or(false)
+            .is_ok_and(|t| t == Type::Never)
     })
 }
 
@@ -2222,6 +2217,11 @@ fn extract_type_args_from_type(ty: &Type) -> Vec<Type> {
     }
 }
 
+// Exhaustive handling of every enum-literal construction case (generic args,
+// variant shapes, inference fallbacks); splitting it up would scatter one
+// coherent dispatch table across many small functions with no real gain in
+// clarity.
+#[allow(clippy::too_many_lines)]
 fn construct_enum_literal_ty(
     enum_name: &str,
     variant_name: &str,
@@ -2394,10 +2394,14 @@ fn bind_enum_variant_fields(
 
 /// Build a typed Call expression.
 ///
-/// For polymorphic callees (Idents in scheme_env whose type still contains free
+/// For polymorphic callees (Idents in `scheme_env` whose type still contains free
 /// vars), re-instantiate the scheme against the concrete argument types using
 /// local unification. This is the Pass 2 counterpart of the inline
 /// solve-and-generalize done in `infer_fun_decl`.
+// Exhaustive match over every AST/type-system variant; splitting it up would
+// scatter one coherent dispatch table across many small functions with no
+// real gain in clarity.
+#[allow(clippy::too_many_lines)]
 fn construct_call(
     callee: &Expr,
     type_args: &[TypeExpr],
@@ -2455,7 +2459,7 @@ fn construct_call(
             _ => vec![None; args.len()],
         },
         Expr::Path(segments, _) => {
-            let last = segments.last().map(|s| s.as_str()).unwrap_or("");
+            let last = segments.last().map_or("", std::string::String::as_str);
             match ctx.lookup(last) {
                 Some(Type::Fun(params, _)) if params.len() == args.len() => {
                     params.iter().map(|p| Some(p.clone())).collect()
@@ -2477,7 +2481,7 @@ fn construct_call(
         .zip(param_hints.iter())
         .map(|(a, hint)| construct_expr(a, hint.as_ref(), ctx))
         .collect::<Result<_, _>>()?;
-    let arg_types: Vec<&Type> = typed_args.iter().map(|a| a.ty()).collect();
+    let arg_types: Vec<&Type> = typed_args.iter().map(super::super::typed_ast::TypedExpr::ty).collect();
 
     // Resolve explicit type args once, outside the match.
     let explicit_tys: Option<Vec<Type>> = if type_args.is_empty() {
@@ -2569,7 +2573,7 @@ fn construct_call(
         }
         Expr::Path(segments, path_span)
             if {
-                let last = segments.last().map(|s| s.as_str()).unwrap_or("");
+                let last = segments.last().map_or("", std::string::String::as_str);
                 ctx.lookup(last).is_none()
                 && ctx.scheme_env.contains_key(last)
                 // Only use scheme instantiation if method_env doesn't have it
@@ -2693,9 +2697,8 @@ fn check_fun_call_bounds(
         return Ok(());
     };
     for (tv, aspect_names) in bounds_map {
-        let concrete = match var_to_type.get(tv) {
-            Some(t) => t,
-            None => continue,
+        let Some(concrete) = var_to_type.get(tv) else {
+            continue;
         };
         check_type_satisfies_bounds(concrete, aspect_names, fun_name, span, registry, current_module)?;
     }
@@ -2721,9 +2724,8 @@ fn check_scheme_bounds(
         if aspect_names.is_empty() {
             continue;
         }
-        let concrete = match var_to_type.get(tv) {
-            Some(t) => t,
-            None => continue,
+        let Some(concrete) = var_to_type.get(tv) else {
+            continue;
         };
         check_type_satisfies_bounds(concrete, aspect_names, fun_name, span, registry, current_module)?;
     }
@@ -2769,9 +2771,8 @@ fn instantiate_scheme_for_call(
 ) -> Result<(Type, HashMap<TypeVar, Type>), MetelError> {
     let (instance, renaming) = typeinference::instantiate_with_renaming(scheme, gen);
 
-    let (params, ret) = match instance {
-        InferType::Fun(p, r) => (p, r),
-        _ => return Err(MetelError::internal("scheme type is not a function")),
+    let InferType::Fun(params, ret) = instance else {
+        return Err(MetelError::internal("scheme type is not a function"));
     };
 
     let mut subst = Substitution::new();
@@ -2842,9 +2843,8 @@ fn instantiate_scheme_with_expected_ret(
     gen: &mut TypeVarGenerator,
 ) -> Result<(Type, HashMap<TypeVar, Type>), MetelError> {
     let (instance, renaming) = typeinference::instantiate_with_renaming(scheme, gen);
-    let (params, ret) = match instance {
-        InferType::Fun(p, r) => (p, r),
-        _ => return Err(MetelError::internal("scheme type is not a function")),
+    let InferType::Fun(params, ret) = instance else {
+        return Err(MetelError::internal("scheme type is not a function"));
     };
     let mut subst = Substitution::new();
     for (param, arg_ty) in params.iter().zip(arg_types.iter()) {
@@ -3002,8 +3002,7 @@ fn construct_binop(
             }
             Type::Boolean
         }
-        BinOp::Eq | BinOp::Ne => Type::Boolean,
-        BinOp::And | BinOp::Or => Type::Boolean,
+        BinOp::Eq | BinOp::Ne | BinOp::And | BinOp::Or => Type::Boolean,
         BinOp::Range | BinOp::RangeInclusive => Type::Named("Range".to_string(), vec![Type::I64]),
     };
     Ok(TypedExpr::BinOp(

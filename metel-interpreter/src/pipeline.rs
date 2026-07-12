@@ -51,6 +51,13 @@ pub struct EvaluatorFixtureRunReport {
     pub evaluation: EvaluationReport,
 }
 
+/// Run the full pipeline (load, resolve, normalize, coherence, typecheck,
+/// elaborate, evaluate) over the module rooted at `filename`.
+///
+/// # Errors
+/// Returns an error if any pipeline phase fails: module loading, name
+/// resolution, path normalization, coherence checking, typechecking, or
+/// evaluation.
 pub fn run_file(filename: &str, options: &RunOptions) -> Result<RunReport, MetelError> {
     let total_started = Instant::now();
 
@@ -71,7 +78,7 @@ pub fn run_file(filename: &str, options: &RunOptions) -> Result<RunReport, Metel
     let coherence_ns = elapsed_ns(started);
 
     let started = Instant::now();
-    let typed_graph = typechecker::check_graph(normalized, &names, CorePrelude::default())?;
+    let typed_graph = typechecker::check_graph(&normalized, &names, &CorePrelude::default())?;
     let typecheck_ns = elapsed_ns(started);
 
     let started = Instant::now();
@@ -109,9 +116,12 @@ pub fn run_file(filename: &str, options: &RunOptions) -> Result<RunReport, Metel
 /// `parse_ns` here covers load + resolve + normalize (the front end), `typecheck_ns`
 /// covers type-checking + elaboration, and `evaluate_ns` the graph evaluation.
 /// Previously this used the single-program path (`check_with_ctx`); that path was
-/// removed once the SymbolId migration made it the sole remaining surface-name
+/// removed once the `SymbolId` migration made it the sole remaining surface-name
 /// consumer (METEL-185 / ADR-0041), so the bench now matches the product path.
 #[allow(dead_code)] // public API used by the benchmark binary
+/// # Errors
+/// Returns an error if any pipeline phase fails: module loading, name
+/// resolution, path normalization, typechecking, or evaluation.
 pub fn run_evaluator_fixture(
     filename: &str,
     options: &RunOptions,
@@ -127,7 +137,7 @@ pub fn run_evaluator_fixture(
 
     let started = Instant::now();
     let typed_report =
-        typechecker::check_graph_with_report(normalized, &names, CorePrelude::default())?;
+        typechecker::check_graph_with_report(&normalized, &names, &CorePrelude::default())?;
     let elaborated = elaborator::elaborate(typed_report.graph, &names)?;
     let typecheck_ns = elapsed_ns(started);
 
@@ -153,5 +163,5 @@ pub fn run_evaluator_fixture(
 }
 
 fn elapsed_ns(started: Instant) -> u64 {
-    started.elapsed().as_nanos().min(u64::MAX as u128) as u64
+    started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64
 }

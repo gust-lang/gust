@@ -31,9 +31,9 @@ pub(super) fn format_value(val: &Value) -> String {
     match val {
         Value::I64(n) => n.to_string(),
         Value::F64(f) => f.to_string(),
-        Value::Char(c) => format!("'{}'", c),
+        Value::Char(c) => format!("'{c}'"),
         Value::Boolean(b) => b.to_string(),
-        Value::Str(s) => format!("{:?}", s),
+        Value::Str(s) => format!("{s:?}"),
         Value::Unit => "()".to_string(),
         Value::I8(n) => n.to_string(),
         Value::I16(n) => n.to_string(),
@@ -49,7 +49,7 @@ pub(super) fn format_value(val: &Value) -> String {
                 .map(format_value)
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("({})", inner)
+            format!("({inner})")
         }
         Value::Array(arr) => {
             let inner = arr
@@ -58,7 +58,7 @@ pub(super) fn format_value(val: &Value) -> String {
                 .map(format_value)
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("[{}]", inner)
+            format!("[{inner}]")
         }
         Value::Struct { name, fields, .. } => {
             let mut pairs: Vec<_> = fields.iter().collect();
@@ -68,7 +68,7 @@ pub(super) fn format_value(val: &Value) -> String {
                 .map(|(k, v)| format!("{}: {}", k, format_value(v)))
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("{} {{ {} }}", name, inner)
+            format!("{name} {{ {inner} }}")
         }
         // Perhaps and Result use familiar Rust-style display rather than the generic enum format.
         // These are the only two enum names singled out by display — all others use the generic arm.
@@ -104,7 +104,7 @@ pub(super) fn format_value(val: &Value) -> String {
             ..
         } => {
             if fields.is_empty() {
-                format!("{}::{}", name, variant)
+                format!("{name}::{variant}")
             } else {
                 let mut pairs: Vec<_> = fields.iter().collect();
                 pairs.sort_by_key(|(k, _)| k.as_str());
@@ -113,12 +113,12 @@ pub(super) fn format_value(val: &Value) -> String {
                     .map(|(k, v)| format!("{}: {}", k, format_value(v)))
                     .collect::<Vec<_>>()
                     .join(", ");
-                format!("{}::{}{{ {} }}", name, variant, inner)
+                format!("{name}::{variant}{{ {inner} }}")
             }
         }
         Value::Callable(super::RuntimeCallable::Closure(_)) => "<closure>".to_string(),
         Value::Callable(super::RuntimeCallable::Intrinsic { label, .. }) => {
-            format!("<intrinsic:{}>", label)
+            format!("<intrinsic:{label}>")
         }
         Value::Reference(rc) => format!("&{}", format_value(&rc.borrow())),
         Value::MutReference(rc) => format!("&mut {}", format_value(&rc.borrow())),

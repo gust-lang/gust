@@ -2,6 +2,7 @@ use crate::ast::PathRoot;
 
 /// Compute the absolute module path prefix for a given [`PathRoot`],
 /// relative to the current module path. See ADR-0023.
+#[must_use]
 pub fn resolve_path_root(root: &PathRoot, current: &[String]) -> Vec<String> {
     match root {
         PathRoot::Root => vec![],

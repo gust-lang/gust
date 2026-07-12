@@ -432,6 +432,7 @@ pub enum Expr {
 }
 
 impl Expr {
+    #[must_use]
     pub fn span(&self) -> &Span {
         match self {
             Expr::Literal(_, s)

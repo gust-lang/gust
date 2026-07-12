@@ -11,7 +11,7 @@ use crate::name_resolver::{GlobTier, ResolvedNames};
 use crate::path_normalizer::NormalizedModuleGraph;
 use crate::symbols::SymbolId;
 use crate::typed_ast::{ResolvedImportRef, TypedDecl, TypedModule, TypedModuleGraph};
-use crate::typeinference::*;
+use crate::typeinference::{TypeScheme, TypeDefinitionRegistry, InferType, TypeVar, TypeVarGenerator, InferContext, generalize_with_names};
 
 mod construction;
 mod conversions;
@@ -75,20 +75,20 @@ struct FunGeneralization {
     name: String,
     fun_ty: InferType,
     env_fvs: HashSet<TypeVar>,
-    /// Maps TypeVar ID → source-level generic param name, for scheme param_names.
+    /// Maps `TypeVar` ID → source-level generic param name, for scheme `param_names`.
     name_map: HashMap<TypeVar, String>,
-    /// Maps TypeVar ID → aspect bounds, attached to the re-generalized scheme
+    /// Maps `TypeVar` ID → aspect bounds, attached to the re-generalized scheme
     /// so bounds survive prelude/export scheme propagation.
     bounds: HashMap<TypeVar, Vec<String>>,
 }
 
 // ── CorePrelude ────────────────────────────────────────────────────────────────
 
-/// The std::core scheme surface, derived entirely by parsing the embedded
+/// The `std::core` scheme surface, derived entirely by parsing the embedded
 /// `stdlib/core.mtl` (METEL-181): free native functions plus the joined-key
 /// static constructors (`List::new`). Seeded into every module's scheme env so
 /// the single-program pipeline (which performs no module loading) sees the
-/// same names the module-graph path gets from the real std::core module.
+/// same names the module-graph path gets from the real `std::core` module.
 pub struct CorePrelude {
     schemes: SchemeEnv,
 }
@@ -96,6 +96,7 @@ pub struct CorePrelude {
 impl CorePrelude {
     /// No standard library names pre-loaded. Use in tests that do not need std.
     #[allow(dead_code)] // public API used by module-loading test harness
+    #[must_use]
     pub fn empty() -> Self {
         Self {
             schemes: HashMap::new(),
@@ -112,11 +113,11 @@ impl CorePrelude {
 }
 
 impl Default for CorePrelude {
-    /// All built-in function schemes (print, assert, List::new, …), derived
-    /// from the embedded std::core source.
+    /// All built-in function schemes (print, assert, `List::new`, …), derived
+    /// from the embedded `std::core` source.
     ///
-    /// The generator starts at 10000 so that prelude TypeVars never collide
-    /// with the registry TypeVars allocated by `build_registry` (which starts
+    /// The generator starts at 10000 so that prelude `TypeVars` never collide
+    /// with the registry `TypeVars` allocated by `build_registry` (which starts
     /// at 0 and typically allocates fewer than 100 vars). See ADR-0027.
     fn default() -> Self {
         let mut schemes = HashMap::new();
@@ -159,7 +160,7 @@ impl GlobalExports {
 }
 
 /// Alpha-rename a scheme's quantified vars (and their occurrences in the body)
-/// into the dedicated export TypeVar range. Sound for the closed schemes that
+/// into the dedicated export `TypeVar` range. Sound for the closed schemes that
 /// cross module boundaries (T0010 guarantees pub functions are fully annotated;
 /// native signatures are annotation-derived). See `export_gen` in `check_graph`.
 fn refresh_scheme_for_export(
@@ -191,9 +192,8 @@ fn refresh_scheme_for_export(
 /// surfaced early with clear messages rather than cryptic inference failures
 /// when downstream modules attempt to import the function.
 fn check_pub_annotations(loaded: &LoadedModule, names: &ResolvedNames) -> Result<(), MetelError> {
-    let pub_surface = match names.pub_surface.get(&loaded.module_path) {
-        Some(s) => s,
-        None => return Ok(()),
+    let Some(pub_surface) = names.pub_surface.get(&loaded.module_path) else {
+        return Ok(());
     };
 
     for decl in &loaded.program.decls {
@@ -243,21 +243,26 @@ fn check_pub_annotations(loaded: &LoadedModule, names: &ResolvedNames) -> Result
 
 /// Typecheck a normalized module graph. Processes modules in topological order
 /// (dependencies before dependents); each module is typechecked against its
-/// declared imports, with results accumulated into `GlobalExports`.
-/// Typecheck a normalized module graph. See ADR-0022 for the GlobalExports accumulator
-/// pattern and the invariant that imported_schemes must reach both inference and construction.
+/// declared imports, with results accumulated into `GlobalExports`. See
+/// ADR-0022 for the `GlobalExports` accumulator pattern and the invariant that
+/// `imported_schemes` must reach both inference and construction.
+///
+/// # Errors
+/// Returns an error if any module fails to typecheck.
 pub fn check_graph(
-    graph: NormalizedModuleGraph,
+    graph: &NormalizedModuleGraph,
     names: &ResolvedNames,
-    std_prelude: CorePrelude,
+    std_prelude: &CorePrelude,
 ) -> Result<TypedModuleGraph, MetelError> {
     Ok(check_graph_with_report(graph, names, std_prelude)?.graph)
 }
 
+/// # Errors
+/// Returns an error if any module fails to typecheck.
 pub fn check_graph_with_report(
-    graph: NormalizedModuleGraph,
+    graph: &NormalizedModuleGraph,
     names: &ResolvedNames,
-    std_prelude: CorePrelude,
+    std_prelude: &CorePrelude,
 ) -> Result<CheckGraphReport, MetelError> {
     // std::core is a real module in the graph (synthesized ahead of user code),
     // so its exports land in GlobalExports through the normal per-module loop —
@@ -281,13 +286,13 @@ pub fn check_graph_with_report(
     for loaded in graph.modules() {
         check_pub_annotations(loaded, names)?;
         let (imported_schemes, deferred_conflicts) =
-            build_import_schemes(loaded, names, &global_exports, &graph)?;
+            build_import_schemes(loaded, names, &global_exports, graph)?;
         let report = check_impl_with_report(
             &loaded.program,
             &imported_schemes,
             deferred_conflicts,
             &type_registry,
-            &std_prelude,
+            std_prelude,
             &loaded.module_path,
             Some(&names.symbols),
             Some(&names.references),
@@ -366,7 +371,7 @@ pub fn check_graph_with_report(
         // Add builtin schemes so construction-at-call-time can resolve builtins
         // like `array_len` inside generic function bodies.
         let mut full_scheme_env = report.scheme_env;
-        registry::register_builtin_schemes(&mut full_scheme_env, &std_prelude);
+        registry::register_builtin_schemes(&mut full_scheme_env, std_prelude);
         typed_modules.push(TypedModule {
             module_path: loaded.module_path.clone(),
             decls: report.typed_decls,
@@ -386,9 +391,9 @@ pub fn check_graph_with_report(
 }
 
 /// Build the set of imported name→scheme bindings for a module, drawn from
-/// GlobalExports. Explicit imports take precedence over glob imports.
+/// `GlobalExports`. Explicit imports take precedence over glob imports.
 ///
-/// For explicit imports: if the name is absent from GlobalExports, checks
+/// For explicit imports: if the name is absent from `GlobalExports`, checks
 /// `names.declared_names` to distinguish T0009 (private item — declared but
 /// not pub) from T0003 (name does not exist). See #191.
 /// Returns the resolved import schemes plus a map of deferred same-tier glob conflicts.
@@ -432,10 +437,9 @@ fn build_import_schemes(
                     if !entry.contains(&prior_source) {
                         entry.push(prior_source.clone());
                     }
-                    if !entry.contains(&glob_module.to_vec()) {
+                    if !entry.contains(&glob_module.clone()) {
                         entry.push(glob_module.clone());
                     }
-                    continue;
                 }
                 Some((_, GlobTier::User)) => {
                     // Prior User glob claimed this name; current Std glob cannot override.
@@ -487,17 +491,16 @@ fn build_import_schemes(
                         ),
                         &span,
                     ));
-                } else {
-                    return Err(MetelError::type_error(
-                        TypeErrorCode::T0003,
-                        format!(
-                            "cannot import `{}` from module `{}`: name does not exist",
-                            binding.source_name,
-                            binding.source_module.join("::")
-                        ),
-                        &span,
-                    ));
                 }
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0003,
+                    format!(
+                        "cannot import `{}` from module `{}`: name does not exist",
+                        binding.source_name,
+                        binding.source_module.join("::")
+                    ),
+                    &span,
+                ));
             }
             // Source not in graph (std or future external crate) — skip silently.
         }
@@ -526,7 +529,7 @@ fn find_import_span(
 
     for import in &loaded.program.imports {
         let root_matches = match &import.path.root {
-            PathRoot::Name(n) => source_module.first().map(|s| s == n).unwrap_or(false),
+            PathRoot::Name(n) => source_module.first().is_some_and(|s| s == n),
             PathRoot::Self_ => source_module == loaded.module_path,
             PathRoot::Root | PathRoot::Super => true,
             PathRoot::Std => false,
@@ -539,7 +542,7 @@ fn find_import_span(
 }
 
 /// Build the public scheme export for a module: pub-declared names from its
-/// own scheme_env, plus any re-exported names pulled from `global_exports`.
+/// own `scheme_env`, plus any re-exported names pulled from `global_exports`.
 fn filter_pub_schemes(
     scheme_env: &SchemeEnv,
     loaded: &LoadedModule,
@@ -581,9 +584,6 @@ fn enforce_native_stdlib_only(
     program: &Program,
     module_path: &[String],
 ) -> Result<(), MetelError> {
-    if module_path.first().map(String::as_str) == Some("std") {
-        return Ok(());
-    }
     fn check_fun(fun: &crate::ast::FunDecl) -> Result<(), MetelError> {
         match &fun.native {
             Some(binding) => Err(MetelError::type_error(
@@ -593,6 +593,9 @@ fn enforce_native_stdlib_only(
             )),
             None => Ok(()),
         }
+    }
+    if module_path.first().map(String::as_str) == Some("std") {
+        return Ok(());
     }
     for decl in &program.decls {
         match decl {
@@ -635,6 +638,7 @@ pub(crate) fn construct_generic_body(
 /// Returns `(typed_decls, scheme_env, registry)` where `registry` carries this
 /// module's type definitions merged with the base, for the next module to use.
 #[allow(dead_code)] // retained as a tuple-returning internal helper for existing call patterns
+#[allow(clippy::too_many_arguments)] // thin forwarding wrapper around check_impl_with_report
 fn check_impl(
     program: &Program,
     imported_schemes: &SchemeEnv,
@@ -792,7 +796,7 @@ fn accumulate_typecheck_timings(target: &mut TypecheckPhaseTimings, source: Type
 }
 
 fn elapsed_ns(started: Instant) -> u64 {
-    started.elapsed().as_nanos().min(u64::MAX as u128) as u64
+    started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64
 }
 
 fn top_level_value_names(program: &Program) -> HashSet<String> {
