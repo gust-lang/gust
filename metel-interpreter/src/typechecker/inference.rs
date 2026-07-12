@@ -36,10 +36,16 @@ fn ann_to_infer(te: &TypeExpr, ctx: &InferContext) -> InferType {
 /// The function type of a `native` declaration, built from its annotations,
 /// plus the aspect bounds of its generic params keyed by their `TypeVars` (so
 /// the caller can attach them to the generalized scheme).
+struct NativeFunTyResult {
+    fun_ty: InferType,
+    bounds: HashMap<TypeVar, Vec<String>>,
+    neg_bounds: HashMap<TypeVar, Vec<String>>,
+}
+
 fn native_fun_ty(
     fun: &FunDecl,
     ctx: &mut InferContext,
-) -> Result<(InferType, HashMap<TypeVar, Vec<String>>, HashMap<TypeVar, Vec<String>>), MetelError> {
+) -> Result<NativeFunTyResult, MetelError> {
     // Generic native functions (e.g. `print<T: Display>`) map each type
     // parameter to a fresh TypeVar; the caller generalizes the result into a
     // polymorphic scheme carrying the bounds.
@@ -71,7 +77,11 @@ fn native_fun_ty(
         Some(te) => te_to_infer(te),
         None => InferType::unit(),
     };
-    Ok((InferType::Fun(param_types, Box::new(ret_ty)), bounds_by_var, neg_bounds_by_var))
+    Ok(NativeFunTyResult {
+        fun_ty: InferType::Fun(param_types, Box::new(ret_ty)),
+        bounds: bounds_by_var,
+        neg_bounds: neg_bounds_by_var,
+    })
 }
 
 pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
@@ -88,9 +98,9 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
             // bind it eagerly so forward references resolve. Errors here surface
             // again (deterministically) in infer_fun_decl.
             if fun.native.is_some() {
-                if let Ok((fun_ty, bounds, neg_bounds)) = native_fun_ty(fun, ctx) {
+                if let Ok(result) = native_fun_ty(fun, ctx) {
                     let env_fvs = ctx.env_free_vars();
-                    ctx.bind_poly(&fun.name, generalize(fun_ty, &env_fvs).with_bounds(&bounds).with_neg_bounds(&neg_bounds));
+                    ctx.bind_poly(&fun.name, generalize(result.fun_ty, &env_fvs).with_bounds(&result.bounds).with_neg_bounds(&result.neg_bounds));
                 }
                 continue;
             }
@@ -398,7 +408,7 @@ fn infer_fun_decl(
     // Native functions have no Metel body to infer. Validate and record their
     // annotated signature for the construction pass; dispatch is by NativeKey.
     if fun.native.is_some() {
-        let (fun_ty, bounds, neg_bounds) = native_fun_ty(fun, ctx)?;
+        let NativeFunTyResult { fun_ty, bounds, neg_bounds } = native_fun_ty(fun, ctx)?;
         // Overloaded native definitions (std::core's assert pair) are
         // dispatched by SymbolId and never enter the name-keyed scheme env.
         if ctx.is_overloaded(&fun.name) {
