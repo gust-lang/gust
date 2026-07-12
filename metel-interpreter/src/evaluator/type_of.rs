@@ -1,5 +1,9 @@
+use std::collections::HashMap;
+
 use super::Value;
+use crate::ast::Span;
 use crate::types::Type;
+use crate::typeinference::TypeDefinitionRegistry;
 
 /// Derive a concrete `Type` from a runtime `Value`.
 ///
@@ -8,12 +12,15 @@ use crate::types::Type;
 /// function's `TypeScheme` and build the `Substitution` for `ConstructCtx`.
 ///
 /// Limitations:
-/// - Generic structs/enums: type parameters are not recoverable from runtime values,
-///   so `Named(name, [])` is returned. The construction pass must unify against the
-///   scheme and fill in the parameters from context.
 /// - Closures: the concrete function type is not stored in the runtime callable, so
 ///   `Fun([], Box::new(Unit))` is returned as a placeholder.
-pub(super) fn value_to_type(value: &Value) -> Type {
+///
+/// Generic structs/enums (issue #267): the runtime value itself carries no type
+/// argument info (`Wrapper { value: 5 }`'s only intrinsic type tag is bare
+/// `Named("Wrapper", [])`), so `registry` and `span` are used to recover them —
+/// see `typechecker::infer_named_type_args`'s own doc comment for the mechanism.
+pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, span: &Span) -> Type {
+    let go = |v: &Value| value_to_type(v, registry, span);
     match value {
         Value::I64(_) => Type::I64,
         Value::F64(_) => Type::F64,
@@ -29,13 +36,41 @@ pub(super) fn value_to_type(value: &Value) -> Type {
         Value::U32(_) => Type::U32,
         Value::U64(_) => Type::U64,
         Value::F32(_) => Type::F32,
-        Value::Tuple(elems) => Type::Tuple(elems.iter().map(value_to_type).collect()),
+        Value::Tuple(elems) => Type::Tuple(elems.iter().map(go).collect()),
         Value::Array(rc) => {
             let borrowed = rc.borrow();
-            let elem_ty = borrowed.first().map_or(Type::Unit, value_to_type);
+            let elem_ty = borrowed.first().map_or(Type::Unit, go);
             Type::Array(Box::new(elem_ty))
         }
-        Value::Struct { name, .. } | Value::Enum { name, .. } => Type::Named(name.clone(), vec![]),
+        Value::Struct { name, fields, .. } => {
+            let field_types: HashMap<String, Type> =
+                fields.iter().map(|(k, v)| (k.clone(), go(v))).collect();
+            let args = crate::typechecker::infer_named_type_args(
+                name,
+                None,
+                &field_types,
+                registry,
+                span,
+            );
+            Type::Named(name.clone(), args)
+        }
+        Value::Enum {
+            name,
+            variant,
+            fields,
+            ..
+        } => {
+            let field_types: HashMap<String, Type> =
+                fields.iter().map(|(k, v)| (k.clone(), go(v))).collect();
+            let args = crate::typechecker::infer_named_type_args(
+                name,
+                Some(variant),
+                &field_types,
+                registry,
+                span,
+            );
+            Type::Named(name.clone(), args)
+        }
         Value::Callable(callable) => match callable {
             super::RuntimeCallable::Closure(rc) => rc
                 .fun_type
@@ -43,12 +78,12 @@ pub(super) fn value_to_type(value: &Value) -> Type {
                 .unwrap_or_else(|| Type::Fun(vec![], Box::new(Type::Unit))),
             super::RuntimeCallable::Intrinsic { .. } => Type::Fun(vec![], Box::new(Type::Unit)),
         },
-        Value::Reference(rc) => Type::Reference(Box::new(value_to_type(&rc.borrow()))),
-        Value::MutReference(rc) => Type::MutReference(Box::new(value_to_type(&rc.borrow()))),
+        Value::Reference(rc) => Type::Reference(Box::new(go(&rc.borrow()))),
+        Value::MutReference(rc) => Type::MutReference(Box::new(go(&rc.borrow()))),
         Value::MutFieldReference { root, path } => {
             // Approximate: read the leaf type from the current root value.
             let root_val = root.borrow();
-            let mut cur_type = value_to_type(&root_val);
+            let mut cur_type = go(&root_val);
             for seg in path {
                 cur_type = match (seg, cur_type) {
                     (super::PathSegment::Field(f), Type::Named(name, _)) => {

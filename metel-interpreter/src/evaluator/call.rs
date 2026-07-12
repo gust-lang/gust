@@ -65,7 +65,10 @@ fn call_runtime_callable(
                         });
                     match scheme_and_ctx {
                         Some((scheme, type_ctx)) => {
-                            let arg_types: Vec<_> = args.iter().map(type_of::value_to_type).collect();
+                            let arg_types: Vec<_> = args
+                                .iter()
+                                .map(|v| type_of::value_to_type(v, &type_ctx.registry, span))
+                                .collect();
                             let tb = crate::typechecker::construct_generic_body(
                                 scheme, &closure.params, &arg_types, b, span, type_ctx
                             )?;
@@ -145,9 +148,21 @@ pub(super) fn call_method_function(
             // the registry's method env keyed by the receiver's type name — so
             // we need that name plus the receiver type as the first arg type
             // (the scheme's signature includes `self`).
+            // `receiver` is moved a few lines below (into `call_env`), so its type must be
+            // captured now, before `closure.body` is even matched on — meaning a real
+            // registry isn't always available yet here (only `ClosureBody::Untyped` with a
+            // present `type_ctx` has one; `Typed` bodies never consult `receiver_type` at
+            // all, so an empty fallback registry is harmless for them).
+            let default_registry = crate::typeinference::TypeDefinitionRegistry::new();
+            let registry_ref = closure
+                .type_ctx
+                .as_deref()
+                .map_or(&default_registry, |tc| &tc.registry);
             let receiver_type = match &receiver {
-                ReceiverBinding::Value(value) => type_of::value_to_type(value),
-                ReceiverBinding::Shared(cell) => type_of::value_to_type(&cell.borrow()),
+                ReceiverBinding::Value(value) => type_of::value_to_type(value, registry_ref, span),
+                ReceiverBinding::Shared(cell) => {
+                    type_of::value_to_type(&cell.borrow(), registry_ref, span)
+                }
             };
             let mut call_env = closure.captured.clone();
             call_env.push_scope();
@@ -184,7 +199,10 @@ pub(super) fn call_method_function(
                             // types must lead with the receiver type to stay
                             // positionally aligned with `closure.params`.
                             let mut arg_types: Vec<_> = vec![receiver_type.clone()];
-                            arg_types.extend(args.iter().map(type_of::value_to_type));
+                            arg_types.extend(
+                                args.iter()
+                                    .map(|v| type_of::value_to_type(v, &type_ctx.registry, span)),
+                            );
                             let tb = crate::typechecker::construct_generic_body(
                                 scheme, &closure.params, &arg_types, b, span, type_ctx
                             )?;

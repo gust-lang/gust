@@ -11,7 +11,7 @@ use crate::name_resolver::{GlobTier, ResolvedNames};
 use crate::path_normalizer::NormalizedModuleGraph;
 use crate::symbols::SymbolId;
 use crate::typed_ast::{ResolvedImportRef, TypedDecl, TypedModule, TypedModuleGraph};
-use crate::typeinference::{TypeScheme, TypeDefinitionRegistry, InferType, TypeVar, TypeVarGenerator, InferContext, generalize_with_names};
+use crate::typeinference::{TypeScheme, TypeDefinitionRegistry, InferType, TypeVar, TypeVarGenerator, InferContext, generalize_with_names, Substitution, unify};
 
 mod construction;
 mod conversions;
@@ -625,6 +625,78 @@ pub(crate) fn construct_generic_body(
     type_ctx: &crate::typeinference::TypeCtx,
 ) -> Result<crate::typed_ast::TypedBlock, MetelError> {
     construction::construct_generic_body(scheme, params, arg_types, body, span, type_ctx)
+}
+
+/// Recover concrete type arguments for a generic struct/enum instance, given the
+/// already-computed `Type` of each of its fields (issue #267).
+///
+/// Runtime `Value::Struct`/`Value::Enum` carry no type-argument info themselves —
+/// `Wrapper { value: 5 }`'s runtime type tag is bare `Named("Wrapper", [])`, with no
+/// record that `T = i64` for this particular instance. Left alone, that erasure
+/// means `construct_generic_body`'s unification of a generic receiver's own type
+/// against its (type-arg-erased) runtime-derived type always fails on an arity
+/// mismatch (1 declared param vs. 0 recovered), silently defaulting the type
+/// param to `Unit` — so any use of a `T`-typed field inside a reconstructed
+/// generic method body (e.g. calling a `Display`-bounded method on it) sees `T`
+/// as `Unit` instead, which has no such method.
+///
+/// This reconstructs the type arguments from the other direction: unify each
+/// field's *declared* (possibly generic) type template against that field's
+/// *actual* type (as the evaluator already computed it from the live value),
+/// then read off each of the type's own quantified type variables from the
+/// resulting substitution. Best-effort, matching `construct_generic_body`'s own
+/// tolerance for the same underlying reason — a field that doesn't mention a
+/// given type param at all (e.g. `Perhaps::None`, no payload) leaves it
+/// unresolved, defaulted to `Unit` exactly as before this fix for that case.
+pub(crate) fn infer_named_type_args(
+    name: &str,
+    variant: Option<&str>,
+    field_types: &HashMap<String, crate::types::Type>,
+    registry: &TypeDefinitionRegistry,
+    span: &crate::ast::Span,
+) -> Vec<crate::types::Type> {
+    use conversions::{infer_type_to_type, type_to_infer};
+
+    let (type_params, field_templates): (&[TypeVar], &[crate::typeinference::FieldEntry]) =
+        match variant {
+            Some(variant_name) => match registry.enum_info(name) {
+                Some(info) => match info.variants.iter().find(|v| v.name == variant_name) {
+                    Some(v) => (&info.type_params, &v.fields),
+                    None => return vec![],
+                },
+                None => return vec![],
+            },
+            None => match (
+                registry.struct_type_params_for(name),
+                registry.struct_fields(name),
+            ) {
+                (Some(tp), Some(f)) => (tp, f),
+                _ => return vec![],
+            },
+        };
+
+    if type_params.is_empty() {
+        return vec![];
+    }
+
+    let mut subst = Substitution::new();
+    for entry in field_templates {
+        let Some(actual_ty) = field_types.get(&entry.name) else {
+            continue;
+        };
+        let actual_it = type_to_infer(actual_ty);
+        if let Ok(s) = unify(&subst.apply(&entry.ty), &actual_it) {
+            subst = subst.compose(&s);
+        }
+    }
+
+    type_params
+        .iter()
+        .map(|&tv| {
+            let resolved = subst.apply(&InferType::Var(tv));
+            infer_type_to_type(&resolved, span).unwrap_or(crate::types::Type::Unit)
+        })
+        .collect()
 }
 
 /// Core typechecking pipeline.

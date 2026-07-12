@@ -1,0 +1,48 @@
+// Regression test for issue #267: runtime `Value::Struct`/`Value::Enum` carry no
+// type-argument info of their own (`Wrapper { value: 5 }`'s only intrinsic type
+// tag is bare `Named("Wrapper", [])`). When a generic method body is deferred and
+// reconstructed at call time, that erasure meant the receiver's own type parameter
+// couldn't be recovered by unifying against the runtime-derived (type-arg-erased)
+// type, silently defaulting it to `Unit` — so calling a bounded method
+// (`to_string()` via `Display`) on a `T`-typed field inside the method body saw
+// the field as type `Unit`, which has no such method.
+//
+// The trigger needed a second, unrelated impl to exist anywhere in the same
+// program (unrelated to the specific target/aspect) — this fixture locks that
+// combination in, not just the single-impl case (already covered by
+// 69_conditional_impl_inline_bound.mtl).
+
+struct Box1<T> {
+    value: T,
+}
+
+aspect Greet {
+    fun greet(&self) -> String;
+}
+
+impl<T: Display> Greet for Box1<T> {
+    fun greet(&self) -> String {
+        return "hello, " + self.value.to_string();
+    }
+}
+
+struct Plain {
+    x: i64,
+}
+
+aspect Farewell {
+    fun farewell(&self) -> String;
+}
+
+impl Farewell for Plain {
+    fun farewell(&self) -> String {
+        return "bye";
+    }
+}
+
+fun main() {
+    let a = Box1 { value: 5 };
+    let p = Plain { x: 1 };
+    assert(a.greet() == "hello, 5");
+    assert(p.farewell() == "bye");
+}
