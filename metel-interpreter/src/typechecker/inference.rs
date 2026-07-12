@@ -27,6 +27,31 @@ fn ann_to_infer(te: &TypeExpr, ctx: &InferContext) -> InferType {
     if params.is_empty() {
         type_expr_to_infer(te)
     } else {
+        // Check for abstract-case projection first.
+        if let TypeExpr::Projection {
+            base,
+            ref assoc_name,
+            ..
+        } = te
+        {
+            if let TypeExpr::Named(ref n, _) = **base {
+                if let Some(&base_tv) = params.get(n.as_str()) {
+                    if let Some(bounds) = ctx.bounds_for_type_var(base_tv) {
+                        for aspect in bounds {
+                            if let Some(decls) = ctx.registry().aspect_assoc_type_decls(aspect) {
+                                if decls.iter().any(|d| d.name == *assoc_name) {
+                                    // Cannot mint a new var here (need &mut ctx).
+                                    // Return a Named placeholder; the caller that has
+                                    // &mut ctx (infer_fun_decl/infer_impl_method) handles
+                                    // the real projection var minting.
+                                    return InferType::Named(format!("{n}::{assoc_name}"), vec![]);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         type_expr_to_infer_with_generics(te, params)
     }
 }
@@ -121,7 +146,36 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                     ctx.register_neg_fun_bounds(fun.name.clone(), neg_type_var_bounds.clone());
                 }
 
-                let te_to_infer = |te: &TypeExpr| -> InferType {
+                let te_to_infer = |te: &TypeExpr, ctx: &mut InferContext| -> InferType {
+                    if let TypeExpr::Projection {
+                        base,
+                        ref assoc_name,
+                        ..
+                    } = te
+                    {
+                        if let TypeExpr::Named(ref n, _) = **base {
+                            if let Some(&base_tv) = generic_map.get(n.as_str()) {
+                                if let Some(bounds) = ctx.bounds_for_type_var(base_tv) {
+                                    for aspect in bounds {
+                                        if let Some(decls) =
+                                            ctx.registry().aspect_assoc_type_decls(aspect)
+                                        {
+                                            if decls.iter().any(|d| d.name == *assoc_name) {
+                                                return InferType::Var(
+                                                    ctx.fresh_assoc_projection_var(
+                                                        base_tv,
+                                                        aspect.clone(),
+                                                        assoc_name.clone(),
+                                                    ),
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                                return InferType::Named(format!("{n}::{assoc_name}"), vec![]);
+                            }
+                        }
+                    }
                     type_expr_to_infer_with_generics(te, &generic_map)
                 };
 
@@ -130,7 +184,7 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                     .iter()
                     .map(|p| {
                         if let Some(ann) = &p.type_ann {
-                            te_to_infer(ann)
+                            te_to_infer(ann, ctx)
                         } else {
                             ctx.fresh_var()
                         }
@@ -138,7 +192,7 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                     .collect();
 
                 let ret_ty = if let Some(ann) = &fun.return_type {
-                    te_to_infer(ann)
+                    te_to_infer(ann, ctx)
                 } else {
                     ctx.fresh_var()
                 };
@@ -503,7 +557,36 @@ fn infer_fun_decl(
         ctx.register_neg_fun_bounds(fun.name.clone(), neg_type_var_bounds.clone());
     }
 
-    let te_to_infer = |te: &TypeExpr| -> InferType {
+    let te_to_infer = |te: &TypeExpr, ctx: &mut InferContext| -> InferType {
+        // RFC-0082 §2 abstract-case: T::AssocType where T is a generic param.
+        if let TypeExpr::Projection {
+            base,
+            ref assoc_name,
+            ..
+        } = te
+        {
+            if let TypeExpr::Named(ref n, _) = **base {
+                if let Some(&base_tv) = generic_map.get(n.as_str()) {
+                    // Find the aspect that declares this assoc type.
+                    // Try each bound on the base type param.
+                    if let Some(bounds) = ctx.bounds_for_type_var(base_tv) {
+                        for aspect in bounds {
+                            if let Some(decls) = ctx.registry().aspect_assoc_type_decls(aspect) {
+                                if decls.iter().any(|d| d.name == *assoc_name) {
+                                    return InferType::Var(ctx.fresh_assoc_projection_var(
+                                        base_tv,
+                                        aspect.clone(),
+                                        assoc_name.clone(),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    // Fallback: named placeholder
+                    return InferType::Named(format!("{n}::{assoc_name}"), vec![]);
+                }
+            }
+        }
         if generic_map.is_empty() {
             type_expr_to_infer(te)
         } else {
@@ -516,7 +599,7 @@ fn infer_fun_decl(
         .iter()
         .map(|p| {
             if let Some(ann) = &p.type_ann {
-                te_to_infer(ann)
+                te_to_infer(ann, ctx)
             } else {
                 ctx.fresh_var()
             }
@@ -524,7 +607,7 @@ fn infer_fun_decl(
         .collect();
 
     let ret_ty = if let Some(ann) = &fun.return_type {
-        te_to_infer(ann)
+        te_to_infer(ann, ctx)
     } else {
         ctx.fresh_var()
     };
@@ -541,6 +624,7 @@ fn infer_fun_decl(
         generic_map.iter().map(|(n, &tv)| (tv, n.clone())).collect();
     let saved_type_params = ctx.swap_type_params(generic_map);
     let saved_tp_bounds = ctx.swap_type_param_bounds(type_var_bounds.clone());
+    let (saved_assoc_memo, saved_assoc_log) = ctx.swap_assoc_projections();
     let saved_ret = ctx.push_return_type(ret_ty.clone());
     let body_ty = infer_block(&fun.body, ctx, fun_generalizations)?;
 
@@ -549,6 +633,7 @@ fn infer_fun_decl(
     ctx.pop_return_type(saved_ret);
     ctx.swap_type_param_bounds(saved_tp_bounds);
     ctx.swap_type_params(saved_type_params);
+    ctx.restore_assoc_projections(saved_assoc_memo, saved_assoc_log);
     ctx.pop_scope();
 
     let fun_ty = InferType::Fun(param_types, Box::new(ret_ty));
@@ -666,7 +751,33 @@ fn infer_impl_method(
         }
     }
 
-    let te_to_infer = |te: &TypeExpr| -> InferType {
+    let te_to_infer = |te: &TypeExpr, ctx: &mut InferContext| -> InferType {
+        // RFC-0082 §2 abstract-case: T::AssocType where T is a generic param.
+        if let TypeExpr::Projection {
+            base,
+            ref assoc_name,
+            ..
+        } = te
+        {
+            if let TypeExpr::Named(ref n, _) = **base {
+                if let Some(&base_tv) = generic_map.get(n.as_str()) {
+                    if let Some(bounds) = ctx.bounds_for_type_var(base_tv) {
+                        for aspect in bounds {
+                            if let Some(decls) = ctx.registry().aspect_assoc_type_decls(aspect) {
+                                if decls.iter().any(|d| d.name == *assoc_name) {
+                                    return InferType::Var(ctx.fresh_assoc_projection_var(
+                                        base_tv,
+                                        aspect.clone(),
+                                        assoc_name.clone(),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    return InferType::Named(format!("{n}::{assoc_name}"), vec![]);
+                }
+            }
+        }
         if generic_map.is_empty() {
             type_expr_to_infer_with_self(te, target_name)
         } else {
@@ -698,7 +809,7 @@ fn infer_impl_method(
             if p.name == "self" {
                 self_ty.clone()
             } else if let Some(ann) = &p.type_ann {
-                te_to_infer(ann)
+                te_to_infer(ann, ctx)
             } else {
                 ctx.fresh_var()
             }
@@ -707,7 +818,7 @@ fn infer_impl_method(
     let ret_ty = method
         .return_type
         .as_ref()
-        .map_or_else(InferType::unit, te_to_infer);
+        .map_or_else(InferType::unit, |t| te_to_infer(t, ctx));
 
     // Native methods have no Metel body; their signature comes entirely from
     // annotations (METEL-181). Skip body inference but still register the
@@ -721,12 +832,14 @@ fn infer_impl_method(
         }
         let saved_type_params = ctx.swap_type_params(generic_map);
         let saved_tp_bounds = ctx.swap_type_param_bounds(struct_bounds);
+        let (saved_assoc_memo, saved_assoc_log) = ctx.swap_assoc_projections();
         let saved_ret = ctx.push_return_type(ret_ty.clone());
         let body_ty = infer_block(&method.body, ctx, fun_generalizations)?;
         constrain_with_read_copy(ctx, body_ty, ret_ty.clone(), method.body.span.clone());
         ctx.pop_return_type(saved_ret);
         ctx.swap_type_param_bounds(saved_tp_bounds);
         ctx.swap_type_params(saved_type_params);
+        ctx.restore_assoc_projections(saved_assoc_memo, saved_assoc_log);
         ctx.pop_scope();
     }
 
@@ -2754,6 +2867,366 @@ pub(super) fn lower_impl_aspects_in_program(program: Program) -> Program {
 /// already accepts multi-segment names, so `T::Target` parses as a plain dotted
 /// `Named` either way) since recognizing a projection needs to know which names are
 /// declared generics, context the parser doesn't have.
+fn lower_projections_in_decl(decl: Decl) -> Decl {
+    match decl {
+        Decl::Fun(fun) => Decl::Fun(lower_projections_in_fun(&fun, &[])),
+        Decl::Let(let_decl) => Decl::Let(crate::ast::LetDecl {
+            type_ann: let_decl
+                .type_ann
+                .as_ref()
+                .map(|t| lower_projections_in_type(t, &std::collections::HashSet::new(), &let_decl.span)),
+            value: lower_projections_in_expr(&let_decl.value, &std::collections::HashSet::new()),
+            ..let_decl
+        }),
+        Decl::Mut(mut_decl) => Decl::Mut(crate::ast::MutDecl {
+            type_ann: mut_decl
+                .type_ann
+                .as_ref()
+                .map(|t| lower_projections_in_type(t, &std::collections::HashSet::new(), &mut_decl.span)),
+            value: lower_projections_in_expr(&mut_decl.value, &std::collections::HashSet::new()),
+            ..mut_decl
+        }),
+        Decl::Impl(ib) => Decl::Impl(crate::ast::ImplBlock {
+            methods: ib
+                .methods
+                .iter()
+                .map(|m| lower_projections_in_fun(m, &ib.generics))
+                .collect(),
+            ..ib
+        }),
+        Decl::Stmt(stmt) => Decl::Stmt(Box::new(lower_projections_in_stmt(
+            &stmt,
+            &std::collections::HashSet::new(),
+        ))),
+        other => other,
+    }
+}
+
+fn lower_projections_in_block(
+    block: &crate::ast::Block,
+    generics: &std::collections::HashSet<String>,
+) -> crate::ast::Block {
+    crate::ast::Block {
+        stmts: block
+            .stmts
+            .iter()
+            .map(|d| lower_projections_in_decl_with_generics(d, generics))
+            .collect(),
+        tail: block
+            .tail
+            .as_ref()
+            .map(|e| Box::new(lower_projections_in_expr(e, generics))),
+        span: block.span.clone(),
+    }
+}
+
+fn lower_projections_in_decl_with_generics(
+    decl: &Decl,
+    generics: &std::collections::HashSet<String>,
+) -> Decl {
+    match decl {
+        Decl::Let(let_decl) => Decl::Let(crate::ast::LetDecl {
+            type_ann: let_decl
+                .type_ann
+                .as_ref()
+                .map(|t| lower_projections_in_type(t, generics, &let_decl.span)),
+            value: lower_projections_in_expr(&let_decl.value, generics),
+            ..let_decl.clone()
+        }),
+        Decl::Mut(mut_decl) => Decl::Mut(crate::ast::MutDecl {
+            type_ann: mut_decl
+                .type_ann
+                .as_ref()
+                .map(|t| lower_projections_in_type(t, generics, &mut_decl.span)),
+            value: lower_projections_in_expr(&mut_decl.value, generics),
+            ..mut_decl.clone()
+        }),
+        Decl::Stmt(stmt) => Decl::Stmt(Box::new(lower_projections_in_stmt(stmt, generics))),
+        Decl::Fun(fun) => Decl::Fun(lower_projections_in_fun_with_generics(fun, generics)),
+        Decl::Impl(ib) => Decl::Impl(crate::ast::ImplBlock {
+            methods: ib
+                .methods
+                .iter()
+                .map(|m| lower_projections_in_fun(m, &ib.generics))
+                .collect(),
+            ..ib.clone()
+        }),
+        other => other.clone(),
+    }
+}
+
+fn lower_projections_in_fun_with_generics(
+    fun: &FunDecl,
+    parent_generics: &std::collections::HashSet<String>,
+) -> FunDecl {
+    let mut names: std::collections::HashSet<String> = parent_generics.clone();
+    for g in &fun.generics {
+        names.insert(g.name.clone());
+    }
+    if names.is_empty() {
+        return fun.clone();
+    }
+    let params = fun
+        .params
+        .iter()
+        .map(|p| Param {
+            type_ann: p
+                .type_ann
+                .as_ref()
+                .map(|t| lower_projections_in_type(t, &names, &p.span)),
+            ..p.clone()
+        })
+        .collect();
+    let return_type = fun
+        .return_type
+        .as_ref()
+        .map(|t| lower_projections_in_type(t, &names, &fun.span));
+    let body = lower_projections_in_block(&fun.body, &names);
+    FunDecl {
+        params,
+        return_type,
+        body,
+        ..fun.clone()
+    }
+}
+
+fn lower_projections_in_stmt(
+    stmt: &crate::ast::Stmt,
+    generics: &std::collections::HashSet<String>,
+) -> crate::ast::Stmt {
+    match stmt {
+        crate::ast::Stmt::While(ws) => crate::ast::Stmt::While(crate::ast::WhileStmt {
+            condition: lower_projections_in_expr(&ws.condition, generics),
+            body: lower_projections_in_block(&ws.body, generics),
+            span: ws.span.clone(),
+        }),
+        crate::ast::Stmt::For(fs) => {
+            let init = fs.init.as_ref().map(|fi| match fi {
+                crate::ast::ForInit::Let(l) => crate::ast::ForInit::Let(crate::ast::LetDecl {
+                    type_ann: l
+                        .type_ann
+                        .as_ref()
+                        .map(|t| lower_projections_in_type(t, generics, &l.span)),
+                    value: lower_projections_in_expr(&l.value, generics),
+                    ..l.clone()
+                }),
+                crate::ast::ForInit::Mut(m) => crate::ast::ForInit::Mut(crate::ast::MutDecl {
+                    type_ann: m
+                        .type_ann
+                        .as_ref()
+                        .map(|t| lower_projections_in_type(t, generics, &m.span)),
+                    value: lower_projections_in_expr(&m.value, generics),
+                    ..m.clone()
+                }),
+                crate::ast::ForInit::Expr(e) => {
+                    crate::ast::ForInit::Expr(lower_projections_in_expr(e, generics))
+                }
+            });
+            crate::ast::Stmt::For(Box::new(crate::ast::ForStmt {
+                init,
+                condition: fs
+                    .condition
+                    .as_ref()
+                    .map(|c| lower_projections_in_expr(c, generics)),
+                step: fs
+                    .step
+                    .as_ref()
+                    .map(|s| lower_projections_in_expr(s, generics)),
+                body: lower_projections_in_block(&fs.body, generics),
+                span: fs.span.clone(),
+            }))
+        }
+        crate::ast::Stmt::ForIn(fis) => crate::ast::Stmt::ForIn(Box::new(
+            crate::ast::ForInStmt {
+                binding: fis.binding.clone(),
+                mutable: fis.mutable,
+                iterable: lower_projections_in_expr(&fis.iterable, generics),
+                body: lower_projections_in_block(&fis.body, generics),
+                span: fis.span.clone(),
+            },
+        )),
+        crate::ast::Stmt::Expr(e) => crate::ast::Stmt::Expr(lower_projections_in_expr(e, generics)),
+    }
+}
+
+fn lower_projections_in_expr(
+    expr: &Expr,
+    generics: &std::collections::HashSet<String>,
+) -> Expr {
+    let go = |e: &Expr| lower_projections_in_expr(e, generics);
+    match expr {
+        Expr::Call {
+            callee,
+            type_args,
+            args,
+            span,
+        } => Expr::Call {
+            callee: Box::new(go(callee)),
+            type_args: type_args
+                .iter()
+                .map(|t| lower_projections_in_type(t, generics, span))
+                .collect(),
+            args: args.iter().map(go).collect(),
+            span: span.clone(),
+        },
+        Expr::MethodCall {
+            receiver,
+            method,
+            type_args,
+            args,
+            span,
+        } => Expr::MethodCall {
+            receiver: Box::new(go(receiver)),
+            method: method.clone(),
+            type_args: type_args
+                .iter()
+                .map(|t| lower_projections_in_type(t, generics, span))
+                .collect(),
+            args: args.iter().map(go).collect(),
+            span: span.clone(),
+        },
+        Expr::Cast {
+            expr: e,
+            target_type,
+            span,
+        } => Expr::Cast {
+            expr: Box::new(go(e)),
+            target_type: lower_projections_in_type(target_type, generics, span),
+            span: span.clone(),
+        },
+        Expr::Ascribe {
+            expr: e,
+            ann,
+            span,
+        } => Expr::Ascribe {
+            expr: Box::new(go(e)),
+            ann: lower_projections_in_type(ann, generics, span),
+            span: span.clone(),
+        },
+        Expr::Closure {
+            params,
+            return_type,
+            body,
+            span,
+        } => Expr::Closure {
+            params: params
+                .iter()
+                .map(|p| Param {
+                    type_ann: p
+                        .type_ann
+                        .as_ref()
+                        .map(|t| lower_projections_in_type(t, generics, &p.span)),
+                    ..p.clone()
+                })
+                .collect(),
+            return_type: return_type
+                .as_ref()
+                .map(|t| lower_projections_in_type(t, generics, span)),
+            body: lower_projections_in_block(body, generics),
+            span: span.clone(),
+        },
+        Expr::If {
+            condition,
+            then_branch,
+            else_branch,
+            span,
+        } => Expr::If {
+            condition: Box::new(go(condition)),
+            then_branch: lower_projections_in_block(then_branch, generics),
+            else_branch: else_branch
+                .as_ref()
+                .map(|b| lower_projections_in_block(b, generics)),
+            span: span.clone(),
+        },
+        Expr::Loop { body, span } => Expr::Loop {
+            body: lower_projections_in_block(body, generics),
+            span: span.clone(),
+        },
+        Expr::Match(m) => Expr::Match(crate::ast::MatchExpr {
+            scrutinee: Box::new(go(&m.scrutinee)),
+            arms: m
+                .arms
+                .iter()
+                .map(|a| crate::ast::MatchArm {
+                    pattern: a.pattern.clone(),
+                    guard: a.guard.as_ref().map(|g| go(g)),
+                    body: lower_projections_in_block(&a.body, generics),
+                    span: a.span.clone(),
+                })
+                .collect(),
+            span: m.span.clone(),
+        }),
+        Expr::Tuple(es, s) => Expr::Tuple(es.iter().map(go).collect(), s.clone()),
+        Expr::Array(es, s) => Expr::Array(es.iter().map(go).collect(), s.clone()),
+        Expr::RepeatArray(e, n, s) => Expr::RepeatArray(Box::new(go(e)), *n, s.clone()),
+        Expr::BinOp(l, op, r, s) => {
+            Expr::BinOp(Box::new(go(l)), op.clone(), Box::new(go(r)), s.clone())
+        }
+        Expr::UnaryOp(op, e, s) => Expr::UnaryOp(op.clone(), Box::new(go(e)), s.clone()),
+        Expr::Assign {
+            target,
+            op,
+            value,
+            span,
+        } => Expr::Assign {
+            target: target.clone(),
+            op: op.clone(),
+            value: Box::new(go(value)),
+            span: span.clone(),
+        },
+        Expr::FieldAccess {
+            object, field, span,
+        } => Expr::FieldAccess {
+            object: Box::new(go(object)),
+            field: field.clone(),
+            span: span.clone(),
+        },
+        Expr::TupleAccess {
+            object, index, span,
+        } => Expr::TupleAccess {
+            object: Box::new(go(object)),
+            index: *index,
+            span: span.clone(),
+        },
+        Expr::Index {
+            object, index, span,
+        } => Expr::Index {
+            object: Box::new(go(object)),
+            index: Box::new(go(index)),
+            span: span.clone(),
+        },
+        Expr::PropagateError { expr: e, span } => Expr::PropagateError {
+            expr: Box::new(go(e)),
+            span: span.clone(),
+        },
+        Expr::Return(re) => Expr::Return(crate::ast::ReturnExpr {
+            value: re.value.as_ref().map(|v| Box::new(go(v))),
+            span: re.span.clone(),
+        }),
+        Expr::Break(br) => Expr::Break(crate::ast::BreakExpr {
+            value: br.value.as_ref().map(|v| Box::new(go(v))),
+            span: br.span.clone(),
+        }),
+        // Leaf expressions — no sub-Expr or TypeExpr to rewrite.
+        Expr::Literal(_, _)
+        | Expr::Ident(_, _)
+        | Expr::Path(_, _)
+        | Expr::ResolvedPath { .. }
+        | Expr::Continue(_) => expr.clone(),
+        Expr::StructLiteral {
+            path,
+            fields,
+            symbol_id,
+            span,
+        } => Expr::StructLiteral {
+            path: path.clone(),
+            fields: fields.iter().map(|(n, e)| (n.clone(), go(e))).collect(),
+            symbol_id: *symbol_id,
+            span: span.clone(),
+        },
+    }
+}
+
 fn lower_projections_in_type(
     te: &TypeExpr,
     generics: &std::collections::HashSet<String>,
@@ -2811,49 +3284,19 @@ fn lower_projections_in_fun(fun: &FunDecl, extra_generics: &[GenericParam]) -> F
     if names.is_empty() {
         return fun.clone();
     }
-    let params = fun
-        .params
-        .iter()
-        .map(|p| Param {
-            type_ann: p
-                .type_ann
-                .as_ref()
-                .map(|t| lower_projections_in_type(t, &names, &p.span)),
-            ..p.clone()
-        })
-        .collect();
-    let return_type = fun
-        .return_type
-        .as_ref()
-        .map(|t| lower_projections_in_type(t, &names, &fun.span));
-    FunDecl {
-        params,
-        return_type,
-        ..fun.clone()
-    }
+    lower_projections_in_fun_with_generics(fun, &names)
 }
 
 /// Lower all `T::AssocType` projections in every `FunDecl`'s params/return-type in a
-/// `Program`. Scoped to signatures only, matching `lower_impl_aspect`'s own scope —
-/// type annotations on `let`/`mut` bindings inside function bodies are not rewritten
-/// (would need a general `TypeExpr`-rewriting tree walk over `Block`/`Stmt`/`Expr`
-/// that doesn't otherwise exist in this codebase; not attempted here).
+/// `Program`. Also descends into function bodies to lower type annotations on
+/// `let`/`mut` bindings, closure signatures, cast targets, ascribe annotations,
+/// and generic type arguments in call sites — any `TypeExpr` that could reference
+/// an associated type from a generic param.
 pub(super) fn lower_projections_in_program(program: Program) -> Program {
     let decls = program
         .decls
         .into_iter()
-        .map(|decl| match decl {
-            Decl::Fun(fun) => Decl::Fun(lower_projections_in_fun(&fun, &[])),
-            Decl::Impl(ib) => Decl::Impl(ImplBlock {
-                methods: ib
-                    .methods
-                    .iter()
-                    .map(|m| lower_projections_in_fun(m, &ib.generics))
-                    .collect(),
-                ..ib
-            }),
-            other => other,
-        })
+        .map(|decl| lower_projections_in_decl(decl))
         .collect();
     Program { decls, ..program }
 }

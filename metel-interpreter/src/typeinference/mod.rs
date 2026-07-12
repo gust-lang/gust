@@ -683,6 +683,16 @@ pub struct TypeScheme {
     /// `T: !Aspect` means the type must NOT implement `Aspect`. Checked by
     /// inverting the `impl_aspect_env_has` query (RFC-0072, issue #243).
     pub neg_bounds: Vec<Vec<String>>,
+    /// Per-quantified-var projection metadata (RFC-0082). Index-aligned with
+    /// `quantified_vars`. `Some((position, aspect_name, assoc_name))` means the
+    /// i-th quantified var has a projection `T::AssocName` through `aspect_name`.
+    /// `None` means no projection declared for this position. The `position` is
+    /// the 0-based index into `quantified_vars` (redundant but explicit).
+    pub assoc_projections: Vec<Option<(usize, String, String)>>,
+    /// Per-quantified-var equality constraints (RFC-0082 §4).
+    /// `assoc_eq_constraints[i]` lists `(left_proj, right_proj, type)` constraints
+    /// where both sides resolve to the i-th quantified var's projection.
+    pub assoc_eq_constraints: Vec<Vec<(String, String, InferType)>>,
     pub ty: InferType,
 }
 
@@ -695,6 +705,8 @@ impl TypeScheme {
             param_names: vec![],
             bounds: vec![],
             neg_bounds: vec![],
+            assoc_projections: vec![],
+            assoc_eq_constraints: vec![],
             ty,
         }
     }
@@ -725,6 +737,38 @@ impl TypeScheme {
             .iter()
             .map(|v| by_var.get(v).cloned().unwrap_or_default())
             .collect();
+        self
+    }
+
+    /// Attach per-quantified-var associated-type projection metadata (RFC-0082).
+    /// Each entry in `proj_map` maps a quantified `TypeVar` to its projection info.
+    #[must_use]
+    pub fn with_assoc_projections(
+        mut self,
+        proj_map: &std::collections::HashMap<TypeVar, (usize, String, String)>,
+    ) -> Self {
+        if proj_map.is_empty() {
+            return self;
+        }
+        self.assoc_projections = self
+            .quantified_vars
+            .iter()
+            .enumerate()
+            .map(|(i, v)| proj_map.get(v).cloned().or_else(|| {
+                // Still allow position-based lookup for robustness
+                proj_map.values().find(|(pos, _, _)| *pos == i).cloned()
+            }))
+            .collect();
+        self
+    }
+
+    /// Attach per-quantified-var equality constraints (RFC-0082 §4).
+    #[must_use]
+    pub fn with_assoc_eq_constraints(
+        mut self,
+        constraints: Vec<Vec<(String, String, InferType)>>,
+    ) -> Self {
+        self.assoc_eq_constraints = constraints;
         self
     }
 }
@@ -762,6 +806,8 @@ pub fn generalize(ty: InferType, env_free_vars: &HashSet<TypeVar>) -> TypeScheme
         param_names: vec![],
         bounds: vec![],
         neg_bounds: vec![],
+        assoc_projections: vec![],
+        assoc_eq_constraints: vec![],
         ty,
     }
 }
@@ -1494,6 +1540,13 @@ pub struct InferContext {
     /// `TypeVar` → aspect names for the current generic function's bounded type params.
     /// Parallel to `current_type_params`; swapped in/out alongside it.
     current_type_param_bounds: HashMap<TypeVar, Vec<String>>,
+    /// Memo + accumulator for symbolic associated-type projections minted while inferring
+    /// the CURRENT function/method body. Key: (base_tv, aspect_name, assoc_name) so the
+    /// same projection requested twice gets the same placeholder. Reset (swapped, like
+    /// current_type_param_bounds) on entry/exit of each function/method body.
+    current_assoc_projections: HashMap<(TypeVar, String, String), TypeVar>,
+    /// Flat log of everything minted above, in insertion order.
+    recorded_assoc_projections: Vec<(TypeVar, String, String, TypeVar)>, // (base, aspect, assoc, placeholder)
     current_module_path: Vec<String>,
     /// Names that have same-tier glob conflicts deferred until use. (METEL-98)
     /// Maps name → list of source module paths that both export it.
@@ -1566,6 +1619,8 @@ impl InferContext {
             registry,
             current_type_params: HashMap::new(),
             current_type_param_bounds: HashMap::new(),
+            current_assoc_projections: HashMap::new(),
+            recorded_assoc_projections: Vec::new(),
             current_module_path,
             deferred_glob_conflicts: HashMap::new(),
             integer_literal_vars: HashSet::new(),
@@ -1721,6 +1776,62 @@ impl InferContext {
     #[must_use]
     pub fn bounds_for_type_var(&self, tv: TypeVar) -> Option<&Vec<String>> {
         self.current_type_param_bounds.get(&tv)
+    }
+
+    /// Read-only view of all type-param bounds in the current scope (for debug assertions).
+    #[must_use]
+    pub fn type_param_bounds(&self) -> &HashMap<TypeVar, Vec<String>> {
+        &self.current_type_param_bounds
+    }
+
+    /// Swap in empty projection state for a new function/method body, returning the old state.
+    pub fn swap_assoc_projections(
+        &mut self,
+    ) -> (
+        HashMap<(TypeVar, String, String), TypeVar>,
+        Vec<(TypeVar, String, String, TypeVar)>,
+    ) {
+        let old_memo = std::mem::take(&mut self.current_assoc_projections);
+        let old_log = std::mem::take(&mut self.recorded_assoc_projections);
+        (old_memo, old_log)
+    }
+
+    /// Restore previously-saved projection state (call when leaving a function/method body).
+    pub fn restore_assoc_projections(
+        &mut self,
+        memo: HashMap<(TypeVar, String, String), TypeVar>,
+        log: Vec<(TypeVar, String, String, TypeVar)>,
+    ) {
+        self.current_assoc_projections = memo;
+        self.recorded_assoc_projections = log;
+    }
+
+    /// Mint a fresh `TypeVar` for the projection `T::AssocName` where `T` is `base_tv`
+    /// and the method is declared in `aspect_name`. Reuses the same placeholder if the
+    /// exact same projection was already minted in the current body (memoized).
+    pub fn fresh_assoc_projection_var(
+        &mut self,
+        base_tv: TypeVar,
+        aspect_name: String,
+        assoc_name: String,
+    ) -> TypeVar {
+        let key = (base_tv, aspect_name, assoc_name.clone());
+        if let Some(&existing) = self.current_assoc_projections.get(&key) {
+            return existing;
+        }
+        let placeholder = self.var_gen.fresh();
+        self.current_assoc_projections.insert(key.clone(), placeholder);
+        self.recorded_assoc_projections
+            .push((key.0, key.1, assoc_name, placeholder));
+        placeholder
+    }
+
+    /// Drain the accumulated projection log. Call after `solve()` to build the scheme's
+    /// `assoc_projections` mapping.
+    pub fn take_recorded_assoc_projections(
+        &mut self,
+    ) -> Vec<(TypeVar, String, String, TypeVar)> {
+        std::mem::take(&mut self.recorded_assoc_projections)
     }
 
     /// Returns the aspect method defs from the registry.
