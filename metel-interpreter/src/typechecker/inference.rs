@@ -283,25 +283,33 @@ fn infer_decl(
                 }
             };
             let mut inherited_defaults = vec![];
-            if let Some(aspect_name) = &ib.aspect_name {
-                if let Some(methods) = ctx.aspect_method_defs(aspect_name).cloned() {
-                    let provided: std::collections::HashSet<&str> =
-                        ib.methods.iter().map(|m| m.name.as_str()).collect();
-                    for method in methods {
-                        if provided.contains(method.name.as_str()) {
-                            continue;
+            // A negative impl (RFC-0081, issue #264) is a declaration of
+            // non-implementation, not a real impl with missing overrides — it must
+            // not be required to provide the aspect's methods, nor inherit its
+            // default bodies. The parser already enforces `ib.methods.is_empty()`
+            // for a negative impl; without this guard that empty method list would
+            // otherwise look exactly like every required method being missing.
+            if ib.polarity == Polarity::Positive {
+                if let Some(aspect_name) = &ib.aspect_name {
+                    if let Some(methods) = ctx.aspect_method_defs(aspect_name).cloned() {
+                        let provided: std::collections::HashSet<&str> =
+                            ib.methods.iter().map(|m| m.name.as_str()).collect();
+                        for method in methods {
+                            if provided.contains(method.name.as_str()) {
+                                continue;
+                            }
+                            if method.default_body.is_none() {
+                                return Err(MetelError::type_error(
+                                    TypeErrorCode::T0003,
+                                    format!(
+                                        "`{}` does not implement `{}::{}` required by aspect `{}`",
+                                        target_name, target_name, method.name, aspect_name
+                                    ),
+                                    &ib.span,
+                                ));
+                            }
+                            inherited_defaults.push(method);
                         }
-                        if method.default_body.is_none() {
-                            return Err(MetelError::type_error(
-                                TypeErrorCode::T0003,
-                                format!(
-                                    "`{}` does not implement `{}::{}` required by aspect `{}`",
-                                    target_name, target_name, method.name, aspect_name
-                                ),
-                                &ib.span,
-                            ));
-                        }
-                        inherited_defaults.push(method);
                     }
                 }
             }

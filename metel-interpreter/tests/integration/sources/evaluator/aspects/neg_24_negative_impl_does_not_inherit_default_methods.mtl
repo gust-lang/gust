@@ -1,0 +1,24 @@
+// TYPECHECK_ERROR[no method]
+// RFC-0081, issue #264: a negative impl must not inherit the aspect's
+// default-bodied methods either -- that would make the type appear to
+// implement the aspect via inherited defaults, exactly backwards from what
+// `impl !Aspect for Type {}` means. Regression: this previously succeeded,
+// silently registering `greeting` (a default method) as callable on Robot.
+
+aspect Greet {
+    fun name(&self) -> String;
+    fun greeting(&self) -> String {
+        return "Hi, " + self.name();
+    }
+}
+
+struct Robot {
+    id: i64,
+}
+
+impl !Greet for Robot {}
+
+fun main() {
+    let r = Robot { id: 1 };
+    println(r.greeting());
+}

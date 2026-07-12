@@ -360,7 +360,16 @@ fn register_program_decls(
                 register_generic_impl_method_schemes(ib, &target_name, gen, registry);
             } else {
                 register_impl_methods(ib.methods.iter(), &target_name, gen, registry);
-                register_default_aspect_methods(ib, &target_name, gen, registry);
+                // A negative impl (RFC-0081, `impl !Aspect for Type {}`, issue #264)
+                // carries no methods of its own (enforced empty by the parser) and
+                // must not inherit the aspect's default-bodied methods either — it's
+                // a declaration of non-implementation, not a real impl missing some
+                // overrides. Without this guard the registry would believe the type
+                // has the aspect's default methods callable, exactly backwards from
+                // what `impl !Aspect` means.
+                if ib.polarity == Polarity::Positive {
+                    register_default_aspect_methods(ib, &target_name, gen, registry);
+                }
             }
             // Track which aspects this type implements (with concrete type args).
             // TODO(generic-impl): `impl<T>` syntax now exists (issue #233), but this
@@ -375,10 +384,13 @@ fn register_program_decls(
             // Negative impls (RFC-0081, `impl !Aspect for Type {}`) must not reach
             // this registration at all — `ib.polarity == Negative` means the type
             // definitively does NOT implement the aspect; registering it here would
-            // make positive-bound checks silently and wrongly succeed. Full
-            // negative-impl coherence (priority over blanket impls, finality checks)
-            // is issue #264's job; this is the minimum correctness guard so the
-            // syntax existing at all doesn't actively lie.
+            // make positive-bound checks silently and wrongly succeed. Orphan rule,
+            // finality (conflict with a concrete positive impl), and not inheriting
+            // the aspect's default-bodied methods are all handled now (issue #264).
+            // Still deferred: actually taking priority over a *blanket* positive
+            // impl, and being consulted by `T: !Aspect` bound satisfaction — both
+            // need RFC-0036/RFC-0072 (issues #241/#243) to have real semantics
+            // first; there's nothing to override or consult yet.
             if ib.polarity == Polarity::Positive {
                 if let Some(aspect_name) = &ib.aspect_name {
                     let type_args: Vec<crate::types::Type> = ib

@@ -702,7 +702,12 @@ fn construct_impl_decl(ib: &ImplBlock, ctx: &mut ConstructCtx) -> Result<TypedDe
     // conditional/structural target without knowing the concrete instantiation.
     // Skipped for now when the impl has its own generics; issue #241/#245's job to
     // do this properly once bound-satisfaction checking exists.
-    if !impl_has_generics {
+    //
+    // Also skipped for a negative impl (RFC-0081, issue #264): `impl !Aspect for
+    // Type {}` declares non-implementation, so it must not inherit the aspect's
+    // default method bodies — that would make the type appear to implement the
+    // aspect via inherited defaults, the opposite of what a negative impl means.
+    if !impl_has_generics && ib.polarity == crate::ast::Polarity::Positive {
         methods.extend(construct_default_aspect_methods(ib, &target_name, ctx)?);
     }
 

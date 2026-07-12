@@ -1,0 +1,20 @@
+// RFC-0081, issue #264: `impl !Aspect for Type {}` is a declaration of
+// non-implementation, not a real impl missing overrides -- it must not be
+// required to provide the aspect's (non-default) methods. Regression: this
+// previously failed with T0003 "does not implement ... required by aspect",
+// because the "does this impl provide every required method" check didn't
+// know a negative impl provides nothing by design.
+
+aspect Greet {
+    fun greet(&self) -> String;
+}
+
+struct Robot {
+    id: i64,
+}
+
+impl !Greet for Robot {}
+
+fun main() {
+    assert(1 == 1);
+}
