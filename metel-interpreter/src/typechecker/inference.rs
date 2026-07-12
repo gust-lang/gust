@@ -2053,11 +2053,22 @@ fn constrain_with_read_copy(
     }
     if any_peel {
         ctx.add_constraint(peeled, declared.clone(), span);
-        declared
-    } else {
-        ctx.add_constraint(actual.clone(), declared, span);
-        actual
+        return declared;
     }
+    // RFC-0078 §3.3: if `actual` is (plausibly) a singleton-coercible enum, bind
+    // the environment to `declared` rather than the raw enum type — otherwise a
+    // later use of this binding (e.g. `x + y` where `y`'s binding is still the raw
+    // `Result<i64, !>`) would compare the wrong, uncoerced type. The constraint
+    // recorded here still carries the raw `actual`; `InferContext::solve`'s
+    // registry-aware retry (`apply_constraint_with_coercion`) is what actually
+    // verifies (or rejects) the coercion once types are fully resolved — this is
+    // only an optimistic environment-binding choice, not the enforcement point.
+    if crate::typeinference::singleton_coerce_field_ty(ctx.registry(), &actual).is_some() {
+        ctx.add_constraint(actual, declared.clone(), span);
+        return declared;
+    }
+    ctx.add_constraint(actual.clone(), declared, span);
+    actual
 }
 
 fn is_same_declaring_module(

@@ -1,0 +1,18 @@
+// Positive: RFC-0078 §6 -- a function declared `-> !` typechecks when every
+// path genuinely diverges (a `panic` tail expression, or a `loop` with no
+// reachable `break`).
+
+fun abort(msg: String) -> ! {
+    panic(msg)
+}
+
+fun loop_forever() -> ! {
+    loop { }
+}
+
+fun abort_via_return(msg: String) -> ! {
+    // Also fine: the `return`ed expression itself never produces a value.
+    return panic(msg);
+}
+
+fun main() {}

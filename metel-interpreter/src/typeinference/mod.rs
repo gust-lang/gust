@@ -467,6 +467,119 @@ fn apply_constraint(
     )
 }
 
+/// Registry-aware counterpart of `apply_constraint`, used by `InferContext::solve`.
+/// RFC-0078 §3.3: when a constraint's two sides are substituted to (by now, usually
+/// fully concrete) types that don't unify directly, retry via inhabited-singleton
+/// coercion before giving up — either side might name a singleton-coercible enum
+/// reducible to the other side's type. This mirrors `construction.rs`'s
+/// `maybe_singleton_coerce`, just at the constraint-solving level rather than at a
+/// specific AST construction site, since a call's return type is often still an
+/// unresolved type variable at the point its enclosing `let`/`return`/etc. records
+/// its own constraint — only by the time `solve` substitutes and unifies is it
+/// actually known to be a concrete, possibly singleton-coercible, enum type.
+fn apply_constraint_with_coercion(
+    subst: &mut Substitution,
+    constraint: &Constraint,
+    integer_literal_vars: &HashSet<TypeVar>,
+    float_literal_vars: &HashSet<TypeVar>,
+    registry: &TypeDefinitionRegistry,
+) -> Result<(), MetelError> {
+    let lhs = subst.apply(&constraint.lhs);
+    let rhs = subst.apply(&constraint.rhs);
+    let solved = match unify(&lhs, &rhs) {
+        Ok(s) => s,
+        Err(_) => {
+            let lhs_field = singleton_coerce_field_ty(registry, &lhs);
+            let rhs_field = singleton_coerce_field_ty(registry, &rhs);
+            let mk_err = || {
+                MetelError::type_error(
+                    crate::error::TypeErrorCode::T0001,
+                    format!("cannot unify {} with {}", lhs, rhs),
+                    &constraint.span,
+                )
+            };
+            if let (Some(lf), Some(rf)) = (&lhs_field, &rhs_field) {
+                let s = unify(lf, rf).map_err(|_| mk_err())?;
+                // `compose_in_place`'s merge keeps the *first* binding for any var
+                // (first-write-wins), so a var already bound earlier to the raw
+                // enum type (e.g. from the call's own return-type instantiation)
+                // would never observe this coercion through composition alone.
+                // Rebind directly: every later use of that var (including through
+                // an environment binding that's itself just this var, unresolved
+                // until use) then sees the coerced type instead of the raw enum.
+                if let InferType::Var(v) = &constraint.lhs {
+                    subst.bind(*v, lf.clone());
+                }
+                if let InferType::Var(v) = &constraint.rhs {
+                    subst.bind(*v, rf.clone());
+                }
+                s
+            } else if let Some(field_ty) = &lhs_field {
+                let s = unify(field_ty, &rhs).map_err(|_| mk_err())?;
+                if let InferType::Var(v) = &constraint.lhs {
+                    subst.bind(*v, field_ty.clone());
+                }
+                s
+            } else if let Some(field_ty) = &rhs_field {
+                let s = unify(&lhs, field_ty).map_err(|_| mk_err())?;
+                if let InferType::Var(v) = &constraint.rhs {
+                    subst.bind(*v, field_ty.clone());
+                }
+                s
+            } else {
+                return Err(mk_err());
+            }
+        }
+    };
+    subst.compose_in_place(&solved);
+    validate_literal_bindings(
+        subst,
+        integer_literal_vars,
+        float_literal_vars,
+        &constraint.span,
+    )
+}
+
+/// RFC-0078 §3.2-§3.3: if `actual` names an enum with more than one variant,
+/// exactly one of which is inhabited (all others have some field substituted to
+/// `!`) with exactly one field, return that field's (substituted) type.
+pub(crate) fn singleton_coerce_field_ty(
+    registry: &TypeDefinitionRegistry,
+    actual: &InferType,
+) -> Option<InferType> {
+    let (name, args): (&str, Vec<InferType>) = match actual {
+        InferType::Concrete(Type::Named(n, targs)) => (
+            n.as_str(),
+            targs.iter().cloned().map(InferType::Concrete).collect(),
+        ),
+        InferType::Named(n, targs) => (n.as_str(), targs.clone()),
+        _ => return None,
+    };
+    let enum_info = registry.enum_info(name)?;
+    if enum_info.variants.len() <= 1 {
+        return None;
+    }
+    let mut remap = Substitution::new();
+    for (&tp, arg_ty) in enum_info.type_params.iter().zip(args.iter()) {
+        remap.bind(tp, arg_ty.clone());
+    }
+    let mut inhabited: Option<InferType> = None;
+    for v in &enum_info.variants {
+        let uninhabited = v
+            .fields
+            .iter()
+            .any(|f| matches!(remap.apply(&f.ty), InferType::Never));
+        if uninhabited {
+            continue;
+        }
+        if v.fields.len() != 1 || inhabited.is_some() {
+            return None;
+        }
+        inhabited = Some(remap.apply(&v.fields[0].ty));
+    }
+    inhabited
+}
+
 fn validate_literal_bindings(
     subst: &Substitution,
     integer_literal_vars: &HashSet<TypeVar>,
@@ -1682,11 +1795,12 @@ impl InferContext {
 
         let mut subst = self.cached_subst.clone();
         for constraint in &self.constraints[self.solved_constraint_count..] {
-            apply_constraint(
+            apply_constraint_with_coercion(
                 &mut subst,
                 constraint,
                 &self.integer_literal_vars,
                 &self.float_literal_vars,
+                &self.registry,
             )?;
         }
 

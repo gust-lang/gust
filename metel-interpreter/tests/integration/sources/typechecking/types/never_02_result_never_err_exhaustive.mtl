@@ -1,0 +1,14 @@
+// Positive: RFC-0078 §4.1 -- Result<T, !> satisfies the uninhabited-variant rule
+// as a special case of the general rule (§3.2); a match omitting `Err` is
+// exhaustive.
+
+fun use_result(r: Result<i64, !>) -> i64 {
+    match r {
+        Result::Ok { value } => value,
+        // Result::Err omitted -- exhaustive; Err is uninhabited when E = !.
+    }
+}
+
+fun main() -> i64 {
+    use_result(Result::Ok { value: 3 })
+}

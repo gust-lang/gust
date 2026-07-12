@@ -1,0 +1,9 @@
+// Negative: RFC-0078 §6 -- a function declared `-> !` containing a reachable,
+// ordinary `return` (one whose value is NOT itself `!`-typed) is a type error:
+// the function actually returns, which `-> !` forbids.
+
+fun bad() -> ! { // ERROR[T0016]
+    return 5;
+}
+
+fun main() {}

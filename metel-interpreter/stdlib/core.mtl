@@ -336,6 +336,10 @@ native(@std.core.clock)      pub fun clock() -> i64;
 native(@std.core.yolo_none) fun yolo_none<T>() -> T;
 native(@std.core.yolo_err)  fun yolo_err<T, E>(error: E) -> T;
 
+// RFC-0078: `panic(msg)` always panics, and so has type `!` — it coerces to
+// whatever type its calling context expects (the bottom-type subtyping rule).
+native(@std.core.panic) pub fun panic(msg: String) -> !;
+
 // ── Display impls for the primitive types ──────────────────────────────────
 // One shared host implementation formats any displayable value, so every
 // impl binds to the same @std.core.to_string key.

@@ -316,6 +316,7 @@ fn elaborate_expr(expr: &mut TypedExpr, map: &DispatchMap) {
                 elaborate_expr(e, map);
             }
         }
+        TypedExpr::SingletonCoerce { inner, .. } => elaborate_expr(inner, map),
         TypedExpr::Literal(..) | TypedExpr::Ident(..) | TypedExpr::Path(..) => {}
     }
 }

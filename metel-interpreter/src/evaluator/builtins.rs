@@ -143,6 +143,14 @@ fn native_yolo_err(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, M
     }
 }
 
+/// `std::core::panic(msg: String) -> !` (RFC-0078). Always panics with `msg`.
+fn native_panic(args: Vec<Value>, span: &crate::ast::Span) -> Result<Value, MetelError> {
+    match args.first() {
+        Some(Value::Str(msg)) => Err(MetelError::panic(RuntimeErrorCode::R0015, msg.clone(), span)),
+        _ => Err(MetelError::internal("panic: expected one String argument")),
+    }
+}
+
 fn native_clock(_args: Vec<Value>, _span: &crate::ast::Span) -> Result<Value, MetelError> {
     use std::time::{SystemTime, UNIX_EPOCH};
     let ms = SystemTime::now()
@@ -743,6 +751,7 @@ pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
             NativeKey::StdCoreClock => ("std::core::clock", native_clock),
             NativeKey::StdCoreYoloNone => ("std::core::yolo_none", native_yolo_none),
             NativeKey::StdCoreYoloErr => ("std::core::yolo_err", native_yolo_err),
+            NativeKey::StdCorePanic => ("std::core::panic", native_panic),
             NativeKey::StdCoreStringLen => ("String::len", native_string_len),
             NativeKey::StdCoreStringIsEmpty => ("String::is_empty", native_string_is_empty),
             NativeKey::StdCoreStringToUpper => ("String::to_upper", native_string_to_upper),

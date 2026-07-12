@@ -32,6 +32,8 @@ pub enum NativeKey {
     /// `std::core::yolo_err` — panics unconditionally, including the `Err` value's
     /// debug representation; `Result::yolo()`'s `Err` arm.
     StdCoreYoloErr,
+    /// `std::core::panic(msg: String) -> !` — panics unconditionally with `msg`.
+    StdCorePanic,
     /// `String::len` — number of characters in a string.
     StdCoreStringLen,
     /// `String::is_empty(self) -> boolean`.
@@ -159,6 +161,7 @@ impl NativeKey {
             ["std", "core", "clock"] => NativeKey::StdCoreClock,
             ["std", "core", "yolo_none"] => NativeKey::StdCoreYoloNone,
             ["std", "core", "yolo_err"] => NativeKey::StdCoreYoloErr,
+            ["std", "core", "panic"] => NativeKey::StdCorePanic,
             ["std", "core", "string_len"] => NativeKey::StdCoreStringLen,
             ["std", "core", "string_is_empty"] => NativeKey::StdCoreStringIsEmpty,
             ["std", "core", "string_to_upper"] => NativeKey::StdCoreStringToUpper,
@@ -226,6 +229,7 @@ impl NativeKey {
             NativeKey::StdCoreClock => "@std.core.clock",
             NativeKey::StdCoreYoloNone => "@std.core.yolo_none",
             NativeKey::StdCoreYoloErr => "@std.core.yolo_err",
+            NativeKey::StdCorePanic => "@std.core.panic",
             NativeKey::StdCoreStringLen => "@std.core.string_len",
             NativeKey::StdCoreStringIsEmpty => "@std.core.string_is_empty",
             NativeKey::StdCoreStringToUpper => "@std.core.string_to_upper",
@@ -291,6 +295,7 @@ impl NativeKey {
         NativeKey::StdCoreClock,
         NativeKey::StdCoreYoloNone,
         NativeKey::StdCoreYoloErr,
+        NativeKey::StdCorePanic,
         NativeKey::StdCoreStringLen,
         NativeKey::StdCoreStringIsEmpty,
         NativeKey::StdCoreStringToUpper,

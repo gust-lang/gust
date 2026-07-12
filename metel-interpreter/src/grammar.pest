@@ -187,7 +187,9 @@ tuple_or_paren = { "(" ~ expr ~ ("," ~ expr)+ ~ ")" | "(" ~ expr ~ ")" }
 repeat_array   = { "[" ~ expr ~ ";" ~ decimal_int ~ "]" }
 array_lit      = { "[" ~ (expr ~ ("," ~ expr)* ~ ","?)? ~ "]" }
 
-match_expr  = { "match" ~ expr ~ "{" ~ match_arm ~ ("," ~ match_arm)* ~ ","? ~ "}" }
+// RFC-0078 §3.1: a match on a `!`-typed scrutinee is vacuously exhaustive with
+// zero arms — the arm list is optional to allow `match x { }`.
+match_expr  = { "match" ~ expr ~ "{" ~ (match_arm ~ ("," ~ match_arm)* ~ ","?)? ~ "}" }
 match_arm   = { pattern ~ ("if" ~ expr)? ~ "=>" ~ (block | return_arm | break_arm | expr) }
 return_arm  = { "return" ~ expr? }
 break_arm   = { "break" ~ expr? }
@@ -234,8 +236,15 @@ type_expr = {
   | unit_type
   | tuple_type
   | impl_type
+  | never_type
   | named_type
 }
+
+// RFC-0078: `!`, the uninhabited bottom type. No ambiguity with the unary `!`
+// (logical-not) operator — type and expression contexts are parsed via entirely
+// separate rules. Lowered to `TypeExpr::Named("Never", [])`, the same AST shape
+// the pre-existing `Never` identifier spelling already produces.
+never_type = { "!" }
 
 impl_type = { "impl" ~ type_expr }
 

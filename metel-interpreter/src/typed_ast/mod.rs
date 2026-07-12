@@ -405,6 +405,21 @@ pub enum TypedExpr {
         type_id: Option<SymbolId>,
         span: Span,
     },
+    /// RFC-0078 §3.3: the inhabited-singleton coercion. `inner` is a value of an
+    /// enum type with exactly one inhabited variant (`variant`, holding exactly
+    /// one field, `field`); this node destructures it directly to that field's
+    /// value with no explicit `match` at the use site. Sound unconditionally: the
+    /// exhaustiveness check that licenses this coercion already guarantees no
+    /// other variant could ever have been constructed, so no runtime tag check is
+    /// needed — see `construct_match`'s uninhabited-variant exemption.
+    SingletonCoerce {
+        inner: Box<TypedExpr>,
+        #[allow(dead_code)] // kept for future error messages
+        variant: String,
+        field: String,
+        ty: Type,
+        span: Span,
+    },
 }
 
 impl TypedExpr {
@@ -430,7 +445,8 @@ impl TypedExpr {
             | TypedExpr::Loop { ty, .. }
             | TypedExpr::Closure { ty, .. }
             | TypedExpr::GenericClosure { ty, .. }
-            | TypedExpr::StructLiteral { ty, .. } => ty,
+            | TypedExpr::StructLiteral { ty, .. }
+            | TypedExpr::SingletonCoerce { ty, .. } => ty,
             TypedExpr::Match(m) => &m.expr_type,
         }
     }
@@ -457,7 +473,8 @@ impl TypedExpr {
             | TypedExpr::Loop { span, .. }
             | TypedExpr::Closure { span, .. }
             | TypedExpr::GenericClosure { span, .. }
-            | TypedExpr::StructLiteral { span, .. } => span,
+            | TypedExpr::StructLiteral { span, .. }
+            | TypedExpr::SingletonCoerce { span, .. } => span,
             TypedExpr::Match(m) => &m.span,
         }
     }

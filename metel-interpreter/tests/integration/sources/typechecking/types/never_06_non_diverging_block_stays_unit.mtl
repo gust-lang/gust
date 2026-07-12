@@ -1,0 +1,16 @@
+// Regression: an ordinary, non-diverging statement-only block still types as
+// `()`, not `!` -- `block_result_type`'s tail-less handling must only treat a
+// block as diverging when its last statement is genuinely `return`/`break`/
+// `continue`, not any block with no tail expression at all.
+
+fun choose(cond: boolean) {
+    let result: () = if (cond) {
+        assert(true);
+    } else {
+        assert(false || true);
+    };
+}
+
+fun main() {
+    choose(true);
+}

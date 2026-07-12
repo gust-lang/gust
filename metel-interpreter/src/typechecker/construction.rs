@@ -485,7 +485,10 @@ fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<TypedDecl, Mete
                 .transpose()?;
             let value = construct_expr(&ld.value, expected_ty.as_ref(), ctx)?;
             let value = match &expected_ty {
-                Some(t) => maybe_read_copy(t, value, &ld.span),
+                Some(t) => {
+                    let value = maybe_read_copy(t, value, &ld.span);
+                    maybe_singleton_coerce(t, value, &ld.span, ctx.registry)?
+                }
                 None => value,
             };
             let ty = expected_ty.unwrap_or_else(|| value.ty().clone());
@@ -506,7 +509,10 @@ fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<TypedDecl, Mete
                 .transpose()?;
             let value = construct_expr(&md.value, expected_ty.as_ref(), ctx)?;
             let value = match &expected_ty {
-                Some(t) => maybe_read_copy(t, value, &md.span),
+                Some(t) => {
+                    let value = maybe_read_copy(t, value, &md.span);
+                    maybe_singleton_coerce(t, value, &md.span, ctx.registry)?
+                }
                 None => value,
             };
             let ty = expected_ty.unwrap_or_else(|| value.ty().clone());
@@ -623,6 +629,17 @@ fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl
         let typed_block = construct_block(&fun.body, ret_ty.as_ref(), ctx)?;
         ctx.pop_return_type(saved_return);
         ctx.pop_scope();
+        // RFC-0078 §6: a function declared `-> !` must diverge on every path.
+        if matches!(ret_ty, Some(Type::Never)) && !fun_body_diverges(&typed_block) {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0016,
+                format!(
+                    "function `{}` is declared `-> !` but does not diverge on all paths",
+                    fun.name
+                ),
+                &fun.span,
+            ));
+        }
         FunBody::Typed(typed_block)
     } else {
         FunBody::Generic(fun.body.clone())
@@ -891,7 +908,10 @@ fn construct_block(
         Some(e) => {
             let constructed = construct_expr(e, expected_tail_ty, ctx)?;
             let constructed = match expected_tail_ty {
-                Some(t) => maybe_read_copy(t, constructed, e.span()),
+                Some(t) => {
+                    let constructed = maybe_read_copy(t, constructed, e.span());
+                    maybe_singleton_coerce(t, constructed, e.span(), ctx.registry)?
+                }
                 None => constructed,
             };
             Some(Box::new(constructed))
@@ -916,7 +936,10 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
                 Some(e) => {
                     let constructed = construct_expr(e, return_ty.as_ref(), ctx)?;
                     Some(match &return_ty {
-                        Some(t) => maybe_read_copy(t, constructed, e.span()),
+                        Some(t) => {
+                            let constructed = maybe_read_copy(t, constructed, e.span());
+                            maybe_singleton_coerce(t, constructed, e.span(), ctx.registry)?
+                        }
                         None => constructed,
                     })
                 }
@@ -933,7 +956,10 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
                 Some(e) => {
                     let constructed = construct_expr(e, break_ty.as_ref(), ctx)?;
                     Some(match &break_ty {
-                        Some(t) => maybe_read_copy(t, constructed, e.span()),
+                        Some(t) => {
+                            let constructed = maybe_read_copy(t, constructed, e.span());
+                            maybe_singleton_coerce(t, constructed, e.span(), ctx.registry)?
+                        }
                         None => constructed,
                     })
                 }
@@ -967,7 +993,10 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
                         .transpose()?;
                     let value = construct_expr(&ld.value, expected_ty.as_ref(), ctx)?;
                     let value = match &expected_ty {
-                        Some(t) => maybe_read_copy(t, value, &ld.span),
+                        Some(t) => {
+                            let value = maybe_read_copy(t, value, &ld.span);
+                            maybe_singleton_coerce(t, value, &ld.span, ctx.registry)?
+                        }
                         None => value,
                     };
                     let ty = expected_ty.unwrap_or_else(|| value.ty().clone());
@@ -991,7 +1020,10 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
                         .transpose()?;
                     let value = construct_expr(&md.value, expected_ty.as_ref(), ctx)?;
                     let value = match &expected_ty {
-                        Some(t) => maybe_read_copy(t, value, &md.span),
+                        Some(t) => {
+                            let value = maybe_read_copy(t, value, &md.span);
+                            maybe_singleton_coerce(t, value, &md.span, ctx.registry)?
+                        }
                         None => value,
                     };
                     let ty = expected_ty.unwrap_or_else(|| value.ty().clone());
@@ -1242,11 +1274,13 @@ fn construct_expr(
             let (else_branch, ty) = match else_branch {
                 Some(eb) => {
                     let typed_else = construct_block(eb, expected_ty, ctx)?;
-                    let ty = then_branch
-                        .tail
-                        .as_ref()
-                        .map(|e| e.ty().clone())
-                        .unwrap_or(Type::Unit);
+                    // RFC-0078: prefer whichever branch's type isn't `!` — a
+                    // diverging branch (e.g. a `return`-only `then`) must not mask
+                    // the other branch's real type; only `!` if both diverge.
+                    let ty = merge_branch_types(&[
+                        block_result_type(&then_branch),
+                        block_result_type(&typed_else),
+                    ]);
                     (Some(typed_else), ty)
                 }
                 None => (None, Type::Unit),
@@ -1762,7 +1796,8 @@ fn construct_expr(
         Expr::Ascribe { expr, ann, span } => {
             let ty = resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, span)?;
             let constructed = construct_expr(expr, Some(&ty), ctx)?;
-            Ok(maybe_read_copy(&ty, constructed, span))
+            let constructed = maybe_read_copy(&ty, constructed, span);
+            maybe_singleton_coerce(&ty, constructed, span, ctx.registry)
         }
 
         Expr::Cast {
@@ -1907,22 +1942,102 @@ fn construct_match(
         ctx.registry.raw_enum_env(),
         &m.span,
     )?;
-    let expr_type = typed_arms
-        .first()
-        .map(|a| {
-            a.body
-                .tail
-                .as_ref()
-                .map(|e| e.ty().clone())
-                .unwrap_or(Type::Unit)
-        })
-        .unwrap_or(Type::Unit);
+    // RFC-0078 §3.4: if all arms diverge, the match's type is `!`. An empty match
+    // (only legal on a `!` scrutinee, per the exhaustiveness check above) is
+    // vacuously `!` too — it can never actually be entered.
+    let expr_type = if typed_arms.is_empty() {
+        Type::Never
+    } else {
+        merge_branch_types(
+            &typed_arms
+                .iter()
+                .map(|a| block_result_type(&a.body))
+                .collect::<Vec<_>>(),
+        )
+    };
     Ok(TypedExpr::Match(TypedMatchExpr {
         scrutinee: Box::new(scrutinee),
         arms: typed_arms,
         expr_type,
         span: m.span.clone(),
     }))
+}
+
+/// RFC-0078: a block's own type when used as an expression (`if`/`match` branch
+/// body). The tail expression's type if there is one; else `!` if the block's
+/// last statement diverges (`return`/`break`/`continue`) — mirroring pass 1's
+/// tail-less handling (`infer_block`, `src/typechecker/inference.rs`) which
+/// construction previously didn't replicate, silently defaulting such blocks to
+/// `Unit` instead; else `Unit` for an ordinary non-diverging statement-only block.
+fn block_result_type(block: &TypedBlock) -> Type {
+    if let Some(tail) = &block.tail {
+        return tail.ty().clone();
+    }
+    match block.stmts.last() {
+        Some(TypedDecl::Stmt(stmt)) => match &**stmt {
+            TypedStmt::Return(_) | TypedStmt::Break(_) | TypedStmt::Continue(_) => Type::Never,
+            _ => Type::Unit,
+        },
+        _ => Type::Unit,
+    }
+}
+
+/// RFC-0078 §6: does a function body genuinely diverge (never returns from the
+/// function at all), as opposed to merely having "type `!`" as a block
+/// expression? These differ precisely for `return`: `block_result_type` above
+/// correctly treats a `return`-terminated block as `!`-typed for match/if
+/// arm-merging purposes (code after it is unreachable, sound at any type) — but
+/// a *function* ending in a reachable, ordinary `return 5;` does not diverge; it
+/// returns, which is exactly what `-> !` forbids. `return <expr>;` only counts
+/// as divergence here if `<expr>` itself never produces a value (e.g.
+/// `return panic(msg);`), same principle as the tail-expression case.
+fn fun_body_diverges(block: &TypedBlock) -> bool {
+    if let Some(tail) = &block.tail {
+        return *tail.ty() == Type::Never;
+    }
+    match block.stmts.last() {
+        Some(TypedDecl::Stmt(stmt)) => match &**stmt {
+            TypedStmt::Return(r) => r.value.as_ref().is_some_and(|v| *v.ty() == Type::Never),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+/// RFC-0078 §3.4: merge sibling branch/arm types — the first non-`!` type, or `!`
+/// if every branch diverges. A diverging branch imposes no constraint of its own
+/// (`! <: T` for all `T`), so it must never be picked over a concretely-typed
+/// sibling regardless of source order.
+fn merge_branch_types(types: &[Type]) -> Type {
+    types
+        .iter()
+        .find(|t| **t != Type::Never)
+        .cloned()
+        .unwrap_or(Type::Never)
+}
+
+/// Map `enum_info`'s type params to the scrutinee's concrete type args, the same
+/// substitution `bind_enum_variant_fields` builds for pattern binding — needed here
+/// to resolve a variant's field types for the current instantiation (e.g. whether
+/// `Result<T, !>`'s `Err { error: E }` is uninhabited depends on what `E` actually is).
+fn enum_variant_type_param_remap(enum_info: &EnumInfo, type_args: &[Type]) -> Substitution {
+    let mut remap = Substitution::new();
+    for (&tp, arg_ty) in enum_info.type_params.iter().zip(type_args.iter()) {
+        remap.bind(tp, InferType::Concrete(arg_ty.clone()));
+    }
+    remap
+}
+
+/// RFC-0078 §3.2: a variant is uninhabited if any of its fields' (substituted)
+/// type is `!` — no value of that variant can ever be constructed, since a struct
+/// literal needs a value for every field and none exists of type `!`. A zero-field
+/// variant is always inhabited (e.g. `Perhaps::None`).
+fn is_variant_uninhabited(variant: &VariantInfo, remap: &Substitution, span: &Span) -> bool {
+    variant.fields.iter().any(|f| {
+        infer_type_to_type(&remap.apply(&f.ty), span)
+            .map(|t| t == Type::Never)
+            .unwrap_or(false)
+    })
 }
 
 fn check_match_exhaustiveness(
@@ -1947,30 +2062,19 @@ fn check_match_exhaustiveness(
                 .any(|a| a.guard.is_none() && is_bool_literal_pattern(&a.pattern, false));
             has_true && has_false
         }
-        Type::Named(name, _) if name == "Perhaps" => {
-            let has_some = arms.iter().any(|a| {
-                a.guard.is_none() && pattern_covers_variant(&a.pattern, "Perhaps", "Some")
-            });
-            let has_none = arms.iter().any(|a| {
-                a.guard.is_none() && pattern_covers_variant(&a.pattern, "Perhaps", "None")
-            });
-            has_some && has_none
-        }
-        Type::Named(name, _) if name == "Result" => {
-            let has_ok = arms
-                .iter()
-                .any(|a| a.guard.is_none() && pattern_covers_variant(&a.pattern, "Result", "Ok"));
-            let has_err = arms
-                .iter()
-                .any(|a| a.guard.is_none() && pattern_covers_variant(&a.pattern, "Result", "Err"));
-            has_ok && has_err
-        }
-        Type::Named(name, _) => {
+        // RFC-0078 §3.2: a variant whose payload is uninhabited (some field's type
+        // is `!`) can never be constructed, so it doesn't need a covering arm to be
+        // exhaustive. This subsumes `Result<T, !>` (§4.1) as the general rule's
+        // special case, rather than hardcoding `Result`/`Perhaps` separately —
+        // both are ordinary entries in `enum_env` like any user enum.
+        Type::Named(name, type_args) => {
             if let Some(enum_info) = enum_env.get(name.as_str()) {
+                let remap = enum_variant_type_param_remap(enum_info, type_args);
                 enum_info.variants.iter().all(|v| {
-                    arms.iter().any(|a| {
-                        a.guard.is_none() && pattern_covers_variant(&a.pattern, name, &v.name)
-                    })
+                    is_variant_uninhabited(v, &remap, span)
+                        || arms.iter().any(|a| {
+                            a.guard.is_none() && pattern_covers_variant(&a.pattern, name, &v.name)
+                        })
                 })
             } else {
                 false
@@ -3107,6 +3211,62 @@ fn maybe_read_copy(expected: &Type, actual: TypedExpr, span: &Span) -> TypedExpr
         current = TypedExpr::UnaryOp(UnaryOp::Deref, Box::new(current), inner, span.clone());
     }
     current
+}
+
+/// RFC-0078 §3.3: the inhabited-singleton coercion. If `actual`'s type is a named
+/// enum with more than one variant, exactly one of which is inhabited (by the same
+/// rule `check_match_exhaustiveness` uses) with exactly one field, and that field's
+/// (substituted) type equals `expected`, wrap `actual` in `SingletonCoerce`.
+/// Otherwise return `actual` unchanged. Mirrors `maybe_read_copy`'s shape and
+/// call-site pattern — called from the same handful of sites that have a genuine
+/// expected type in hand.
+fn maybe_singleton_coerce(
+    expected: &Type,
+    actual: TypedExpr,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+) -> Result<TypedExpr, MetelError> {
+    let actual_ty = actual.ty().clone();
+    if &actual_ty == expected {
+        return Ok(actual);
+    }
+    let Type::Named(name, type_args) = &actual_ty else {
+        return Ok(actual);
+    };
+    let Some(enum_info) = registry.enum_info(name) else {
+        return Ok(actual);
+    };
+    if enum_info.variants.len() <= 1 {
+        return Ok(actual);
+    }
+    let remap = enum_variant_type_param_remap(enum_info, type_args);
+    let mut inhabited: Option<&VariantInfo> = None;
+    for v in &enum_info.variants {
+        if is_variant_uninhabited(v, &remap, span) {
+            continue;
+        }
+        if v.fields.len() != 1 || inhabited.is_some() {
+            // Zero/multi-field sole-inhabited variant, or more than one inhabited
+            // variant: the conditions for the rule don't hold (RFC-0078 §3.3).
+            return Ok(actual);
+        }
+        inhabited = Some(v);
+    }
+    let Some(variant) = inhabited else {
+        return Ok(actual);
+    };
+    let field = &variant.fields[0];
+    let field_ty = infer_type_to_type(&remap.apply(&field.ty), &field.span)?;
+    if &field_ty != expected {
+        return Ok(actual);
+    }
+    Ok(TypedExpr::SingletonCoerce {
+        inner: Box::new(actual),
+        variant: variant.name.clone(),
+        field: field.name.clone(),
+        ty: field_ty,
+        span: span.clone(),
+    })
 }
 
 // ── Typed place construction ──────────────────────────────────────────────────

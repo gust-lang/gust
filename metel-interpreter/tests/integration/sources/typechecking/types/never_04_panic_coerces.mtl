@@ -1,0 +1,15 @@
+// Positive: RFC-0078 §1.1/§2 -- `panic(msg)` has type `!`, which coerces
+// implicitly to any type wherever the surrounding context is otherwise
+// unconstrained.
+
+fun pick(cond: boolean) -> i64 {
+    if (cond) {
+        panic("nope")
+    } else {
+        5
+    }
+}
+
+fun main() -> i64 {
+    pick(false)
+}

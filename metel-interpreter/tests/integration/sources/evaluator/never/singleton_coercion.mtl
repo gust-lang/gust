@@ -1,0 +1,23 @@
+// RFC-0078 §3.3: inhabited-singleton coercion, exercised end-to-end (not just
+// typecheck) to confirm the coerced runtime value is actually correct.
+
+enum Wrapper<T> {
+    Present { value: T },
+    Absent  { placeholder: ! },
+}
+
+fun infallible() -> Wrapper<i64> {
+    Wrapper::Present { value: 42 }
+}
+
+fun infallible_result() -> Result<i64, !> {
+    Result::Ok { value: 7 }
+}
+
+fun main() {
+    let x: i64 = infallible();
+    let y: i64 = infallible_result();
+    assert(x == 42);
+    assert(y == 7);
+    assert(x + y == 49);
+}

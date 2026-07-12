@@ -1,0 +1,18 @@
+// Positive: RFC-0078 §3.2 -- an enum variant whose payload is `!` is
+// uninhabited, so a match may omit its arm and still be exhaustive.
+
+enum Foo {
+    A { x: i64 },
+    B { y: ! },
+}
+
+fun handle(f: Foo) -> i64 {
+    match f {
+        Foo::A { x } => x,
+        // Foo::B omitted -- exhaustive; B is uninhabited.
+    }
+}
+
+fun main() -> i64 {
+    handle(Foo::A { x: 5 })
+}

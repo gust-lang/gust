@@ -2265,6 +2265,24 @@ pub fn eval_expr(
             ))
         }
 
+        // RFC-0078 §3.3: inhabited-singleton coercion. No runtime tag check is
+        // needed — the typecheck-time uninhabited-variant exemption that licenses
+        // this node guarantees no other variant could ever have been constructed.
+        TypedExpr::SingletonCoerce { inner, field, .. } => {
+            let value = eval_expr(inner, env, runtime)?.into_value();
+            match value {
+                Value::Enum { mut fields, .. } => fields
+                    .remove(field)
+                    .map(Signal::Value)
+                    .ok_or_else(|| MetelError::internal(format!(
+                        "singleton coercion: missing field `{field}`"
+                    ))),
+                _ => Err(MetelError::internal(
+                    "singleton coercion on non-enum value",
+                )),
+            }
+        }
+
         TypedExpr::Assign {
             target,
             op,

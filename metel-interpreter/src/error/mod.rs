@@ -36,6 +36,7 @@ pub enum TypeErrorCode {
     T0013, // Ambiguous aspect method resolution
     T0014, // Orphan implementation
     T0015, // Conflicting implementation
+    T0016, // Function declared `-> !` does not diverge on all paths
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,6 +54,7 @@ pub enum RuntimeErrorCode {
     R0011, // Invalid for-in iterator
     R0013, // Assertion failed
     R0014, // Unwrap on `None`/`Err` (`.yolo()`)
+    R0015, // Explicit panic (`panic()`)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

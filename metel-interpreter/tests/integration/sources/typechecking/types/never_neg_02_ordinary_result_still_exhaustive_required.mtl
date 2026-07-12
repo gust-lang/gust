@@ -1,0 +1,11 @@
+// Regression: an ordinary Result<T, E> (E not !) still requires both arms --
+// the uninhabited-variant generalization must not over-exempt inhabited
+// variants.
+
+fun use_result(r: Result<i64, String>) -> i64 {
+    match r { // ERROR[T0008]
+        Result::Ok { value } => value,
+    }
+}
+
+fun main() {}

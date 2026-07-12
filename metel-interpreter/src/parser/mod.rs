@@ -2382,6 +2382,9 @@ fn parse_type_expr(
             parse_type_expr(inner, filename)
         }
         Rule::unit_type => Ok(TypeExpr::Unit),
+        // RFC-0078: `!` lowers to the same AST shape the `Never` identifier
+        // spelling already produces, reusing all existing `Never` machinery.
+        Rule::never_type => Ok(TypeExpr::Named("Never".to_string(), vec![])),
         Rule::tuple_type => {
             let elems = pair
                 .into_inner()

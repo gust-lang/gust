@@ -1,0 +1,18 @@
+// RFC-0078 §3.2: matching only the inhabited variant of an enum with a
+// `!`-payload variant, exercised end-to-end to confirm dispatch and value
+// extraction work correctly at runtime, not just at typecheck time.
+
+enum Foo {
+    A { x: i64 },
+    B { y: ! },
+}
+
+fun handle(f: Foo) -> i64 {
+    match f {
+        Foo::A { x } => x,
+    }
+}
+
+fun main() {
+    assert(handle(Foo::A { x: 5 }) == 5);
+}

@@ -1,0 +1,14 @@
+// Positive: RFC-0078 §3.2/§4.1 -- writing the arm for an uninhabited variant is
+// allowed (merely unreachable, not rejected); the compiler may warn but must
+// not error.
+
+fun use_result(r: Result<i64, !>) -> i64 {
+    match r {
+        Result::Ok { value } => value,
+        Result::Err { error } => panic("unreachable"),
+    }
+}
+
+fun main() -> i64 {
+    use_result(Result::Ok { value: 3 })
+}
