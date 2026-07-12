@@ -1,0 +1,31 @@
+// RFC-0036: an impl block may declare its own generics with an inline bound
+// (`impl<T: Bound> Aspect for Type<T>`). Real bound-satisfaction checking at each
+// instantiation (rejecting an unsatisfying T) is issue #241's job, not this one's —
+// this fixture only locks in that the syntax parses, constructs, and dispatches.
+//
+// Deliberately does NOT call a bounded method (e.g. `to_string()` via `Display`)
+// on the generic field itself from inside this method body — that combination
+// currently fails to construct (receiver-type inference for a value of generic
+// type `T` inside a deferred generic method body), a pre-existing gap found while
+// writing this fixture that reproduces with zero #233 syntax involved (plain
+// `impl Aspect for AlreadyGenericStruct<T> { fun m(&self) { self.field.method() } }`
+// hits it too) — reported separately, not this issue's to fix.
+
+struct Box1<T> {
+    value: T,
+}
+
+aspect Greet {
+    fun greet(&self) -> String;
+}
+
+impl<T: Display> Greet for Box1<T> {
+    fun greet(&self) -> String {
+        return "hello";
+    }
+}
+
+fun main() {
+    let a = Box1 { value: 5 };
+    assert(a.greet() == "hello");
+}

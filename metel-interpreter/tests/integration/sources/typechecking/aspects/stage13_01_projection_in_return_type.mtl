@@ -1,0 +1,16 @@
+// RFC-0082 SS3: `T::AssocType` in return-type position, where T is a bound generic
+// parameter, is recognized as a projection (not a plain dotted name) and typechecks.
+// Real resolution to a concrete type at each call site is issue #242's job — this
+// only confirms the declaration itself is well-typed and constructible.
+
+aspect Container {
+    type Item;
+}
+
+fun peek<T: Container>(x: &T) -> T::Item {
+    return panic("not needed for this fixture");
+}
+
+fun main() {
+    assert(1 == 1);
+}

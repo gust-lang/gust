@@ -680,6 +680,9 @@ fn check_impl_with_report(
 
     // Lowering pass: desugar `impl Aspect` params to fresh anonymous type params.
     let program = inference::lower_impl_aspects_in_program(program.clone());
+    // Lowering pass: recognize `T::AssocType` projections (RFC-0082 SS3) among
+    // known generic parameter names.
+    let program = inference::lower_projections_in_program(program);
     let program = &program;
 
     let started = Instant::now();

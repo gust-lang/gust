@@ -1,0 +1,18 @@
+// RFC-0072: `T: !Drop`-style negative bounds parse and mix with positive bounds.
+// Issue #233's scope is representation only — satisfaction checking (rejecting a
+// T that DOES implement the negated aspect) is issue #243's job, not this one's,
+// so a negative bound is silently unenforced for now. This fixture locks in that
+// the syntax itself is accepted and does not disturb ordinary positive-bound checks.
+
+fun move_out<T: !Drop>(x: T) -> T {
+    return x;
+}
+
+fun mixed<T: Display + !Drop>(x: T) -> T {
+    return x;
+}
+
+fun main() {
+    assert(move_out(5) == 5);
+    assert(mixed(7) == 7);
+}

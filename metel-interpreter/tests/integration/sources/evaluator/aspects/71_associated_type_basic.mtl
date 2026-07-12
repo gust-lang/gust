@@ -1,0 +1,27 @@
+// RFC-0082: `type Name: Bound;` inside an `aspect` block and `type Name = Concrete;`
+// inside its `impl` parse, construct, and dispatch through ordinary method calls.
+// Real associated-type projection resolution / equality-constrained bounds
+// (`Aspect<AssocType = Concrete>`, `T::AssocType` in a generic context) is issue
+// #242's job — this fixture only locks in the declaration/definition syntax and
+// that it doesn't disturb ordinary method dispatch on the implementing type.
+
+aspect Container {
+    type Item: Display;
+    fun get(&self) -> Item;
+}
+
+struct IntBox {
+    value: i64,
+}
+
+impl Container for IntBox {
+    type Item = i64;
+    fun get(&self) -> i64 {
+        return self.value;
+    }
+}
+
+fun main() {
+    let b = IntBox { value: 42 };
+    assert(b.get() == 42);
+}

@@ -177,10 +177,46 @@ pub struct EnumDecl {
 
 #[derive(Debug, Clone)]
 pub struct ImplBlock {
+    /// `Negative` for `impl !Aspect for Type {}` (RFC-0081) — body must be empty,
+    /// checked by the parser. Not yet coherence-checked (issue #264's job); this
+    /// field exists so the syntax parses and `registry.rs` doesn't register a
+    /// negative impl as a positive one.
+    pub polarity: Polarity,
+    /// Type parameters scoped to this impl block (RFC-0036), e.g. `impl<T: Bound>
+    /// Aspect for Type<T> { ... }`. Empty for a non-generic impl.
+    pub generics: Vec<GenericParam>,
     pub aspect_name: Option<String>,
     pub aspect_type_args: Vec<TypeExpr>,
     pub target_type: TypeExpr,
+    /// The `where T: Bound` form of RFC-0036's conditional impls, equivalent to an
+    /// inline bound in `generics`. Not yet consumed — real bound-satisfaction
+    /// checking at each instantiation is issue #241's job.
+    #[allow(dead_code)]
+    pub where_clause: Option<WhereClause>,
+    /// `type Name = ConcreteType;` definitions (RFC-0082). Not yet checked against
+    /// the aspect's own declared associated types (issue #242's job) — this only
+    /// makes the syntax parse and carry through to the typed AST.
+    #[allow(dead_code)]
+    pub assoc_type_defs: Vec<AssocTypeDef>,
     pub methods: Vec<FunDecl>,
+    pub span: Span,
+}
+
+/// `type Name = ConcreteType;` inside an `impl` block (RFC-0082 SS2).
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // populated by the parser; real use is issue #242's job
+pub struct AssocTypeDef {
+    pub name: String,
+    pub ty: TypeExpr,
+    pub span: Span,
+}
+
+/// `type Name;` / `type Name: Bound;` inside an `aspect` block (RFC-0082 SS1).
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // populated by the parser; real use is issue #242's job
+pub struct AssocTypeDecl {
+    pub name: String,
+    pub bounds: Vec<Bound>,
     pub span: Span,
 }
 
@@ -190,21 +226,46 @@ pub struct AspectDecl {
     pub visibility: Visibility,
     pub name: String,
     pub generics: Vec<String>,
+    /// `type Name;` / `type Name: Bound;` member declarations (RFC-0082 SS1). Not
+    /// yet enforced against impl definitions (issue #242's job).
+    #[allow(dead_code)]
+    pub assoc_types: Vec<AssocTypeDecl>,
     pub methods: Vec<AspectMethod>,
     pub span: Span,
 }
 
 // ── Supporting types ──────────────────────────────────────────────────────────
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Polarity {
+    Positive,
+    Negative,
+}
+
+/// A single bound in a bound-list position (`GenericParam.bounds`,
+/// `WhereClause.constraints`'s values). `assoc_bindings` is separate, additive
+/// storage for RFC-0082's equality constraints (`Deref<Target = Node>`) — these
+/// aren't ordinary recursive `TypeExpr` args and must not leak into `named_type`'s
+/// general instantiation grammar (see `grammar.pest`'s `bound_head`/`bound_arg`).
+#[derive(Debug, Clone)]
+pub struct Bound {
+    pub polarity: Polarity,
+    pub aspect: TypeExpr,
+    #[allow(dead_code)] // populated by the parser (issue #233 step 3); not yet consumed
+    pub assoc_bindings: Vec<(String, TypeExpr)>,
+    #[allow(dead_code)] // not yet consumed; will back diagnostics once bounds are checked
+    pub span: Span,
+}
+
 #[derive(Debug, Clone)]
 pub struct GenericParam {
     pub name: String,
-    pub bounds: Vec<TypeExpr>, // empty = unconstrained
+    pub bounds: Vec<Bound>, // empty = unconstrained
 }
 
 #[derive(Debug, Clone)]
 pub struct WhereClause {
-    pub constraints: Vec<(String, Vec<TypeExpr>)>, // (type_param_name, [bound, ...])
+    pub constraints: Vec<(String, Vec<Bound>)>, // (type_param_name, [bound, ...])
 }
 
 #[derive(Debug, Clone)]
@@ -580,6 +641,19 @@ pub enum TypeExpr {
         #[allow(dead_code)]
         source_spell: String,
         #[allow(dead_code)]
+        span: Span,
+    },
+    /// `T::AssocType` (RFC-0082 SS3) — a projection of a generic parameter's
+    /// associated type. `base` is the generic parameter (e.g. `Named("T", [])`);
+    /// produced by a post-parse lowering pass (`lower_projections`), not the parser
+    /// itself, since recognizing this requires knowing which names are declared
+    /// generics — the parser has no such context. Real resolution to a concrete
+    /// type (or the ambiguity check for two same-named associated types) is issue
+    /// #242's job; this variant exists so the syntax parses and threads through.
+    Projection {
+        base: Box<TypeExpr>,
+        assoc_name: String,
+        #[allow(dead_code)] // not yet consumed; will back diagnostics once resolved
         span: Span,
     },
 }

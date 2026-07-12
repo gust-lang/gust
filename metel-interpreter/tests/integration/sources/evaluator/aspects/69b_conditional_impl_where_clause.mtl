@@ -1,0 +1,24 @@
+// RFC-0036: the `where` form of a conditional impl (`impl Aspect for Type<T> where
+// T: Bound`), equivalent to the inline-bound form. Kept to a single impl block and
+// a method body that doesn't call another bounded method on the generic field
+// itself — see 69_conditional_impl_inline_bound.mtl's note on a pre-existing,
+// unrelated gap that combination currently hits.
+
+struct Box2<T> {
+    value: T,
+}
+
+aspect Farewell {
+    fun farewell(&self) -> String;
+}
+
+impl Farewell for Box2<T> where T: Display {
+    fun farewell(&self) -> String {
+        return "bye";
+    }
+}
+
+fun main() {
+    let b = Box2 { value: 9 };
+    assert(b.farewell() == "bye");
+}

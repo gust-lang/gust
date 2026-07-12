@@ -2,7 +2,14 @@ use pest::iterators::Pairs;
 use pest::Parser;
 use pest_derive::Parser;
 
-use crate::ast::{Program, ImportDecl, Span, ExportDecl, ImportPath, PathRoot, ImportTree, Decl, LetDecl, MutDecl, TypeExpr, Expr, FunDecl, NativeBinding, Visibility, Block, StructDecl, EnumDecl, ImplBlock, Param, ReceiverKind, FieldDef, VariantDef, AspectMethod, Stmt, WhileStmt, ForStmt, ForInit, ReturnExpr, BreakExpr, Literal, BinOp, AssignTarget, MatchArm, Pattern, UnaryOp, MatchExpr, AssignOp, ForInStmt, WhereClause, GenericParam, AspectDecl};
+use crate::ast::{
+    AspectDecl, AspectMethod, AssignOp, AssignTarget, AssocTypeDecl, AssocTypeDef, BinOp, Block,
+    Bound, BreakExpr, Decl, EnumDecl, ExportDecl, Expr, FieldDef, ForInStmt, ForInit, ForStmt,
+    FunDecl, GenericParam, ImplBlock, ImportDecl, ImportPath, ImportTree, LetDecl, Literal,
+    MatchArm, MatchExpr, MutDecl, NativeBinding, Param, PathRoot, Pattern, Polarity, Program,
+    ReceiverKind, ReturnExpr, Span, Stmt, StructDecl, TypeExpr, UnaryOp, VariantDef, Visibility,
+    WhereClause, WhileStmt,
+};
 use crate::error::{MetelError, ParseErrorCode};
 
 #[derive(Parser)]
@@ -459,71 +466,67 @@ fn parse_impl_block(
     filename: &str,
 ) -> Result<ImplBlock, MetelError> {
     let span = Span::of(&pair, filename);
-    let inner = pair.into_inner();
+    // Grammar: "impl" ~ bang? ~ generic_params? ~ (named_type ~ "for")? ~ type_expr
+    //          ~ where_clause? ~ "{" ~ fun_decl* ~ "}"
+    // `named_type` (the aspect) and `type_expr` (the target) are distinguishable by
+    // rule, not position — no need for the positional/count-based heuristic this
+    // replaces (that heuristic broke once `generic_params`/`where_clause` could also
+    // appear as children).
+    let mut polarity = Polarity::Positive;
+    let mut generics = vec![];
     let mut aspect_name = None;
     let mut aspect_type_args = vec![];
-    let target_type;
+    let mut target_type = None;
+    let mut where_clause = None;
+    let mut assoc_type_defs = vec![];
     let mut methods = vec![];
 
-    // Grammar: "impl" ~ (named_type ~ "for")? ~ type_expr ~ "{" ~ fun_decl* ~ "}"
-    // Children: optionally [named_type, type_expr], or just [type_expr], then fun_decls.
-    let mut collected: Vec<pest::iterators::Pair<Rule>> = inner.collect();
-
-    let fun_start = collected
-        .iter()
-        .position(|p| p.as_rule() == Rule::fun_decl)
-        .unwrap_or(collected.len());
-    let type_pairs: Vec<_> = collected.drain(..fun_start).collect();
-    let fun_pairs = collected;
-
-    match type_pairs.len() {
-        0 => return Err(MetelError::internal("impl_block: no target type found")),
-        1 => {
-            // `impl Type { ... }`
-            target_type = Some(parse_type_expr(
-                type_pairs.into_iter().next().unwrap(),
-                filename,
-            )?);
-        }
-        2 => {
-            // `impl Aspect<T> for Type { ... }`
-            let mut it = type_pairs.into_iter();
-            let aspect_pair = it.next().unwrap(); // named_type rule
-                                                  // named_type = { type_path ~ ("<" ~ type_args ~ ">")? }
-            let mut inner_pairs = aspect_pair.into_inner();
-            let path_pair = inner_pairs
-                .next()
-                .ok_or_else(|| MetelError::internal("impl_block: expected aspect type path"))?;
-            aspect_name = Some(collect_path_components(path_pair)?.join("::"));
-            // Collect generic type args if present
-            for p in inner_pairs {
-                if p.as_rule() == Rule::type_args {
-                    for arg in p.into_inner() {
-                        if arg.as_rule() == Rule::type_expr {
-                            aspect_type_args.push(parse_type_expr(arg, filename)?);
+    for p in pair.into_inner() {
+        match p.as_rule() {
+            Rule::bang => polarity = Polarity::Negative,
+            Rule::generic_params => generics = parse_generic_params(p, filename)?,
+            Rule::named_type => {
+                // named_type = { type_path ~ ("<" ~ type_args ~ ">")? }
+                let mut inner_pairs = p.into_inner();
+                let path_pair = inner_pairs
+                    .next()
+                    .ok_or_else(|| MetelError::internal("impl_block: expected aspect type path"))?;
+                aspect_name = Some(collect_path_components(path_pair)?.join("::"));
+                for tp in inner_pairs {
+                    if tp.as_rule() == Rule::type_args {
+                        for arg in tp.into_inner() {
+                            if arg.as_rule() == Rule::type_expr {
+                                aspect_type_args.push(parse_type_expr(arg, filename)?);
+                            }
                         }
                     }
                 }
             }
-            target_type = Some(parse_type_expr(it.next().unwrap(), filename)?);
-        }
-        n => {
-            return Err(MetelError::internal(format!(
-                "impl_block: unexpected {n} type pairs"
-            )))
+            Rule::type_expr => target_type = Some(parse_type_expr(p, filename)?),
+            Rule::where_clause => where_clause = Some(parse_where_clause(p, filename)?),
+            Rule::assoc_type_def => assoc_type_defs.push(parse_assoc_type_def(p, filename)?),
+            Rule::fun_decl => methods.push(parse_fun_decl(p, filename)?),
+            _ => {}
         }
     }
 
-    for p in fun_pairs {
-        if p.as_rule() == Rule::fun_decl {
-            methods.push(parse_fun_decl(p, filename)?);
-        }
+    if polarity == Polarity::Negative && !methods.is_empty() {
+        return Err(MetelError::parse(
+            ParseErrorCode::P0001,
+            "a negative impl (`impl !Aspect for Type`) must have an empty body",
+            &span,
+        ));
     }
 
     Ok(ImplBlock {
+        polarity,
+        generics,
         aspect_name,
         aspect_type_args,
-        target_type: target_type.unwrap(),
+        target_type: target_type
+            .ok_or_else(|| MetelError::internal("impl_block: no target type found"))?,
+        where_clause,
+        assoc_type_defs,
         methods,
         span,
     })
@@ -2573,11 +2576,70 @@ fn parse_block(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Bloc
 fn parse_bound_list(
     pair: pest::iterators::Pair<Rule>,
     filename: &str,
-) -> Result<Vec<TypeExpr>, MetelError> {
+) -> Result<Vec<Bound>, MetelError> {
     pair.into_inner()
-        .filter(|p| p.as_rule() == Rule::type_expr)
-        .map(|p| parse_type_expr(p, filename))
+        .filter(|p| p.as_rule() == Rule::bound)
+        .map(|p| parse_bound(p, filename))
         .collect()
+}
+
+fn parse_bound(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Bound, MetelError> {
+    let span = Span::of(&pair, filename);
+    let mut polarity = Polarity::Positive;
+    let mut aspect = None;
+    let mut assoc_bindings = vec![];
+    for p in pair.into_inner() {
+        match p.as_rule() {
+            Rule::bang => polarity = Polarity::Negative,
+            Rule::bound_head => {
+                let mut inner = p.into_inner();
+                let path_pair = inner
+                    .next()
+                    .ok_or_else(|| MetelError::internal("bound_head: expected name"))?;
+                let name = collect_path_components(path_pair)?.join("::");
+                let mut args = vec![];
+                for arg in inner.filter(|q| q.as_rule() == Rule::bound_arg) {
+                    let inner_arg = arg
+                        .into_inner()
+                        .next()
+                        .ok_or_else(|| MetelError::internal("bound_arg: expected content"))?;
+                    match inner_arg.as_rule() {
+                        Rule::assoc_binding => {
+                            let mut it = inner_arg.into_inner();
+                            let assoc_name = it
+                                .next()
+                                .ok_or_else(|| {
+                                    MetelError::internal("assoc_binding: expected name")
+                                })?
+                                .as_str()
+                                .to_string();
+                            let ty = parse_type_expr(
+                                it.next().ok_or_else(|| {
+                                    MetelError::internal("assoc_binding: expected type")
+                                })?,
+                                filename,
+                            )?;
+                            assoc_bindings.push((assoc_name, ty));
+                        }
+                        Rule::type_expr => args.push(parse_type_expr(inner_arg, filename)?),
+                        r => {
+                            return Err(MetelError::internal(format!(
+                                "bound_arg: unexpected rule {r:?}"
+                            )))
+                        }
+                    }
+                }
+                aspect = Some(TypeExpr::Named(name, args));
+            }
+            _ => {}
+        }
+    }
+    Ok(Bound {
+        polarity,
+        aspect: aspect.ok_or_else(|| MetelError::internal("bound: expected bound_head"))?,
+        assoc_bindings,
+        span,
+    })
 }
 
 fn parse_where_clause(
@@ -2648,6 +2710,7 @@ fn parse_aspect_decl(
         (Visibility::Private, first.as_str().to_string())
     };
     let mut generics = vec![];
+    let mut assoc_types = vec![];
     let mut methods = vec![];
     for p in inner {
         match p.as_rule() {
@@ -2663,6 +2726,9 @@ fn parse_aspect_decl(
                     }
                 }
             }
+            Rule::assoc_type_decl => {
+                assoc_types.push(parse_assoc_type_decl(p, filename)?);
+            }
             Rule::aspect_method => {
                 methods.push(parse_aspect_method(p, filename)?);
             }
@@ -2673,9 +2739,49 @@ fn parse_aspect_decl(
         visibility,
         name,
         generics,
+        assoc_types,
         methods,
         span,
     })
+}
+
+fn parse_assoc_type_decl(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<AssocTypeDecl, MetelError> {
+    let span = Span::of(&pair, filename);
+    let mut inner = pair.into_inner();
+    let name = inner
+        .next()
+        .ok_or_else(|| MetelError::internal("assoc_type_decl: expected name"))?
+        .as_str()
+        .to_string();
+    let bounds = inner
+        .next()
+        .map(|bl| parse_bound_list(bl, filename))
+        .transpose()?
+        .unwrap_or_default();
+    Ok(AssocTypeDecl { name, bounds, span })
+}
+
+fn parse_assoc_type_def(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<AssocTypeDef, MetelError> {
+    let span = Span::of(&pair, filename);
+    let mut inner = pair.into_inner();
+    let name = inner
+        .next()
+        .ok_or_else(|| MetelError::internal("assoc_type_def: expected name"))?
+        .as_str()
+        .to_string();
+    let ty = parse_type_expr(
+        inner
+            .next()
+            .ok_or_else(|| MetelError::internal("assoc_type_def: expected type"))?,
+        filename,
+    )?;
+    Ok(AssocTypeDef { name, ty, span })
 }
 
 fn parse_char_inner(s: &str) -> Option<char> {

@@ -1,10 +1,21 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::{Span, Expr, TypeExpr, Program, Decl, FunDecl, ImplBlock, AspectMethod, Block, Stmt, ForInit, UnaryOp, AssignTarget, MatchExpr, Pattern, Literal, BinOp};
+use crate::ast::{
+    AspectMethod, AssignTarget, BinOp, Block, Decl, Expr, ForInit, FunDecl, ImplBlock, Literal,
+    MatchExpr, Pattern, Program, Span, Stmt, TypeExpr, UnaryOp,
+};
 use crate::error::{MetelError, TypeErrorCode};
 use crate::symbols::SymbolId;
-use crate::typed_ast::{TypedExpr, TypedProgram, TypedDecl, TypedLetDecl, TypedMutDecl, TypedStructDecl, TypedEnumDecl, TypedAspectDecl, TypedFunDecl, FunBody, TypedImplBlock, TypedBlock, TypedStmt, TypedWhileStmt, TypedForInit, TypedForStmt, TypedForInStmt, TypedPlace, TypedReturnExpr, TypedBreakExpr, TypedMatchArm, TypedMatchExpr};
-use crate::typeinference::{self, TypeDefinitionRegistry, Substitution, TypeVarGenerator, TypeVar, InferType, TypeScheme, EnumInfo, VariantInfo, unify};
+use crate::typed_ast::{
+    FunBody, TypedAspectDecl, TypedBlock, TypedBreakExpr, TypedDecl, TypedEnumDecl, TypedExpr,
+    TypedForInStmt, TypedForInit, TypedForStmt, TypedFunDecl, TypedImplBlock, TypedLetDecl,
+    TypedMatchArm, TypedMatchExpr, TypedMutDecl, TypedPlace, TypedProgram, TypedReturnExpr,
+    TypedStmt, TypedStructDecl, TypedWhileStmt,
+};
+use crate::typeinference::{
+    self, unify, EnumInfo, InferType, Substitution, TypeDefinitionRegistry, TypeScheme, TypeVar,
+    TypeVarGenerator, VariantInfo,
+};
 use crate::types::Type;
 
 use super::conversions::{
@@ -220,7 +231,9 @@ impl<'a> ConstructCtx<'a> {
             .struct_declaring_module(type_name)
             .or_else(|| self.registry.enum_declaring_module(type_name))
         {
-            return symbols.get(&(module.clone(), type_name.to_string())).copied();
+            return symbols
+                .get(&(module.clone(), type_name.to_string()))
+                .copied();
         }
         // Builtin types (impl on i64/String/List/…) live in std::core, pre-seeded
         // with their SYM_TYPE_* ids; fall back there, then the current module.
@@ -430,12 +443,16 @@ pub(super) fn construct_program(
         // or `for`-init binding (those keep `def_id: None` from construction).
         if let TypedDecl::Let(ld) = &mut typed {
             if let Some(syms) = symbols {
-                ld.def_id = syms.get(&(current_module.to_vec(), ld.name.clone())).copied();
+                ld.def_id = syms
+                    .get(&(current_module.to_vec(), ld.name.clone()))
+                    .copied();
             }
         }
         if let TypedDecl::Mut(md) = &mut typed {
             if let Some(syms) = symbols {
-                md.def_id = syms.get(&(current_module.to_vec(), md.name.clone())).copied();
+                md.def_id = syms
+                    .get(&(current_module.to_vec(), md.name.clone()))
+                    .copied();
             }
         }
         out.push(typed);
@@ -562,8 +579,7 @@ fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl
         })?;
         // Overloaded native definitions (std::core's assert pair) carry their
         // overload SymbolId like any overloaded decl.
-        let symbol_id =
-            super::overload::entry_for_decl(ctx.overloads, fun).map(|e| e.symbol_id);
+        let symbol_id = super::overload::entry_for_decl(ctx.overloads, fun).map(|e| e.symbol_id);
         return Ok(TypedDecl::Fun(TypedFunDecl {
             name: fun.name.clone(),
             generics: fun.generics.clone(),
@@ -655,8 +671,21 @@ fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl
 }
 
 fn construct_impl_decl(ib: &ImplBlock, ctx: &mut ConstructCtx) -> Result<TypedDecl, MetelError> {
+    // An impl block that declares its own generics (RFC-0036 conditional impls,
+    // RFC-0061 structural blanket impls: `impl<T: Bound> Aspect for Type<T>` /
+    // `impl<T: Display> Display for T[]`) can't have its methods eagerly constructed
+    // against a concrete `self` type here — same reason generic-struct methods
+    // already defer to `FunBody::Generic` below. Real bound-satisfaction checking at
+    // each instantiation is issue #241/#245's job, not this one's; this only needs to
+    // not crash on construction.
+    let impl_has_generics = !ib.generics.is_empty();
     let target_name = match &ib.target_type {
         TypeExpr::Named(name, _) => name.clone(),
+        // Structural targets (`T[]`, tuples, `fun` types) have no nominal name to key
+        // registry lookups on. Only reachable when the impl declares its own
+        // generics — RFC-0061's blanket impls are always written this way — so
+        // `construct_impl_method` below always takes the deferred path for these.
+        _ if impl_has_generics => String::new(),
         _ => {
             return Err(MetelError::not_implemented(
                 "generic impl blocks not yet supported",
@@ -666,9 +695,16 @@ fn construct_impl_decl(ib: &ImplBlock, ctx: &mut ConstructCtx) -> Result<TypedDe
     let mut methods = ib
         .methods
         .iter()
-        .map(|m| construct_impl_method(m, &target_name, ctx))
+        .map(|m| construct_impl_method(m, &target_name, impl_has_generics, ctx))
         .collect::<Result<Vec<_>, _>>()?;
-    methods.extend(construct_default_aspect_methods(ib, &target_name, ctx)?);
+    // Default aspect-method bodies are constructed eagerly against a concrete `self`
+    // type today (see `construct_default_aspect_method`) — not sound to do against a
+    // conditional/structural target without knowing the concrete instantiation.
+    // Skipped for now when the impl has its own generics; issue #241/#245's job to
+    // do this properly once bound-satisfaction checking exists.
+    if !impl_has_generics {
+        methods.extend(construct_default_aspect_methods(ib, &target_name, ctx)?);
+    }
 
     // Resolve aspect_id from the symbol table when available.
     let aspect_id = ib.aspect_name.as_deref().and_then(|aspect_name| {
@@ -679,6 +715,8 @@ fn construct_impl_decl(ib: &ImplBlock, ctx: &mut ConstructCtx) -> Result<TypedDe
     });
 
     Ok(TypedDecl::Impl(TypedImplBlock {
+        polarity: ib.polarity,
+        generics: ib.generics.clone(),
         aspect_name: ib.aspect_name.clone(),
         aspect_id,
         target_type_id: ctx.type_symbol_id(&target_name),
@@ -692,6 +730,7 @@ fn construct_impl_decl(ib: &ImplBlock, ctx: &mut ConstructCtx) -> Result<TypedDe
 fn construct_impl_method(
     method: &FunDecl,
     target_name: &str,
+    impl_has_generics: bool,
     ctx: &mut ConstructCtx,
 ) -> Result<TypedFunDecl, MetelError> {
     // Native method: no Metel body; lower the host binding to a NativeKey
@@ -724,10 +763,15 @@ fn construct_impl_method(
     // as Generic (untyped) so the evaluator constructs it at runtime — same pattern as
     // top-level generic fns. (Using raw_struct_type_params would miss enums, whose
     // methods would then be eagerly constructed here and fail on e.g. `match self`.)
-    let is_generic_target = ctx
-        .registry
-        .struct_generic_names_for(target_name)
-        .is_some_and(|names| !names.is_empty());
+    // Also deferred whenever the *impl block itself* declares generics (RFC-0036/
+    // RFC-0061) — `target_name` may not even name a real struct/enum in that case
+    // (RFC-0061's structural targets), so `struct_generic_names_for` can't be relied
+    // on to catch it.
+    let is_generic_target = impl_has_generics
+        || ctx
+            .registry
+            .struct_generic_names_for(target_name)
+            .is_some_and(|names| !names.is_empty());
     if is_generic_target {
         return Ok(TypedFunDecl {
             name: method.name.clone(),
@@ -751,14 +795,16 @@ fn construct_impl_method(
             if p.name == "self" {
                 Ok(self_ty.clone())
             } else {
-                p.type_ann
-                    .as_ref().map_or_else(|| {
+                p.type_ann.as_ref().map_or_else(
+                    || {
                         Err(MetelError::type_error(
                             TypeErrorCode::T0002,
                             format!("parameter `{}` needs a type annotation", p.name),
                             &p.span,
                         ))
-                    }, |ann| resolved_to_type(&te_to_infer(ann), ctx.subst, &p.span))
+                    },
+                    |ann| resolved_to_type(&te_to_infer(ann), ctx.subst, &p.span),
+                )
             }
         })
         .collect::<Result<_, _>>()?;
@@ -826,14 +872,16 @@ fn construct_default_aspect_method(
             if p.name == "self" {
                 Ok(self_ty.clone())
             } else {
-                p.type_ann
-                    .as_ref().map_or_else(|| {
+                p.type_ann.as_ref().map_or_else(
+                    || {
                         Err(MetelError::type_error(
                             TypeErrorCode::T0002,
                             format!("parameter `{}` needs a type annotation", p.name),
                             &p.span,
                         ))
-                    }, |ann| resolved_to_type(&te_to_infer(ann), ctx.subst, &p.span))
+                    },
+                    |ann| resolved_to_type(&te_to_infer(ann), ctx.subst, &p.span),
+                )
             }
         })
         .collect::<Result<_, _>>()?;
@@ -1703,16 +1751,18 @@ fn construct_expr(
             let param_types: Vec<Type> = params
                 .iter()
                 .map(|p| {
-                    p.type_ann
-                        .as_ref().map_or_else(|| {
+                    p.type_ann.as_ref().map_or_else(
+                        || {
                             Err(MetelError::type_error(
                                 TypeErrorCode::T0002,
                                 format!("closure parameter `{}` needs a type annotation", p.name),
                                 &p.span,
                             ))
-                        }, |ann| {
+                        },
+                        |ann| {
                             resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, &p.span)
-                        })
+                        },
+                    )
                 })
                 .collect::<Result<_, _>>()?;
             let ret_ty = return_type
@@ -2055,10 +2105,10 @@ fn enum_variant_type_param_remap(enum_info: &EnumInfo, type_args: &[Type]) -> Su
 /// literal needs a value for every field and none exists of type `!`. A zero-field
 /// variant is always inhabited (e.g. `Perhaps::None`).
 fn is_variant_uninhabited(variant: &VariantInfo, remap: &Substitution, span: &Span) -> bool {
-    variant.fields.iter().any(|f| {
-        infer_type_to_type(&remap.apply(&f.ty), span)
-            .is_ok_and(|t| t == Type::Never)
-    })
+    variant
+        .fields
+        .iter()
+        .any(|f| infer_type_to_type(&remap.apply(&f.ty), span).is_ok_and(|t| t == Type::Never))
 }
 
 fn check_match_exhaustiveness(
@@ -2438,8 +2488,7 @@ fn construct_call(
                 // No exact match: fall back to a non-overload binding of the
                 // same name (prelude/imports), mirroring the inference pass.
                 // The normal path below re-constructs the arguments.
-                None if ctx.lookup(name).is_some()
-                    || ctx.scheme_env.contains_key(name) => {}
+                None if ctx.lookup(name).is_some() || ctx.scheme_env.contains_key(name) => {}
                 None => {
                     return Err(super::overload::no_match_error(
                         name, &arg_types, entries, span,
@@ -2481,7 +2530,10 @@ fn construct_call(
         .zip(param_hints.iter())
         .map(|(a, hint)| construct_expr(a, hint.as_ref(), ctx))
         .collect::<Result<_, _>>()?;
-    let arg_types: Vec<&Type> = typed_args.iter().map(super::super::typed_ast::TypedExpr::ty).collect();
+    let arg_types: Vec<&Type> = typed_args
+        .iter()
+        .map(super::super::typed_ast::TypedExpr::ty)
+        .collect();
 
     // Resolve explicit type args once, outside the match.
     let explicit_tys: Option<Vec<Type>> = if type_args.is_empty() {
@@ -2530,7 +2582,14 @@ fn construct_call(
                 }
             };
             check_fun_call_bounds(name, &var_map, span, ctx.registry, ctx.current_module)?;
-            check_scheme_bounds(name, scheme, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_scheme_bounds(
+                name,
+                scheme,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+            )?;
             let typed = TypedExpr::Ident(name.clone(), concrete.clone(), ident_span.clone());
             (typed, concrete)
         }
@@ -2567,7 +2626,14 @@ fn construct_call(
                 }
             };
             check_fun_call_bounds(&joined, &var_map, span, ctx.registry, ctx.current_module)?;
-            check_scheme_bounds(&joined, scheme, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_scheme_bounds(
+                &joined,
+                scheme,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+            )?;
             let typed = TypedExpr::Path(segments.clone(), concrete.clone(), path_span.clone());
             (typed, concrete)
         }
@@ -2590,7 +2656,14 @@ fn construct_call(
                 None => instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen)?,
             };
             check_fun_call_bounds(&last, &var_map, span, ctx.registry, ctx.current_module)?;
-            check_scheme_bounds(&last, scheme, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_scheme_bounds(
+                &last,
+                scheme,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+            )?;
             let typed = TypedExpr::Path(segments.clone(), concrete.clone(), path_span.clone());
             (typed, concrete)
         }
@@ -2606,7 +2679,14 @@ fn construct_call(
                 None => instantiate_scheme_for_call(scheme, &arg_types, span, &mut ctx.gen)?,
             };
             check_fun_call_bounds(resolved, &var_map, span, ctx.registry, ctx.current_module)?;
-            check_scheme_bounds(resolved, scheme, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_scheme_bounds(
+                resolved,
+                scheme,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+            )?;
             let typed = TypedExpr::Ident(resolved.clone(), concrete.clone(), rspan.clone());
             (typed, concrete)
         }
@@ -2700,7 +2780,14 @@ fn check_fun_call_bounds(
         let Some(concrete) = var_to_type.get(tv) else {
             continue;
         };
-        check_type_satisfies_bounds(concrete, aspect_names, fun_name, span, registry, current_module)?;
+        check_type_satisfies_bounds(
+            concrete,
+            aspect_names,
+            fun_name,
+            span,
+            registry,
+            current_module,
+        )?;
     }
     Ok(())
 }
@@ -2727,7 +2814,14 @@ fn check_scheme_bounds(
         let Some(concrete) = var_to_type.get(tv) else {
             continue;
         };
-        check_type_satisfies_bounds(concrete, aspect_names, fun_name, span, registry, current_module)?;
+        check_type_satisfies_bounds(
+            concrete,
+            aspect_names,
+            fun_name,
+            span,
+            registry,
+            current_module,
+        )?;
     }
     Ok(())
 }

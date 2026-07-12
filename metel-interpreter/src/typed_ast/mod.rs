@@ -5,8 +5,8 @@
 use std::collections::HashMap;
 
 use crate::ast::{
-    AspectMethod, AssignOp, BinOp, Block, FieldDef, GenericParam, Literal, Param, Pattern, Span,
-    TypeExpr, UnaryOp, VariantDef,
+    AspectMethod, AssignOp, BinOp, Block, FieldDef, GenericParam, Literal, Param, Pattern,
+    Polarity, Span, TypeExpr, UnaryOp, VariantDef,
 };
 use crate::symbols::SymbolId;
 use crate::typeinference::{TypeDefinitionRegistry, TypeScheme};
@@ -175,6 +175,14 @@ pub struct TypedEnumDecl {
 
 #[derive(Debug, Clone)]
 pub struct TypedImplBlock {
+    /// See `ast::ImplBlock::polarity`. Not yet coherence-checked (issue #264).
+    #[allow(dead_code)] // set by construction.rs; not yet read downstream
+    pub polarity: Polarity,
+    /// See `ast::ImplBlock::generics` (RFC-0036 conditional impls). `where_clause` is
+    /// consumed during construction and not carried to the typed side, same as
+    /// `TypedFunDecl` already drops it.
+    #[allow(dead_code)] // kept for future reflection, same as TypedFunDecl.generics
+    pub generics: Vec<GenericParam>,
     pub aspect_name: Option<String>,
     /// Stable identity of the aspect this impl satisfies.  `None` for inherent impls.
     /// Populated by the typechecker construction pass when `names.symbols` is available.

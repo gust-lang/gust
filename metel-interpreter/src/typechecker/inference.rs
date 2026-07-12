@@ -1,8 +1,15 @@
 use std::collections::HashMap;
 
-use crate::ast::{TypeExpr, FunDecl, Decl, Program, Expr, AspectMethod, Block, Stmt, ForInit, AssignTarget, AssignOp, Param, MatchExpr, Pattern, Span, Literal, BinOp, UnaryOp, Visibility, GenericParam, ImplBlock};
+use crate::ast::{
+    AspectMethod, AssignOp, AssignTarget, BinOp, Block, Bound, Decl, Expr, ForInit, FunDecl,
+    GenericParam, ImplBlock, Literal, MatchExpr, Param, Pattern, Polarity, Program, Span, Stmt,
+    TypeExpr, UnaryOp, Visibility,
+};
 use crate::error::{MetelError, TypeErrorCode};
-use crate::typeinference::{InferContext, InferType, TypeVar, generalize, TypeScheme, free_vars, FieldEntry, VariantInfo, EnumInfo, Substitution};
+use crate::typeinference::{
+    free_vars, generalize, EnumInfo, FieldEntry, InferContext, InferType, Substitution, TypeScheme,
+    TypeVar, VariantInfo,
+};
 use crate::types::Type;
 
 use super::conversions::{
@@ -148,7 +155,13 @@ pub(super) fn collect_fun_type_var_bounds(
                 .bounds
                 .iter()
                 .filter_map(|b| {
-                    if let TypeExpr::Named(n, _) = b {
+                    // Negative bounds (`T: !Drop`) are dropped from this positive
+                    // aspect-name list for now — their satisfaction checking is
+                    // issue #243's job, not this one's.
+                    if b.polarity != crate::ast::Polarity::Positive {
+                        return None;
+                    }
+                    if let TypeExpr::Named(n, _) = &b.aspect {
                         Some(n.clone())
                     } else {
                         None
@@ -165,8 +178,9 @@ pub(super) fn collect_fun_type_var_bounds(
             if let Some(&tv) = generic_map.get(param_name.as_str()) {
                 let names: Vec<String> = bounds
                     .iter()
+                    .filter(|b| b.polarity == Polarity::Positive)
                     .filter_map(|b| {
-                        if let TypeExpr::Named(n, _) = b {
+                        if let TypeExpr::Named(n, _) = &b.aspect {
                             Some(n.clone())
                         } else {
                             None
@@ -250,6 +264,15 @@ fn infer_decl(
             Ok(InferType::unit())
         }
         Decl::Struct(_) | Decl::Enum(_) | Decl::Aspect(_) => Ok(InferType::unit()),
+        Decl::Impl(ib) if !ib.generics.is_empty() => {
+            // RFC-0036 conditional impls / RFC-0061 structural blanket impls: real
+            // bound-satisfaction checking at each instantiation is issue #241/#245's
+            // job, not this one's. `target_name` may not even name a real struct/enum
+            // (RFC-0061's structural targets, or a bare type-parameter blanket) — skip
+            // inference entirely here, mirroring construction.rs's `FunBody::Generic`
+            // deferral for the same impls, so the two passes agree on what's checked.
+            Ok(InferType::unit())
+        }
         Decl::Impl(ib) => {
             let target_name = match &ib.target_type {
                 TypeExpr::Named(name, _) => name.rsplit("::").next().unwrap_or(name).to_string(),
@@ -428,10 +451,12 @@ fn infer_fun_decl(
         .collect();
     let bounds: HashMap<TypeVar, Vec<String>> = type_var_bounds
         .iter()
-        .filter_map(|(orig_tv, b)| match partial_subst.apply(&InferType::Var(*orig_tv)) {
-            InferType::Var(final_tv) => Some((final_tv, b.clone())),
-            _ => None,
-        })
+        .filter_map(
+            |(orig_tv, b)| match partial_subst.apply(&InferType::Var(*orig_tv)) {
+                InferType::Var(final_tv) => Some((final_tv, b.clone())),
+                _ => None,
+            },
+        )
         .collect();
     // Store resolved_ty (post-solve) so the re-generalization in check_impl uses the
     // already-solved type and is not perturbed by a now-empty final substitution.
@@ -527,7 +552,8 @@ fn infer_impl_method(
         .collect();
     let ret_ty = method
         .return_type
-        .as_ref().map_or_else(InferType::unit, te_to_infer);
+        .as_ref()
+        .map_or_else(InferType::unit, te_to_infer);
 
     // Native methods have no Metel body; their signature comes entirely from
     // annotations (METEL-181). Skip body inference but still register the
@@ -636,7 +662,8 @@ fn infer_default_aspect_method(
         .collect();
     let ret_ty = method
         .return_type
-        .as_ref().map_or_else(InferType::unit, te_to_infer);
+        .as_ref()
+        .map_or_else(InferType::unit, te_to_infer);
     let body = method
         .default_body
         .as_ref()
@@ -974,15 +1001,17 @@ fn infer_expr(
                             return Err(MetelError::type_error(
                                 TypeErrorCode::T0002,
                                 format!(
-                                    "cannot resolve argument types for overloaded call to `{name}`; \
+                                "cannot resolve argument types for overloaded call to `{name}`; \
                                      add type annotations"
-                                ),
+                            ),
                                 span,
                             ))
                         }
                     };
                     let entries = ctx.overload_candidates(name).unwrap();
-                    let entry = if let Some(entry) = super::overload::select(entries, &arg_types) { entry.clone() } else {
+                    let entry = if let Some(entry) = super::overload::select(entries, &arg_types) {
+                        entry.clone()
+                    } else {
                         if ctx.has_binding(name) {
                             return fallback(ctx, &arg_infer);
                         }
@@ -1157,10 +1186,12 @@ fn infer_expr(
             })?;
             let type_args = match &obj_ty {
                 InferType::Named(_, args) => args.clone(),
-                InferType::Reference(inner) | InferType::MutReference(inner) => match inner.as_ref() {
-                    InferType::Named(_, args) => args.clone(),
-                    _ => vec![],
-                },
+                InferType::Reference(inner) | InferType::MutReference(inner) => {
+                    match inner.as_ref() {
+                        InferType::Named(_, args) => args.clone(),
+                        _ => vec![],
+                    }
+                }
                 _ => vec![],
             };
             let fields = ctx
@@ -1318,13 +1349,13 @@ fn infer_expr(
                         if let Some(methods) = ctx.get_aspect_method_defs(aspect_name).cloned() {
                             if let Some(method_def) = methods.iter().find(|m| m.name == *method) {
                                 // Resolve return type: Self → the TypeVar itself.
-                                let ret_ty = method_def
-                                    .return_type
-                                    .as_ref()
-                                    .map_or(InferType::unit(), |rt| match rt {
+                                let ret_ty = method_def.return_type.as_ref().map_or(
+                                    InferType::unit(),
+                                    |rt| match rt {
                                         TypeExpr::Named(n, _) if n == "Self" => InferType::Var(*tv),
                                         other => type_expr_to_infer(other),
-                                    });
+                                    },
+                                );
 
                                 // Collect declared non-self params for arity + type checking.
                                 let declared_params: Vec<&Param> = method_def
@@ -1410,7 +1441,12 @@ fn infer_expr(
         Expr::Ascribe { expr, ann, span } => {
             let inner_ty = infer_expr(expr, ctx, fun_generalizations)?;
             let ascribed_ty = ann_to_infer(ann, ctx);
-            Ok(constrain_with_read_copy(ctx, inner_ty, ascribed_ty, span.clone()))
+            Ok(constrain_with_read_copy(
+                ctx,
+                inner_ty,
+                ascribed_ty,
+                span.clone(),
+            ))
         }
 
         Expr::Cast {
@@ -2495,7 +2531,12 @@ pub(super) fn lower_impl_aspect(fun: &FunDecl, counter: &mut usize) -> FunDecl {
                     *counter += 1;
                     extra_generics.push(GenericParam {
                         name: anon_name.clone(),
-                        bounds: vec![*bound.clone()],
+                        bounds: vec![Bound {
+                            polarity: Polarity::Positive,
+                            aspect: *bound.clone(),
+                            assoc_bindings: vec![],
+                            span: p.span.clone(),
+                        }],
                     });
                     Param {
                         mutable: p.mutable,
@@ -2542,6 +2583,118 @@ pub(super) fn lower_impl_aspects_in_program(program: Program) -> Program {
                     .methods
                     .iter()
                     .map(|m| lower_impl_aspect(m, &mut counter))
+                    .collect(),
+                ..ib
+            }),
+            other => other,
+        })
+        .collect();
+    Program { decls, ..program }
+}
+
+/// Rewrite `T::AssocType`-shaped `TypeExpr::Named` nodes into `TypeExpr::Projection`
+/// wherever `T` matches one of `generics`' names (RFC-0082 SS3). Purely structural —
+/// checks only whether the name is a declared generic parameter, not whether the
+/// aspect it's bound to actually declares that associated type; real associated-type
+/// resolution is issue #242's job. The parser can't do this itself (`type_path`
+/// already accepts multi-segment names, so `T::Target` parses as a plain dotted
+/// `Named` either way) since recognizing a projection needs to know which names are
+/// declared generics, context the parser doesn't have.
+fn lower_projections_in_type(
+    te: &TypeExpr,
+    generics: &std::collections::HashSet<String>,
+    fallback_span: &Span,
+) -> TypeExpr {
+    let go = |t: &TypeExpr| lower_projections_in_type(t, generics, fallback_span);
+    match te {
+        TypeExpr::Named(name, args) if args.is_empty() => {
+            if let Some((base, assoc)) = name.split_once("::") {
+                if generics.contains(base) {
+                    return TypeExpr::Projection {
+                        base: Box::new(TypeExpr::Named(base.to_string(), vec![])),
+                        assoc_name: assoc.to_string(),
+                        span: fallback_span.clone(),
+                    };
+                }
+            }
+            te.clone()
+        }
+        TypeExpr::Named(name, args) => TypeExpr::Named(name.clone(), args.iter().map(go).collect()),
+        TypeExpr::Unit => TypeExpr::Unit,
+        TypeExpr::Tuple(items) => TypeExpr::Tuple(items.iter().map(go).collect()),
+        TypeExpr::Array(inner) => TypeExpr::Array(Box::new(go(inner))),
+        TypeExpr::SizedArray(inner, n) => TypeExpr::SizedArray(Box::new(go(inner)), *n),
+        TypeExpr::Reference(inner) => TypeExpr::Reference(Box::new(go(inner))),
+        TypeExpr::MutReference(inner) => TypeExpr::MutReference(Box::new(go(inner))),
+        TypeExpr::Fun(params, ret) => TypeExpr::Fun(
+            params.iter().map(go).collect(),
+            ret.as_deref().map(go).map(Box::new),
+        ),
+        TypeExpr::ImplAspect {
+            bound,
+            source_spell,
+            span,
+        } => TypeExpr::ImplAspect {
+            bound: Box::new(go(bound)),
+            source_spell: source_spell.clone(),
+            span: span.clone(),
+        },
+        // Already a projection (e.g. re-run on already-lowered input) — nothing to do.
+        TypeExpr::Projection { .. } => te.clone(),
+    }
+}
+
+/// Generic-parameter names in scope for lowering projections in `fun`'s signature:
+/// its own generics plus (for impl methods) the impl block's, since a method can
+/// reference either (`T` from `impl<T> Aspect for Type<T>`, or its own `<U>`).
+fn lower_projections_in_fun(fun: &FunDecl, extra_generics: &[GenericParam]) -> FunDecl {
+    let names: std::collections::HashSet<String> = fun
+        .generics
+        .iter()
+        .chain(extra_generics)
+        .map(|g| g.name.clone())
+        .collect();
+    if names.is_empty() {
+        return fun.clone();
+    }
+    let params = fun
+        .params
+        .iter()
+        .map(|p| Param {
+            type_ann: p
+                .type_ann
+                .as_ref()
+                .map(|t| lower_projections_in_type(t, &names, &p.span)),
+            ..p.clone()
+        })
+        .collect();
+    let return_type = fun
+        .return_type
+        .as_ref()
+        .map(|t| lower_projections_in_type(t, &names, &fun.span));
+    FunDecl {
+        params,
+        return_type,
+        ..fun.clone()
+    }
+}
+
+/// Lower all `T::AssocType` projections in every `FunDecl`'s params/return-type in a
+/// `Program`. Scoped to signatures only, matching `lower_impl_aspect`'s own scope —
+/// type annotations on `let`/`mut` bindings inside function bodies are not rewritten
+/// (would need a general `TypeExpr`-rewriting tree walk over `Block`/`Stmt`/`Expr`
+/// that doesn't otherwise exist in this codebase; not attempted here).
+pub(super) fn lower_projections_in_program(program: Program) -> Program {
+    let decls = program
+        .decls
+        .into_iter()
+        .map(|decl| match decl {
+            Decl::Fun(fun) => Decl::Fun(lower_projections_in_fun(&fun, &[])),
+            Decl::Impl(ib) => Decl::Impl(ImplBlock {
+                methods: ib
+                    .methods
+                    .iter()
+                    .map(|m| lower_projections_in_fun(m, &ib.generics))
                     .collect(),
                 ..ib
             }),

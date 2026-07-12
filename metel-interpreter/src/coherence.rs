@@ -105,7 +105,9 @@ fn canonicalize(names: &ResolvedNames, current_module: &[String], ty: &TypeExpr)
             params.iter().map(go).collect(),
             ret.as_deref().map(go).map(Box::new),
         ),
-        TypeExpr::ImplAspect { .. } => CanonicalType::Opaque,
+        // `T::AssocType` (RFC-0082) isn't resolved to a concrete type at this pass
+        // either — both stay opaque until issue #242 does that resolution for real.
+        TypeExpr::ImplAspect { .. } | TypeExpr::Projection { .. } => CanonicalType::Opaque,
     }
 }
 

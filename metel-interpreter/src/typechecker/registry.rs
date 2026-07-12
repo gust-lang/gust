@@ -1,17 +1,17 @@
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+use super::conversions::{
+    type_expr_to_infer, type_expr_to_infer_with_generics, type_expr_to_infer_with_self,
+};
 use crate::ast::{
-    AspectDecl, AspectMethod, Decl, GenericParam, Program, TypeExpr, WhereClause,
+    AspectDecl, AspectMethod, Decl, GenericParam, Polarity, Program, TypeExpr, WhereClause,
 };
 use crate::name_resolver::ModuleScope;
 use crate::symbols::SymbolId;
 use crate::typeinference::{
     EnumInfo, FieldEntry, InferContext, InferType, TypeDefinitionRegistry, TypeScheme, TypeVar,
     TypeVarGenerator, VariantInfo,
-};
-use super::conversions::{
-    type_expr_to_infer, type_expr_to_infer_with_generics, type_expr_to_infer_with_self,
 };
 
 /// Collect merged aspect-name bounds per type param from inline bounds + where clause.
@@ -24,11 +24,14 @@ fn collect_type_param_bounds(
     generics
         .iter()
         .map(|gp| {
+            // Negative bounds (`T: !Drop`) are dropped from this positive aspect-name
+            // list for now — their satisfaction checking is issue #243's job.
             let mut names: Vec<String> = gp
                 .bounds
                 .iter()
+                .filter(|b| b.polarity == Polarity::Positive)
                 .filter_map(|b| {
-                    if let TypeExpr::Named(n, _) = b {
+                    if let TypeExpr::Named(n, _) = &b.aspect {
                         Some(n.clone())
                     } else {
                         None
@@ -40,8 +43,8 @@ fn collect_type_param_bounds(
                     if param_name != &gp.name {
                         continue;
                     }
-                    for b in bounds {
-                        if let TypeExpr::Named(n, _) = b {
+                    for b in bounds.iter().filter(|b| b.polarity == Polarity::Positive) {
+                        if let TypeExpr::Named(n, _) = &b.aspect {
                             if !names.contains(n) {
                                 names.push(n.clone());
                             }
@@ -98,9 +101,7 @@ fn populate_schemes_from_embedded_core(
                         )
                     })
                     .collect();
-                let ret = fun
-                    .return_type
-                    .as_ref().map_or_else(InferType::unit, &te);
+                let ret = fun.return_type.as_ref().map_or_else(InferType::unit, &te);
                 let fun_ty = InferType::Fun(params, Box::new(ret));
                 let bounds = super::inference::collect_fun_type_var_bounds(fun, &generic_map);
                 let scheme = crate::typeinference::generalize(fun_ty, &HashSet::default())
@@ -145,7 +146,10 @@ fn populate_schemes_from_embedded_core(
                         .collect();
                     let ret = method
                         .return_type
-                        .as_ref().map_or_else(InferType::unit, |ann| type_expr_to_infer_with_generics(ann, &generic_map));
+                        .as_ref()
+                        .map_or_else(InferType::unit, |ann| {
+                            type_expr_to_infer_with_generics(ann, &generic_map)
+                        });
                     let fun_ty = InferType::Fun(params, Box::new(ret));
                     let scheme = crate::typeinference::generalize(fun_ty, &HashSet::default());
                     map.insert(format!("{target_name}::{}", method.name), scheme);
@@ -167,11 +171,7 @@ fn register_builtin_aspect_impls(registry: &mut TypeDefinitionRegistry) {
     // not names needing scope resolution (ADR-0042); the aspect half stays the
     // literal name "Iterable" (see `impl_aspect_env`'s doc for why).
     registry.register_aspect_impl_by_id(SYM_TYPE_RANGE, "Iterable", vec![Type::I64]);
-    registry.register_aspect_impl_by_id(
-        SYM_TYPE_RANGE_INCLUSIVE,
-        "Iterable",
-        vec![Type::I64],
-    );
+    registry.register_aspect_impl_by_id(SYM_TYPE_RANGE_INCLUSIVE, "Iterable", vec![Type::I64]);
 }
 
 /// Build the `TypeDefinitionRegistry` from the program's declarations and built-in types.
@@ -347,9 +347,15 @@ fn register_program_decls(
             // Named("T"). NATIVE methods have no body and are never inferred, so
             // their annotated signatures are registered as polymorphic schemes
             // over the type's params (List<T> in std::core).
-            let is_generic_target = registry
-                .struct_generic_names_for(target_name.as_str())
-                .is_some_and(|names| !names.is_empty());
+            // Also deferred whenever the impl block itself declares generics
+            // (RFC-0036/RFC-0061, issue #233) — `target_name` may not even name a
+            // real struct/enum in that case (a bare type-parameter blanket target,
+            // or — skipped above via `continue` — a structural target), so
+            // registering concrete method schemes against it here would be wrong.
+            let is_generic_target = !ib.generics.is_empty()
+                || registry
+                    .struct_generic_names_for(target_name.as_str())
+                    .is_some_and(|names| !names.is_empty());
             if is_generic_target {
                 register_generic_impl_method_schemes(ib, &target_name, gen, registry);
             } else {
@@ -357,30 +363,45 @@ fn register_program_decls(
                 register_default_aspect_methods(ib, &target_name, gen, registry);
             }
             // Track which aspects this type implements (with concrete type args).
-            // TODO(generic-impl): Once impl<T> syntax is added, type args that are generic
-            // params will arrive as Named("T",[]) here and be stored verbatim, causing
-            // has_from_impl / iterable_elem_type lookups to fail. At that point this
-            // conversion must be made generic-param-aware (e.g. wildcard sentinel or
-            // a separate generic-impl registry).
-            if let Some(aspect_name) = &ib.aspect_name {
-                let type_args: Vec<crate::types::Type> = ib
-                    .aspect_type_args
-                    .iter()
-                    .filter_map(|te| {
-                        use super::conversions::type_expr_to_infer;
-                        match type_expr_to_infer(te) {
-                            InferType::Concrete(t) => Some(t),
-                            InferType::Named(n, _) => Some(crate::types::Type::Named(n, vec![])),
-                            _ => None,
-                        }
-                    })
-                    .collect();
-                registry.register_aspect_impl(
-                    current_module_path,
-                    &target_name,
-                    aspect_name,
-                    type_args,
-                );
+            // TODO(generic-impl): `impl<T>` syntax now exists (issue #233), but this
+            // conversion still isn't generic-param-aware: type args that are generic
+            // params arrive as Named("T",[]) here and are stored verbatim, causing
+            // has_from_impl / iterable_elem_type lookups to fail for a conditional
+            // impl's own type params. `is_generic_target` above already keeps this
+            // whole block from running for those impls, so the immediate crash risk
+            // is gone, but a correct conversion (wildcard sentinel or a separate
+            // generic-impl registry) is still issue #241/#245's job, not this one's.
+            //
+            // Negative impls (RFC-0081, `impl !Aspect for Type {}`) must not reach
+            // this registration at all — `ib.polarity == Negative` means the type
+            // definitively does NOT implement the aspect; registering it here would
+            // make positive-bound checks silently and wrongly succeed. Full
+            // negative-impl coherence (priority over blanket impls, finality checks)
+            // is issue #264's job; this is the minimum correctness guard so the
+            // syntax existing at all doesn't actively lie.
+            if ib.polarity == Polarity::Positive {
+                if let Some(aspect_name) = &ib.aspect_name {
+                    let type_args: Vec<crate::types::Type> = ib
+                        .aspect_type_args
+                        .iter()
+                        .filter_map(|te| {
+                            use super::conversions::type_expr_to_infer;
+                            match type_expr_to_infer(te) {
+                                InferType::Concrete(t) => Some(t),
+                                InferType::Named(n, _) => {
+                                    Some(crate::types::Type::Named(n, vec![]))
+                                }
+                                _ => None,
+                            }
+                        })
+                        .collect();
+                    registry.register_aspect_impl(
+                        current_module_path,
+                        &target_name,
+                        aspect_name,
+                        type_args,
+                    );
+                }
             }
         }
     }
@@ -420,15 +441,14 @@ fn register_generic_impl_method_schemes(
     registry: &mut TypeDefinitionRegistry,
 ) {
     // Type params for the generic target — a struct or an enum.
-    let type_params: Vec<TypeVar> = if let Some(tps) =
-        registry.raw_struct_type_params().get(target_name).cloned()
-    {
-        tps
-    } else if let Some(info) = registry.enum_info(target_name) {
-        info.type_params.clone()
-    } else {
-        return;
-    };
+    let type_params: Vec<TypeVar> =
+        if let Some(tps) = registry.raw_struct_type_params().get(target_name).cloned() {
+            tps
+        } else if let Some(info) = registry.enum_info(target_name) {
+            info.type_params.clone()
+        } else {
+            return;
+        };
     if type_params.is_empty() {
         return;
     }
@@ -469,7 +489,10 @@ fn register_generic_impl_method_schemes(
         }
         let ret_ty = method
             .return_type
-            .as_ref().map_or_else(InferType::unit, |ann| type_expr_to_infer_with_generics(ann, &gen_map));
+            .as_ref()
+            .map_or_else(InferType::unit, |ann| {
+                type_expr_to_infer_with_generics(ann, &gen_map)
+            });
         registry.register_method_scheme(
             target_name.to_string(),
             method.name.clone(),
@@ -496,7 +519,10 @@ fn register_impl_methods<'a>(
     // `self` on a primitive target must be the concrete primitive type
     // (e.g. Concrete(I32), not Named("i32")) so call sites unify (METEL-181).
     let self_ty = || {
-        super::inference::primitive_type_from_name(target_name).map_or_else(|| InferType::Named(target_name.to_string(), vec![]), InferType::Concrete)
+        super::inference::primitive_type_from_name(target_name).map_or_else(
+            || InferType::Named(target_name.to_string(), vec![]),
+            InferType::Concrete,
+        )
     };
     for method in methods {
         let mut param_types = vec![];
@@ -512,7 +538,10 @@ fn register_impl_methods<'a>(
         }
         let ret_ty = method
             .return_type
-            .as_ref().map_or_else(InferType::unit, |ann| type_expr_to_infer_with_self(ann, target_name));
+            .as_ref()
+            .map_or_else(InferType::unit, |ann| {
+                type_expr_to_infer_with_self(ann, target_name)
+            });
         registry.register_method(
             target_name.to_string(),
             method.name.clone(),
@@ -560,7 +589,10 @@ fn register_default_aspect_method(
     let mut param_types = vec![];
     for p in &method.params {
         let pt = if p.name == "self" {
-            super::inference::primitive_type_from_name(target_name).map_or_else(|| InferType::Named(target_name.to_string(), vec![]), InferType::Concrete)
+            super::inference::primitive_type_from_name(target_name).map_or_else(
+                || InferType::Named(target_name.to_string(), vec![]),
+                InferType::Concrete,
+            )
         } else if let Some(ann) = &p.type_ann {
             type_expr_to_infer_with_self(ann, target_name)
         } else {
@@ -570,7 +602,10 @@ fn register_default_aspect_method(
     }
     let ret_ty = method
         .return_type
-        .as_ref().map_or_else(InferType::unit, |ann| type_expr_to_infer_with_self(ann, target_name));
+        .as_ref()
+        .map_or_else(InferType::unit, |ann| {
+            type_expr_to_infer_with_self(ann, target_name)
+        });
     registry.register_method(
         target_name.to_string(),
         method.name.clone(),

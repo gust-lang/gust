@@ -1,0 +1,26 @@
+// RFC-0081: `impl !Aspect for Type {}` (negative impls) parses with an empty body
+// and does not register the type as implementing the aspect. Full negative-impl
+// coherence (finality, priority over blanket impls) is issue #264's job — this
+// fixture only locks in that the syntax is accepted and harmless alongside
+// ordinary positive impls elsewhere in the same program.
+
+struct Handle {
+    fd: i64,
+}
+
+impl !Drop for Handle {}
+
+aspect Greet {
+    fun greet(&self) -> String;
+}
+
+impl Greet for Handle {
+    fun greet(&self) -> String {
+        return "handle";
+    }
+}
+
+fun main() {
+    let h = Handle { fd: 3 };
+    assert(h.greet() == "handle");
+}

@@ -957,6 +957,9 @@ fn runtime_type_key(ty: &TypeExpr) -> String {
             }
         }
         TypeExpr::ImplAspect { bound, .. } => format!("impl {}", runtime_type_key(bound)),
+        TypeExpr::Projection { base, assoc_name, .. } => {
+            format!("{}::{assoc_name}", runtime_type_key(base))
+        }
     }
 }
 

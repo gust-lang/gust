@@ -85,6 +85,18 @@ fn type_expr_to_infer_in_context(
         TypeExpr::ImplAspect { bound, .. } => {
             type_expr_to_infer_in_context(bound, generics, self_ty_name)
         }
+        // `T::AssocType` (RFC-0082) is not yet resolved to a concrete associated
+        // type — that's issue #242's job. Treat as an opaque named placeholder;
+        // this is exactly what the pre-`Projection` parse already produced (a plain
+        // dotted `Named("T::AssocType", [])`), so introducing this variant doesn't
+        // change behavior for any caller, only makes the AST shape explicit.
+        TypeExpr::Projection { base, assoc_name, .. } => {
+            let base_name = match base.as_ref() {
+                TypeExpr::Named(n, _) => n.clone(),
+                _ => String::new(),
+            };
+            InferType::Named(format!("{base_name}::{assoc_name}"), vec![])
+        }
     }
 }
 

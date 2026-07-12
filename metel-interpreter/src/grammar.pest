@@ -79,10 +79,16 @@ enum_decl   = { pub_kw? ~ "enum" ~ ident ~ generic_params? ~ where_clause? ~ "{"
 enum_variants = { (enum_variant ~ ",")* ~ enum_variant? }
 enum_variant  = { ident ~ ("{" ~ struct_fields ~ "}")? }
 
-impl_block  = { "impl" ~ (named_type ~ "for")? ~ type_expr ~ "{" ~ fun_decl* ~ "}" }
+// `bang?` (not a raw `"!"?`) so polarity is structurally detectable in Rust code —
+// same rule already used by `bound`, same reasoning: reusing a raw string literal
+// produces no inner pair to match on.
+impl_block     = { "impl" ~ bang? ~ generic_params? ~ (named_type ~ "for")? ~ type_expr
+                   ~ where_clause? ~ "{" ~ (assoc_type_def | fun_decl)* ~ "}" }
+assoc_type_def = { "type" ~ ident ~ "=" ~ type_expr ~ ";" }
 
-aspect_decl  = { pub_kw? ~ "aspect" ~ ident ~ generic_params? ~ "{" ~ aspect_method* ~ "}" }
+aspect_decl  = { pub_kw? ~ "aspect" ~ ident ~ generic_params? ~ "{" ~ (assoc_type_decl | aspect_method)* ~ "}" }
 aspect_method = { "fun" ~ ident ~ generic_params? ~ "(" ~ param_list? ~ ")" ~ ("->" ~ type_expr)? ~ (block | ";") }
+assoc_type_decl = { "type" ~ ident ~ (":" ~ bound_list)? ~ ";" }
 
 // ── Parameters ────────────────────────────────────────────────────────────────
 
@@ -91,7 +97,20 @@ param      = { ("&" ~ mut_kw? ~ "self") | "self" | (ident ~ (":" ~ type_expr)?) 
 
 generic_params   = { "<" ~ generic_param ~ ("," ~ generic_param)* ~ ">" }
 generic_param    = { ident ~ (":" ~ bound_list)? }
-bound_list       = { type_expr ~ ("+" ~ type_expr)* }
+// A bound is always an aspect name (+ optional generics/assoc-bindings), never a
+// full `type_expr` — so `bound_head` starts from `type_path`, not `type_expr`, and
+// never risks `type_expr`'s own `never_type = { "!" }` alternative swallowing a
+// leading "!" as a bound in its own right (which `bound`'s own explicit `bang` token
+// already consumes first, same convention as `mut_kw` in `param` above).
+// `bound_head` deliberately doesn't reuse `named_type`/`type_args`: ordinary type
+// instantiation (`List<i64>`) must never accept `Key = Value`, and bounds need to mix
+// ordinary args and assoc-bindings (`Iterator<Item = i64>`).
+bound_list    = { bound ~ ("+" ~ bound)* }
+bound         = { bang? ~ bound_head }
+bang          = { "!" }
+bound_head    = { type_path ~ ("<" ~ bound_arg ~ ("," ~ bound_arg)* ~ ","? ~ ">")? }
+bound_arg     = { assoc_binding | type_expr }
+assoc_binding = { ident ~ "=" ~ type_expr }
 where_clause     = { "where" ~ where_constraint ~ ("," ~ where_constraint)* }
 where_constraint = { ident ~ ":" ~ bound_list }
 
