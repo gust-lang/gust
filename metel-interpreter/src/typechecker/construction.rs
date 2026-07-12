@@ -2596,6 +2596,15 @@ fn construct_call(
                 ctx.registry,
                 ctx.current_module,
             )?;
+            check_fun_call_neg_bounds(name, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_scheme_neg_bounds(
+                name,
+                scheme,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+            )?;
             let typed = TypedExpr::Ident(name.clone(), concrete.clone(), ident_span.clone());
             (typed, concrete)
         }
@@ -2640,6 +2649,15 @@ fn construct_call(
                 ctx.registry,
                 ctx.current_module,
             )?;
+            check_fun_call_neg_bounds(&joined, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_scheme_neg_bounds(
+                &joined,
+                scheme,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+            )?;
             let typed = TypedExpr::Path(segments.clone(), concrete.clone(), path_span.clone());
             (typed, concrete)
         }
@@ -2670,6 +2688,15 @@ fn construct_call(
                 ctx.registry,
                 ctx.current_module,
             )?;
+            check_fun_call_neg_bounds(&last, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_scheme_neg_bounds(
+                &last,
+                scheme,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+            )?;
             let typed = TypedExpr::Path(segments.clone(), concrete.clone(), path_span.clone());
             (typed, concrete)
         }
@@ -2686,6 +2713,15 @@ fn construct_call(
             };
             check_fun_call_bounds(resolved, &var_map, span, ctx.registry, ctx.current_module)?;
             check_scheme_bounds(
+                resolved,
+                scheme,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+            )?;
+            check_fun_call_neg_bounds(resolved, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_scheme_neg_bounds(
                 resolved,
                 scheme,
                 &var_map,
@@ -2859,6 +2895,107 @@ fn check_type_satisfies_bounds(
                 span,
             ));
         }
+    }
+    Ok(())
+}
+
+/// Check that a concrete type does NOT satisfy a set of negative aspect names
+/// (RFC-0072, `T: !Aspect`, issue #243). Inverts `check_type_satisfies_bounds`:
+/// for each required `!Aspect`, the type must NOT have a registered positive impl.
+/// The Copy-implies-!Drop override (RFC-0072 §2.3) is applied here.
+fn check_type_does_not_satisfy_bound(
+    concrete: &Type,
+    neg_aspect_names: &[String],
+    fun_name: &str,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+) -> Result<(), MetelError> {
+    let type_name = match concrete {
+        Type::Named(n, _) => n.clone(),
+        other => match super::inference::primitive_type_name(other) {
+            Some(n) => n,
+            None => return Ok(()),
+        },
+    };
+    for aspect in neg_aspect_names {
+        if registry.impl_aspect_env_has(current_module, &type_name, aspect) {
+            // RFC-0072 §2.3: Copy implies !Drop. Scoped to this exact pair —
+            // do not generalize into a general aspect-exclusion mechanism.
+            if aspect == "Drop"
+                && registry.impl_aspect_env_has(current_module, &type_name, "Copy")
+            {
+                continue;
+            }
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0012,
+                format!(
+                    "`{type_name}` implements `{aspect}`; `!{aspect}` bound not satisfied (required by `{fun_name}`)"
+                ),
+                span,
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Check negative bounds via the TypeVar-keyed registry (module-local, same
+/// lifetime as `fun_bounds`).
+fn check_fun_call_neg_bounds(
+    fun_name: &str,
+    var_to_type: &HashMap<TypeVar, Type>,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+) -> Result<(), MetelError> {
+    let Some(bounds_map) = registry.neg_fun_bounds_for(fun_name) else {
+        return Ok(());
+    };
+    for (tv, neg_aspect_names) in bounds_map {
+        let Some(concrete) = var_to_type.get(tv) else {
+            continue;
+        };
+        check_type_does_not_satisfy_bound(
+            concrete,
+            neg_aspect_names,
+            fun_name,
+            span,
+            registry,
+            current_module,
+        )?;
+    }
+    Ok(())
+}
+
+/// Check negative bounds carried ON a scheme (`TypeScheme::neg_bounds`,
+/// positional per quantified var). Handles imported/prelude schemes whose
+/// TypeVar-keyed `neg_fun_bounds` registry entry may not exist locally.
+fn check_scheme_neg_bounds(
+    fun_name: &str,
+    scheme: &TypeScheme,
+    var_to_type: &HashMap<TypeVar, Type>,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+) -> Result<(), MetelError> {
+    if scheme.neg_bounds.is_empty() {
+        return Ok(());
+    }
+    for (tv, neg_aspect_names) in scheme.quantified_vars.iter().zip(&scheme.neg_bounds) {
+        if neg_aspect_names.is_empty() {
+            continue;
+        }
+        let Some(concrete) = var_to_type.get(tv) else {
+            continue;
+        };
+        check_type_does_not_satisfy_bound(
+            concrete,
+            neg_aspect_names,
+            fun_name,
+            span,
+            registry,
+            current_module,
+        )?;
     }
     Ok(())
 }
