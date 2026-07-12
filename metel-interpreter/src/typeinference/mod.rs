@@ -932,6 +932,10 @@ pub struct TypeDefinitionRegistry {
     /// Value: map from each quantified `TypeVar` to the list of negated aspect names
     /// (RFC-0072, issue #243).
     neg_fun_bounds: HashMap<String, HashMap<TypeVar, Vec<String>>>,
+    /// RFC-0082 §4: associated-type equality constraints per generic function.
+    /// Key: function name. Value: map from each quantified `TypeVar` to the list of
+    /// `(aspect, assoc_name, expected_type)` equality constraints.
+    fun_assoc_eq_constraints: HashMap<String, HashMap<TypeVar, Vec<(String, String, InferType)>>>,
     /// Tracks which struct names were registered in each lexical scope so they
     /// can be removed on scope exit. Empty when outside any scoped block.
     struct_scope_stack: Vec<Vec<String>>,
@@ -995,6 +999,7 @@ impl TypeDefinitionRegistry {
             neg_type_param_bounds: HashMap::new(),
             fun_bounds: HashMap::new(),
             neg_fun_bounds: HashMap::new(),
+            fun_assoc_eq_constraints: HashMap::new(),
             struct_scope_stack: Vec::new(),
             method_env: HashMap::new(),
             method_receiver_env: HashMap::new(),
@@ -1192,6 +1197,24 @@ impl TypeDefinitionRegistry {
     #[must_use]
     pub fn neg_fun_bounds_for(&self, name: &str) -> Option<&HashMap<TypeVar, Vec<String>>> {
         self.neg_fun_bounds.get(name)
+    }
+
+    pub fn register_fun_assoc_eq_constraints(
+        &mut self,
+        name: String,
+        constraints: HashMap<TypeVar, Vec<(String, String, InferType)>>,
+    ) {
+        if !constraints.is_empty() {
+            self.fun_assoc_eq_constraints.insert(name, constraints);
+        }
+    }
+
+    #[must_use]
+    pub fn fun_assoc_eq_constraints_for(
+        &self,
+        name: &str,
+    ) -> Option<&HashMap<TypeVar, Vec<(String, String, InferType)>>> {
+        self.fun_assoc_eq_constraints.get(name)
     }
 
     pub fn register_enum(&mut self, name: String, info: EnumInfo, declaring_module: Vec<String>) {
@@ -1449,6 +1472,11 @@ impl TypeDefinitionRegistry {
         }
         for (k, v) in &other.neg_fun_bounds {
             self.neg_fun_bounds
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
+        }
+        for (k, v) in &other.fun_assoc_eq_constraints {
+            self.fun_assoc_eq_constraints
                 .entry(k.clone())
                 .or_insert_with(|| v.clone());
         }
@@ -1848,6 +1876,15 @@ impl InferContext {
 
     pub fn register_neg_fun_bounds(&mut self, name: String, bounds: HashMap<TypeVar, Vec<String>>) {
         self.registry.register_neg_fun_bounds(name, bounds);
+    }
+
+    pub fn register_fun_assoc_eq_constraints(
+        &mut self,
+        name: String,
+        constraints: HashMap<TypeVar, Vec<(String, String, InferType)>>,
+    ) {
+        self.registry
+            .register_fun_assoc_eq_constraints(name, constraints);
     }
 
     #[must_use]

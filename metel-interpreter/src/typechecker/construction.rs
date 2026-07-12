@@ -2682,6 +2682,15 @@ fn construct_call(
                 ctx.registry,
                 ctx.current_module,
             )?;
+            check_fun_call_assoc_eq(name, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_scheme_assoc_eq(
+                name,
+                scheme,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+            )?;
             check_fun_call_neg_bounds(name, &var_map, span, ctx.registry, ctx.current_module)?;
             check_scheme_neg_bounds(
                 name,
@@ -2737,6 +2746,15 @@ fn construct_call(
                 ctx.registry,
                 ctx.current_module,
             )?;
+            check_fun_call_assoc_eq(&joined, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_scheme_assoc_eq(
+                &joined,
+                scheme,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+            )?;
             check_fun_call_neg_bounds(&joined, &var_map, span, ctx.registry, ctx.current_module)?;
             check_scheme_neg_bounds(
                 &joined,
@@ -2776,6 +2794,15 @@ fn construct_call(
                 ctx.registry,
                 ctx.current_module,
             )?;
+            check_fun_call_assoc_eq(&last, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_scheme_assoc_eq(
+                &last,
+                scheme,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+            )?;
             check_fun_call_neg_bounds(&last, &var_map, span, ctx.registry, ctx.current_module)?;
             check_scheme_neg_bounds(
                 &last,
@@ -2801,6 +2828,15 @@ fn construct_call(
             };
             check_fun_call_bounds(resolved, &var_map, span, ctx.registry, ctx.current_module)?;
             check_scheme_bounds(
+                resolved,
+                scheme,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+            )?;
+            check_fun_call_assoc_eq(resolved, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_scheme_assoc_eq(
                 resolved,
                 scheme,
                 &var_map,
@@ -2952,6 +2988,120 @@ fn check_scheme_bounds(
             registry,
             current_module,
         )?;
+    }
+    Ok(())
+}
+
+/// RFC-0082 §4: enforce associated-type equality constraints from `fun_bounds`.
+fn check_fun_call_assoc_eq(
+    fun_name: &str,
+    var_to_type: &HashMap<TypeVar, Type>,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+) -> Result<(), MetelError> {
+    let Some(eq_map) = registry.fun_assoc_eq_constraints_for(fun_name) else {
+        return Ok(());
+    };
+    for (tv, constraints) in eq_map {
+        let Some(concrete) = var_to_type.get(tv) else {
+            continue;
+        };
+        for (aspect, assoc, expected_infer) in constraints {
+            let Some(actual_ty) = registry.impl_assoc_type(
+                current_module,
+                &concrete.to_string(),
+                aspect,
+                assoc,
+            ) else {
+                continue;
+            };
+            // Substitute the expected type through var_to_type.
+            let expected_subst = match expected_infer {
+                InferType::Var(v) => {
+                    if let Some(t) = var_to_type.get(v) {
+                        type_to_infer(t)
+                    } else {
+                        continue; // still free — skip comparison
+                    }
+                }
+                other => other.clone(),
+            };
+            let expected_ty = match expected_subst {
+                InferType::Concrete(t) => t,
+                InferType::Named(n, _) => Type::Named(n, vec![]),
+                _ => continue,
+            };
+            if *actual_ty != expected_ty {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0012,
+                    format!(
+                        "associated type equality constraint violated: `{aspect}::{assoc}` \
+                         is `{actual_ty}` but expected `{expected_ty}`"
+                    ),
+                    span,
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// RFC-0082 §4: enforce associated-type equality constraints from a scheme's
+/// `assoc_eq_constraints` field.
+fn check_scheme_assoc_eq(
+    fun_name: &str,
+    scheme: &TypeScheme,
+    var_to_type: &HashMap<TypeVar, Type>,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+) -> Result<(), MetelError> {
+    if scheme.assoc_eq_constraints.is_empty() {
+        return Ok(());
+    }
+    for (tv, constraints) in scheme.quantified_vars.iter().zip(&scheme.assoc_eq_constraints) {
+        if constraints.is_empty() {
+            continue;
+        }
+        let Some(concrete) = var_to_type.get(tv) else {
+            continue;
+        };
+        for (aspect, assoc, expected_infer) in constraints {
+            let Some(actual_ty) = registry.impl_assoc_type(
+                current_module,
+                &concrete.to_string(),
+                aspect,
+                assoc,
+            ) else {
+                continue;
+            };
+            let expected_subst = match expected_infer {
+                InferType::Var(v) => {
+                    if let Some(t) = var_to_type.get(v) {
+                        type_to_infer(t)
+                    } else {
+                        continue;
+                    }
+                }
+                other => other.clone(),
+            };
+            let expected_ty = match expected_subst {
+                InferType::Concrete(t) => t,
+                InferType::Named(n, _) => Type::Named(n, vec![]),
+                _ => continue,
+            };
+            if *actual_ty != expected_ty {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0012,
+                    format!(
+                        "associated type equality constraint violated: `{aspect}::{assoc}` \
+                         is `{actual_ty}` but expected `{expected_ty}`"
+                    ),
+                    span,
+                ));
+            }
+        }
     }
     Ok(())
 }
