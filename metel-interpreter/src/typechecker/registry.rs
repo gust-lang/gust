@@ -57,6 +57,46 @@ fn collect_type_param_bounds(
         .collect()
 }
 
+/// Collect **negative** aspect-name bounds per type param (RFC-0072, issue #243).
+/// Mirrors `collect_type_param_bounds` but filters for `Polarity::Negative`.
+fn collect_negative_type_param_bounds(
+    generics: &[GenericParam],
+    where_clause: Option<&WhereClause>,
+) -> Vec<Vec<String>> {
+    generics
+        .iter()
+        .map(|gp| {
+            let mut names: Vec<String> = gp
+                .bounds
+                .iter()
+                .filter(|b| b.polarity == Polarity::Negative)
+                .filter_map(|b| {
+                    if let TypeExpr::Named(n, _) = &b.aspect {
+                        Some(n.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            if let Some(wc) = where_clause {
+                for (param_name, bounds) in &wc.constraints {
+                    if param_name != &gp.name {
+                        continue;
+                    }
+                    for b in bounds.iter().filter(|b| b.polarity == Polarity::Negative) {
+                        if let TypeExpr::Named(n, _) = &b.aspect {
+                            if !names.contains(n) {
+                                names.push(n.clone());
+                            }
+                        }
+                    }
+                }
+            }
+            names
+        })
+        .collect()
+}
+
 /// Derive the prelude schemes by parsing the embedded `std::core` source:
 /// free `native` functions by name, plus static native methods on generic
 /// structs as joined-key schemes (`List::new`) quantified over the struct's
@@ -104,8 +144,10 @@ fn populate_schemes_from_embedded_core(
                 let ret = fun.return_type.as_ref().map_or_else(InferType::unit, &te);
                 let fun_ty = InferType::Fun(params, Box::new(ret));
                 let bounds = super::inference::collect_fun_type_var_bounds(fun, &generic_map);
+                let neg_bounds = super::inference::collect_negative_fun_type_var_bounds(fun, &generic_map);
                 let scheme = crate::typeinference::generalize(fun_ty, &HashSet::default())
-                    .with_bounds(&bounds);
+                    .with_bounds(&bounds)
+                    .with_neg_bounds(&neg_bounds);
                 map.insert(fun.name.clone(), scheme);
             }
             Decl::Impl(ib) => {
@@ -279,6 +321,10 @@ fn register_program_decls(
                 if bounds.iter().any(|b| !b.is_empty()) {
                     registry.register_type_param_bounds(sd.name.clone(), bounds);
                 }
+                let neg_bounds = collect_negative_type_param_bounds(&sd.generics, sd.where_clause.as_ref());
+                if neg_bounds.iter().any(|b| !b.is_empty()) {
+                    registry.register_neg_type_param_bounds(sd.name.clone(), neg_bounds);
+                }
             }
             Decl::Enum(ed) => {
                 let mut gen_map: HashMap<String, TypeVar> = HashMap::new();
@@ -320,6 +366,10 @@ fn register_program_decls(
                 );
                 if bounds.iter().any(|b| !b.is_empty()) {
                     registry.register_type_param_bounds(ed.name.clone(), bounds);
+                }
+                let neg_bounds = collect_negative_type_param_bounds(&ed.generics, ed.where_clause.as_ref());
+                if neg_bounds.iter().any(|b| !b.is_empty()) {
+                    registry.register_neg_type_param_bounds(ed.name.clone(), neg_bounds);
                 }
             }
             Decl::Aspect(ad) => {

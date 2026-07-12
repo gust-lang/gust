@@ -80,6 +80,8 @@ struct FunGeneralization {
     /// Maps `TypeVar` ID → aspect bounds, attached to the re-generalized scheme
     /// so bounds survive prelude/export scheme propagation.
     bounds: HashMap<TypeVar, Vec<String>>,
+    /// Maps `TypeVar` ID → negative aspect bounds (RFC-0072, issue #243).
+    neg_bounds: HashMap<TypeVar, Vec<String>>,
 }
 
 // ── CorePrelude ────────────────────────────────────────────────────────────────
@@ -799,7 +801,7 @@ fn check_impl_with_report(
         // Applying the final module-level subst would collapse generic TypeVars that
         // happened to appear in other functions' constraints. (METEL-137)
         let scheme =
-            generalize_with_names(fg.fun_ty, &fg.env_fvs, &fg.name_map).with_bounds(&fg.bounds);
+            generalize_with_names(fg.fun_ty, &fg.env_fvs, &fg.name_map).with_bounds(&fg.bounds).with_neg_bounds(&fg.neg_bounds);
         scheme_env.insert(fg.name, scheme);
     }
     // Imported schemes must be visible in the construction pass so calls to imported

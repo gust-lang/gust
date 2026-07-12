@@ -39,12 +39,13 @@ fn ann_to_infer(te: &TypeExpr, ctx: &InferContext) -> InferType {
 fn native_fun_ty(
     fun: &FunDecl,
     ctx: &mut InferContext,
-) -> Result<(InferType, HashMap<TypeVar, Vec<String>>), MetelError> {
+) -> Result<(InferType, HashMap<TypeVar, Vec<String>>, HashMap<TypeVar, Vec<String>>), MetelError> {
     // Generic native functions (e.g. `print<T: Display>`) map each type
     // parameter to a fresh TypeVar; the caller generalizes the result into a
     // polymorphic scheme carrying the bounds.
     let generic_map = fun_generic_map(fun, ctx);
     let bounds_by_var = collect_fun_type_var_bounds(fun, &generic_map);
+    let neg_bounds_by_var = collect_negative_fun_type_var_bounds(fun, &generic_map);
     let te_to_infer = |te: &TypeExpr| -> InferType {
         if generic_map.is_empty() {
             type_expr_to_infer(te)
@@ -70,7 +71,7 @@ fn native_fun_ty(
         Some(te) => te_to_infer(te),
         None => InferType::unit(),
     };
-    Ok((InferType::Fun(param_types, Box::new(ret_ty)), bounds_by_var))
+    Ok((InferType::Fun(param_types, Box::new(ret_ty)), bounds_by_var, neg_bounds_by_var))
 }
 
 pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
@@ -87,9 +88,9 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
             // bind it eagerly so forward references resolve. Errors here surface
             // again (deterministically) in infer_fun_decl.
             if fun.native.is_some() {
-                if let Ok((fun_ty, bounds)) = native_fun_ty(fun, ctx) {
+                if let Ok((fun_ty, bounds, neg_bounds)) = native_fun_ty(fun, ctx) {
                     let env_fvs = ctx.env_free_vars();
-                    ctx.bind_poly(&fun.name, generalize(fun_ty, &env_fvs).with_bounds(&bounds));
+                    ctx.bind_poly(&fun.name, generalize(fun_ty, &env_fvs).with_bounds(&bounds).with_neg_bounds(&neg_bounds));
                 }
                 continue;
             }
@@ -102,8 +103,12 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
             } else {
                 let generic_map = fun_generic_map(fun, ctx);
                 let type_var_bounds = collect_fun_type_var_bounds(fun, &generic_map);
+                let neg_type_var_bounds = collect_negative_fun_type_var_bounds(fun, &generic_map);
                 if !type_var_bounds.is_empty() {
                     ctx.register_fun_bounds(fun.name.clone(), type_var_bounds.clone());
+                }
+                if !neg_type_var_bounds.is_empty() {
+                    ctx.register_neg_fun_bounds(fun.name.clone(), neg_type_var_bounds.clone());
                 }
 
                 let te_to_infer = |te: &TypeExpr| -> InferType {
@@ -199,6 +204,61 @@ pub(super) fn collect_fun_type_var_bounds(
     map
 }
 
+/// Collect **negative** aspect-name bounds per generic type variable (RFC-0072,
+/// issue #243). Mirrors `collect_fun_type_var_bounds` but filters for
+/// `Polarity::Negative`.
+pub(super) fn collect_negative_fun_type_var_bounds(
+    fun: &FunDecl,
+    generic_map: &HashMap<String, TypeVar>,
+) -> HashMap<TypeVar, Vec<String>> {
+    let mut map: HashMap<TypeVar, Vec<String>> = HashMap::new();
+    for gp in &fun.generics {
+        if let Some(&tv) = generic_map.get(&gp.name) {
+            let names: Vec<String> = gp
+                .bounds
+                .iter()
+                .filter_map(|b| {
+                    if b.polarity != crate::ast::Polarity::Negative {
+                        return None;
+                    }
+                    if let TypeExpr::Named(n, _) = &b.aspect {
+                        Some(n.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            if !names.is_empty() {
+                map.entry(tv).or_default().extend(names);
+            }
+        }
+    }
+    if let Some(wc) = &fun.where_clause {
+        for (param_name, bounds) in &wc.constraints {
+            if let Some(&tv) = generic_map.get(param_name.as_str()) {
+                let names: Vec<String> = bounds
+                    .iter()
+                    .filter(|b| b.polarity == Polarity::Negative)
+                    .filter_map(|b| {
+                        if let TypeExpr::Named(n, _) = &b.aspect {
+                            Some(n.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                for name in names {
+                    let entry = map.entry(tv).or_default();
+                    if !entry.contains(&name) {
+                        entry.push(name);
+                    }
+                }
+            }
+        }
+    }
+    map
+}
+
 pub(super) fn infer_program(
     program: &Program,
     ctx: &mut InferContext,
@@ -241,6 +301,7 @@ fn infer_decl(
                         env_fvs,
                         name_map: HashMap::new(),
                         bounds: HashMap::new(),
+                        neg_bounds: HashMap::new(),
                     });
                     return Ok(InferType::unit());
                 }
@@ -337,7 +398,7 @@ fn infer_fun_decl(
     // Native functions have no Metel body to infer. Validate and record their
     // annotated signature for the construction pass; dispatch is by NativeKey.
     if fun.native.is_some() {
-        let (fun_ty, bounds) = native_fun_ty(fun, ctx)?;
+        let (fun_ty, bounds, neg_bounds) = native_fun_ty(fun, ctx)?;
         // Overloaded native definitions (std::core's assert pair) are
         // dispatched by SymbolId and never enter the name-keyed scheme env.
         if ctx.is_overloaded(&fun.name) {
@@ -346,7 +407,7 @@ fn infer_fun_decl(
         let env_fvs = ctx.env_free_vars();
         ctx.bind_poly(
             &fun.name,
-            generalize(fun_ty.clone(), &env_fvs).with_bounds(&bounds),
+            generalize(fun_ty.clone(), &env_fvs).with_bounds(&bounds).with_neg_bounds(&neg_bounds),
         );
         fun_generalizations.push(FunGeneralization {
             name: fun.name.clone(),
@@ -354,6 +415,7 @@ fn infer_fun_decl(
             env_fvs,
             name_map: HashMap::new(),
             bounds,
+            neg_bounds,
         });
         return Ok(());
     }
@@ -365,6 +427,10 @@ fn infer_fun_decl(
     let type_var_bounds = collect_fun_type_var_bounds(fun, &generic_map);
     if !type_var_bounds.is_empty() {
         ctx.register_fun_bounds(fun.name.clone(), type_var_bounds.clone());
+    }
+    let neg_type_var_bounds = collect_negative_fun_type_var_bounds(fun, &generic_map);
+    if !neg_type_var_bounds.is_empty() {
+        ctx.register_neg_fun_bounds(fun.name.clone(), neg_type_var_bounds.clone());
     }
 
     let te_to_infer = |te: &TypeExpr| -> InferType {
@@ -466,6 +532,15 @@ fn infer_fun_decl(
             },
         )
         .collect();
+    let neg_bounds: HashMap<TypeVar, Vec<String>> = neg_type_var_bounds
+        .iter()
+        .filter_map(
+            |(orig_tv, b)| match partial_subst.apply(&InferType::Var(*orig_tv)) {
+                InferType::Var(final_tv) => Some((final_tv, b.clone())),
+                _ => None,
+            },
+        )
+        .collect();
     // Store resolved_ty (post-solve) so the re-generalization in check_impl uses the
     // already-solved type and is not perturbed by a now-empty final substitution.
     fun_generalizations.push(FunGeneralization {
@@ -474,6 +549,7 @@ fn infer_fun_decl(
         env_fvs,
         name_map,
         bounds,
+        neg_bounds,
     });
     Ok(())
 }
