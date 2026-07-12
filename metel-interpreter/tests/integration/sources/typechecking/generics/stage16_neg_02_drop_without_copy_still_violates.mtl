@@ -1,0 +1,26 @@
+// Negative: struct implements Drop but NOT Copy — the Copy-implies-!Drop
+// override is pair-specific, not a general mechanism. Expect T0012.
+
+aspect Copy {
+    // Marker aspect.
+}
+
+aspect Drop {
+    fun drop(self);
+}
+
+struct OnlyDrop { x: i64 }
+
+impl Drop for OnlyDrop {
+    fun drop(self) {}
+}
+
+// OnlyDrop does NOT implement Copy.
+
+fun needs_no_drop<T: !Drop>(x: T) -> T {
+    return x;
+}
+
+fun bad(d: OnlyDrop) {
+    needs_no_drop(d) // ERROR[T0012]
+}

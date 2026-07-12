@@ -1,0 +1,29 @@
+// Positive: function with both positive and negative bounds, both satisfied.
+
+aspect Display {
+    fun display(self) -> String;
+}
+
+aspect Drop {
+    fun drop(self);
+}
+
+struct Item {
+    value: i64,
+}
+
+impl Display for Item {
+    fun display(self) -> String {
+        "Item"
+    }
+}
+
+// Item implements Display but NOT Drop.
+
+fun mixed<T: Display + !Drop>(x: T) -> String {
+    x.display()
+}
+
+fun run(i: Item) -> String {
+    mixed(i)
+}

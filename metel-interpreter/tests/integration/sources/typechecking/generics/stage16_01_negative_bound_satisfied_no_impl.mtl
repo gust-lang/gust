@@ -1,0 +1,18 @@
+// Positive: generic function with negative bound, called with a type that
+// has no impl of the negated aspect — bound is satisfied.
+
+aspect Drop {
+    fun drop(self);
+}
+
+struct Clean { x: i64 }
+
+// Clean does NOT implement Drop.
+
+fun move_out<T: !Drop>(x: T) -> T {
+    return x;
+}
+
+fun run(c: Clean) {
+    move_out(c)
+}

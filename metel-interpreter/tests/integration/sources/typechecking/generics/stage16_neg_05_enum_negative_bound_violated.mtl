@@ -1,0 +1,21 @@
+// Negative: generic enum with negative bound, constructed with a type that
+// DOES implement the negated aspect. Expect T0012.
+
+aspect Drop {
+    fun drop(self);
+}
+
+enum Opt<T: !Drop> {
+    Some { value: T },
+    None {},
+}
+
+struct Resource { x: i64 }
+
+impl Drop for Resource {
+    fun drop(self) {}
+}
+
+fun bad(r: Resource) -> Opt<Resource> {
+    Opt::Some { value: r } // ERROR[T0012]
+}

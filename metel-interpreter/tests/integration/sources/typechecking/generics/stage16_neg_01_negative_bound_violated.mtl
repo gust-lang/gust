@@ -1,0 +1,20 @@
+// Negative: generic function with negative bound, called with a type that
+// DOES implement the negated aspect. Expect T0012.
+
+aspect Drop {
+    fun drop(self);
+}
+
+struct Resource { x: i64 }
+
+impl Drop for Resource {
+    fun drop(self) {}
+}
+
+fun move_out<T: !Drop>(x: T) -> T {
+    return x;
+}
+
+fun bad(r: Resource) {
+    move_out(r) // ERROR[T0012]
+}

@@ -1,0 +1,14 @@
+// Positive: negative bound satisfied by a primitive type (i64 has no
+// registered Drop impl).
+
+aspect Drop {
+    fun drop(self);
+}
+
+fun move_out<T: !Drop>(x: T) -> T {
+    return x;
+}
+
+fun run() {
+    move_out(5)
+}

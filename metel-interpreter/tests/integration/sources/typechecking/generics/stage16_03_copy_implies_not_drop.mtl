@@ -1,0 +1,29 @@
+// Positive: Copy-implies-!Drop override (RFC-0072 §2.3). A struct
+// implements both a locally-declared `aspect Copy {}` and `aspect Drop {}`
+// (neither is built-in — see RFC-0071), and `fun needs_no_drop<T: !Drop>`
+// succeeds because Copy implies !Drop.
+
+aspect Copy {
+    // Marker aspect; no methods needed for this test.
+}
+
+aspect Drop {
+    fun drop(self);
+}
+
+struct Both {
+    x: i64,
+}
+
+impl Copy for Both {}
+impl Drop for Both {
+    fun drop(self) {}
+}
+
+fun needs_no_drop<T: !Drop>(x: T) -> T {
+    return x;
+}
+
+fun run(b: Both) {
+    needs_no_drop(b)
+}

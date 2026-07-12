@@ -1,0 +1,33 @@
+// Negative: function with both positive and negative bounds — positive side
+// satisfied, negative side violated. Both halves are independently checked.
+// Expect T0012.
+
+aspect Display {
+    fun display(self) -> String;
+}
+
+aspect Drop {
+    fun drop(self);
+}
+
+struct Bad {
+    value: i64,
+}
+
+impl Display for Bad {
+    fun display(self) -> String {
+        "Bad"
+    }
+}
+
+impl Drop for Bad {
+    fun drop(self) {}
+}
+
+fun mixed<T: Display + !Drop>(x: T) -> String {
+    x.display()
+}
+
+fun bad(b: Bad) {
+    mixed(b) // ERROR[T0012]
+}

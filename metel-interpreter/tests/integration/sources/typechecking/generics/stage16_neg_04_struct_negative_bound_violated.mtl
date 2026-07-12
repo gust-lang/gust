@@ -1,0 +1,20 @@
+// Negative: generic struct with negative bound, constructed with a type that
+// DOES implement the negated aspect. Expect T0012.
+
+aspect Drop {
+    fun drop(self);
+}
+
+struct Arena<T: !Drop> {
+    items: T[],
+}
+
+struct Resource { x: i64 }
+
+impl Drop for Resource {
+    fun drop(self) {}
+}
+
+fun bad(r: Resource) -> Arena<Resource> {
+    Arena { items: [r] } // ERROR[T0012]
+}

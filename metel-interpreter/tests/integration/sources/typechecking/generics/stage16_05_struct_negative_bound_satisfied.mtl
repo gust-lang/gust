@@ -1,0 +1,18 @@
+// Positive: generic struct with negative bound, constructed with a type
+// that has no impl of the negated aspect.
+
+aspect Drop {
+    fun drop(self);
+}
+
+struct Arena<T: !Drop> {
+    items: T[],
+}
+
+struct Clean { x: i64 }
+
+// Clean does NOT implement Drop.
+
+fun make_arena(c: Clean) -> Arena<Clean> {
+    Arena { items: [c] }
+}

@@ -1,0 +1,18 @@
+// Positive: `where T: !Drop` spelling (RFC-0072 §3) is equivalent to the
+// inline `<T: !Drop>` form.
+
+aspect Drop {
+    fun drop(self);
+}
+
+struct Clean { x: i64 }
+
+// Clean does NOT implement Drop.
+
+fun move_out<T>(x: T) -> T where T: !Drop {
+    return x;
+}
+
+fun run(c: Clean) {
+    move_out(c)
+}
