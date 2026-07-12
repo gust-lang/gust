@@ -1,0 +1,23 @@
+// Negative: impl omits a required associated type definition.
+// Expect T0017.
+
+aspect Container {
+    type Item: Display;
+    fun get(&self) -> Item;
+}
+
+struct IntBox {
+    value: i64,
+}
+
+impl Container for IntBox { // ERROR[T0017]
+    // Missing: type Item = ...;
+    fun get(&self) -> i64 {
+        return self.value;
+    }
+}
+
+fun main() {
+    let b = IntBox { value: 42 };
+    assert(b.get() == 42);
+}

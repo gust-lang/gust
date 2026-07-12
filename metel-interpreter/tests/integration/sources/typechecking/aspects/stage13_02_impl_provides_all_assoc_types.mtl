@@ -1,0 +1,23 @@
+// RFC-0082 §2: impl provides all associated types declared by the aspect.
+// §1.1: the concrete binding satisfies the declared bound.
+// Baseline positive test — should typecheck without errors.
+
+aspect Container {
+    type Item: Display;
+    fun get(&self) -> Item;
+}
+
+struct IntBox {
+    value: i64,
+}
+
+impl Container for IntBox {
+    type Item = i64;
+    fun get(&self) -> i64 {
+        return self.value;
+    }
+}
+
+fun main() {
+    assert(1 == 1);
+}

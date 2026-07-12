@@ -382,6 +382,66 @@ fn infer_decl(
                             inherited_defaults.push(method);
                         }
                     }
+                    // RFC-0082 §2: check that the impl defines all associated types
+                    // declared by the aspect. §1.1: if the declaration has a bound,
+                    // the concrete binding must satisfy it.
+                    // TODO(#241): generic impls are skipped above; assoc-type
+                    // completeness for blanket impls is #241's job.
+                    if let Some(assoc_decls) = ctx.registry().aspect_assoc_type_decls(aspect_name).cloned() {
+                        let provided_assoc: std::collections::HashMap<&str, &TypeExpr> =
+                            ib.assoc_type_defs.iter().map(|d| (d.name.as_str(), &d.ty)).collect();
+                        for decl in &assoc_decls {
+                            if let Some(concrete_ty_expr) = provided_assoc.get(decl.name.as_str()) {
+                                // §1.1: if the declaration has a bound, check the
+                                // concrete binding satisfies it.
+                                for bound in &decl.bounds {
+                                    if let TypeExpr::Named(bound_aspect, _) = &bound.aspect {
+                                        if bound.polarity == Polarity::Positive {
+                                            let concrete_infer = type_expr_to_infer_with_self(
+                                                concrete_ty_expr,
+                                                &target_name,
+                                            );
+                                            // Check that the concrete type satisfies the
+                                            // bound aspect. For concrete target types the
+                                            // concrete binding is also concrete, so we can
+                                            // check via the registry's impl_aspect_env.
+                                            let concrete_name = match &concrete_infer {
+                                                InferType::Concrete(t) => Some(format!("{}", t)),
+                                                InferType::Named(n, _) => Some(n.clone()),
+                                                _ => None,
+                                            };
+                                            if let Some(name) = concrete_name {
+                                                if !ctx.registry().impl_aspect_env_has(
+                                                    ctx.current_module_path(),
+                                                    &name,
+                                                    bound_aspect,
+                                                ) {
+                                                    return Err(MetelError::type_error(
+                                                        TypeErrorCode::T0012,
+                                                        format!(
+                                                            "associated type `{}` bound `{}` is not satisfied by `{}`",
+                                                            decl.name, bound_aspect, name
+                                                        ),
+                                                        &ib.span,
+                                                    ));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Missing associated type definition → T0017.
+                                return Err(MetelError::type_error(
+                                    TypeErrorCode::T0017,
+                                    format!(
+                                        "`{}` does not define associated type `{}` required by aspect `{}`",
+                                        target_name, decl.name, aspect_name
+                                    ),
+                                    &ib.span,
+                                ));
+                            }
+                        }
+                    }
                 }
             }
             for method in &ib.methods {
