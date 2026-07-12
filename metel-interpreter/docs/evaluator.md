@@ -2,6 +2,8 @@
 
 > Status: v0.8.3 — SymbolId dispatch for overloads (METEL-180/181): `RuntimeRegistry` gains `symbol_values: HashMap<SymbolId, Value>` for overloaded functions; `TypedExpr::Call::callee_id: Some(id)` bypasses lexical-env lookup. `register_core_natives_from_embedded` derives all std::core native bindings from the embedded `core.mtl` AST rather than hand-registration. `List<T>` native methods and primitive `Display` / `From` impls are live at runtime via `NativeKey` dispatch.  
 > The evaluator is intentionally the simplest correct implementation. It will be rewritten before production use. Do not over-engineer it; open new issues for correctness gaps instead of adding complexity here.
+>
+> Status: v0.10.0 (in progress) — `type_of::value_to_type` recovers a generic struct/enum argument's own type parameters from its field values instead of reporting them as always-erased (issue #267, ADR-0043); see "Function Call Dispatch" below.
 
 ---
 
@@ -301,6 +303,21 @@ Use this profiler to decide which Metel-level call paths dominate a program, the
 - `Value::Callable(RuntimeCallable::Intrinsic { fun, .. })` — calls the intrinsic function pointer directly.
 - `Value::Callable(RuntimeCallable::Closure(rc))` — clones the captured environment, pushes a parameter scope, evaluates the body, and converts `Signal::Return` to `Signal::Value` at the boundary. `Signal::PropagateErr` is also converted: it wraps the error value in `Value::Enum { name: "Result", variant: "Err", fields: { "error": e } }` and returns `Signal::Value` — so the `?` error appears as a `Result::Err` value to the caller.
 - `Value::Callable(RuntimeCallable::Closure(rc))` where `rc.body` is `ClosureBody::Untyped(block)` — a polymorphic generic function or let-bound closure. The evaluator re-runs the construction pass on the untyped block at the concrete argument types, producing a `TypedBlock` that is evaluated immediately. This is the monomorphization path.
+
+  **Argument types for this re-construction come from `type_of::value_to_type`
+  (v0.10.0, issue #267, ADR-0043)**, which now takes a `registry: &
+  TypeDefinitionRegistry` and `span: &Span` to recover a generic struct/enum
+  argument's own type parameters from its field values — runtime `Value::Struct`/
+  `Value::Enum` carry no type-argument info intrinsically (`Wrapper { value: 5 }`'s
+  own type tag is bare `Named("Wrapper", [])`), so without this, unifying the
+  receiver's declared generic type against the argument's erased runtime type
+  always failed on an arity mismatch and silently defaulted the type parameter to
+  `Unit`. All three call sites (`call_runtime_callable`, both branches of
+  `call_method_function`) pass the `type_ctx`'s registry through; the one call
+  site without a guaranteed `type_ctx` (the early receiver-type capture in
+  `call_method_function`, needed before `closure.body` is matched on) falls back
+  to a synthetic empty registry, which is harmless since that specific value is
+  never consumed by a generic (`ClosureBody::Untyped`) path.
 
 Method dispatch no longer looks up synthetic environment keys. `eval_expr` resolves methods through the owning type's runtime entry, checking receiver methods first and then explicit aspect impl entries. Static paths such as `Type::new(...)` resolve through type-owned associated values. `impl From<S> for T` coercions resolve through the target type's `From<S>` aspect impl rather than by environment strings, and receiver binding now follows the runtime method metadata instead of closure parameter inspection.
 

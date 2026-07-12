@@ -1,6 +1,8 @@
 # Typechecker Implementation Notes
 
 > Status: v0.8.1 — elaboration support added (METEL-152): `check_graph` now threads `names.symbols` through `check_impl` → `construct_program` → `ConstructCtx` so that `construct_impl_decl` can populate `TypedImplBlock::aspect_id`.
+>
+> Status: v0.10.0 (in progress) — `Bound{polarity, aspect, assoc_bindings}` replaces bare `TypeExpr` in `GenericParam.bounds`/`WhereClause.constraints` (issue #233); `ImplBlock` gained `polarity`/`generics`/`where_clause`/`assoc_type_defs`; `AspectDecl` gained `assoc_types`; `TypeExpr::Projection` added for `T::AssocType`. See "Polymorphic Function Bodies" below for how impl-block-own-generics and generic type-argument recovery from runtime values (issue #267, ADR-0043) fit into construction-at-call-time.
 
 ---
 
@@ -273,6 +275,35 @@ When a call site resolves to a polymorphic callee (present in `scheme_env` but n
 Functions with quantified type variables in their scheme are stored as `FunBody::Generic(untyped_block)` rather than `FunBody::Typed(typed_block)`. At each call site the evaluator re-runs the construction pass on the untyped block at the concrete call-site types, producing a `TypedBlock` that is evaluated normally. This is the monomorphization mechanism.
 
 `let`-bound unannotated closures generalised to polymorphic schemes are stored as `TypedExpr::GenericClosure { params, body: Block, .. }` and evaluated to `ClosureBody::Untyped(block)`. The evaluator re-runs construction per call, mirroring the function case.
+
+**An `ImplBlock` that declares its own generics (v0.10.0, issue #233 — `impl<T:
+Bound> Aspect for Type<T>`, or the `where` form) defers its methods to
+`FunBody::Generic` the same way**, in `construct_impl_method`: `is_generic_target`
+is now `impl_has_generics || struct_generic_names_for(target_name)...`, so an impl
+whose target isn't even a nominal struct/enum (RFC-0061's structural blanket impls,
+e.g. `impl<T: Display> Display for T[]`) is also covered without needing a real
+`target_name` to key a registry lookup on. `construct_default_aspect_methods` is
+skipped entirely for these impls — it constructs default method bodies eagerly
+against a concrete `self` type today, which isn't sound against a conditional or
+structural target without knowing the instantiation. Real bound-satisfaction
+checking at each instantiation is issue #241/#245's job, not this mechanism's;
+this only makes the syntax construct without crashing.
+
+**Generic type arguments aren't recoverable from a runtime `Value` on their own
+(issue #267, ADR-0043).** `construct_generic_body` (called from
+`evaluator/call.rs` when a `ClosureBody::Untyped` is invoked) unifies the
+receiver/argument types derived from live `Value`s against the scheme's declared
+types to build the substitution used to construct the body. `Value::Struct`/
+`Value::Enum` carry no type-argument info of their own, so naively this
+unification always failed on an arity mismatch for any generic struct/enum
+receiver, silently defaulting the type parameter to `Unit`.
+`typechecker::infer_named_type_args` fixes this by unifying each field's
+*declared* type template (from the registry, `FieldEntry.ty`) against that
+field's *actual* type (computed by the evaluator recursing over the live value)
+and reading the type's own quantified type variables back out of the resulting
+substitution — recovering, from field values alone, what the value's own type
+tag never recorded. See ADR-0043 for the full reasoning and the rejected
+alternative (tagging `Value` itself).
 
 ### Closure Body Expected Type
 
