@@ -762,7 +762,7 @@ mod phase_6_type_schemes {
     #[test]
     fn test_display_multi_var() {
         let scheme = TypeScheme {
-            quantified_vars: vec![TypeVar(0)],
+            quantified_vars: vec![TypeVar(0), TypeVar(1)],
             param_names: vec![],
             bounds: vec![],
             neg_bounds: vec![],
