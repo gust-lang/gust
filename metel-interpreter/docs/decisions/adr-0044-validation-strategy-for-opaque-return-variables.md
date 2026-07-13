@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Accepted (revised after independent review found the originally-implemented
+strategy below was never actually wired in, and — separately — didn't work
+correctly when tested)
 
 ## Context
 
@@ -20,143 +22,113 @@ However, the type system must prevent problematic usage patterns like:
 
 ## Decision
 
-We chose a **centralized validation strategy** rather than scattered per-site guards or deeper `unify()`-engine changes. This approach:
+Validation happens **incrementally, inside `apply_constraint_with_coercion`**,
+immediately after each individual constraint's own unification result is
+composed into the substitution — not as a single pass over the fully-solved
+substitution at the end of `solve()` (see "Superseded approach" below for why
+that doesn't work).
 
-1. **Centralized validation**: Add a single validation function `validate_opaque_return_bindings()` that checks all opaque return variables at the end of constraint solving, mirroring the existing `validate_literal_bindings()` pattern.
+1. **Per-quantified-var metadata**: `TypeScheme.opaque_returns` tracks which
+   quantified variables represent opaque returns and (for the unlinked case)
+   their concrete types, exactly as originally designed.
+2. **Call-site marking**: when instantiating an opaque-returning function at a
+   call site, each opaque quantified var's fresh renamed copy is registered in
+   `InferContext.opaque_return_vars` (`mark_opaque_return_var`) and given its
+   aspect bound (`register_type_var_bound`) — also as originally designed.
+3. **Incremental check**: after `apply_constraint_with_coercion` composes a
+   constraint's unification result into `subst`, it iterates
+   `opaque_return_vars` and checks whether any of them, applied through the
+   *current* `subst`, has become a type other than `Var`/`Never`. If so, that
+   is the exact point a concrete type got named — reject with `T0018`
+   immediately, using that constraint's own span.
 
-2. **Linked vs. unlinked discriminator**: During function inference, distinguish between:
-   - **Linked case**: When the return-position `impl Aspect` is linked to a parameter (e.g., `fun transform(x: impl Display) -> impl Display { x }`)
-   - **Unlinked case**: When the return-position `impl Aspect` is independent (e.g., `fun make_pair() -> impl Display { 42 }`)
+### Superseded approach: single validation at the end of `solve()`
 
-3. **Per-quantified-var metadata**: Store opaque return information in `TypeScheme.opaque_returns` to track which quantified variables represent opaque returns and their concrete types.
+The first implementation added `validate_opaque_return_bindings()`, called
+once after the whole batch of constraints in a `solve()` call was processed,
+checking every opaque return var against the fully-solved substitution. This
+is the natural reading of "mirrors `validate_literal_bindings()`" and is what
+the rest of this document originally described — **but it doesn't work**:
 
-4. **Call-site registration**: When instantiating opaque-returning functions at call sites, register the aspect bounds in `current_type_param_bounds` and mark the variables in `opaque_return_vars` for validation.
+- It was never actually wired in. The one call site was commented out with a
+  `// TODO: Fix validation logic for specific test cases` note, and
+  `cargo build` had been flagging both `validate_opaque_return_bindings` and
+  `validate_opaque_return_bindings_for_constraint` as dead code the entire
+  time. Independent review caught this by simply reading the build's own
+  warning output — a check that should have been part of verifying this ADR
+  was actually implemented before marking it "Accepted".
+- Once wired in and tested directly, it also produced false positives for the
+  legitimate "linked" case (an opaque return passed to *another* function's
+  own `impl Aspect` parameter). By the time a whole `solve()` batch — often
+  covering an entire function body's worth of constraints, sometimes more —
+  has fully closed over every transitive unification, a legitimate
+  opaque-marker-to-another-function's-generic-parameter chain has typically
+  been resolved down to a concrete type too, the same as an actual violation.
+  There is no way to distinguish "resolved via legitimate indirection" from
+  "the concrete type was directly named" from the end state alone.
+
+  Checking right after *each* constraint's own composition avoids this: at
+  the moment a marker unifies with another function's own parameter
+  placeholder (itself just a fresh, unresolved `Var` from the *caller's*
+  point of view — that other function's body is solved separately, in its
+  own `solve()` call), the check sees `Var`, not a concrete type, and passes.
+  Only a constraint that directly forces the marker to a concrete shape
+  (`Named`, `Concrete`, `Tuple`, a function type, etc.) trips the check.
+
+A second, real bug compounded the confusion while this was being debugged:
+call-site instantiation used a disposable `TypeVarGenerator`
+(`ctx.fresh_var_generator()`) that snapshotted `ctx`'s real counter without
+ever advancing it, so every ordinary `ctx.fresh_var()` call later in the same
+function body reissued the exact same ids — aliasing an opaque marker from
+one call with an unrelated `TypeVar` from a later expression once three or
+more opaque-returning calls appeared in the same scope. This made some
+failures look like validation-logic bugs when they were actually a TypeVar
+identity collision unrelated to validation at all. Fixed by minting the
+renaming vars from `ctx.fresh_type_var_raw()` (the context's own live
+generator) instead.
 
 ## Rationale
 
-### Why Centralized Validation?
+### Why incremental, not a single end-of-solve pass?
 
-1. **Avoids scattered guards**: Per-site guards would be fragile and easy to miss edge cases
-2. **Mirrors existing patterns**: Follows the proven `validate_literal_bindings()` approach
-3. **Comprehensive coverage**: Validates all constraint solving outcomes in one place
-4. **Easier maintenance**: Single point of modification for validation logic
+See "Superseded approach" above — the end-of-solve version cannot tell a
+legitimate resolved-via-indirection chain apart from a real violation, since
+both look identical (a concrete type) by the time the whole batch is solved.
+Checking at each constraint's own composition point catches the violation at
+the moment it happens, before further unification could make it
+indistinguishable from a legitimate chain.
 
-### Why Not `unify()` Engine Changes?
+### Why not scattered per-AST-site guards?
 
-1. **Minimally invasive**: Avoid changing core unification logic that affects other features
-2. **Preserves existing behavior**: Let the standard constraint solving handle normal cases
-3. **Separation of concerns**: Validation is a cross-cutting concern separate from unification
+Still avoided, for the same reasons as originally reasoned: per-site guards
+(at `let` declarations, ascriptions, argument passing, etc.) would be
+fragile and easy to miss. Constraint-level checking covers every site that
+ultimately produces a constraint, which is all of them.
 
-### Why Linked/Unlinked Discrimination?
+### Why not deeper `unify()` engine changes?
 
-1. **Correctness**: Only unlinked cases need opacity enforcement (linked cases can name the concrete type)
-2. **Performance**: Avoid unnecessary validation for linked cases
-3. **Semantic accuracy**: Matches the RFC's specification about independence
-
-## Implementation
-
-### Key Components
-
-1. **TypeScheme.opaque_returns**: Per-quantified-var metadata tracking `(aspect_name, concrete_type)`
-2. **InferContext.opaque_return_vars**: Set of type variables representing opaque returns at the current call site
-3. **validate_opaque_return_bindings()**: Checks that opaque return variables are not bound to concrete types
-4. **register_type_var_bound()**: Registers aspect bounds for call-site type variables
-
-### Validation Logic
-
-```rust
-pub fn validate_opaque_return_bindings(
-    &self,
-    subst: &Substitution,
-    span: &Span,
-) -> Result<(), MetelError> {
-    for &var in &self.opaque_return_vars {
-        match subst.apply(&InferType::Var(var)) {
-            InferType::Var(_) => {
-                // Still unbound, which is allowed
-            }
-            InferType::Never => {
-                // Bottom type, which is allowed
-            }
-            InferType::Concrete(_) => {
-                // Bound to a concrete type - this violates opacity
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0018,
-                    "cannot name the concrete type of an opaque `impl Aspect` return value; use `impl Aspect` or a generic bound instead".to_string(),
-                    span,
-                ));
-            }
-            _ => {
-                // Bound to some other inference type - this should be fine
-                // The key insight is that these variables should remain abstract
-                // for method dispatch, but can be used in valid contexts
-            }
-        }
-    }
-    Ok(())
-}
-```
-
-### Call-Site Registration
-
-```rust
-// When instantiating an opaque-returning function
-for (orig_tv, (aspect, _)) in scheme.opaque_returns.iter() {
-    if let Some(&fresh_tv) = renaming.get(&orig_tv) {
-        ctx.register_type_var_bound(fresh_tv, aspect.clone());
-        ctx.mark_opaque_return_var(fresh_tv);
-    }
-}
-```
-
-## Alternatives Considered
-
-### Scattered Per-Site Guards
-
-**Problem**: Would require adding checks at many sites:
-- `let`/`mut` variable declarations
-- `Expr::Ascribe` type annotations
-- Function argument passing
-- Struct field assignments
-- Array element assignments
-
-**Issue**: Easy to miss sites, inconsistent behavior, hard to maintain.
-
-### Deeper `unify()` Engine Changes
-
-**Problem**: Would require modifying core unification logic to understand opaque return semantics.
-
-**Issue**: Risk of breaking other features, complex implementation, harder to reason about.
-
-### No Validation at All
-
-**Problem**: Would allow concrete type naming to leak through.
-
-**Issue**: Violates the RFC's opacity guarantees, reduces type safety.
+Still avoided for the same reason: `unify()` itself stays opacity-agnostic;
+the check lives in the wrapper (`apply_constraint_with_coercion`) that
+already exists specifically to layer additional validation
+(`validate_literal_bindings`) on top of `unify()`'s raw result.
 
 ## Testing Strategy
 
-1. **Positive test cases**: Verify valid usage patterns work
-   - Basic opaque returns
-   - Method calls on opaque returns
-   - Passing to `impl Aspect` parameters
-   - Linked vs. unlinked cases
-
-2. **Negative test cases**: Verify invalid patterns are rejected
-   - Explicit concrete type naming
-   - Casting to concrete types
-   - Passing to non-generic concrete parameters
-
-3. **Cross-module testing**: Ensure opacity is preserved across module boundaries
-
-## Future Considerations
-
-1. **Performance optimization**: Only validate when necessary (skip for linked cases)
-2. **Better error messages**: More specific diagnostics for different violation types
-3. **Integration with other features**: Ensure compatibility with planned features like multiple aspect bounds
+1. **Positive test cases**: basic opaque returns, method calls on opaque
+   returns, passing to `impl Aspect` parameters, linked vs. unlinked cases,
+   and — added after the TypeVar-aliasing bug above — three or more
+   independent opaque-returning calls in one scope with method calls on more
+   than one before the last.
+2. **Negative test cases**: explicit concrete type naming, casting to
+   concrete types, passing to non-generic concrete parameters. (Three of the
+   original negative fixtures for these cases were previously "passing" only
+   because opacity wasn't enforced at all *and* the fixtures independently
+   lacked the test harness's actual `// ERROR[T0NNN]` annotation — two
+   unrelated bugs that happened to cancel out. Both are fixed.)
+3. **Cross-module testing**: opacity preserved across module boundaries.
 
 ## Related Work
 
 - **RFC-0037**: Return-Position `impl Aspect` - the original specification
 - **ADR-0043**: Generic Type Arg Recovery from Field Values - related monomorphization patterns
-- **Existing `validate_literal_bindings()`**: Template for the centralized validation approach
+- **Existing `validate_literal_bindings()`**: the pattern this approach still follows, just invoked at a finer grain (per-constraint rather than per-solve-batch)
