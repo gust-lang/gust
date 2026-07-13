@@ -18,7 +18,7 @@ use crate::typeinference::{
 /// Collect merged aspect-name bounds per type param from inline bounds + where clause.
 /// Returns one Vec<String> per param (same order as `generics`), containing all
 /// required aspect names for that param (deduped).
-fn collect_type_param_bounds(
+pub(super) fn collect_type_param_bounds(
     generics: &[GenericParam],
     where_clause: Option<&WhereClause>,
 ) -> Vec<Vec<String>> {
@@ -60,7 +60,7 @@ fn collect_type_param_bounds(
 
 /// Collect **negative** aspect-name bounds per type param (RFC-0072, issue #243).
 /// Mirrors `collect_type_param_bounds` but filters for `Polarity::Negative`.
-fn collect_negative_type_param_bounds(
+pub(super) fn collect_negative_type_param_bounds(
     generics: &[GenericParam],
     where_clause: Option<&WhereClause>,
 ) -> Vec<Vec<String>> {
@@ -94,6 +94,27 @@ fn collect_negative_type_param_bounds(
                 }
             }
             names
+        })
+        .collect()
+}
+
+/// Synthesize a `Vec<GenericParam>` from the struct's own canonical generic names
+/// merged with the impl block's own `ib.generics`. This lets the bound-collection
+/// helpers work uniformly for both inline (`impl<T: Bound>`) and where-clause
+/// (`impl for Type<T> where T: Bound`) forms.
+pub(super) fn synth_generics_for_impl(
+    struct_generic_names: &[String],
+    ib_generics: &[GenericParam],
+) -> Vec<GenericParam> {
+    struct_generic_names
+        .iter()
+        .map(|n| GenericParam {
+            name: n.clone(),
+            bounds: ib_generics
+                .iter()
+                .find(|g| &g.name == n)
+                .map(|g| g.bounds.clone())
+                .unwrap_or_default(),
         })
         .collect()
 }
