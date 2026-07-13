@@ -917,6 +917,12 @@ pub type AssocProjectionMemo = HashMap<(TypeVar, String, String), TypeVar>;
 /// Insertion-order log of every projection placeholder minted during one
 /// function/method body: `(base_tv, aspect, assoc_name, placeholder_tv)`.
 pub type AssocProjectionLog = Vec<(TypeVar, String, String, TypeVar)>;
+/// One conditional impl's per-position bound requirements: `(pos_bounds, neg_bounds)`,
+/// see `TypeDefinitionRegistry::conditional_impl_bounds`.
+pub type ConditionalImplBoundEntry = (Vec<Vec<String>>, Vec<Vec<String>>);
+/// One registered method scheme variant: `(scheme, struct_tvars)`,
+/// see `TypeDefinitionRegistry::method_scheme_variants`.
+pub type MethodSchemeVariant = (TypeScheme, Vec<TypeVar>);
 
 #[derive(Debug, Clone)]
 pub struct TypeDefinitionRegistry {
@@ -937,9 +943,9 @@ pub struct TypeDefinitionRegistry {
     /// providing the same method name. Key: (`type_name`, `method_name`) → Vec of
     /// (scheme, `struct_tvars`). `register_method_scheme_variant` pushes; `method_scheme_for`
     /// (singular) keeps returning the last-registered entry for backward compatibility.
-    /// Construction checks this ONLY when >1 entries exist, selecting the first whose
-    /// bounds are satisfied by the concrete instantiation.
-    method_scheme_variants: HashMap<String, HashMap<String, Vec<(TypeScheme, Vec<TypeVar>)>>>,
+    /// NOTE: nothing currently reads this list back to disambiguate between variants —
+    /// see the open question flagged in commit e20718e / issue #264.
+    method_scheme_variants: HashMap<String, HashMap<String, Vec<MethodSchemeVariant>>>,
     /// Per-type-param aspect bounds for generic structs and enums.
     /// Key: type name. Value: one Vec<String> per type param (same order as `struct_type_params`),
     /// each containing the aspect names that param must satisfy.
@@ -1004,7 +1010,7 @@ pub struct TypeDefinitionRegistry {
     /// at the i-th type-argument position of the target type, for ONE conditional impl.
     /// Populated INSTEAD OF `impl_aspect_env` when `is_generic_target && (impl_bounds ||
     /// impl_neg_bounds non-empty)` — see `register_conditional_impl_bounds`.
-    conditional_impl_bounds: HashMap<(SymbolId, String), Vec<(Vec<Vec<String>>, Vec<Vec<String>>)>>,
+    conditional_impl_bounds: HashMap<(SymbolId, String), Vec<ConditionalImplBoundEntry>>,
     /// Global `(module, name) -> SymbolId` table. See `impl_aspect_env`'s doc.
     symbols: Rc<HashMap<(Vec<String>, String), SymbolId>>,
     /// Every module's resolved import scope. See `impl_aspect_env`'s doc.
@@ -1189,19 +1195,6 @@ impl TypeDefinitionRegistry {
             .push((scheme, struct_tvars));
     }
 
-    /// Return all variant method schemes, if more than one exists.
-    #[must_use]
-    pub fn method_scheme_variants_for(
-        &self,
-        type_name: &str,
-        method_name: &str,
-    ) -> Option<&Vec<(TypeScheme, Vec<TypeVar>)>> {
-        self.method_scheme_variants
-            .get(type_name)?
-            .get(method_name)
-            .filter(|v| v.len() > 1)
-    }
-
     /// Register the conditional impl bounds for a `(target_id, aspect)` key (RFC-0036).
     pub fn register_conditional_impl_bounds(
         &mut self,
@@ -1218,35 +1211,6 @@ impl TypeDefinitionRegistry {
             .entry((target_id, aspect.to_string()))
             .or_default()
             .push((pos_bounds, neg_bounds));
-    }
-
-    /// Check whether `type_name` with concrete `type_args` satisfies the conditional
-    /// impl for `aspect_name` (RFC-0036 §2.1). Falls back to `impl_aspect_env_has`
-    /// for unconditional impls.
-    #[must_use]
-    pub fn aspect_satisfied_by(
-        &self,
-        current_module: &[String],
-        type_name: &str,
-        type_args: &[Type],
-        aspect_name: &str,
-    ) -> bool {
-        let Some(target_id) = self.resolve_type_position_id(current_module, type_name) else {
-            return false;
-        };
-        // Check conditional impls first.
-        let aspect_key = aspect_name.to_string();
-        if let Some(entries) = self.conditional_impl_bounds.get(&(target_id, aspect_key.clone())) {
-            for (pos_bounds, neg_bounds) in entries {
-                if self.check_conditional_entry(current_module, type_args, pos_bounds, neg_bounds) {
-                    return true;
-                }
-            }
-            return false;
-        }
-        // Fallback: unconditional impl (covers non-generic types and unconditional generic impls).
-        self.impl_aspect_env
-            .contains_key(&(target_id, aspect_key))
     }
 
     /// Check one conditional impl entry: for each type-argument position, every
@@ -1279,8 +1243,10 @@ impl TypeDefinitionRegistry {
     }
 
     /// Check whether a concrete `Type` satisfies `aspect_name`, recursing into
-    /// nested generic type arguments.
-    fn type_satisfies_aspect(
+    /// nested generic type arguments. Consults `conditional_impl_bounds` (RFC-0036)
+    /// in addition to the unconditional `impl_aspect_env`.
+    #[must_use]
+    pub fn type_satisfies_aspect(
         &self,
         current_module: &[String],
         ty: &Type,

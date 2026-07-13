@@ -3159,7 +3159,7 @@ fn check_type_satisfies_bounds(
         },
     };
     for aspect in aspect_names {
-        if !registry.impl_aspect_env_has(current_module, &type_name, aspect) {
+        if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
             return Err(MetelError::type_error(
                 TypeErrorCode::T0012,
                 format!("`{type_name}` does not implement `{aspect}` (required by `{fun_name}`)"),
@@ -3190,11 +3190,11 @@ fn check_type_does_not_satisfy_bound(
         },
     };
     for aspect in neg_aspect_names {
-        if registry.impl_aspect_env_has(current_module, &type_name, aspect) {
+        if registry.type_satisfies_aspect(current_module, concrete, aspect) {
             // RFC-0072 §2.3: Copy implies !Drop. Scoped to this exact pair —
             // do not generalize into a general aspect-exclusion mechanism.
             if aspect == "Drop"
-                && registry.impl_aspect_env_has(current_module, &type_name, "Copy")
+                && registry.type_satisfies_aspect(current_module, concrete, "Copy")
             {
                 continue;
             }

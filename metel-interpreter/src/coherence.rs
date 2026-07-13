@@ -179,9 +179,8 @@ fn scoped_type_param_bounds(ib: &ImplBlock) -> (Vec<Vec<String>>, Vec<Vec<String
     // Build a name → target-arg-position map by scanning the target type's
     // top-level arguments. A type param at `ib.generics` position 0 may appear
     // at target arg position 1 (e.g. `impl<T, U> ... for Pair<U, T>`).
-    let target_args = match &ib.target_type {
-        TypeExpr::Named(_, args) => args,
-        _ => return (vec![], vec![]),
+    let TypeExpr::Named(_, target_args) = &ib.target_type else {
+        return (vec![], vec![]);
     };
     let name_to_target_pos: HashMap<&str, usize> = target_args
         .iter()
@@ -204,10 +203,8 @@ fn scoped_type_param_bounds(ib: &ImplBlock) -> (Vec<Vec<String>>, Vec<Vec<String
                     if let TypeExpr::Named(aspect, _) = &bound.aspect {
                         pos_bounds[pos].push(aspect.clone());
                     }
-                } else {
-                    if let TypeExpr::Named(aspect, _) = &bound.aspect {
-                        neg_bounds[pos].push(aspect.clone());
-                    }
+                } else if let TypeExpr::Named(aspect, _) = &bound.aspect {
+                    neg_bounds[pos].push(aspect.clone());
                 }
             }
         }
@@ -215,7 +212,7 @@ fn scoped_type_param_bounds(ib: &ImplBlock) -> (Vec<Vec<String>>, Vec<Vec<String
 
     // From where clause: `where T: Copy` → same merge
     if let Some(wc) = &ib.where_clause {
-        merge_where_clause_bounds(&wc, &name_to_target_pos, &impl_param_names, &mut pos_bounds, &mut neg_bounds);
+        merge_where_clause_bounds(wc, &name_to_target_pos, &impl_param_names, &mut pos_bounds, &mut neg_bounds);
     }
 
     (pos_bounds, neg_bounds)
@@ -226,8 +223,8 @@ fn merge_where_clause_bounds(
     wc: &WhereClause,
     name_to_pos: &HashMap<&str, usize>,
     impl_param_names: &std::collections::HashSet<&str>,
-    pos_bounds: &mut Vec<Vec<String>>,
-    neg_bounds: &mut Vec<Vec<String>>,
+    pos_bounds: &mut [Vec<String>],
+    neg_bounds: &mut [Vec<String>],
 ) {
     for (type_param_name, bounds) in &wc.constraints {
         if !impl_param_names.contains(type_param_name.as_str()) {
@@ -239,10 +236,8 @@ fn merge_where_clause_bounds(
                     if let TypeExpr::Named(aspect, _) = &bound.aspect {
                         pos_bounds[pos].push(aspect.clone());
                     }
-                } else {
-                    if let TypeExpr::Named(aspect, _) = &bound.aspect {
-                        neg_bounds[pos].push(aspect.clone());
-                    }
+                } else if let TypeExpr::Named(aspect, _) = &bound.aspect {
+                    neg_bounds[pos].push(aspect.clone());
                 }
             }
         }
