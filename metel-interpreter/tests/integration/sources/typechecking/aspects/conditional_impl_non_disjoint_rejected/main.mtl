@@ -1,0 +1,27 @@
+// §3.1 rejected example: two conditional impls of the same aspect for the same
+// struct with non-disjoint bounds (no negation) → T0015 conflict.
+// Both impls canonicalize to the same key because TypeParam(i) depends only
+// on position in the target type's args, not on the impl param's letter.
+
+aspect Display {
+    fun display(self) -> String;
+}
+
+aspect Printable {
+    fun print(self) -> String;
+}
+
+struct Pair<A, B> {
+    first: A,
+    second: B,
+}
+
+impl<A: Display> Printable for Pair<A, A> {
+    fun print(self) -> String { return "a"; }
+}
+
+impl<B: Display> Printable for Pair<B, B> { // ERROR[T0015]
+    fun print(self) -> String { return "b"; }
+}
+
+fun main() {}

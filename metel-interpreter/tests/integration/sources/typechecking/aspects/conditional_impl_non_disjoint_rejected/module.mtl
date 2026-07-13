@@ -1,0 +1,16 @@
+// §3.1 rejected example: two conditional impls of the same aspect for the same
+// struct with non-disjoint bounds (no negation) → T0015 conflict.
+
+import main::Pair;
+
+aspect Printable {
+    fun print(self) -> String;
+}
+
+impl<A: Display> Printable for Pair<A, i64> {
+    fun print(self) -> String { return "a"; }
+}
+
+impl<B: Display> Printable for Pair<i64, B> {
+    fun print(self) -> String { return "b"; }
+}

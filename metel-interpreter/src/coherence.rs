@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 
-use crate::ast::{Decl, GenericParam, ImplBlock, Span, TypeExpr, WhereClause};
+use crate::ast::{Decl, ImplBlock, Span, TypeExpr, WhereClause};
 use crate::error::{MetelError, TypeErrorCode};
 use crate::name_resolver::{GlobTier, ResolvedNames};
 use crate::path_normalizer::NormalizedModuleGraph;
@@ -169,15 +169,9 @@ fn scoped_type_param_bounds(ib: &ImplBlock) -> (Vec<Vec<String>>, Vec<Vec<String
         _ => return (vec![], vec![]),
     };
 
-    // Build the set of impl param names and a name→position map.
+    // Build the set of impl param names.
     let impl_param_names: std::collections::HashSet<&str> =
         ib.generics.iter().map(|g| g.name.as_str()).collect();
-    let name_to_pos: HashMap<&str, usize> = ib
-        .generics
-        .iter()
-        .enumerate()
-        .map(|(i, g)| (g.name.as_str(), i))
-        .collect();
 
     let mut pos_bounds: Vec<Vec<String>> = vec![vec![]; arg_count];
     let mut neg_bounds: Vec<Vec<String>> = vec![vec![]; arg_count];

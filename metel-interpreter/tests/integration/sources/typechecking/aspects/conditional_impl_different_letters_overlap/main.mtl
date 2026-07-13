@@ -1,0 +1,26 @@
+// Conditional impl with different type-param letters but same non-disjoint bounds
+// → T0015 overlap. The CanonicalType::TypeParam fix ensures that Pair<A, A> and
+// Pair<B, B> canonicalize identically.
+
+aspect Display {
+    fun display(self) -> String;
+}
+
+aspect Printable {
+    fun print(self) -> String;
+}
+
+struct Pair<A, B> {
+    first: A,
+    second: B,
+}
+
+impl<A: Display> Printable for Pair<A, A> {
+    fun print(self) -> String { return "a"; }
+}
+
+impl<B: Display> Printable for Pair<B, B> { // ERROR[T0015]
+    fun print(self) -> String { return "b"; }
+}
+
+fun main() {}
