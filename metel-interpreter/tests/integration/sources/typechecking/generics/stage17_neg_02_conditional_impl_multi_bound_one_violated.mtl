@@ -1,0 +1,29 @@
+// RFC-0036 §4: two-param conditional impl, one bound satisfied, one not -> T0012.
+
+aspect Printable {
+    fun print(self) -> String;
+}
+
+impl Printable for i64 {
+    fun print(self) -> String { return "i64"; }
+}
+
+struct Pair<A, B> {
+    first: A,
+    second: B,
+}
+
+struct NoPrint {
+    value: i64,
+}
+
+impl<A: Printable, B: Printable> Printable for Pair<A, B> {
+    fun print(self) -> String {
+        return "pair";
+    }
+}
+
+fun main() {
+    let p = Pair { first: NoPrint { value: 0 }, second: 10 };
+    let s: String = p.print(); // ERROR[T0012]
+}

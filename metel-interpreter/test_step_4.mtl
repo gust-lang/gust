@@ -1,0 +1,23 @@
+aspect Display {
+	fun display(&self) -> String;
+}
+
+struct MyInt {
+	value: i64,
+}
+
+impl Display for MyInt {
+	fun display(&self) -> String {
+		self.value.to_string()
+	}
+}
+
+fun make_pair() -> impl Display {
+	MyInt { value: 42 }
+}
+
+fun main() {
+	let pair = make_pair();
+	let s = pair.display();
+	println("${s}");
+}

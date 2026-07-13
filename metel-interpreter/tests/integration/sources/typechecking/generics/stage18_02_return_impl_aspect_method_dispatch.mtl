@@ -1,0 +1,29 @@
+// Positive: method dispatch on return-position impl Aspect
+// Should typecheck and allow calling aspect methods
+
+aspect Display {
+	fun display(&self) -> String;
+}
+
+struct MyInt {
+	value: i64,
+}
+
+impl Display for MyInt {
+	fun display(&self) -> String {
+		self.value.to_string()
+	}
+}
+
+// Function returning impl Display
+fun make_int() -> impl Display {
+	MyInt { value: 42 }
+}
+
+fun main() {
+	let int_val = make_int();
+	// Call the aspect method - this should work now with Step 4
+	let s = int_val.display();
+	// We can't assert the result here since this is just typechecking,
+	// but the typecheck should pass
+}

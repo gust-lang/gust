@@ -54,7 +54,7 @@ pub struct CheckGraphReport {
 
 /// A single resolved import binding, tracking the source module for conflict
 /// reporting. Used by `ScopedEnv` and by #177 (T0011 conflict detection).
-#[allow(dead_code)]
+#[allow(dead_code, clippy::large_enum_variant)]
 enum Binding {
     /// Unambiguous: one scheme from one source module.
     Single {
@@ -91,6 +91,12 @@ struct FunGeneralization {
     /// Maps `TypeVar` ID → associated-type equality constraints (RFC-0082 §4,
     /// issue #242), same re-export rationale as `assoc_projections` above.
     assoc_eq: HashMap<TypeVar, Vec<(String, String, InferType)>>,
+    /// Maps `TypeVar` ID → opaque-return metadata (RFC-0037, issue #240):
+    /// `(aspect_name, concrete_type)`. Attached to the re-generalized scheme so
+    /// the opaque-return identity survives the rebuild into `scheme_env` (which
+    /// is what the construction pass actually reads), and through
+    /// `refresh_scheme_for_export` for cross-module calls.
+    opaque_returns: HashMap<TypeVar, (String, crate::types::Type)>,
 }
 
 // ── CorePrelude ────────────────────────────────────────────────────────────────
@@ -195,6 +201,14 @@ fn refresh_scheme_for_export(
         neg_bounds: scheme.neg_bounds.clone(),
         assoc_projections: vec![],
         assoc_eq_constraints: vec![],
+        // RFC-0037 opaque-return metadata is positional (index-aligned with
+        // `quantified_vars`) and stores fully-concrete `Type` values with no
+        // TypeVar references, so the renaming doesn't affect it. Must NOT be
+        // dropped here the way `assoc_projections`/`assoc_eq_constraints` are
+        // above (issue #242's cross-module landmine) — a `pub fun` returning
+        // `impl Aspect` called from another module silently loses its
+        // concrete-type backfill if this is zeroed.
+        opaque_returns: scheme.opaque_returns.clone(),
         ty,
     }
 }
@@ -816,7 +830,8 @@ fn check_impl_with_report(
                 .with_bounds(&fg.bounds)
                 .with_neg_bounds(&fg.neg_bounds)
                 .with_assoc_projections(&fg.assoc_projections)
-                .with_assoc_eq_constraints(&fg.assoc_eq);
+                .with_assoc_eq_constraints(&fg.assoc_eq)
+                .with_opaque_returns(&fg.opaque_returns);
         scheme_env.insert(fg.name, scheme);
     }
     // Imported schemes must be visible in the construction pass so calls to imported

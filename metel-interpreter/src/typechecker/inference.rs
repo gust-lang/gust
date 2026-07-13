@@ -136,6 +136,7 @@ fn native_fun_ty(
     })
 }
 
+#[allow(clippy::too_many_lines)]
 pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
     for decl in decls {
         if let Decl::Fun(fun) = decl {
@@ -230,7 +231,28 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                     .collect();
 
                 let ret_ty = if let Some(ann) = &fun.return_type {
-                    te_to_infer(ann, ctx)
+                    if type_expr_contains_impl_aspect(ann) {
+                        // RFC-0037: use fresh marker vars for `impl Aspect`
+                        // return positions in the provisional (hoist-time)
+                        // scheme too, so forward references don't leak the
+                        // aspect name as a concrete nominal type into the
+                        // pre-registration constraint.
+                        let mut rw_counter = 0usize;
+                        let mut replacements: Vec<(String, String)> = Vec::new();
+                        let rewritten = rewrite_impl_aspect_returns(
+                            ann,
+                            &mut rw_counter,
+                            &mut replacements,
+                        );
+                        let mut extended_map = generic_map.clone();
+                        for (placeholder, _) in &replacements {
+                            let tv = ctx.fresh_type_var_raw();
+                            extended_map.insert(placeholder.clone(), tv);
+                        }
+                        type_expr_to_infer_with_generics(&rewritten, &extended_map)
+                    } else {
+                        te_to_infer(ann, ctx)
+                    }
                 } else {
                     ctx.fresh_var()
                 };
@@ -455,6 +477,7 @@ fn infer_decl(
                         neg_bounds: HashMap::new(),
                         assoc_projections: HashMap::new(),
                         assoc_eq: HashMap::new(),
+                        opaque_returns: HashMap::new(),
                     });
                     return Ok(InferType::unit());
                 }
@@ -478,16 +501,9 @@ fn infer_decl(
             Ok(InferType::unit())
         }
         Decl::Struct(_) | Decl::Enum(_) | Decl::Aspect(_) => Ok(InferType::unit()),
-        Decl::Impl(ib) if !ib.generics.is_empty() => {
-            // RFC-0036 conditional impls / RFC-0061 structural blanket impls: real
-            // bound-satisfaction checking at each instantiation is issue #241/#245's
-            // job, not this one's. `target_name` may not even name a real struct/enum
-            // (RFC-0061's structural targets, or a bare type-parameter blanket) — skip
-            // inference entirely here, mirroring construction.rs's `FunBody::Generic`
-            // deferral for the same impls, so the two passes agree on what's checked.
-            Ok(InferType::unit())
-        }
         Decl::Impl(ib) => {
+            // Extract the target type name; bail for non-named targets (structural
+            // blanket impls are still out of scope).
             let target_name = match &ib.target_type {
                 TypeExpr::Named(name, _) => name.rsplit("::").next().unwrap_or(name).to_string(),
                 _ => {
@@ -554,6 +570,34 @@ fn infer_decl(
                                                 _ => None,
                                             };
                                             if let Some(name) = concrete_name {
+                                                // Check if this name matches one of the impl's own generic parameters
+                                                if let Some(gp) = ib.generics.iter().find(|p| p.name == name) {
+                                                    // This is the impl's own generic parameter - check its declared bounds
+                                                    let param_bounds = gp.bounds.iter()
+                                                        .filter(|b| b.polarity == Polarity::Positive)
+                                                        .filter_map(|b| {
+                                                            if let TypeExpr::Named(n, _) = &b.aspect {
+                                                                Some(n.clone())
+                                                            } else {
+                                                                None
+                                                            }
+                                                        })
+                                                        .collect::<Vec<_>>();
+                                                    
+                                                    if param_bounds.contains(bound_aspect) {
+                                                        // The bound is satisfied by the impl's own parameter bounds
+                                                        continue;
+                                                    }
+                                                    return Err(MetelError::type_error(
+                                                        TypeErrorCode::T0012,
+                                                        format!(
+                                                            "associated type `{}` bound `{}` is not satisfied by `{}`",
+                                                            decl.name, bound_aspect, name
+                                                        ),
+                                                        &ib.span,
+                                                    ));
+                                                }
+                                                // Original behavior for concrete types
                                                 if !ctx.registry().impl_aspect_env_has(
                                                     ctx.current_module_path(),
                                                     &name,
@@ -588,7 +632,7 @@ fn infer_decl(
                 }
             }
             for method in &ib.methods {
-                infer_impl_method(method, &target_name, ctx, fun_generalizations)?;
+                infer_impl_method(method, ib, &target_name, ctx, fun_generalizations)?;
             }
             // `inherited_defaults` is only ever populated inside the `Some(aspect_name)`
             // branch above, so this is always `Some` when the loop body runs.
@@ -606,6 +650,86 @@ fn infer_decl(
             Ok(InferType::unit())
         }
         Decl::Stmt(stmt) => infer_stmt(stmt, ctx, fun_generalizations),
+    }
+}
+
+/// Check whether a `TypeExpr` tree contains any `ImplAspect` nodes (RFC-0037).
+/// Used to decide whether the return-type conversion needs opaque-return handling.
+fn type_expr_contains_impl_aspect(te: &TypeExpr) -> bool {
+    match te {
+        TypeExpr::ImplAspect { .. } => true,
+        TypeExpr::Named(_, args) => args.iter().any(type_expr_contains_impl_aspect),
+        TypeExpr::Tuple(elems) => elems.iter().any(type_expr_contains_impl_aspect),
+        TypeExpr::Array(elem)
+        | TypeExpr::SizedArray(elem, _)
+        | TypeExpr::Reference(elem)
+        | TypeExpr::MutReference(elem) => type_expr_contains_impl_aspect(elem),
+        TypeExpr::Fun(params, ret) => {
+            params.iter().any(type_expr_contains_impl_aspect)
+                || ret
+                    .as_ref()
+                    .is_some_and(|r| type_expr_contains_impl_aspect(r))
+        }
+        TypeExpr::Unit | TypeExpr::Projection { .. } => false,
+    }
+}
+
+/// Recursively rewrite a `TypeExpr`, replacing each `ImplAspect { bound, .. }`
+/// with `Named(placeholder_name, [])`. Returns the rewritten tree plus a list
+/// of `(placeholder_name, aspect_name)` pairs, one per replaced node (RFC-0037).
+fn rewrite_impl_aspect_returns(
+    te: &TypeExpr,
+    counter: &mut usize,
+    replacements: &mut Vec<(String, String)>,
+) -> TypeExpr {
+    match te {
+        TypeExpr::ImplAspect { bound, .. } => {
+            let aspect_name = match bound.as_ref() {
+                TypeExpr::Named(name, _) => name.clone(),
+                _ => String::new(),
+            };
+            let placeholder = format!("_OpaqueRet{counter}");
+            *counter += 1;
+            replacements.push((placeholder.clone(), aspect_name));
+            TypeExpr::Named(placeholder, vec![])
+        }
+        TypeExpr::Named(name, args) => TypeExpr::Named(
+            name.clone(),
+            args.iter()
+                .map(|a| rewrite_impl_aspect_returns(a, counter, replacements))
+                .collect(),
+        ),
+        TypeExpr::Tuple(elems) => TypeExpr::Tuple(
+            elems
+                .iter()
+                .map(|e| rewrite_impl_aspect_returns(e, counter, replacements))
+                .collect(),
+        ),
+        TypeExpr::Array(elem) => {
+            TypeExpr::Array(Box::new(rewrite_impl_aspect_returns(elem, counter, replacements)))
+        }
+        TypeExpr::SizedArray(elem, n) => TypeExpr::SizedArray(
+            Box::new(rewrite_impl_aspect_returns(elem, counter, replacements)),
+            *n,
+        ),
+        TypeExpr::Reference(elem) => TypeExpr::Reference(Box::new(rewrite_impl_aspect_returns(
+            elem,
+            counter,
+            replacements,
+        ))),
+        TypeExpr::MutReference(elem) => TypeExpr::MutReference(Box::new(
+            rewrite_impl_aspect_returns(elem, counter, replacements),
+        )),
+        TypeExpr::Fun(params, ret) => TypeExpr::Fun(
+            params
+                .iter()
+                .map(|p| rewrite_impl_aspect_returns(p, counter, replacements))
+                .collect(),
+            ret.as_ref().map(|r| {
+                Box::new(rewrite_impl_aspect_returns(r, counter, replacements))
+            }),
+        ),
+        TypeExpr::Unit | TypeExpr::Projection { .. } => te.clone(),
     }
 }
 
@@ -641,6 +765,7 @@ fn infer_fun_decl(
             neg_bounds,
             assoc_projections: HashMap::new(),
             assoc_eq,
+            opaque_returns: HashMap::new(),
         });
         return Ok(());
     }
@@ -725,8 +850,26 @@ fn infer_fun_decl(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    // RFC-0037: return-position `impl Aspect`. When the return-type annotation
+    // contains `ImplAspect` nodes (top-level or nested in Tuple/Array/etc.),
+    // rewrite them into fresh anonymous type-param names, create marker TypeVars
+    // for each, and record them for post-solve opaque-return processing.
+    let mut pending_opaque_returns: Vec<(TypeVar, String)> = Vec::new();
     let ret_ty = if let Some(ann) = &fun.return_type {
-        te_to_infer(ann, ctx)?
+        if type_expr_contains_impl_aspect(ann) {
+            let mut rw_counter = 0usize;
+            let mut replacements: Vec<(String, String)> = Vec::new();
+            let rewritten = rewrite_impl_aspect_returns(ann, &mut rw_counter, &mut replacements);
+            let mut extended_map = generic_map.clone();
+            for (placeholder, aspect_name) in &replacements {
+                let tv = ctx.fresh_type_var_raw();
+                extended_map.insert(placeholder.clone(), tv);
+                pending_opaque_returns.push((tv, aspect_name.clone()));
+            }
+            type_expr_to_infer_with_generics(&rewritten, &extended_map)
+        } else {
+            te_to_infer(ann, ctx)?
+        }
     } else {
         ctx.fresh_var()
     };
@@ -775,7 +918,73 @@ fn infer_fun_decl(
     // when the same polymorphic function is called at different types.
     let solved = ctx.solve()?;
     let partial_subst = ctx.default_literal_vars(&solved);
-    let resolved_ty = partial_subst.apply(&fun_ty);
+
+    // RFC-0037: process pending opaque-return markers. For each marker, check
+    // whether the body's own solve resolved it to a concrete type (unlinked case)
+    // or left it as a free Var (linked case, e.g. `fun transform(x: impl A) ->
+    // impl A { x }` where the return is tied to a generic param).
+    //
+    // Unlinked markers are "re-abstracted": the concrete type is recorded in
+    // `opaque_map` (keyed by a fresh placeholder TypeVar), and a re-abstraction
+    // substitution prevents `partial_subst` from collapsing the marker in
+    // `resolved_ty`. This makes the function appear polymorphic (the placeholder
+    // is quantified by `generalize`) while the recorded concrete type lets
+    // construction (Pass 2) backfill the concrete type at each call site.
+    let mut opaque_map: HashMap<TypeVar, (String, Type)> = HashMap::new();
+    let mut reabstraction = Substitution::new();
+    for (marker_tv, aspect_name) in &pending_opaque_returns {
+        let resolved_marker = partial_subst.apply(&InferType::Var(*marker_tv));
+        #[allow(clippy::match_same_arms)] // Var and the wildcard document distinct, deliberate no-ops
+        match &resolved_marker {
+            InferType::Var(_) => {
+                // Linked case: marker is still a free var (tied to a generic
+                // param). Ordinary generalize/bind_poly handles it — the caller
+                // can name the concrete type here, which is correct (the callee
+                // returns the same value the caller handed in).
+            }
+            InferType::Concrete(_) | InferType::Named(_, _) => {
+                // Unlinked case: marker collapsed to a concrete type during the
+                // body's own solve. Convert to a `Type` for recording.
+                let Ok(concrete_ty) = infer_type_to_type(&resolved_marker, &fun.span) else {
+                    // The concrete type still has free vars (mixed case:
+                    // real generics + opaque return). Not in the RFC's
+                    // examples — skip opaque handling, let it fall through
+                    // to ordinary generic behavior.
+                    continue;
+                };
+                // Verify the aspect bound at definition time (RFC-0037 §1.1):
+                // the concrete type must implement the declared aspect.
+                if !ctx
+                    .registry()
+                    .type_satisfies_aspect(ctx.current_module_path(), &concrete_ty, aspect_name)
+                {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0012,
+                        format!(
+                            "return type `{concrete_ty}` does not implement `{aspect_name}` \
+                             (required by `{}` return type `impl {aspect_name}`)",
+                            fun.name
+                        ),
+                        &fun.span,
+                    ));
+                }
+                let placeholder_tv = ctx.fresh_type_var_raw();
+                reabstraction.bind(*marker_tv, InferType::Var(placeholder_tv));
+                opaque_map.insert(placeholder_tv, (aspect_name.clone(), concrete_ty));
+            }
+            _ => {}
+        }
+    }
+
+    let resolved_ty = if opaque_map.is_empty() {
+        partial_subst.apply(&fun_ty)
+    } else {
+        // Compose re-abstraction (self, wins on overlap) with partial_subst
+        // (other), then apply the combined substitution to fun_ty. The marker
+        // vars are rebound to fresh placeholders that partial_subst cannot
+        // resolve, so they survive as free vars for `generalize` to quantify.
+        reabstraction.compose(&partial_subst).apply(&fun_ty)
+    };
 
     // Overloaded definitions are dispatched by SymbolId, never by name: the
     // scheme env and the export surface know nothing about them. The body was
@@ -799,6 +1008,14 @@ fn infer_fun_decl(
         scheme
     } else {
         scheme.with_assoc_projections(&proj_map)
+    };
+    // RFC-0037: attach opaque-return metadata so the locally-bound scheme
+    // (used by Pass 1 call-site instantiation) carries the same identity
+    // info as the cross-module-exported scheme.
+    let scheme = if opaque_map.is_empty() {
+        scheme
+    } else {
+        scheme.with_opaque_returns(&opaque_map)
     };
     ctx.bind_poly(fun.name.clone(), scheme);
 
@@ -866,6 +1083,7 @@ fn infer_fun_decl(
         neg_bounds,
         assoc_projections: proj_map,
         assoc_eq,
+        opaque_returns: opaque_map,
     });
     Ok(())
 }
@@ -876,6 +1094,7 @@ fn infer_fun_decl(
 #[allow(clippy::too_many_lines)]
 fn infer_impl_method(
     method: &FunDecl,
+    ib: &crate::ast::ImplBlock,
     target_name: &str,
     ctx: &mut InferContext,
     fun_generalizations: &mut Vec<FunGeneralization>,
@@ -908,6 +1127,34 @@ fn infer_impl_method(
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // RFC-0036 §2.2: compute impl-level bounds (from the impl block's own
+    // where clause / inline bounds) and merge them into `struct_bounds` so that
+    // method dispatch and type annotations inside the body can see impl-level
+    // constraints (e.g. `impl<T: Display> Greet for Box1<T>` needs `T: Display`
+    // visible when resolving `self.value.to_string()`).
+    let generic_names_for_impl: Vec<String> = ctx
+        .struct_generic_names_for(target_name)
+        .cloned()
+        .unwrap_or_default();
+    let synth = super::registry::synth_generics_for_impl(&generic_names_for_impl, &ib.generics);
+    let impl_bounds: Vec<Vec<String>> =
+        super::registry::collect_type_param_bounds(&synth, ib.where_clause.as_ref());
+    let impl_neg_bounds: Vec<Vec<String>> =
+        super::registry::collect_negative_type_param_bounds(&synth, ib.where_clause.as_ref());
+
+    // Merge impl-level bounds into struct_bounds (union: keep any existing
+    // struct-level bounds and add the impl's).
+    for (i, tv) in struct_tvars_ordered.iter().enumerate() {
+        if let Some(ib_bounds) = impl_bounds.get(i) {
+            if !ib_bounds.is_empty() {
+                struct_bounds
+                    .entry(*tv)
+                    .or_default()
+                    .extend(ib_bounds.iter().cloned());
             }
         }
     }
@@ -1049,7 +1296,28 @@ fn infer_impl_method(
             .iter()
             .any(|v| struct_tvars_free.contains(v))
     {
-        let scheme = generalize(resolved_fun_ty, &std::collections::HashSet::new());
+        let mut scheme = generalize(resolved_fun_ty, &std::collections::HashSet::new());
+        // RFC-0036 §2.2: attach impl-level bounds keyed by resolved tvars so
+        // use-site checking can verify the concrete receiver satisfies them.
+        let by_var: std::collections::HashMap<TypeVar, Vec<String>> = impl_bounds
+            .iter()
+            .enumerate()
+            .filter_map(|(i, bounds)| {
+                if bounds.is_empty() { return None; }
+                let resolved_tv = struct_tvars_resolved.get(i)?;
+                Some((*resolved_tv, bounds.clone()))
+            })
+            .collect();
+        let by_neg_var: std::collections::HashMap<TypeVar, Vec<String>> = impl_neg_bounds
+            .iter()
+            .enumerate()
+            .filter_map(|(i, bounds)| {
+                if bounds.is_empty() { return None; }
+                let resolved_tv = struct_tvars_resolved.get(i)?;
+                Some((*resolved_tv, bounds.clone()))
+            })
+            .collect();
+        scheme = scheme.with_bounds(&by_var).with_neg_bounds(&by_neg_var);
         let scheme = if body_assoc_log.is_empty() {
             scheme
         } else {
@@ -1057,6 +1325,12 @@ fn infer_impl_method(
             scheme.with_assoc_projections(&proj_map)
         };
         ctx.register_method_scheme(
+            target_name.to_string(),
+            method.name.clone(),
+            scheme.clone(),
+            struct_tvars_resolved.clone(),
+        );
+        ctx.register_method_scheme_variant(
             target_name.to_string(),
             method.name.clone(),
             scheme,
@@ -1506,6 +1780,66 @@ fn infer_expr(
                     return Ok(ret_var);
                 }
             }
+            
+            // Check for opaque-returning function and do dedicated instantiation
+            if let Some(callee_name) = super::overload::callee_name(callee) {
+                if let Some(scheme) = ctx.poly_scheme(callee_name) {
+                    if !scheme.opaque_returns.is_empty() {
+                        // This function has opaque returns - do dedicated instantiation
+                        let arg_infer: Vec<InferType> = args
+                            .iter()
+                            .map(|a| infer_expr(a, ctx, fun_generalizations))
+                            .collect::<Result<_, _>>()?;
+                        
+                        // Solve constraints to get a complete substitution
+                        let solved = ctx.solve()?;
+                        let _solved = ctx.default_literal_vars(&solved);
+
+                        // Instantiate the scheme with renaming to get fresh vars.
+                        // Must mint from ctx's own live TypeVar generator (not a
+                        // disposable one forked via fresh_var_generator, which
+                        // snapshots the counter without ever advancing it) --
+                        // otherwise every subsequent ordinary ctx.fresh_var() call
+                        // in the rest of this function body reissues the exact
+                        // same ids just handed out here, aliasing this call's
+                        // opaque marker with unrelated later TypeVars. Confirmed
+                        // by reproduction: three or more opaque-returning calls in
+                        // one block, with .display() called on at least two of
+                        // them before a third, corrupted the third's inferred type.
+                        let mut renaming: HashMap<TypeVar, TypeVar> =
+                            HashMap::with_capacity(scheme.quantified_vars.len());
+                        let mut rename_subst = Substitution::new();
+                        for &var in &scheme.quantified_vars {
+                            let fresh = ctx.fresh_type_var_raw();
+                            rename_subst.bind(var, InferType::Var(fresh));
+                            renaming.insert(var, fresh);
+                        }
+                        let instantiated_ty = rename_subst.apply(&scheme.ty);
+                        
+                        if let InferType::Fun(params, ret) = instantiated_ty {
+                            // Constrain arguments to match the instantiated function type
+                            for (arg_ty, param) in arg_infer.iter().zip(params.iter()) {
+                                ctx.add_constraint(arg_ty.clone(), param.clone(), span.clone());
+                            }
+                            
+                            // Register aspect bounds and mark opacity guards for each opaque return
+                            for (i, opaque) in scheme.opaque_returns.iter().enumerate() {
+                                if let Some((aspect, _)) = opaque {
+                                    if let Some(&orig_tv) = scheme.quantified_vars.get(i) {
+                                        if let Some(&fresh_tv) = renaming.get(&orig_tv) {
+                                            ctx.register_type_var_bound(fresh_tv, aspect.clone());
+                                            ctx.mark_opaque_return_var(fresh_tv);
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            return Ok(*ret);
+                        }
+                    }
+                }
+            }
+            
             let callee_ty = infer_expr(callee, ctx, fun_generalizations)?;
             // Auto-deref: &(() -> T) and &mut (() -> T) are callable directly.
             let callee_ty = match ctx.solve()?.apply(&callee_ty) {

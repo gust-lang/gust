@@ -1,0 +1,32 @@
+// Negative: cannot pass to non-generic parameter should fail with T0018
+// Passing opaque return to function with concrete (non-generic) parameter type
+
+aspect Display {
+	fun display(&self) -> String;
+}
+
+struct MyInt {
+	value: i64,
+}
+
+impl Display for MyInt {
+	fun display(&self) -> String {
+		self.value.to_string()
+	}
+}
+
+// Function returning impl Display
+fun make_int() -> impl Display {
+	MyInt { value: 42 }
+}
+
+// Function that takes concrete MyInt parameter, not generic
+fun take_concrete_int(x: MyInt) -> i64 {
+	x.value
+}
+
+fun main() {
+	let int_val = make_int();
+	// This should fail - cannot pass opaque return to concrete parameter
+	let result = take_concrete_int(int_val); // ERROR[T0018]
+}

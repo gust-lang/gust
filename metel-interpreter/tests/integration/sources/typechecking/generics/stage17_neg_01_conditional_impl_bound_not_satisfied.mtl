@@ -1,0 +1,25 @@
+// RFC-0036 §4: conditional impl bound not satisfied at use site -> T0012.
+
+aspect Printable {
+    fun print(self) -> String;
+}
+
+struct Pair<A, B> {
+    first: A,
+    second: B,
+}
+
+struct NoPrint {
+    value: i64,
+}
+
+impl<A: Printable, B: Printable> Printable for Pair<A, B> {
+    fun print(self) -> String {
+        return "pair";
+    }
+}
+
+fun main() {
+    let p = Pair { first: 5, second: NoPrint { value: 0 } };
+    let s: String = p.print(); // ERROR[T0012]
+}

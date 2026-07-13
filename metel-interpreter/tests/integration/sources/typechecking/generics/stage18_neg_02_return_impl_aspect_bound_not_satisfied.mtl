@@ -1,0 +1,20 @@
+// Negative: bound not satisfied should fail with T0012
+// Function returns concrete type that doesn't implement declared aspect
+
+aspect Display {
+	fun display(&self) -> String;
+}
+
+// This struct does NOT implement Display
+struct MyInt {
+	value: i64,
+}
+
+// Function claims to return impl Display but returns MyInt
+fun bad_int() -> impl Display { // ERROR[T0012]
+	MyInt { value: 42 }
+}
+
+fun main() {
+	let val = bad_int();
+}

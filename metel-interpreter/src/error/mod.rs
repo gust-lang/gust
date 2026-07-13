@@ -38,6 +38,7 @@ pub enum TypeErrorCode {
     T0015, // Conflicting implementation
     T0016, // Function declared `-> !` does not diverge on all paths
     T0017, // Impl missing a required associated type definition (RFC-0082 §2)
+    T0018, // Naming the concrete type of an opaque `impl Aspect` return value (RFC-0037)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

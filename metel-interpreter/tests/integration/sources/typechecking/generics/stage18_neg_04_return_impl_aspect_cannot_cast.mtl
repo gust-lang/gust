@@ -1,0 +1,32 @@
+// Negative: cannot cast opaque return should fail with T0007
+// Attempting to cast impl Display to unrelated type
+
+aspect Display {
+	fun display(&self) -> String;
+}
+
+struct MyInt {
+	value: i64,
+}
+
+impl Display for MyInt {
+	fun display(&self) -> String {
+		self.value.to_string()
+	}
+}
+
+// Function returning impl Display
+fun make_int() -> impl Display {
+	MyInt { value: 42 }
+}
+
+// A completely different type
+struct MyString {
+	value: String,
+}
+
+fun main() {
+	let int_val = make_int();
+	// This should fail - cannot cast impl Display to unrelated type
+	let string_val: MyString = int_val as MyString; // ERROR[T0007]
+}

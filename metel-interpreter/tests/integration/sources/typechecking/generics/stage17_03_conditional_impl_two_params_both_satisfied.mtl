@@ -1,0 +1,29 @@
+// RFC-0036 §2.2: two-param conditional impl, both bounds satisfied.
+
+aspect Printable {
+    fun print(self) -> String;
+}
+
+impl Printable for i64 {
+    fun print(self) -> String { return "i64"; }
+}
+
+impl Printable for String {
+    fun print(self) -> String { return "string"; }
+}
+
+struct Pair<A, B> {
+    first: A,
+    second: B,
+}
+
+impl<A, B> Printable for Pair<A, B> where A: Printable, B: Printable {
+    fun print(self) -> String {
+        return "pair";
+    }
+}
+
+fun main() {
+    let p = Pair { first: 5, second: "hello" };
+    let s: String = p.print();
+}

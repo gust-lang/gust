@@ -1,0 +1,19 @@
+// Cross-module test: module2 provides its own pub fun returning impl Aspect
+
+aspect Display {
+	fun display(&self) -> String;
+}
+
+struct MyString {
+	value: String,
+}
+
+impl Display for MyString {
+	fun display(self) -> String {
+		self.value
+	}
+}
+
+pub fun make_string() -> impl Display {
+	MyString { value: "hello".to_string() }
+}

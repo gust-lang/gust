@@ -497,6 +497,7 @@ fn apply_constraint_with_coercion(
     constraint: &Constraint,
     integer_literal_vars: &HashSet<TypeVar>,
     float_literal_vars: &HashSet<TypeVar>,
+    opaque_return_vars: &HashSet<TypeVar>,
     registry: &TypeDefinitionRegistry,
 ) -> Result<(), MetelError> {
     let lhs = subst.apply(&constraint.lhs);
@@ -549,7 +550,33 @@ fn apply_constraint_with_coercion(
         integer_literal_vars,
         float_literal_vars,
         &constraint.span,
-    )
+    )?;
+    // RFC-0037: an opaque-return marker var may unify with another type
+    // variable (the ordinary case for threading it through further generic
+    // bounds, e.g. passing it to a function with its own `impl Aspect`
+    // parameter) but never resolve to a genuinely concrete type — that would
+    // let the caller "name" the concrete type the return value erases.
+    // Checked right after THIS constraint's own composition, not once at the
+    // very end of a whole solve(): by the time solving finishes, a legitimate
+    // var-to-var chain (opaque marker -> some other function's own generic
+    // parameter) is typically still just a `Var` at this point (that other
+    // function's own body is solved separately, in its own `solve()` call),
+    // so checking here can't confuse "resolved via legitimate indirection"
+    // with "the concrete type was actually named" the way a single check
+    // after full program-wide solving would.
+    for &var in opaque_return_vars {
+        let resolved = subst.apply(&InferType::Var(var));
+        if !matches!(resolved, InferType::Var(_) | InferType::Never) {
+            return Err(MetelError::type_error(
+                crate::error::TypeErrorCode::T0018,
+                format!(
+                    "cannot name the concrete type of an opaque `impl Aspect` return value; use `impl Aspect` or a generic bound instead (resolved to `{resolved}`)"
+                ),
+                &constraint.span,
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// RFC-0078 §3.2-§3.3: if `actual` names an enum with more than one variant,
@@ -695,6 +722,15 @@ pub struct TypeScheme {
     /// `assoc_eq_constraints[i]` lists `(left_proj, right_proj, type)` constraints
     /// where both sides resolve to the i-th quantified var's projection.
     pub assoc_eq_constraints: Vec<Vec<(String, String, InferType)>>,
+    /// Per-quantified-var opaque-return metadata (RFC-0037). Index-aligned with
+    /// `quantified_vars`. `Some((aspect_name, concrete_ty))` means the i-th
+    /// quantified var is a return-position `impl Aspect` occurrence whose concrete
+    /// type is fixed by the function's own body (not chosen per call, unlike an
+    /// ordinary generic). The caller never sees `concrete_ty` directly — used only
+    /// to (a) verify the aspect bound once at definition time, (b) let construction
+    /// build a concrete `Type` for the call expression and the function's own
+    /// eagerly-built body. `None` means no opaque return at this position.
+    pub opaque_returns: Vec<Option<(String, Type)>>,
     pub ty: InferType,
 }
 
@@ -709,6 +745,7 @@ impl TypeScheme {
             neg_bounds: vec![],
             assoc_projections: vec![],
             assoc_eq_constraints: vec![],
+            opaque_returns: vec![],
             ty,
         }
     }
@@ -779,6 +816,25 @@ impl TypeScheme {
             .collect();
         self
     }
+
+    /// Attach per-var opaque-return metadata (RFC-0037), given a `TypeVar` →
+    /// `(aspect_name, concrete_type)` map. Mirrors `with_bounds`/`with_neg_bounds`:
+    /// robust to quantifier ordering, each quantified var looks up its own entry.
+    #[must_use]
+    pub fn with_opaque_returns(
+        mut self,
+        by_var: &std::collections::HashMap<TypeVar, (String, Type)>,
+    ) -> Self {
+        if by_var.is_empty() {
+            return self;
+        }
+        self.opaque_returns = self
+            .quantified_vars
+            .iter()
+            .map(|v| by_var.get(v).cloned())
+            .collect();
+        self
+    }
 }
 
 impl std::fmt::Display for TypeScheme {
@@ -816,6 +872,7 @@ pub fn generalize(ty: InferType, env_free_vars: &HashSet<TypeVar>) -> TypeScheme
         neg_bounds: vec![],
         assoc_projections: vec![],
         assoc_eq_constraints: vec![],
+        opaque_returns: vec![],
         ty,
     }
 }
@@ -917,6 +974,12 @@ pub type AssocProjectionMemo = HashMap<(TypeVar, String, String), TypeVar>;
 /// Insertion-order log of every projection placeholder minted during one
 /// function/method body: `(base_tv, aspect, assoc_name, placeholder_tv)`.
 pub type AssocProjectionLog = Vec<(TypeVar, String, String, TypeVar)>;
+/// One conditional impl's per-position bound requirements: `(pos_bounds, neg_bounds)`,
+/// see `TypeDefinitionRegistry::conditional_impl_bounds`.
+pub type ConditionalImplBoundEntry = (Vec<Vec<String>>, Vec<Vec<String>>);
+/// One registered method scheme variant: `(scheme, struct_tvars)`,
+/// see `TypeDefinitionRegistry::method_scheme_variants`.
+pub type MethodSchemeVariant = (TypeScheme, Vec<TypeVar>);
 
 #[derive(Debug, Clone)]
 pub struct TypeDefinitionRegistry {
@@ -933,6 +996,13 @@ pub struct TypeDefinitionRegistry {
     /// type params. Key: (`type_name`, `method_name`) → (scheme, `struct_tvars_ordered`).
     /// `struct_tvars_ordered`[i] corresponds to the i-th type arg of the receiver at the call site.
     method_scheme_env: HashMap<String, HashMap<String, (TypeScheme, Vec<TypeVar>)>>,
+    /// RFC-0036 §3.1: multiple conditional impls of the same aspect for the same struct
+    /// providing the same method name. Key: (`type_name`, `method_name`) → Vec of
+    /// (scheme, `struct_tvars`). `register_method_scheme_variant` pushes; `method_scheme_for`
+    /// (singular) keeps returning the last-registered entry for backward compatibility.
+    /// NOTE: nothing currently reads this list back to disambiguate between variants —
+    /// see the open question flagged in commit e20718e / issue #264.
+    method_scheme_variants: HashMap<String, HashMap<String, Vec<MethodSchemeVariant>>>,
     /// Per-type-param aspect bounds for generic structs and enums.
     /// Key: type name. Value: one Vec<String> per type param (same order as `struct_type_params`),
     /// each containing the aspect names that param must satisfy.
@@ -991,6 +1061,21 @@ pub struct TypeDefinitionRegistry {
     /// would make a local `From`/`Iterable` declaration invisibly shadow the builtin
     /// one for this bookkeeping — a real regression caught by that exact test.
     impl_aspect_env: HashMap<(SymbolId, String), Vec<Vec<Type>>>,
+    /// RFC-0036 §2.2/§3.1: per-conditional-impl bound metadata.
+    /// Key: `(target_type_id, aspect_name)`. Value: Vec of `(pos_bounds, neg_bounds)`
+    /// where `pos_bounds[i]` / `neg_bounds[i]` are the aspect names required / forbidden
+    /// at the i-th type-argument position of the target type, for ONE conditional impl.
+    /// Populated INSTEAD OF `impl_aspect_env` when `is_generic_target && (impl_bounds ||
+    /// impl_neg_bounds non-empty)` — see `register_conditional_impl_bounds`.
+    conditional_impl_bounds: HashMap<(SymbolId, String), Vec<ConditionalImplBoundEntry>>,
+    /// RFC-0060 §5 / issue #244: concrete (no impl-level generics) negative impls,
+    /// keyed by `(target_type_id, aspect_name)`. Value: one `Vec<Type>` per registered
+    /// negative impl, the target's own concrete type args (e.g. `[i64]` for
+    /// `impl !Marker for Foo<i64> {}`) — consulted by `type_satisfies_aspect` to let
+    /// an explicit negative impl override a blanket positive impl for this exact
+    /// instantiation. Blanket/conditional negative impls are out of scope (decision 9,
+    /// `registry.rs`) and never populate this table.
+    neg_impl_env: HashMap<(SymbolId, String), Vec<Vec<Type>>>,
     /// Global `(module, name) -> SymbolId` table. See `impl_aspect_env`'s doc.
     symbols: Rc<HashMap<(Vec<String>, String), SymbolId>>,
     /// Every module's resolved import scope. See `impl_aspect_env`'s doc.
@@ -1011,6 +1096,7 @@ impl TypeDefinitionRegistry {
             struct_type_params: HashMap::new(),
             struct_generic_names: HashMap::new(),
             method_scheme_env: HashMap::new(),
+            method_scheme_variants: HashMap::new(),
             type_param_bounds: HashMap::new(),
             neg_type_param_bounds: HashMap::new(),
             fun_bounds: HashMap::new(),
@@ -1025,6 +1111,8 @@ impl TypeDefinitionRegistry {
             aspect_decl_modules: HashMap::new(),
             aspect_method_defs: HashMap::new(),
             impl_aspect_env: HashMap::new(),
+            conditional_impl_bounds: HashMap::new(),
+            neg_impl_env: HashMap::new(),
             symbols: Rc::new(HashMap::new()),
             scopes: Rc::new(HashMap::new()),
             aspect_assoc_type_decls: HashMap::new(),
@@ -1155,6 +1243,160 @@ impl TypeDefinitionRegistry {
         method_name: &str,
     ) -> Option<&(TypeScheme, Vec<TypeVar>)> {
         self.method_scheme_env.get(type_name)?.get(method_name)
+    }
+
+    /// Push a variant method scheme (RFC-0036 §3.1 multi-impl dispatch).
+    pub fn register_method_scheme_variant(
+        &mut self,
+        type_name: String,
+        method_name: String,
+        scheme: TypeScheme,
+        struct_tvars: Vec<TypeVar>,
+    ) {
+        self.method_scheme_variants
+            .entry(type_name)
+            .or_default()
+            .entry(method_name)
+            .or_default()
+            .push((scheme, struct_tvars));
+    }
+
+    /// Register the conditional impl bounds for a `(target_id, aspect)` key (RFC-0036).
+    pub fn register_conditional_impl_bounds(
+        &mut self,
+        current_module: &[String],
+        target: &str,
+        aspect: &str,
+        pos_bounds: Vec<Vec<String>>,
+        neg_bounds: Vec<Vec<String>>,
+    ) {
+        let Some(target_id) = self.resolve_type_position_id(current_module, target) else {
+            return;
+        };
+        self.conditional_impl_bounds
+            .entry((target_id, aspect.to_string()))
+            .or_default()
+            .push((pos_bounds, neg_bounds));
+    }
+
+    /// Register a concrete negative impl (RFC-0060 §5 / issue #244): `impl !Aspect
+    /// for Target` with no impl-level generics. `target_args` is the target's own
+    /// concrete type-arg list (e.g. `[i64]` for `impl !Marker for Foo<i64> {}`).
+    pub fn register_neg_impl(
+        &mut self,
+        current_module: &[String],
+        target: &str,
+        aspect: &str,
+        target_args: Vec<Type>,
+    ) {
+        let Some(target_id) = self.resolve_type_position_id(current_module, target) else {
+            return;
+        };
+        self.neg_impl_env
+            .entry((target_id, aspect.to_string()))
+            .or_default()
+            .push(target_args);
+    }
+
+    /// Whether an explicit negative impl exists for this exact concrete instantiation
+    /// (RFC-0060 §5 priority: a negative impl overrides a blanket positive impl).
+    fn neg_impl_overrides(&self, target_id: SymbolId, aspect_name: &str, type_args: &[Type]) -> bool {
+        self.neg_impl_env
+            .get(&(target_id, aspect_name.to_string()))
+            .is_some_and(|entries| entries.iter().any(|args| args.as_slice() == type_args))
+    }
+
+    /// Check one conditional impl entry: for each type-argument position, every
+    /// positive bound aspect must be satisfied and every negative bound aspect must
+    /// not be satisfied.
+    fn check_conditional_entry(
+        &self,
+        current_module: &[String],
+        type_args: &[Type],
+        pos_bounds: &[Vec<String>],
+        neg_bounds: &[Vec<String>],
+    ) -> bool {
+        for (i, arg) in type_args.iter().enumerate() {
+            if let Some(required) = pos_bounds.get(i) {
+                for aspect in required {
+                    if !self.type_satisfies_aspect(current_module, arg, aspect) {
+                        return false;
+                    }
+                }
+            }
+            if let Some(forbidden) = neg_bounds.get(i) {
+                for aspect in forbidden {
+                    if self.type_satisfies_aspect(current_module, arg, aspect) {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    }
+
+    /// Check whether a concrete `Type` satisfies `aspect_name`, recursing into
+    /// nested generic type arguments. Consults `conditional_impl_bounds` (RFC-0036)
+    /// in addition to the unconditional `impl_aspect_env`.
+    #[must_use]
+    pub fn type_satisfies_aspect(
+        &self,
+        current_module: &[String],
+        ty: &Type,
+        aspect_name: &str,
+    ) -> bool {
+        let (name, inner_args) = match ty {
+            Type::Named(n, args) => (n.as_str(), args.as_slice()),
+            other => {
+                // Primitives — convert to registry name and check directly.
+                let name = match other {
+                    Type::Str => "String",
+                    Type::Boolean => "boolean",
+                    Type::Char => "Char",
+                    Type::I8 => "i8",
+                    Type::I16 => "i16",
+                    Type::I32 => "i32",
+                    Type::I64 => "i64",
+                    Type::U8 => "u8",
+                    Type::U16 => "u16",
+                    Type::U32 => "u32",
+                    Type::U64 => "u64",
+                    Type::F32 => "f32",
+                    Type::F64 => "f64",
+                    _ => return false,
+                };
+                let Some(target_id) = self.resolve_type_position_id(current_module, name) else {
+                    return false;
+                };
+                if self.neg_impl_overrides(target_id, aspect_name, &[]) {
+                    return false;
+                }
+                return self.impl_aspect_env_has(current_module, name, aspect_name);
+            }
+        };
+        // RFC-0060 §5: an explicit negative impl for this exact instantiation
+        // overrides everything else — check this before consulting either the
+        // unconditional or conditional-impl positive paths.
+        if let Some(target_id) = self.resolve_type_position_id(current_module, name) {
+            if self.neg_impl_overrides(target_id, aspect_name, inner_args) {
+                return false;
+            }
+        }
+        // Direct check.
+        if self.impl_aspect_env_has(current_module, name, aspect_name) {
+            return true;
+        }
+        // Check conditional impls for this named type.
+        if let Some(target_id) = self.resolve_type_position_id(current_module, name) {
+            if let Some(entries) = self.conditional_impl_bounds.get(&(target_id, aspect_name.to_string())) {
+                for (pos_bounds, neg_bounds) in entries {
+                    if self.check_conditional_entry(current_module, inner_args, pos_bounds, neg_bounds) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
 
     pub fn register_type_param_bounds(&mut self, name: String, bounds: Vec<Vec<String>>) {
@@ -1468,6 +1710,17 @@ impl TypeDefinitionRegistry {
                     .or_insert_with(|| scheme.clone());
             }
         }
+        for (k, v) in &other.method_scheme_variants {
+            // Concatenate variant lists (cross-module conditional impls for the
+            // same method are legitimate).
+            let entry = self.method_scheme_variants.entry(k.clone()).or_default();
+            for (method_name, variants) in v {
+                entry
+                    .entry(method_name.clone())
+                    .or_default()
+                    .extend(variants.iter().cloned());
+            }
+        }
         for (k, v) in &other.type_param_bounds {
             self.type_param_bounds
                 .entry(k.clone())
@@ -1540,6 +1793,20 @@ impl TypeDefinitionRegistry {
                 .entry(k.clone())
                 .or_insert_with(|| v.clone());
         }
+        for (k, v) in &other.conditional_impl_bounds {
+            // Concatenate: multiple modules can each declare a conditional impl
+            // for the same (target, aspect) pair.
+            self.conditional_impl_bounds
+                .entry(k.clone())
+                .or_default()
+                .extend(v.iter().cloned());
+        }
+        for (k, v) in &other.neg_impl_env {
+            self.neg_impl_env
+                .entry(k.clone())
+                .or_default()
+                .extend(v.iter().cloned());
+        }
         for (k, v) in &other.aspect_assoc_type_decls {
             self.aspect_assoc_type_decls
                 .entry(k.clone())
@@ -1600,6 +1867,9 @@ pub struct InferContext {
     /// `TypeVars` introduced by unsuffixed float literals (`3.14`, `2.0`).
     /// Any such var that is still free after constraint solving defaults to `f64`.
     float_literal_vars: HashSet<TypeVar>,
+    /// `TypeVars` for opaque return values (RFC-0037). These vars must NOT be bound
+    /// to concrete types by the caller - they should remain abstract to enforce opacity.
+    opaque_return_vars: HashSet<TypeVar>,
     cached_subst: Substitution,
     solved_constraint_count: usize,
     solve_stats: SolveStats,
@@ -1668,6 +1938,7 @@ impl InferContext {
             deferred_glob_conflicts: HashMap::new(),
             integer_literal_vars: HashSet::new(),
             float_literal_vars: HashSet::new(),
+            opaque_return_vars: HashSet::new(),
             cached_subst: Substitution::new(),
             solved_constraint_count: 0,
             solve_stats: SolveStats::default(),
@@ -1770,6 +2041,7 @@ impl InferContext {
             .has_from_impl(&self.current_module_path, target, source)
     }
 
+
     #[must_use]
     pub fn iterable_elem_type(&self, target: &str) -> Option<&Type> {
         self.registry
@@ -1819,6 +2091,16 @@ impl InferContext {
     #[must_use]
     pub fn bounds_for_type_var(&self, tv: TypeVar) -> Option<&Vec<String>> {
         self.current_type_param_bounds.get(&tv)
+    }
+
+    /// Register an aspect bound for a type variable (for opaque return values).
+    pub fn register_type_var_bound(&mut self, tv: TypeVar, aspect: String) {
+        self.current_type_param_bounds.entry(tv).or_default().push(aspect);
+    }
+
+    /// Mark a type variable as an opaque return that should not be bound to concrete types.
+    pub fn mark_opaque_return_var(&mut self, tv: TypeVar) {
+        self.opaque_return_vars.insert(tv);
     }
 
     /// Read-only view of all type-param bounds in the current scope (for debug assertions).
@@ -1909,6 +2191,17 @@ impl InferContext {
     ) {
         self.registry
             .register_method_scheme(type_name, method_name, scheme, struct_tvars);
+    }
+
+    pub fn register_method_scheme_variant(
+        &mut self,
+        type_name: String,
+        method_name: String,
+        scheme: TypeScheme,
+        struct_tvars: Vec<TypeVar>,
+    ) {
+        self.registry
+            .register_method_scheme_variant(type_name, method_name, scheme, struct_tvars);
     }
 
     #[must_use]
@@ -2093,6 +2386,17 @@ impl InferContext {
         }
     }
 
+    /// Look up a polymorphic scheme by name without instantiation.
+    /// Used for checking opaque return metadata without instantiating.
+    #[must_use]
+    pub fn poly_scheme(&self, name: &str) -> Option<TypeScheme> {
+        self.poly_env
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name))
+            .cloned()
+    }
+
     /// Look up a name's type regardless of its mutability, or `None` if it isn't bound.
     /// Used by RFC-0067a's write-through rule: a non-`mut` binding of type `&mut T` may
     /// still be written through (the exclusivity comes from the reference, not the
@@ -2172,6 +2476,7 @@ impl InferContext {
                 constraint,
                 &self.integer_literal_vars,
                 &self.float_literal_vars,
+                &self.opaque_return_vars,
                 &self.registry,
             )?;
         }
@@ -2181,6 +2486,7 @@ impl InferContext {
         self.solve_stats.solve_ns += started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
         self.solved_constraint_count = self.constraints.len();
         self.cached_subst = subst.clone();
+
         Ok(subst)
     }
 

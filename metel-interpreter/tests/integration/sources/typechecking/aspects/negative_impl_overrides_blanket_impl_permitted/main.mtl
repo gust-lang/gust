@@ -1,0 +1,24 @@
+// RFC-0060 §5: a negative impl beats a blanket positive impl for the same
+// concrete type -- permitted (no T0015), and the negative impl wins for bound
+// satisfaction (Foo<i64>: !Marker holds).
+
+aspect Marker {
+    fun mark(self) -> String;
+}
+
+struct Foo<T> {
+    value: T,
+}
+
+impl<T> Marker for Foo<T> {
+    fun mark(self) -> String { return "blanket"; }
+}
+
+impl !Marker for Foo<i64> {}
+
+fun needs_not_marker<U: !Marker>(x: U) {}
+
+fun main() {
+    let f = Foo { value: 5 };
+    needs_not_marker(f);
+}
