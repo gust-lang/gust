@@ -485,12 +485,50 @@ fn register_program_decls(
                             }
                         })
                         .collect();
-                    registry.register_aspect_impl(
-                        current_module_path,
-                        &target_name,
-                        aspect_name,
-                        type_args,
-                    );
+                    // RFC-0036 §2.2/§3.1: when `is_generic_target` and the impl
+                    // carries conditional bounds, register into
+                    // `conditional_impl_bounds` INSTEAD OF the unconditional
+                    // `impl_aspect_env` — this fixes the confirmed bug where a
+                    // conditional impl was silently marking the aspect as
+                    // unconditionally implemented.
+                    if is_generic_target {
+                        let generic_names = registry
+                            .struct_generic_names_for(target_name.as_str())
+                            .cloned()
+                            .unwrap_or_default();
+                        let synth = synth_generics_for_impl(&generic_names, &ib.generics);
+                        let pos_bounds = collect_type_param_bounds(&synth, ib.where_clause.as_ref());
+                        let neg_bounds = collect_negative_type_param_bounds(&synth, ib.where_clause.as_ref());
+                        if pos_bounds.iter().any(|b| !b.is_empty())
+                            || neg_bounds.iter().any(|b| !b.is_empty())
+                        {
+                            registry.register_conditional_impl_bounds(
+                                current_module_path,
+                                &target_name,
+                                aspect_name,
+                                pos_bounds,
+                                neg_bounds,
+                            );
+                        } else {
+                            // Unconditional generic impl (no conditional bounds)
+                            // — register normally so `aspect_satisfied_by` fallback
+                            // works.
+                            registry.register_aspect_impl(
+                                current_module_path,
+                                &target_name,
+                                aspect_name,
+                                type_args,
+                            );
+                        }
+                    } else {
+                        // Non-generic target: unconditional impl as before.
+                        registry.register_aspect_impl(
+                            current_module_path,
+                            &target_name,
+                            aspect_name,
+                            type_args,
+                        );
+                    }
                     // RFC-0082 §2: register concrete associated-type bindings for
                     // non-generic impls. Generic impls are deferred to #241.
                     if !is_generic_target && !ib.assoc_type_defs.is_empty() {
