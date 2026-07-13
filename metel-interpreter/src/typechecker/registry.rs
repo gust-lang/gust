@@ -2,7 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use super::conversions::{
-    type_expr_to_infer, type_expr_to_infer_with_generics, type_expr_to_infer_with_self,
+    type_expr_to_infer, type_expr_to_infer_with_assoc_ctx, type_expr_to_infer_with_generics,
+    type_expr_to_infer_with_self, AssocResolveCtx,
 };
 use crate::ast::{
     AspectDecl, AspectMethod, Decl, GenericParam, Polarity, Program, Span, TypeExpr, WhereClause,
@@ -418,7 +419,13 @@ fn register_program_decls(
                 // has the aspect's default methods callable, exactly backwards from
                 // what `impl !Aspect` means.
                 if ib.polarity == Polarity::Positive {
-                    register_default_aspect_methods(ib, &target_name, gen, registry);
+                    register_default_aspect_methods(
+                        ib,
+                        &target_name,
+                        gen,
+                        registry,
+                        current_module_path,
+                    );
                 }
             }
             // Track which aspects this type implements (with concrete type args).
@@ -653,6 +660,7 @@ fn register_default_aspect_methods(
     target_name: &str,
     gen: &mut TypeVarGenerator,
     registry: &mut TypeDefinitionRegistry,
+    current_module_path: &[String],
 ) {
     let Some(aspect_name) = &ib.aspect_name else {
         return;
@@ -667,16 +675,35 @@ fn register_default_aspect_methods(
         if method.default_body.is_none() || provided.contains(method.name.as_str()) {
             continue;
         }
-        register_default_aspect_method(&method, target_name, gen, registry);
+        register_default_aspect_method(
+            &method,
+            target_name,
+            aspect_name,
+            gen,
+            registry,
+            current_module_path,
+        );
     }
 }
 
 fn register_default_aspect_method(
     method: &AspectMethod,
     target_name: &str,
+    aspect_name: &str,
     gen: &mut TypeVarGenerator,
     registry: &mut TypeDefinitionRegistry,
+    current_module_path: &[String],
 ) {
+    // RFC-0082 §1.2: bare associated-type names inside the aspect's own method
+    // signatures (e.g. `Item` in `fun get_twice(self) -> Item { ... }`, sugar for
+    // `Self::Item`) must resolve to the concrete binding this specific impl gave
+    // for `Item`, not fall through to a dangling `Named("Item", [])`.
+    let assoc_ctx = AssocResolveCtx {
+        registry,
+        current_module: current_module_path,
+        current_aspect: Some(aspect_name),
+    };
+    let empty_generics = std::collections::HashMap::new();
     let mut param_types = vec![];
     for p in &method.params {
         let pt = if p.name == "self" {
@@ -685,7 +712,12 @@ fn register_default_aspect_method(
                 InferType::Concrete,
             )
         } else if let Some(ann) = &p.type_ann {
-            type_expr_to_infer_with_self(ann, target_name)
+            type_expr_to_infer_with_assoc_ctx(
+                ann,
+                &empty_generics,
+                Some(target_name),
+                &assoc_ctx,
+            )
         } else {
             InferType::Var(gen.fresh())
         };
@@ -695,7 +727,7 @@ fn register_default_aspect_method(
         .return_type
         .as_ref()
         .map_or_else(InferType::unit, |ann| {
-            type_expr_to_infer_with_self(ann, target_name)
+            type_expr_to_infer_with_assoc_ctx(ann, &empty_generics, Some(target_name), &assoc_ctx)
         });
     registry.register_method(
         target_name.to_string(),

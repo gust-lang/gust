@@ -82,6 +82,15 @@ struct FunGeneralization {
     bounds: HashMap<TypeVar, Vec<String>>,
     /// Maps `TypeVar` ID → negative aspect bounds (RFC-0072, issue #243).
     neg_bounds: HashMap<TypeVar, Vec<String>>,
+    /// Maps final (post-solve) `TypeVar` ID → associated-type projection metadata
+    /// (RFC-0082, issue #242), attached to the re-generalized scheme so a function
+    /// returning `T::AssocType` still resolves correctly when called through the
+    /// re-exported `scheme_env` (which is what the construction pass actually
+    /// reads, not the local scheme bound during inference).
+    assoc_projections: HashMap<TypeVar, (usize, String, String, TypeVar)>,
+    /// Maps `TypeVar` ID → associated-type equality constraints (RFC-0082 §4,
+    /// issue #242), same re-export rationale as `assoc_projections` above.
+    assoc_eq: HashMap<TypeVar, Vec<(String, String, InferType)>>,
 }
 
 // ── CorePrelude ────────────────────────────────────────────────────────────────
@@ -803,7 +812,11 @@ fn check_impl_with_report(
         // Applying the final module-level subst would collapse generic TypeVars that
         // happened to appear in other functions' constraints. (METEL-137)
         let scheme =
-            generalize_with_names(fg.fun_ty, &fg.env_fvs, &fg.name_map).with_bounds(&fg.bounds).with_neg_bounds(&fg.neg_bounds);
+            generalize_with_names(fg.fun_ty, &fg.env_fvs, &fg.name_map)
+                .with_bounds(&fg.bounds)
+                .with_neg_bounds(&fg.neg_bounds)
+                .with_assoc_projections(&fg.assoc_projections)
+                .with_assoc_eq_constraints(&fg.assoc_eq);
         scheme_env.insert(fg.name, scheme);
     }
     // Imported schemes must be visible in the construction pass so calls to imported

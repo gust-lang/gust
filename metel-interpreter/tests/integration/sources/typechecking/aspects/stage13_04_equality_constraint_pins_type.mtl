@@ -1,0 +1,28 @@
+// Positive: RFC-0082 §4 equality constraint (`Aspect<AssocType = ConcreteType>`)
+// pins T::Item to a known concrete type; a call whose impl's Item really is
+// that type succeeds.
+
+aspect Container {
+    type Item: Display;
+    fun get(self) -> Item;
+}
+
+struct IntBox {
+    value: i64,
+}
+
+impl Container for IntBox {
+    type Item = i64;
+    fun get(self) -> i64 {
+        return self.value;
+    }
+}
+
+fun needs_int_item<T: Container<Item = i64>>(x: T) -> i64 {
+    return x.get();
+}
+
+fun main() {
+    let b = IntBox { value: 7 };
+    assert(needs_int_item(b) == 7);
+}

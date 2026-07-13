@@ -18,7 +18,7 @@ use super::conversions::{
 };
 use super::FunGeneralization;
 
-/// Build the per-quantified-var assoc_projections map from the body's recorded
+/// Build the per-quantified-var `assoc_projections` map from the body's recorded
 /// projection log and the post-solve substitution. Each entry
 /// `(base_tv, aspect, assoc, placeholder)` is resolved through `subst`; if
 /// `base_tv` is still a free `Var` after resolution, it's a quantified var in
@@ -31,9 +31,8 @@ fn build_assoc_projection_map(
     use std::collections::HashMap;
     let mut map: HashMap<TypeVar, (usize, String, String, TypeVar)> = HashMap::new();
     for (base_tv, aspect, assoc, placeholder) in body_assoc_log {
-        let resolved = match subst.apply(&InferType::Var(*base_tv)) {
-            InferType::Var(v) => v,
-            _ => continue,
+        let InferType::Var(resolved) = subst.apply(&InferType::Var(*base_tv)) else {
+            continue;
         };
         if let Some(pos) = scheme.quantified_vars.iter().position(|&v| v == resolved) {
             map.entry(resolved)
@@ -90,6 +89,7 @@ struct NativeFunTyResult {
     fun_ty: InferType,
     bounds: HashMap<TypeVar, Vec<String>>,
     neg_bounds: HashMap<TypeVar, Vec<String>>,
+    assoc_eq: HashMap<TypeVar, Vec<(String, String, InferType)>>,
 }
 
 fn native_fun_ty(
@@ -102,6 +102,7 @@ fn native_fun_ty(
     let generic_map = fun_generic_map(fun, ctx);
     let bounds_by_var = collect_fun_type_var_bounds(fun, &generic_map);
     let neg_bounds_by_var = collect_negative_fun_type_var_bounds(fun, &generic_map);
+    let assoc_eq_by_var = collect_fun_assoc_eq_constraints(fun, &generic_map);
     let te_to_infer = |te: &TypeExpr| -> InferType {
         if generic_map.is_empty() {
             type_expr_to_infer(te)
@@ -131,6 +132,7 @@ fn native_fun_ty(
         fun_ty: InferType::Fun(param_types, Box::new(ret_ty)),
         bounds: bounds_by_var,
         neg_bounds: neg_bounds_by_var,
+        assoc_eq: assoc_eq_by_var,
     })
 }
 
@@ -150,7 +152,7 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
             if fun.native.is_some() {
                 if let Ok(result) = native_fun_ty(fun, ctx) {
                     let env_fvs = ctx.env_free_vars();
-                    ctx.bind_poly(&fun.name, generalize(result.fun_ty, &env_fvs).with_bounds(&result.bounds).with_neg_bounds(&result.neg_bounds));
+                    ctx.bind_poly(&fun.name, generalize(result.fun_ty, &env_fvs).with_bounds(&result.bounds).with_neg_bounds(&result.neg_bounds).with_assoc_eq_constraints(&result.assoc_eq));
                 }
                 continue;
             }
@@ -170,6 +172,10 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                 if !neg_type_var_bounds.is_empty() {
                     ctx.register_neg_fun_bounds(fun.name.clone(), neg_type_var_bounds.clone());
                 }
+                let assoc_eq_by_var = collect_fun_assoc_eq_constraints(fun, &generic_map);
+                if !assoc_eq_by_var.is_empty() {
+                    ctx.register_fun_assoc_eq_constraints(fun.name.clone(), assoc_eq_by_var);
+                }
 
                 let te_to_infer = |te: &TypeExpr, ctx: &mut InferContext| -> InferType {
         if let TypeExpr::Projection {
@@ -180,7 +186,14 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
         {
                         if let TypeExpr::Named(ref n, _) = **base {
                             if let Some(&base_tv) = generic_map.get(n.as_str()) {
-                                if let Some(bounds) = ctx.bounds_for_type_var(base_tv) {
+                                // NOTE: use the locally-computed `type_var_bounds` map, not
+                                // `ctx.bounds_for_type_var` -- that reads `current_type_param_bounds`,
+                                // which is only populated by `swap_type_param_bounds` during body
+                                // inference (`infer_fun_decl`), which hasn't run yet at hoist time.
+                                // Using it here always finds no bounds and silently produces a
+                                // stale, unresolved `Named("T::Item", [])` that then fails to unify
+                                // with the correctly-resolved type computed later.
+                                if let Some(bounds) = type_var_bounds.get(&base_tv) {
                                     for aspect in bounds {
                                         if let Some(decls) =
                                             ctx.registry().aspect_assoc_type_decls(aspect)
@@ -348,6 +361,51 @@ pub(super) fn collect_negative_fun_type_var_bounds(
     map
 }
 
+/// Collect equality constraints (`Aspect<AssocType = ConcreteType>`, RFC-0082 §4)
+/// per generic type variable. Mirrors `collect_fun_type_var_bounds`'s shape, but
+/// reads `Bound.assoc_bindings` instead of just the bound's aspect name. Each
+/// entry is `(aspect_name, assoc_name, expected_infer_type)` — `expected_infer_type`
+/// is converted via `type_expr_to_infer_with_generics` so a sibling type param
+/// (the `U` in `Deref<Target = U>`, RFC-0082 §3a's escape hatch) stays a `TypeVar`
+/// rather than becoming a dangling `Named("U", [])`.
+pub(super) fn collect_fun_assoc_eq_constraints(
+    fun: &FunDecl,
+    generic_map: &HashMap<String, TypeVar>,
+) -> HashMap<TypeVar, Vec<(String, String, InferType)>> {
+    let mut map: HashMap<TypeVar, Vec<(String, String, InferType)>> = HashMap::new();
+    let mut collect_from_bounds = |tv: TypeVar, bounds: &[Bound]| {
+        for b in bounds {
+            if b.polarity != Polarity::Positive || b.assoc_bindings.is_empty() {
+                continue;
+            }
+            let TypeExpr::Named(aspect_name, _) = &b.aspect else {
+                continue;
+            };
+            for (assoc_name, assoc_ty) in &b.assoc_bindings {
+                let expected = type_expr_to_infer_with_generics(assoc_ty, generic_map);
+                map.entry(tv).or_default().push((
+                    aspect_name.clone(),
+                    assoc_name.clone(),
+                    expected,
+                ));
+            }
+        }
+    };
+    for gp in &fun.generics {
+        if let Some(&tv) = generic_map.get(&gp.name) {
+            collect_from_bounds(tv, &gp.bounds);
+        }
+    }
+    if let Some(wc) = &fun.where_clause {
+        for (param_name, bounds) in &wc.constraints {
+            if let Some(&tv) = generic_map.get(param_name.as_str()) {
+                collect_from_bounds(tv, bounds);
+            }
+        }
+    }
+    map
+}
+
 pub(super) fn infer_program(
     program: &Program,
     ctx: &mut InferContext,
@@ -359,6 +417,10 @@ pub(super) fn infer_program(
     Ok(())
 }
 
+// Exhaustive match over every AST/type-system variant; splitting it up would
+// scatter one coherent dispatch table across many small functions with no
+// real gain in clarity.
+#[allow(clippy::too_many_lines)]
 fn infer_decl(
     decl: &Decl,
     ctx: &mut InferContext,
@@ -391,6 +453,8 @@ fn infer_decl(
                         name_map: HashMap::new(),
                         bounds: HashMap::new(),
                         neg_bounds: HashMap::new(),
+                        assoc_projections: HashMap::new(),
+                        assoc_eq: HashMap::new(),
                     });
                     return Ok(InferType::unit());
                 }
@@ -485,7 +549,7 @@ fn infer_decl(
                                             // concrete binding is also concrete, so we can
                                             // check via the registry's impl_aspect_env.
                                             let concrete_name = match &concrete_infer {
-                                                InferType::Concrete(t) => Some(format!("{}", t)),
+                                                InferType::Concrete(t) => Some(format!("{t}")),
                                                 InferType::Named(n, _) => Some(n.clone()),
                                                 _ => None,
                                             };
@@ -526,8 +590,18 @@ fn infer_decl(
             for method in &ib.methods {
                 infer_impl_method(method, &target_name, ctx, fun_generalizations)?;
             }
-            for method in &inherited_defaults {
-                infer_default_aspect_method(method, &target_name, ctx, fun_generalizations)?;
+            // `inherited_defaults` is only ever populated inside the `Some(aspect_name)`
+            // branch above, so this is always `Some` when the loop body runs.
+            if let Some(aspect_name) = ib.aspect_name.as_deref() {
+                for method in &inherited_defaults {
+                    infer_default_aspect_method(
+                        method,
+                        &target_name,
+                        aspect_name,
+                        ctx,
+                        fun_generalizations,
+                    )?;
+                }
             }
             Ok(InferType::unit())
         }
@@ -547,7 +621,7 @@ fn infer_fun_decl(
     // Native functions have no Metel body to infer. Validate and record their
     // annotated signature for the construction pass; dispatch is by NativeKey.
     if fun.native.is_some() {
-        let NativeFunTyResult { fun_ty, bounds, neg_bounds } = native_fun_ty(fun, ctx)?;
+        let NativeFunTyResult { fun_ty, bounds, neg_bounds, assoc_eq } = native_fun_ty(fun, ctx)?;
         // Overloaded native definitions (std::core's assert pair) are
         // dispatched by SymbolId and never enter the name-keyed scheme env.
         if ctx.is_overloaded(&fun.name) {
@@ -556,7 +630,7 @@ fn infer_fun_decl(
         let env_fvs = ctx.env_free_vars();
         ctx.bind_poly(
             &fun.name,
-            generalize(fun_ty.clone(), &env_fvs).with_bounds(&bounds).with_neg_bounds(&neg_bounds),
+            generalize(fun_ty.clone(), &env_fvs).with_bounds(&bounds).with_neg_bounds(&neg_bounds).with_assoc_eq_constraints(&assoc_eq),
         );
         fun_generalizations.push(FunGeneralization {
             name: fun.name.clone(),
@@ -565,6 +639,8 @@ fn infer_fun_decl(
             name_map: HashMap::new(),
             bounds,
             neg_bounds,
+            assoc_projections: HashMap::new(),
+            assoc_eq,
         });
         return Ok(());
     }
@@ -580,6 +656,10 @@ fn infer_fun_decl(
     let neg_type_var_bounds = collect_negative_fun_type_var_bounds(fun, &generic_map);
     if !neg_type_var_bounds.is_empty() {
         ctx.register_neg_fun_bounds(fun.name.clone(), neg_type_var_bounds.clone());
+    }
+    let assoc_eq_by_var = collect_fun_assoc_eq_constraints(fun, &generic_map);
+    if !assoc_eq_by_var.is_empty() {
+        ctx.register_fun_assoc_eq_constraints(fun.name.clone(), assoc_eq_by_var.clone());
     }
 
     let te_to_infer = |te: &TypeExpr, ctx: &mut InferContext| -> Result<InferType, MetelError> {
@@ -706,11 +786,19 @@ fn infer_fun_decl(
 
     let scheme = generalize(resolved_ty.clone(), &env_fvs);
     // Attach assoc_projections if any projections were recorded during body inference.
-    let scheme = if !body_assoc_log.is_empty() {
-        let proj_map = build_assoc_projection_map(&body_assoc_log, &partial_subst, &scheme);
-        scheme.with_assoc_projections(&proj_map)
+    // `proj_map` is already keyed by the FINAL (post-`partial_subst`) TypeVar (see
+    // `build_assoc_projection_map`), so it's carried into `FunGeneralization` as-is,
+    // with no further remapping needed -- unlike `bounds`/`neg_bounds` below, which
+    // are collected pre-solve and must still be remapped through `partial_subst`.
+    let proj_map = if body_assoc_log.is_empty() {
+        HashMap::new()
     } else {
+        build_assoc_projection_map(&body_assoc_log, &partial_subst, &scheme)
+    };
+    let scheme = if proj_map.is_empty() {
         scheme
+    } else {
+        scheme.with_assoc_projections(&proj_map)
     };
     ctx.bind_poly(fun.name.clone(), scheme);
 
@@ -744,6 +832,29 @@ fn infer_fun_decl(
             },
         )
         .collect();
+    // Remap equality constraints (RFC-0082 §4) the same way as bounds/neg_bounds:
+    // keyed by the ORIGINAL declared TypeVar (from collect_fun_assoc_eq_constraints),
+    // re-keyed to the FINAL post-solve TypeVar so it lines up with `resolved_ty`'s
+    // free vars (what `generalize` re-quantifies over). Each constraint's expected
+    // `InferType` is also substituted, since it may itself reference another
+    // generic param (the `U` in `Deref<Target = U>`, RFC-0082 §3a's escape hatch).
+    let assoc_eq: HashMap<TypeVar, Vec<(String, String, InferType)>> = assoc_eq_by_var
+        .iter()
+        .filter_map(
+            |(orig_tv, constraints)| match partial_subst.apply(&InferType::Var(*orig_tv)) {
+                InferType::Var(final_tv) => Some((
+                    final_tv,
+                    constraints
+                        .iter()
+                        .map(|(aspect, assoc, ty)| {
+                            (aspect.clone(), assoc.clone(), partial_subst.apply(ty))
+                        })
+                        .collect(),
+                )),
+                _ => None,
+            },
+        )
+        .collect();
     // Store resolved_ty (post-solve) so the re-generalization in check_impl uses the
     // already-solved type and is not perturbed by a now-empty final substitution.
     fun_generalizations.push(FunGeneralization {
@@ -753,6 +864,8 @@ fn infer_fun_decl(
         name_map,
         bounds,
         neg_bounds,
+        assoc_projections: proj_map,
+        assoc_eq,
     });
     Ok(())
 }
@@ -937,11 +1050,11 @@ fn infer_impl_method(
             .any(|v| struct_tvars_free.contains(v))
     {
         let scheme = generalize(resolved_fun_ty, &std::collections::HashSet::new());
-        let scheme = if !body_assoc_log.is_empty() {
+        let scheme = if body_assoc_log.is_empty() {
+            scheme
+        } else {
             let proj_map = build_assoc_projection_map(&body_assoc_log, &partial_subst, &scheme);
             scheme.with_assoc_projections(&proj_map)
-        } else {
-            scheme
         };
         ctx.register_method_scheme(
             target_name.to_string(),
@@ -962,6 +1075,7 @@ fn infer_impl_method(
 fn infer_default_aspect_method(
     method: &AspectMethod,
     target_name: &str,
+    aspect_name: &str,
     ctx: &mut InferContext,
     fun_generalizations: &mut Vec<FunGeneralization>,
 ) -> Result<(), MetelError> {
@@ -971,7 +1085,29 @@ fn infer_default_aspect_method(
         .map(|g| (g.name.clone(), ctx.fresh_type_var_raw()))
         .collect();
 
-    let te_to_infer = |te: &TypeExpr| -> InferType {
+    // RFC-0082 §1.2: a bare associated-type name in the aspect's own default
+    // method body (e.g. `Item` in `fun get_twice(self) -> Item { ... }`) must
+    // resolve to this impl's concrete binding, same as register_default_aspect_method
+    // does for the pre-registered signature -- this is the SEPARATE conversion that
+    // actually type-checks the default body itself against its declared return type.
+    let te_to_infer = |te: &TypeExpr, ctx: &InferContext| -> InferType {
+        if let TypeExpr::Named(n, args) = te {
+            if args.is_empty()
+                && ctx
+                    .registry()
+                    .aspect_assoc_type_decls(aspect_name)
+                    .is_some_and(|decls| decls.iter().any(|d| d.name == *n))
+            {
+                if let Some(concrete) = ctx.registry().impl_assoc_type(
+                    ctx.current_module_path(),
+                    target_name,
+                    aspect_name,
+                    n,
+                ) {
+                    return type_to_infer(concrete);
+                }
+            }
+        }
         if generic_map.is_empty() {
             type_expr_to_infer_with_self(te, target_name)
         } else {
@@ -993,7 +1129,7 @@ fn infer_default_aspect_method(
             if p.name == "self" {
                 self_ty.clone()
             } else if let Some(ann) = &p.type_ann {
-                te_to_infer(ann)
+                te_to_infer(ann, ctx)
             } else {
                 ctx.fresh_var()
             }
@@ -1002,7 +1138,7 @@ fn infer_default_aspect_method(
     let ret_ty = method
         .return_type
         .as_ref()
-        .map_or_else(InferType::unit, te_to_infer);
+        .map_or_else(InferType::unit, |ann| te_to_infer(ann, ctx));
     let body = method
         .default_body
         .as_ref()
@@ -1687,11 +1823,30 @@ fn infer_expr(
                     for aspect_name in &aspect_names {
                         if let Some(methods) = ctx.get_aspect_method_defs(aspect_name).cloned() {
                             if let Some(method_def) = methods.iter().find(|m| m.name == *method) {
-                                // Resolve return type: Self → the TypeVar itself.
+                                // Resolve return type: Self → the TypeVar itself. A bare
+                                // associated-type name (RFC-0082 §1.2 sugar, e.g. `Item` in
+                                // `fun next(...) -> Perhaps<Item>`'s inner `Item`, or here the
+                                // whole return type) means `Self::Item` -- mint the same
+                                // projection placeholder as an explicit `T::Item` would.
                                 let ret_ty = method_def.return_type.as_ref().map_or(
                                     InferType::unit(),
                                     |rt| match rt {
                                         TypeExpr::Named(n, _) if n == "Self" => InferType::Var(*tv),
+                                        TypeExpr::Named(n, args)
+                                            if args.is_empty()
+                                                && ctx
+                                                    .registry()
+                                                    .aspect_assoc_type_decls(aspect_name)
+                                                    .is_some_and(|decls| {
+                                                        decls.iter().any(|d| d.name == *n)
+                                                    }) =>
+                                        {
+                                            InferType::Var(ctx.fresh_assoc_projection_var(
+                                                *tv,
+                                                aspect_name.clone(),
+                                                n.clone(),
+                                            ))
+                                        }
                                         other => type_expr_to_infer(other),
                                     },
                                 );
@@ -3121,6 +3276,10 @@ fn lower_projections_in_stmt(
     }
 }
 
+// Exhaustive match over every Expr variant; splitting it up would scatter
+// one coherent dispatch table across many small functions with no real gain
+// in clarity.
+#[allow(clippy::too_many_lines)]
 fn lower_projections_in_expr(
     expr: &Expr,
     generics: &std::collections::HashSet<String>,

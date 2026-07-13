@@ -1,7 +1,8 @@
 // RFC-0082 SS3: `T::AssocType` in return-type position, where T is a bound generic
-// parameter, is recognized as a projection (not a plain dotted name) and typechecks.
-// Real resolution to a concrete type at each call site is issue #242's job — this
-// only confirms the declaration itself is well-typed and constructible.
+// parameter, is recognized as a projection (not a plain dotted name) and typechecks
+// -- this declaration-only fixture never calls `peek`, so it doesn't exercise real
+// call-site resolution to a concrete type; see
+// evaluator/aspects/74_projection_call_site_resolution.mtl for that (issue #242).
 
 aspect Container {
     type Item;

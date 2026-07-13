@@ -686,7 +686,7 @@ pub struct TypeScheme {
     /// Per-quantified-var projection metadata (RFC-0082). Index-aligned with
     /// `quantified_vars`. `Some((position, aspect_name, assoc_name, placeholder_tv))` means the
     /// i-th quantified var has a projection `T::AssocName` through `aspect_name`.
-    /// `placeholder_tv` is the original TypeVar of the projection placeholder (before renaming),
+    /// `placeholder_tv` is the original `TypeVar` of the projection placeholder (before renaming),
     /// used at instantiation time to find the fresh copy and bind it.
     /// `None` means no projection declared for this position. The `position` is
     /// the 0-based index into `quantified_vars` (redundant but explicit).
@@ -744,7 +744,7 @@ impl TypeScheme {
 
     /// Attach per-quantified-var associated-type projection metadata (RFC-0082).
     /// Each entry in `proj_map` maps a quantified `TypeVar` to its projection info
-    /// including the placeholder TypeVar for the projection.
+    /// including the placeholder `TypeVar` for the projection.
     #[must_use]
     pub fn with_assoc_projections(
         mut self,
@@ -764,14 +764,19 @@ impl TypeScheme {
         self
     }
 
-    /// Attach per-quantified-var equality constraints (RFC-0082 §4).
+    /// Attach per-var equality constraints (RFC-0082 §4), given a `TypeVar` →
+    /// constraints map. Mirrors `with_bounds`/`with_neg_bounds`: robust to
+    /// quantifier ordering, each quantified var looks up its own entry.
     #[must_use]
-    #[allow(dead_code)] // wired by inference.rs when where-clause eq constraints are generated
-    pub fn with_assoc_eq_constraints(
-        mut self,
-        constraints: Vec<Vec<(String, String, InferType)>>,
-    ) -> Self {
-        self.assoc_eq_constraints = constraints;
+    pub fn with_assoc_eq_constraints(mut self, by_var: &AssocEqConstraints) -> Self {
+        if by_var.values().all(std::vec::Vec::is_empty) {
+            return self;
+        }
+        self.assoc_eq_constraints = self
+            .quantified_vars
+            .iter()
+            .map(|v| by_var.get(v).cloned().unwrap_or_default())
+            .collect();
         self
     }
 }
@@ -903,6 +908,16 @@ pub struct EnumInfo {
 /// That `SymbolId` is the key stored in `TypedImplBlock::aspect_id` and in
 /// `RuntimeAspectImpl::aspect_id`.  The elaboration pass has no other dependency on this
 /// registry; it does not read or write inference-phase state.
+/// RFC-0082 §4 equality constraints for one generic function/type var: a list
+/// of `(aspect, assoc_name, expected_type)` triples.
+pub type AssocEqConstraints = HashMap<TypeVar, Vec<(String, String, InferType)>>;
+/// Memo table for `InferContext::fresh_assoc_projection_var`: `(base_tv, aspect,
+/// assoc_name)` -> the placeholder `TypeVar` already minted for that projection.
+pub type AssocProjectionMemo = HashMap<(TypeVar, String, String), TypeVar>;
+/// Insertion-order log of every projection placeholder minted during one
+/// function/method body: `(base_tv, aspect, assoc_name, placeholder_tv)`.
+pub type AssocProjectionLog = Vec<(TypeVar, String, String, TypeVar)>;
+
 #[derive(Debug, Clone)]
 pub struct TypeDefinitionRegistry {
     /// struct name → fields with declaration spans.
@@ -936,7 +951,7 @@ pub struct TypeDefinitionRegistry {
     /// RFC-0082 §4: associated-type equality constraints per generic function.
     /// Key: function name. Value: map from each quantified `TypeVar` to the list of
     /// `(aspect, assoc_name, expected_type)` equality constraints.
-    fun_assoc_eq_constraints: HashMap<String, HashMap<TypeVar, Vec<(String, String, InferType)>>>,
+    fun_assoc_eq_constraints: HashMap<String, AssocEqConstraints>,
     /// Tracks which struct names were registered in each lexical scope so they
     /// can be removed on scope exit. Empty when outside any scoped block.
     struct_scope_stack: Vec<Vec<String>>,
@@ -982,7 +997,7 @@ pub struct TypeDefinitionRegistry {
     scopes: Rc<HashMap<Vec<String>, ModuleScope>>,
     /// Aspect name → its declared associated-type members (name + optional bound), RFC-0082 §1.
     aspect_assoc_type_decls: HashMap<String, Vec<AssocTypeDecl>>,
-    /// (target_type_id, aspect_name) → assoc-type-name → concrete Type, RFC-0082 §2.
+    /// (`target_type_id`, `aspect_name`) → assoc-type-name → concrete Type, RFC-0082 §2.
     /// Populated only for concrete (non-generic) impls.
     impl_assoc_types: HashMap<(SymbolId, String), HashMap<String, Type>>,
 }
@@ -1200,22 +1215,14 @@ impl TypeDefinitionRegistry {
         self.neg_fun_bounds.get(name)
     }
 
-    #[allow(dead_code)]
-    pub fn register_fun_assoc_eq_constraints(
-        &mut self,
-        name: String,
-        constraints: HashMap<TypeVar, Vec<(String, String, InferType)>>,
-    ) {
+    pub fn register_fun_assoc_eq_constraints(&mut self, name: String, constraints: AssocEqConstraints) {
         if !constraints.is_empty() {
             self.fun_assoc_eq_constraints.insert(name, constraints);
         }
     }
 
     #[must_use]
-    pub fn fun_assoc_eq_constraints_for(
-        &self,
-        name: &str,
-    ) -> Option<&HashMap<TypeVar, Vec<(String, String, InferType)>>> {
+    pub fn fun_assoc_eq_constraints_for(&self, name: &str) -> Option<&AssocEqConstraints> {
         self.fun_assoc_eq_constraints.get(name)
     }
 
@@ -1423,6 +1430,10 @@ impl TypeDefinitionRegistry {
     /// Copy all entries from `other` into `self`, without overwriting existing entries.
     /// Used by `check_impl` to seed a module's registry with type definitions from
     /// already-checked dependency modules. See ADR-0032.
+    // One independent per-field merge block per registry field; splitting it up
+    // would scatter one coherent operation across many small functions with no
+    // real gain in clarity.
+    #[allow(clippy::too_many_lines)]
     pub fn merge_from(&mut self, other: &TypeDefinitionRegistry) {
         for (k, v) in &other.struct_env {
             self.struct_env
@@ -1573,12 +1584,12 @@ pub struct InferContext {
     /// Parallel to `current_type_params`; swapped in/out alongside it.
     current_type_param_bounds: HashMap<TypeVar, Vec<String>>,
     /// Memo + accumulator for symbolic associated-type projections minted while inferring
-    /// the CURRENT function/method body. Key: (base_tv, aspect_name, assoc_name) so the
+    /// the CURRENT function/method body. Key: (`base_tv`, `aspect_name`, `assoc_name`) so the
     /// same projection requested twice gets the same placeholder. Reset (swapped, like
-    /// current_type_param_bounds) on entry/exit of each function/method body.
-    current_assoc_projections: HashMap<(TypeVar, String, String), TypeVar>,
+    /// `current_type_param_bounds`) on entry/exit of each function/method body.
+    current_assoc_projections: AssocProjectionMemo,
     /// Flat log of everything minted above, in insertion order.
-    recorded_assoc_projections: Vec<(TypeVar, String, String, TypeVar)>, // (base, aspect, assoc, placeholder)
+    recorded_assoc_projections: AssocProjectionLog,
     current_module_path: Vec<String>,
     /// Names that have same-tier glob conflicts deferred until use. (METEL-98)
     /// Maps name → list of source module paths that both export it.
@@ -1818,12 +1829,7 @@ impl InferContext {
     }
 
     /// Swap in empty projection state for a new function/method body, returning the old state.
-    pub fn swap_assoc_projections(
-        &mut self,
-    ) -> (
-        HashMap<(TypeVar, String, String), TypeVar>,
-        Vec<(TypeVar, String, String, TypeVar)>,
-    ) {
+    pub fn swap_assoc_projections(&mut self) -> (AssocProjectionMemo, AssocProjectionLog) {
         let old_memo = std::mem::take(&mut self.current_assoc_projections);
         let old_log = std::mem::take(&mut self.recorded_assoc_projections);
         (old_memo, old_log)
@@ -1832,8 +1838,8 @@ impl InferContext {
     /// Restore previously-saved projection state (call when leaving a function/method body).
     pub fn restore_assoc_projections(
         &mut self,
-        memo: HashMap<(TypeVar, String, String), TypeVar>,
-        log: Vec<(TypeVar, String, String, TypeVar)>,
+        memo: AssocProjectionMemo,
+        log: AssocProjectionLog,
     ) {
         self.current_assoc_projections = memo;
         self.recorded_assoc_projections = log;
@@ -1861,9 +1867,7 @@ impl InferContext {
 
     /// Drain the accumulated projection log. Call after `solve()` to build the scheme's
     /// `assoc_projections` mapping.
-    pub fn take_recorded_assoc_projections(
-        &mut self,
-    ) -> Vec<(TypeVar, String, String, TypeVar)> {
+    pub fn take_recorded_assoc_projections(&mut self) -> AssocProjectionLog {
         std::mem::take(&mut self.recorded_assoc_projections)
     }
 
@@ -1881,12 +1885,7 @@ impl InferContext {
         self.registry.register_neg_fun_bounds(name, bounds);
     }
 
-    #[allow(dead_code)]
-    pub fn register_fun_assoc_eq_constraints(
-        &mut self,
-        name: String,
-        constraints: HashMap<TypeVar, Vec<(String, String, InferType)>>,
-    ) {
+    pub fn register_fun_assoc_eq_constraints(&mut self, name: String, constraints: AssocEqConstraints) {
         self.registry
             .register_fun_assoc_eq_constraints(name, constraints);
     }

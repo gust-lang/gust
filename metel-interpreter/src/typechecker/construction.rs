@@ -3329,8 +3329,8 @@ fn instantiate_scheme_with_turbofish(
     }
     // RFC-0082 backfill: bind projection placeholder vars to their concrete associated types.
     for proj in scheme.assoc_projections.iter().flatten() {
-        let (_base_pos, aspect, assoc, placeholder_tv) = proj;
-        if let Some(Type::Named(base_name, _)) = var_to_concrete.get(&scheme.quantified_vars[*_base_pos]) {
+        let (base_pos, aspect, assoc, placeholder_tv) = proj;
+        if let Some(Type::Named(base_name, _)) = var_to_concrete.get(&scheme.quantified_vars[*base_pos]) {
             if let Some(concrete_ty) =
                 registry.impl_assoc_type(current_module, base_name, aspect, assoc)
             {

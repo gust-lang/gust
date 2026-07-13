@@ -1,0 +1,34 @@
+// RFC-0082 §3: `T::AssocType` in a generic function's signature resolves to the
+// concrete associated type at each call site, including when the value is
+// produced by calling an aspect method (§1.2 bare-name sugar) inside the
+// generic function's own body. Exercises the real, end-to-end path: the
+// generic function's return type is a real projection placeholder that gets
+// backfilled to the concrete type at the call site, not just a
+// parses-without-crashing declaration (see stage13_01 in typechecking/aspects
+// for that narrower check).
+
+aspect Container {
+    type Item: Display;
+    fun get(self) -> Item;
+}
+
+struct IntBox {
+    value: i64,
+}
+
+impl Container for IntBox {
+    type Item = i64;
+    fun get(self) -> i64 {
+        return self.value;
+    }
+}
+
+fun peek<T: Container>(x: T) -> T::Item {
+    return x.get();
+}
+
+fun main() {
+    let b = IntBox { value: 42 };
+    let v: i64 = peek(b);
+    assert(v == 42);
+}

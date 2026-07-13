@@ -1,0 +1,29 @@
+// RFC-0082 §1.2: a bare associated-type name inside the aspect's own default
+// method body/signature (sugar for `Self::AssocType`) resolves to the concrete
+// binding a specific impl gives, both for the default method's pre-registered
+// signature and for type-checking its actual body.
+
+aspect Container {
+    type Item: Display;
+    fun get(self) -> Item;
+    fun get_twice(self) -> Item {
+        return self.get();
+    }
+}
+
+struct IntBox {
+    value: i64,
+}
+
+impl Container for IntBox {
+    type Item = i64;
+    fun get(self) -> i64 {
+        return self.value;
+    }
+}
+
+fun main() {
+    let b = IntBox { value: 42 };
+    let v: i64 = b.get_twice();
+    assert(v == 42);
+}

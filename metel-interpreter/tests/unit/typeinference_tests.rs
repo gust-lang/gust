@@ -694,6 +694,8 @@ mod phase_6_type_schemes {
             param_names: vec![],
             bounds: vec![],
             neg_bounds: vec![],
+            assoc_projections: vec![],
+            assoc_eq_constraints: vec![],
             ty: InferType::Fun(
                 vec![InferType::var(TypeVar(0))],
                 Box::new(InferType::var(TypeVar(0))),
@@ -724,6 +726,8 @@ mod phase_6_type_schemes {
             param_names: vec![],
             bounds: vec![],
             neg_bounds: vec![],
+            assoc_projections: vec![],
+            assoc_eq_constraints: vec![],
             ty: InferType::var(quantified),
         };
         let first = instantiate(&scheme, &mut var_gen);
@@ -751,6 +755,8 @@ mod phase_6_type_schemes {
             param_names: vec![],
             bounds: vec![],
             neg_bounds: vec![],
+            assoc_projections: vec![],
+            assoc_eq_constraints: vec![],
             ty: InferType::Fun(
                 vec![InferType::var(TypeVar(0))],
                 Box::new(InferType::var(TypeVar(0))),
@@ -766,6 +772,8 @@ mod phase_6_type_schemes {
             param_names: vec![],
             bounds: vec![],
             neg_bounds: vec![],
+            assoc_projections: vec![],
+            assoc_eq_constraints: vec![],
             ty: InferType::Fun(
                 vec![InferType::var(TypeVar(0))],
                 Box::new(InferType::var(TypeVar(1))),
@@ -820,6 +828,8 @@ mod phase_7_infer_context {
             param_names: vec![],
             bounds: vec![],
             neg_bounds: vec![],
+            assoc_projections: vec![],
+            assoc_eq_constraints: vec![],
             ty: InferType::Fun(vec![v.clone()], Box::new(v)),
         };
         ctx.bind_poly("id", scheme);
@@ -839,6 +849,8 @@ mod phase_7_infer_context {
             param_names: vec![],
             bounds: vec![],
             neg_bounds: vec![],
+            assoc_projections: vec![],
+            assoc_eq_constraints: vec![],
             ty: v,
         };
         ctx.bind_poly("id", scheme);
@@ -860,6 +872,8 @@ mod phase_7_infer_context {
                 param_names: vec![],
                 bounds: vec![],
                 neg_bounds: vec![],
+                assoc_projections: vec![],
+                assoc_eq_constraints: vec![],
                 ty: v,
             },
         );
@@ -1130,6 +1144,8 @@ mod phase_8_known_limitations {
             param_names: vec![],
             bounds: vec![],
             neg_bounds: vec![],
+            assoc_projections: vec![],
+            assoc_eq_constraints: vec![],
             ty: InferType::Fun(
                 vec![InferType::var(TypeVar(0))],
                 Box::new(InferType::var(TypeVar(0))),

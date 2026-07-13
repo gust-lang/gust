@@ -204,19 +204,19 @@ pub struct ImplBlock {
 
 /// `type Name = ConcreteType;` inside an `impl` block (RFC-0082 SS2).
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // populated by the parser; real use is issue #242's job
 pub struct AssocTypeDef {
     pub name: String,
     pub ty: TypeExpr,
+    #[allow(dead_code)] // not yet consumed; will back diagnostics once needed
     pub span: Span,
 }
 
 /// `type Name;` / `type Name: Bound;` inside an `aspect` block (RFC-0082 SS1).
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // populated by the parser; real use is issue #242's job
 pub struct AssocTypeDecl {
     pub name: String,
     pub bounds: Vec<Bound>,
+    #[allow(dead_code)] // not yet consumed; will back diagnostics once needed
     pub span: Span,
 }
 
@@ -226,9 +226,8 @@ pub struct AspectDecl {
     pub visibility: Visibility,
     pub name: String,
     pub generics: Vec<String>,
-    /// `type Name;` / `type Name: Bound;` member declarations (RFC-0082 SS1). Not
-    /// yet enforced against impl definitions (issue #242's job).
-    #[allow(dead_code)]
+    /// `type Name;` / `type Name: Bound;` member declarations (RFC-0082 SS1).
+    /// Enforced against impl definitions (issue #242).
     pub assoc_types: Vec<AssocTypeDecl>,
     pub methods: Vec<AspectMethod>,
     pub span: Span,
@@ -251,7 +250,6 @@ pub enum Polarity {
 pub struct Bound {
     pub polarity: Polarity,
     pub aspect: TypeExpr,
-    #[allow(dead_code)] // populated by the parser (issue #233 step 3); not yet consumed
     pub assoc_bindings: Vec<(String, TypeExpr)>,
     #[allow(dead_code)] // not yet consumed; will back diagnostics once bounds are checked
     pub span: Span,

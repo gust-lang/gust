@@ -1,0 +1,28 @@
+// Negative: RFC-0082 §4 equality constraint (`Aspect<AssocType = ConcreteType>`)
+// is violated when the impl's actual associated type does not match. Expect
+// T0012.
+
+aspect Container {
+    type Item: Display;
+    fun get(self) -> Item;
+}
+
+struct StrBox {
+    value: String,
+}
+
+impl Container for StrBox {
+    type Item = String;
+    fun get(self) -> String {
+        return self.value;
+    }
+}
+
+fun needs_int_item<T: Container<Item = i64>>(x: T) -> i64 {
+    return x.get();
+}
+
+fun main() {
+    let b = StrBox { value: "hi" };
+    let _ = needs_int_item(b); // ERROR[T0012]
+}

@@ -15,6 +15,10 @@ pub(super) struct AssocResolveCtx<'a> {
     pub current_aspect: Option<&'a str>,
 }
 
+// Exhaustive match over every TypeExpr variant; splitting it up would scatter
+// one coherent dispatch table across many small functions with no real gain
+// in clarity.
+#[allow(clippy::too_many_lines)]
 fn type_expr_to_infer_in_context(
     te: &TypeExpr,
     generics: Option<&HashMap<String, TypeVar>>,
@@ -148,25 +152,12 @@ fn type_expr_to_infer_in_context(
             }
             // Extract the base type's name for registry lookup.
             let base_name = match &base_ty {
-                InferType::Named(n, _) => Some(n.as_str()),
-                InferType::Concrete(Type::Named(n, _)) => Some(n.as_str()),
+                InferType::Named(n, _) | InferType::Concrete(Type::Named(n, _)) => Some(n.as_str()),
                 _ => None,
             };
             if let (Some(ctx), Some(bn)) = (assoc_ctx, base_name) {
-                // Search which in-scope aspect declares this assoc-type name.
-                // If current_aspect is set (we're inside an aspect method),
-                // use that directly. Otherwise, search all aspects visible
-                // in the current module.
-                let aspects_to_try: Vec<String> = if let Some(aspect) = ctx.current_aspect {
-                    vec![aspect.to_string()]
-                } else {
-                    // Collect all aspects that declare this assoc type name.
-                    ctx.registry
-                        .aspect_assoc_type_decls("")
-                        .map(|_| Vec::new()) // fallback: try all known aspects
-                        .unwrap_or_default()
-                };
-                // Try the current aspect first, then search.
+                // If current_aspect is known (we're inside an aspect method or an
+                // impl block's own conversion), resolve directly against it.
                 if let Some(aspect) = ctx.current_aspect {
                     if let Some(ty) = ctx.registry.impl_assoc_type(
                         ctx.current_module,
@@ -177,16 +168,20 @@ fn type_expr_to_infer_in_context(
                         return type_to_infer(ty);
                     }
                 }
-                // If not found via current_aspect, search all aspects that
-                // declare this assoc type name. This handles the case where
-                // we're not inside an aspect method but using a projection.
-                let _ = aspects_to_try; // suppress unused warning
+                // No known aspect and a concrete (non-generic, non-Self) base: a
+                // projection like `SomeConcreteType::AssocName` used outside any
+                // impl/aspect context. Not exercised by any RFC-0082 example (every
+                // real case is either `T::AssocType` on a generic param -- handled
+                // by the abstract-case special-casing in inference.rs before this
+                // function is ever called -- or bare `Self::AssocType` sugar inside
+                // an aspect/impl, where current_aspect is always Some). Falls
+                // through to the defensive placeholder below rather than guessing
+                // which aspect is meant.
             }
             // Fallback: return a Named placeholder (defensive — §2's completeness
             // check is the real guard).
             let base_name_str = match &base_ty {
-                InferType::Named(n, _) => n.clone(),
-                InferType::Concrete(Type::Named(n, _)) => n.clone(),
+                InferType::Named(n, _) | InferType::Concrete(Type::Named(n, _)) => n.clone(),
                 _ => String::new(),
             };
             InferType::Named(format!("{base_name_str}::{assoc_name}"), vec![])
@@ -224,7 +219,6 @@ pub(super) fn type_expr_to_infer_with_self(te: &TypeExpr, self_ty_name: &str) ->
 /// Convert a source-level `TypeExpr` to an `InferType` with associated-type
 /// resolution context. Used when converting type annotations inside aspect
 /// method signatures (§1.2 bare-name sugar) or concrete projection positions.
-#[allow(dead_code)] // wired by future callers; public surface kept for step 8/9.
 pub(super) fn type_expr_to_infer_with_assoc_ctx(
     te: &TypeExpr,
     generics: &HashMap<String, TypeVar>,

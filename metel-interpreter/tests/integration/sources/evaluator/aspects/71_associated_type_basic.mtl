@@ -1,9 +1,9 @@
 // RFC-0082: `type Name: Bound;` inside an `aspect` block and `type Name = Concrete;`
-// inside its `impl` parse, construct, and dispatch through ordinary method calls.
-// Real associated-type projection resolution / equality-constrained bounds
-// (`Aspect<AssocType = Concrete>`, `T::AssocType` in a generic context) is issue
-// #242's job — this fixture only locks in the declaration/definition syntax and
-// that it doesn't disturb ordinary method dispatch on the implementing type.
+// inside its `impl` parse, construct, and dispatch through ordinary method calls
+// on a concrete (non-generic) receiver. See 74_projection_call_site_resolution.mtl
+// for real projection resolution (`T::AssocType`) through a generic function, and
+// stage13_04/stage13_10 in typechecking/aspects for equality-constrained bounds
+// (`Aspect<AssocType = Concrete>`) — both implemented as of issue #242.
 
 aspect Container {
     type Item: Display;
