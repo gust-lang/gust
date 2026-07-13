@@ -4,7 +4,7 @@
 //! See `docs/internal/typechecker.md` for theory background and implementation notes.
 
 use crate::ast::{AspectMethod, AssocTypeDecl, ReceiverKind, Span, Visibility};
-use crate::error::MetelError;
+use crate::error::{MetelError, TypeErrorCode};
 use crate::name_resolver::{GlobTier, ModuleScope};
 use crate::symbols::SymbolId;
 use crate::types::Type;
@@ -497,6 +497,7 @@ fn apply_constraint_with_coercion(
     constraint: &Constraint,
     integer_literal_vars: &HashSet<TypeVar>,
     float_literal_vars: &HashSet<TypeVar>,
+    opaque_return_vars: &HashSet<TypeVar>,
     registry: &TypeDefinitionRegistry,
 ) -> Result<(), MetelError> {
     let lhs = subst.apply(&constraint.lhs);
@@ -549,7 +550,8 @@ fn apply_constraint_with_coercion(
         integer_literal_vars,
         float_literal_vars,
         &constraint.span,
-    )
+    )?;
+    validate_opaque_return_bindings_for_constraint(subst, opaque_return_vars, &constraint.span)
 }
 
 /// RFC-0078 §3.2-§3.3: if `actual` names an enum with more than one variant,
@@ -622,6 +624,25 @@ fn validate_literal_bindings(
                     span,
                 ))
             }
+        }
+    }
+    Ok(())
+}
+
+fn validate_opaque_return_bindings_for_constraint(
+    subst: &Substitution,
+    opaque_return_vars: &HashSet<TypeVar>,
+    span: &Span,
+) -> Result<(), MetelError> {
+    for &var in opaque_return_vars {
+        if let InferType::Var(_) = subst.apply(&InferType::Var(var)) {
+            // Still unbound, which is allowed
+        } else {
+            return Err(MetelError::type_error(
+                crate::error::TypeErrorCode::T0018,
+                "cannot name the concrete type of an opaque `impl Aspect` return value; use `impl Aspect` or a generic bound instead".to_string(),
+                span,
+            ));
         }
     }
     Ok(())
@@ -1840,6 +1861,9 @@ pub struct InferContext {
     /// `TypeVars` introduced by unsuffixed float literals (`3.14`, `2.0`).
     /// Any such var that is still free after constraint solving defaults to `f64`.
     float_literal_vars: HashSet<TypeVar>,
+    /// `TypeVars` for opaque return values (RFC-0037). These vars must NOT be bound
+    /// to concrete types by the caller - they should remain abstract to enforce opacity.
+    opaque_return_vars: HashSet<TypeVar>,
     cached_subst: Substitution,
     solved_constraint_count: usize,
     solve_stats: SolveStats,
@@ -1908,6 +1932,7 @@ impl InferContext {
             deferred_glob_conflicts: HashMap::new(),
             integer_literal_vars: HashSet::new(),
             float_literal_vars: HashSet::new(),
+            opaque_return_vars: HashSet::new(),
             cached_subst: Substitution::new(),
             solved_constraint_count: 0,
             solve_stats: SolveStats::default(),
@@ -2010,6 +2035,14 @@ impl InferContext {
             .has_from_impl(&self.current_module_path, target, source)
     }
 
+    /// Create a fresh type variable generator that starts past the current counter value.
+    /// Used for instantiation in contexts that need fresh variables not conflicting with
+    /// the main inference pass.
+    #[must_use]
+    pub fn fresh_var_generator(&self) -> TypeVarGenerator {
+        TypeVarGenerator::with_counter(self.var_gen.counter + 1)
+    }
+
     #[must_use]
     pub fn iterable_elem_type(&self, target: &str) -> Option<&Type> {
         self.registry
@@ -2059,6 +2092,37 @@ impl InferContext {
     #[must_use]
     pub fn bounds_for_type_var(&self, tv: TypeVar) -> Option<&Vec<String>> {
         self.current_type_param_bounds.get(&tv)
+    }
+
+    /// Register an aspect bound for a type variable (for opaque return values).
+    pub fn register_type_var_bound(&mut self, tv: TypeVar, aspect: String) {
+        self.current_type_param_bounds.entry(tv).or_default().push(aspect);
+    }
+
+    /// Mark a type variable as an opaque return that should not be bound to concrete types.
+    pub fn mark_opaque_return_var(&mut self, tv: TypeVar) {
+        self.opaque_return_vars.insert(tv);
+    }
+
+    /// Validate that opaque return variables are not bound to concrete types.
+    /// Returns T0018 error if any opaque return var has been bound.
+    pub fn validate_opaque_return_bindings(
+        &self,
+        subst: &Substitution,
+        span: &Span,
+    ) -> Result<(), MetelError> {
+        for &var in &self.opaque_return_vars {
+            if let InferType::Var(_) = subst.apply(&InferType::Var(var)) {
+                // Still unbound, which is allowed
+            } else {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0018,
+                    "cannot name the concrete type of an opaque `impl Aspect` return value; use `impl Aspect` or a generic bound instead".to_string(),
+                    span,
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Read-only view of all type-param bounds in the current scope (for debug assertions).
@@ -2344,6 +2408,17 @@ impl InferContext {
         }
     }
 
+    /// Look up a polymorphic scheme by name without instantiation.
+    /// Used for checking opaque return metadata without instantiating.
+    #[must_use]
+    pub fn poly_scheme(&self, name: &str) -> Option<TypeScheme> {
+        self.poly_env
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name))
+            .cloned()
+    }
+
     /// Look up a name's type regardless of its mutability, or `None` if it isn't bound.
     /// Used by RFC-0067a's write-through rule: a non-`mut` binding of type `&mut T` may
     /// still be written through (the exclusivity comes from the reference, not the
@@ -2423,6 +2498,7 @@ impl InferContext {
                 constraint,
                 &self.integer_literal_vars,
                 &self.float_literal_vars,
+                &self.opaque_return_vars,
                 &self.registry,
             )?;
         }
@@ -2432,6 +2508,10 @@ impl InferContext {
         self.solve_stats.solve_ns += started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
         self.solved_constraint_count = self.constraints.len();
         self.cached_subst = subst.clone();
+        
+        // Final validation: ensure opaque return variables remain unbound
+        self.validate_opaque_return_bindings(&subst, &self.constraints.last().unwrap().span)?;
+        
         Ok(subst)
     }
 

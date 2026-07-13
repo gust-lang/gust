@@ -1781,6 +1781,52 @@ fn infer_expr(
                     return Ok(ret_var);
                 }
             }
+            
+            // Check for opaque-returning function and do dedicated instantiation
+            if let Some(callee_name) = super::overload::callee_name(callee) {
+                if let Some(scheme) = ctx.poly_scheme(callee_name) {
+                    if !scheme.opaque_returns.is_empty() {
+                        // This function has opaque returns - do dedicated instantiation
+                        let arg_infer: Vec<InferType> = args
+                            .iter()
+                            .map(|a| infer_expr(a, ctx, fun_generalizations))
+                            .collect::<Result<_, _>>()?;
+                        
+                        // Solve constraints to get a complete substitution
+                        let solved = ctx.solve()?;
+let _solved = ctx.default_literal_vars(&solved);
+                        
+                        // Get a fresh type variable generator for instantiation
+                        let mut gen = ctx.fresh_var_generator();
+                        
+                        // Instantiate the scheme with renaming to get fresh vars
+                        let (instantiated_ty, renaming) = 
+                            crate::typeinference::instantiate_with_renaming(&scheme, &mut gen);
+                        
+                        if let InferType::Fun(params, ret) = instantiated_ty {
+                            // Constrain arguments to match the instantiated function type
+                            for (arg_ty, param) in arg_infer.iter().zip(params.iter()) {
+                                ctx.add_constraint(arg_ty.clone(), param.clone(), span.clone());
+                            }
+                            
+                            // Register aspect bounds and mark opacity guards for each opaque return
+                            for (i, opaque) in scheme.opaque_returns.iter().enumerate() {
+                                if let Some((aspect, _)) = opaque {
+                                    if let Some(&orig_tv) = scheme.quantified_vars.get(i) {
+                                        if let Some(&fresh_tv) = renaming.get(&orig_tv) {
+                                            ctx.register_type_var_bound(fresh_tv, aspect.clone());
+                                            ctx.mark_opaque_return_var(fresh_tv);
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            return Ok(*ret);
+                        }
+                    }
+                }
+            }
+            
             let callee_ty = infer_expr(callee, ctx, fun_generalizations)?;
             // Auto-deref: &(() -> T) and &mut (() -> T) are callable directly.
             let callee_ty = match ctx.solve()?.apply(&callee_ty) {

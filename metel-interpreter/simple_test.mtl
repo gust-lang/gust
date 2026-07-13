@@ -1,0 +1,9 @@
+aspect Doubler {
+	fun doubled(&self) -> i64;
+}
+
+fun main() {
+	let x = 21i64;
+	let y = x.doubled();
+	println("${y}");
+}
