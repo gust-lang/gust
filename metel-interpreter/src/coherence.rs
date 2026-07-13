@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 
-use crate::ast::{Decl, ImplBlock, Span, TypeExpr, WhereClause};
+use crate::ast::{Decl, ImplBlock, Polarity, Span, TypeExpr, WhereClause};
 use crate::error::{MetelError, TypeErrorCode};
 use crate::name_resolver::{GlobTier, ResolvedNames};
 use crate::path_normalizer::NormalizedModuleGraph;
@@ -295,12 +295,160 @@ struct CollectedImpl<'a> {
     canonical_key: (Vec<CanonicalType>, CanonicalType),
     /// Scoped type-param bounds for §3.1/§3.2 overlap checks.
     scoped_bounds: (Vec<Vec<String>>, Vec<Vec<String>>),
+    /// RFC-0081/RFC-0060 §5: whether this is `impl !Aspect` or `impl Aspect`.
+    polarity: Polarity,
     span: &'a Span,
+}
+
+/// Whether two canonicalized targets could describe an overlapping concrete
+/// instantiation — issue #244's shape-crossing overlap fix. Unlike plain
+/// equality (the pre-#244 behavior, still correct for two identically-shaped
+/// impls), `TypeParam` is treated as a wildcard that matches anything at that
+/// position, so a blanket impl's target (`Resolved(Foo, [TypeParam(0)])`) is
+/// compatible with a concrete impl's (`Resolved(Foo, [Resolved(i64, [])])`) —
+/// the gap that let a blanket and a concrete impl of the same aspect silently
+/// coexist without ever being compared.
+fn canonical_types_compatible(a: &CanonicalType, b: &CanonicalType) -> bool {
+    match (a, b) {
+        (CanonicalType::TypeParam(_), _)
+        | (_, CanonicalType::TypeParam(_))
+        | (CanonicalType::Unit, CanonicalType::Unit)
+        | (CanonicalType::Opaque, CanonicalType::Opaque) => true,
+        (CanonicalType::Resolved(id_a, args_a), CanonicalType::Resolved(id_b, args_b)) => {
+            id_a == id_b
+                && args_a.len() == args_b.len()
+                && args_a
+                    .iter()
+                    .zip(args_b)
+                    .all(|(x, y)| canonical_types_compatible(x, y))
+        }
+        (CanonicalType::Unresolved(n_a, args_a), CanonicalType::Unresolved(n_b, args_b)) => {
+            n_a == n_b
+                && args_a.len() == args_b.len()
+                && args_a
+                    .iter()
+                    .zip(args_b)
+                    .all(|(x, y)| canonical_types_compatible(x, y))
+        }
+        (CanonicalType::Tuple(xs), CanonicalType::Tuple(ys)) => {
+            xs.len() == ys.len()
+                && xs.iter().zip(ys).all(|(x, y)| canonical_types_compatible(x, y))
+        }
+        (CanonicalType::Array(x), CanonicalType::Array(y)) => canonical_types_compatible(x, y),
+        (CanonicalType::SizedArray(x, n1), CanonicalType::SizedArray(y, n2)) => {
+            n1 == n2 && canonical_types_compatible(x, y)
+        }
+        (CanonicalType::Reference(x), CanonicalType::Reference(y))
+        | (CanonicalType::MutReference(x), CanonicalType::MutReference(y)) => {
+            canonical_types_compatible(x, y)
+        }
+        (CanonicalType::Fun(ps1, r1), CanonicalType::Fun(ps2, r2)) => {
+            ps1.len() == ps2.len()
+                && ps1.iter().zip(ps2).all(|(x, y)| canonical_types_compatible(x, y))
+                && match (r1, r2) {
+                    (Some(a), Some(b)) => canonical_types_compatible(a, b),
+                    (None, None) => true,
+                    _ => false,
+                }
+        }
+        _ => false,
+    }
+}
+
+/// Whether a canonicalized target contains a `TypeParam` anywhere — i.e.
+/// whether the impl it came from is a blanket/conditional impl rather than a
+/// fully concrete one. Used to distinguish RFC-0060 §5's two polarity-mismatch
+/// cases: a negative impl vs. a *blanket* positive impl for an overlapping
+/// instantiation is permitted (the negative impl wins), but a negative impl
+/// vs. a *concrete* positive impl for the exact same type is still a `T0015`
+/// coherence error (RFC-0081 §2.2/issue #264) — polarity alone doesn't decide
+/// it, blanket-ness does.
+fn contains_type_param(ct: &CanonicalType) -> bool {
+    match ct {
+        CanonicalType::TypeParam(_) => true,
+        CanonicalType::Resolved(_, args) | CanonicalType::Unresolved(_, args) => {
+            args.iter().any(contains_type_param)
+        }
+        CanonicalType::Tuple(items) => items.iter().any(contains_type_param),
+        CanonicalType::Array(inner)
+        | CanonicalType::SizedArray(inner, _)
+        | CanonicalType::Reference(inner)
+        | CanonicalType::MutReference(inner) => contains_type_param(inner),
+        CanonicalType::Fun(params, ret) => {
+            params.iter().any(contains_type_param)
+                || ret.as_deref().is_some_and(contains_type_param)
+        }
+        CanonicalType::Unit | CanonicalType::Opaque => false,
+    }
 }
 
 fn is_local(declaring: &HashMap<SymbolId, Vec<String>>, id: Option<SymbolId>, module: &[String]) -> bool {
     id.and_then(|id| declaring.get(&id))
         .is_some_and(|m| m.as_slice() == module)
+}
+
+/// Whether `concrete` (a fully-resolved `CanonicalType`, no `TypeParam`)
+/// satisfies every required positive aspect and none of the required negative
+/// aspects, per the OTHER impls collected in this same coherence pass. A
+/// simple presence lookup (unconditional impls only) — this pass runs before
+/// type-checking, so the typechecker's own `type_satisfies_aspect` (which
+/// recurses into conditional impls) isn't available yet. Sufficient for this
+/// issue's actual scope: a blanket impl with no bounds (the common case)
+/// always overlaps a compatible concrete impl regardless of this check; this
+/// only matters when the blanket carries real bound requirements.
+fn concrete_satisfies_bounds(
+    impls: &[CollectedImpl],
+    concrete: &CanonicalType,
+    pos_required: &[String],
+    neg_required: &[String],
+) -> bool {
+    let has_direct_impl = |aspect: &str| {
+        impls.iter().any(|imp| {
+            imp.polarity == Polarity::Positive
+                && imp.aspect_name == aspect
+                && &imp.canonical_key.1 == concrete
+        })
+    };
+    pos_required.iter().all(|a| has_direct_impl(a)) && !neg_required.iter().any(|a| has_direct_impl(a))
+}
+
+/// Whether two shape-compatible impls of the same aspect actually overlap —
+/// i.e. some concrete instantiation could satisfy both — given their
+/// per-position bound requirements. Blanket-vs-blanket reduces to the
+/// existing `provably_disjoint` bound-list comparison; blanket-vs-concrete
+/// additionally requires the concrete side's argument to actually satisfy the
+/// blanket's bound requirements at each differing position.
+fn impls_actually_overlap(impls: &[CollectedImpl], a: &CollectedImpl, b: &CollectedImpl) -> bool {
+    if provably_disjoint(&a.scoped_bounds, &b.scoped_bounds) {
+        return false;
+    }
+    let (CanonicalType::Resolved(_, a_args) | CanonicalType::Unresolved(_, a_args)) = &a.canonical_key.1
+    else {
+        return true; // no per-position args to cross-check further
+    };
+    let (CanonicalType::Resolved(_, b_args) | CanonicalType::Unresolved(_, b_args)) = &b.canonical_key.1
+    else {
+        return true;
+    };
+    for i in 0..a_args.len().min(b_args.len()) {
+        let a_pos = &a_args[i];
+        let b_pos = &b_args[i];
+        if matches!(a_pos, CanonicalType::TypeParam(_)) && !matches!(b_pos, CanonicalType::TypeParam(_)) {
+            let pos = a.scoped_bounds.0.get(i).map_or(&[] as &[String], |v| v);
+            let neg = a.scoped_bounds.1.get(i).map_or(&[] as &[String], |v| v);
+            if !concrete_satisfies_bounds(impls, b_pos, pos, neg) {
+                return false;
+            }
+        }
+        if matches!(b_pos, CanonicalType::TypeParam(_)) && !matches!(a_pos, CanonicalType::TypeParam(_)) {
+            let pos = b.scoped_bounds.0.get(i).map_or(&[] as &[String], |v| v);
+            let neg = b.scoped_bounds.1.get(i).map_or(&[] as &[String], |v| v);
+            if !concrete_satisfies_bounds(impls, a_pos, pos, neg) {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 /// Check the orphan rule (T0014) and overlap detection (T0015) for every
@@ -342,6 +490,7 @@ pub fn check(graph: &NormalizedModuleGraph, names: &ResolvedNames) -> Result<(),
                 target_local,
                 canonical_key: (canonical_args, canonical_target),
                 scoped_bounds,
+                polarity: ib.polarity,
                 span: &ib.span,
             });
         }
@@ -369,28 +518,49 @@ pub fn check(graph: &NormalizedModuleGraph, names: &ResolvedNames) -> Result<(),
     }
 
     // Overlap detection (T0015): two impls of the same resolved aspect
-    // covering the same canonicalized target type conflict — unless they are
-    // provably disjoint via §3.1 (e.g. `T: Copy` vs. `T: !Copy`).
-    // Group impls by canonical key, then scan pairwise within each group.
-    let mut groups: HashMap<(SymbolId, Vec<CanonicalType>, CanonicalType), Vec<&CollectedImpl>> =
-        HashMap::new();
+    // conflict when some concrete instantiation could satisfy both. Checked
+    // via a pairwise scan across ALL impls of a given aspect (issue #244),
+    // not exact-key grouping — the pre-#244 grouping only ever compared
+    // identically-shaped targets, so a blanket impl (`Resolved(Foo,
+    // [TypeParam(0)])`) and a concrete impl (`Resolved(Foo, [Resolved(i64,
+    // [])])`) were never even placed in the same group, silently missing a
+    // real conflict. `canonical_types_compatible` treats `TypeParam` as a
+    // wildcard so shape-crossing pairs are now compared too.
+    let mut by_aspect: HashMap<SymbolId, Vec<&CollectedImpl>> = HashMap::new();
     for imp in &impls {
         let Some(aspect_id) = imp.aspect_id else {
             continue;
         };
-        let key = (aspect_id, imp.canonical_key.0.clone(), imp.canonical_key.1.clone());
-        groups.entry(key).or_default().push(imp);
+        by_aspect.entry(aspect_id).or_default().push(imp);
     }
 
-    for group in groups.values() {
-        // Pairwise check within the group.
+    for group in by_aspect.values() {
         for i in 0..group.len() {
             for j in (i + 1)..group.len() {
                 let a = group[i];
                 let b = group[j];
-                // §3.1: if the two impls are provably disjoint (one's positive
-                // bound is the other's negative bound at some position), skip.
-                if provably_disjoint(&a.scoped_bounds, &b.scoped_bounds) {
+                // Different aspect type-args (e.g. `From<i64>` vs `From<u8>`)
+                // never overlap regardless of target shape.
+                if a.canonical_key.0 != b.canonical_key.0 {
+                    continue;
+                }
+                if !canonical_types_compatible(&a.canonical_key.1, &b.canonical_key.1) {
+                    continue;
+                }
+                // RFC-0060 §5: an explicit negative impl and a *blanket*
+                // positive impl for an overlapping instantiation is permitted
+                // — the negative impl wins, a priority question rather than a
+                // coherence conflict. But a negative impl and a *concrete*
+                // positive impl for the exact same type is still a T0015
+                // conflict (RFC-0081 §2.2/issue #264) — polarity mismatch only
+                // excuses the pair when the positive side is a blanket.
+                if a.polarity != b.polarity {
+                    let positive = if a.polarity == Polarity::Positive { a } else { b };
+                    if contains_type_param(&positive.canonical_key.1) {
+                        continue;
+                    }
+                }
+                if !impls_actually_overlap(&impls, a, b) {
                     continue;
                 }
                 return Err(MetelError::type_error(
