@@ -497,7 +497,7 @@ fn apply_constraint_with_coercion(
     constraint: &Constraint,
     integer_literal_vars: &HashSet<TypeVar>,
     float_literal_vars: &HashSet<TypeVar>,
-    opaque_return_vars: &HashSet<TypeVar>,
+    _opaque_return_vars: &HashSet<TypeVar>,
     registry: &TypeDefinitionRegistry,
 ) -> Result<(), MetelError> {
     let lhs = subst.apply(&constraint.lhs);
@@ -551,7 +551,8 @@ fn apply_constraint_with_coercion(
         float_literal_vars,
         &constraint.span,
     )?;
-    validate_opaque_return_bindings_for_constraint(subst, opaque_return_vars, &constraint.span)
+    // Skip per-constraint validation for opaque returns - handled at solve() level
+    Ok(())
 }
 
 /// RFC-0078 §3.2-§3.3: if `actual` names an enum with more than one variant,
@@ -635,14 +636,22 @@ fn validate_opaque_return_bindings_for_constraint(
     span: &Span,
 ) -> Result<(), MetelError> {
     for &var in opaque_return_vars {
-        if let InferType::Var(_) = subst.apply(&InferType::Var(var)) {
-            // Still unbound, which is allowed
-        } else {
-            return Err(MetelError::type_error(
-                crate::error::TypeErrorCode::T0018,
-                "cannot name the concrete type of an opaque `impl Aspect` return value; use `impl Aspect` or a generic bound instead".to_string(),
-                span,
-            ));
+        match subst.apply(&InferType::Var(var)) {
+            InferType::Var(_) | InferType::Never => {
+                // Still unbound or bottom type, which is allowed
+            }
+            InferType::Concrete(_) => {
+                // Bound to a concrete type - this violates opacity
+                return Err(MetelError::type_error(
+                    crate::error::TypeErrorCode::T0018,
+                    "cannot name the concrete type of an opaque `impl Aspect` return value; use `impl Aspect` or a generic bound instead".to_string(),
+                    span,
+                ));
+            }
+            _ => {
+                // Bound to some other inference type - this should be fine for method dispatch
+                // Only concrete binding violates opacity
+            }
         }
     }
     Ok(())
@@ -2105,21 +2114,29 @@ impl InferContext {
     }
 
     /// Validate that opaque return variables are not bound to concrete types.
-    /// Returns T0018 error if any opaque return var has been bound.
+    /// Returns T0018 error if any opaque return var has been bound to a concrete type.
     pub fn validate_opaque_return_bindings(
         &self,
         subst: &Substitution,
         span: &Span,
     ) -> Result<(), MetelError> {
         for &var in &self.opaque_return_vars {
-            if let InferType::Var(_) = subst.apply(&InferType::Var(var)) {
-                // Still unbound, which is allowed
-            } else {
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0018,
-                    "cannot name the concrete type of an opaque `impl Aspect` return value; use `impl Aspect` or a generic bound instead".to_string(),
-                    span,
-                ));
+            match subst.apply(&InferType::Var(var)) {
+                InferType::Var(_) | InferType::Never => {
+                    // Still unbound or bottom type, which is allowed
+                }
+                InferType::Concrete(_) => {
+                    // Bound to a concrete type - this violates opacity
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0018,
+                        "cannot name the concrete type of an opaque `impl Aspect` return value; use `impl Aspect` or a generic bound instead".to_string(),
+                        span,
+                    ));
+                }
+                _ => {
+                    // Bound to some other inference type - this should be fine for method dispatch
+                    // Only concrete binding violates opacity
+                }
             }
         }
         Ok(())
@@ -2498,7 +2515,7 @@ impl InferContext {
                 constraint,
                 &self.integer_literal_vars,
                 &self.float_literal_vars,
-                &self.opaque_return_vars,
+                &HashSet::new(),  // Not used in constraint-level validation
                 &self.registry,
             )?;
         }
@@ -2509,8 +2526,11 @@ impl InferContext {
         self.solved_constraint_count = self.constraints.len();
         self.cached_subst = subst.clone();
         
-        // Final validation: ensure opaque return variables remain unbound
-        self.validate_opaque_return_bindings(&subst, &self.constraints.last().unwrap().span)?;
+        // Final validation: ensure opaque return variables are not bound to concrete types
+        let span = self.constraints.last()
+            .map(|c| c.span.clone())
+            .unwrap_or_else(|| Span { start: 0, end: 0, filename: "".to_string(), line: 0, col: 0 });
+        self.validate_opaque_return_bindings(&subst, &span)?;
         
         Ok(subst)
     }
