@@ -1,0 +1,36 @@
+// Positive: two separate calls to the same opaque-returning function
+// Each call should get independent instantiation
+
+aspect Display {
+	fun display(&self) -> String;
+}
+
+struct MyInt {
+	value: i64,
+}
+
+impl Display for MyInt {
+	fun display(&self) -> String {
+		self.value.to_string()
+	}
+}
+
+// Function returning impl Display
+fun make_int() -> impl Display {
+	MyInt { value: 42 }
+}
+
+fun take_display(d: impl Display) -> String {
+	d.display()
+}
+
+fun main() {
+	// Two separate calls - each should get independent fresh type variables
+	let int1 = make_int();
+	let int2 = make_int();
+	
+	// Pass each to functions that take impl Display - this should prove
+	// independent instantiation
+	let s1 = take_display(int1);
+	let s2 = take_display(int2);
+}

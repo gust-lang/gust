@@ -1,0 +1,31 @@
+// Cross-module test: module2 calling module1's opaque-returning function
+
+import module1::make_public_int;
+
+aspect Display {
+	fun display(&self) -> String;
+}
+
+struct MyString {
+	value: String,
+}
+
+impl Display for MyString {
+	fun display(&self) -> String {
+		self.value.clone()
+	}
+}
+
+pub fun make_string() -> impl Display {
+	MyString { value: "hello".to_string() }
+}
+
+fun main() {
+	// Call the function from module1 that returns impl Display
+	let int_val = make_public_int();
+	let string_val = make_string();
+	
+	// Call aspect methods on both
+	let int_str = int_val.display();
+	let str_str = string_val.display();
+}

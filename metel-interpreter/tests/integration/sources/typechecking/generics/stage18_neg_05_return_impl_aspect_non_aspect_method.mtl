@@ -1,0 +1,31 @@
+// Negative: cannot call non-aspect method should fail with T0003
+// Attempting to call method not declared by the aspect
+
+aspect Display {
+	fun display(&self) -> String;
+}
+
+struct MyInt {
+	value: i64,
+	// Note: this struct has another method not in Display
+	fn double(&self) -> i64 {
+		self.value * 2
+	}
+}
+
+impl Display for MyInt {
+	fun display(&self) -> String {
+		self.value.to_string()
+	}
+}
+
+// Function returning impl Display
+fun make_int() -> impl Display {
+	MyInt { value: 42 }
+}
+
+fun main() {
+	let int_val = make_int();
+	// This should fail - cannot call non-aspect method on opaque value
+	let doubled = int_val.double();
+}

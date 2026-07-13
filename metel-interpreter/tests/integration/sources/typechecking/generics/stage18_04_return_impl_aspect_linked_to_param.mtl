@@ -1,0 +1,30 @@
+// Positive: linked case where return position is linked to parameter position
+// RFC §2 transform example - caller should be able to name the concrete type
+
+aspect Display {
+	fun display(&self) -> String;
+}
+
+struct MyInt {
+	value: i64,
+}
+
+impl Display for MyInt {
+	fun display(&self) -> String {
+		self.value.to_string()
+	}
+}
+
+// RFC §2 transform example - return position linked to parameter
+fun transform(x: impl Display) -> impl Display {
+	x // returns the same value passed in
+}
+
+fun main() {
+	let original = MyInt { value: 42 };
+	let result = transform(original);
+	
+	// In the linked case, the caller should be able to name the concrete type
+	let concrete: MyInt = result;
+	// This should be allowed because the return is linked to the parameter
+}

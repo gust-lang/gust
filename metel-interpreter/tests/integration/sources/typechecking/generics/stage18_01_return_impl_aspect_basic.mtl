@@ -1,0 +1,27 @@
+// Positive: basic return-position impl Aspect without method calls
+// Should typecheck without any method calls
+
+aspect Display {
+	fun display(&self) -> String;
+}
+
+struct MyInt {
+	value: i64,
+}
+
+impl Display for MyInt {
+	fun display(&self) -> String {
+		self.value.to_string()
+	}
+}
+
+// Basic function returning impl Display - no method calls yet
+fun make_pair() -> impl Display {
+	MyInt { value: 42 }
+}
+
+fun main() {
+	let pair = make_pair();
+	// Don't call any methods - just use the value as impl Display
+	// This should typecheck without errors
+}

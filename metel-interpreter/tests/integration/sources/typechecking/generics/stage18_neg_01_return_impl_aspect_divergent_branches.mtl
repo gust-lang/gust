@@ -1,0 +1,39 @@
+// Negative: divergent branches should fail with T0001
+// RFC §1.1 example - function with different concrete types on different branches
+
+aspect Display {
+	fun display(&self) -> String;
+}
+
+struct MyInt {
+	value: i64,
+}
+
+struct MyString {
+	value: String,
+}
+
+impl Display for MyInt {
+	fun display(&self) -> String {
+		self.value.to_string()
+	}
+}
+
+impl Display for MyString {
+	fun display(&self) -> String {
+		self.value.clone()
+	}
+}
+
+// RFC §1.1 - divergent branches returning different concrete types
+fun bad(flag: boolean) -> impl Display {
+	if flag {
+		MyInt { value: 42 }
+	} else {
+		MyString { value: "hello".to_string() }
+	}
+}
+
+fun main() {
+	let result = bad(true);
+}

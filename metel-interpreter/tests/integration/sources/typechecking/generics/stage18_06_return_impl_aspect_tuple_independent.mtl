@@ -1,0 +1,39 @@
+// Positive: tuple with independent impl Aspect positions
+// RFC §1.3 example - both positions should work independently
+
+aspect Display {
+	fun display(&self) -> String;
+}
+
+struct MyInt {
+	value: i64,
+}
+
+struct MyString {
+	value: String,
+}
+
+impl Display for MyInt {
+	fun display(&self) -> String {
+		self.value.to_string()
+	}
+}
+
+impl Display for MyString {
+	fun display(&self) -> String {
+		self.value.clone()
+	}
+}
+
+// RFC §1.3 example - tuple with two independent impl Display positions
+fun pair() -> (impl Display, impl Display) {
+	(MyInt { value: 42 }, MyString { value: "hello".to_string() })
+}
+
+fun main() {
+	let (int_val, str_val) = pair();
+	
+	// Both positions should work independently
+	let int_display = int_val.display();
+	let str_display = str_val.display();
+}

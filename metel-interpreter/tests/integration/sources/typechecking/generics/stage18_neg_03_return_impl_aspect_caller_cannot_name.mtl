@@ -1,0 +1,27 @@
+// Negative: caller cannot name concrete type should fail with T0018
+// Attempting to assign opaque return to concrete type variable
+
+aspect Display {
+	fun display(&self) -> String;
+}
+
+struct MyInt {
+	value: i64,
+}
+
+impl Display for MyInt {
+	fun display(&self) -> String {
+		self.value.to_string()
+	}
+}
+
+// Function returning impl Display
+fun make_int() -> impl Display {
+	MyInt { value: 42 }
+}
+
+fun main() {
+	let int_val = make_int();
+	// This should fail - cannot name the concrete type of opaque return
+	let concrete: MyInt = int_val;
+}

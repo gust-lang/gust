@@ -1,0 +1,32 @@
+// Positive: pass opaque return value to function with aspect-bound parameter
+// Should typecheck successfully
+
+aspect Display {
+	fun display(&self) -> String;
+}
+
+struct MyInt {
+	value: i64,
+}
+
+impl Display for MyInt {
+	fun display(&self) -> String {
+		self.value.to_string()
+	}
+}
+
+// Function returning impl Display
+fun make_int() -> impl Display {
+	MyInt { value: 42 }
+}
+
+// Function that takes impl Display parameter
+fun take_display(d: impl Display) -> String {
+	d.display()
+}
+
+fun main() {
+	let int_val = make_int();
+	// Pass the opaque return to a function with impl Display parameter
+	let result = take_display(int_val);
+}
