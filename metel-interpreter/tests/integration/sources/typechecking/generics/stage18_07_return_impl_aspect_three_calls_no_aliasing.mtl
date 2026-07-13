@@ -1,0 +1,54 @@
+// Positive: three (not just two) opaque-returning calls in the same scope,
+// with .display() called on the first two before the third -- regression
+// test for a real bug found during review: the call-site instantiation used
+// ctx.fresh_var_generator() (a disposable generator snapshotting the real
+// counter without ever advancing it) to mint each call's fresh opaque marker
+// TypeVar, so every subsequent ordinary ctx.fresh_var() call in the rest of
+// the function body reissued the exact same ids -- aliasing a later opaque
+// marker with an unrelated earlier TypeVar (observed as the third value's
+// type incorrectly resolving to `String`, the return type of an earlier
+// .display() call, whenever at least two .display() calls happened first).
+
+aspect Display {
+	fun display(&self) -> String;
+}
+
+struct MyInt {
+	value: i64,
+}
+
+struct MyString {
+	value: String,
+}
+
+impl Display for MyInt {
+	fun display(&self) -> String {
+		self.value.to_string()
+	}
+}
+
+impl Display for MyString {
+	fun display(self) -> String {
+		self.value
+	}
+}
+
+fun make_int() -> impl Display {
+	MyInt { value: 1 }
+}
+
+fun make_string() -> impl Display {
+	MyString { value: "x".to_string() }
+}
+
+fun main() {
+	let a = make_int();
+	let b = make_string();
+	let c = make_int();
+
+	let a_str = a.display();
+	let b_str = b.display();
+	// Before the fix, this aliased `c`'s type with `b_str`'s (String),
+	// producing a spurious "no method `display` on `String`" error.
+	let c_str = c.display();
+}

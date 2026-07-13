@@ -54,7 +54,7 @@ pub struct CheckGraphReport {
 
 /// A single resolved import binding, tracking the source module for conflict
 /// reporting. Used by `ScopedEnv` and by #177 (T0011 conflict detection).
-#[allow(dead_code)]
+#[allow(dead_code, clippy::large_enum_variant)]
 enum Binding {
     /// Unambiguous: one scheme from one source module.
     Single {

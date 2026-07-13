@@ -136,6 +136,7 @@ fn native_fun_ty(
     })
 }
 
+#[allow(clippy::too_many_lines)]
 pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
     for decl in decls {
         if let Decl::Fun(fun) = decl {
@@ -659,10 +660,10 @@ fn type_expr_contains_impl_aspect(te: &TypeExpr) -> bool {
         TypeExpr::ImplAspect { .. } => true,
         TypeExpr::Named(_, args) => args.iter().any(type_expr_contains_impl_aspect),
         TypeExpr::Tuple(elems) => elems.iter().any(type_expr_contains_impl_aspect),
-        TypeExpr::Array(elem) => type_expr_contains_impl_aspect(elem),
-        TypeExpr::SizedArray(elem, _) => type_expr_contains_impl_aspect(elem),
-        TypeExpr::Reference(elem) => type_expr_contains_impl_aspect(elem),
-        TypeExpr::MutReference(elem) => type_expr_contains_impl_aspect(elem),
+        TypeExpr::Array(elem)
+        | TypeExpr::SizedArray(elem, _)
+        | TypeExpr::Reference(elem)
+        | TypeExpr::MutReference(elem) => type_expr_contains_impl_aspect(elem),
         TypeExpr::Fun(params, ret) => {
             params.iter().any(type_expr_contains_impl_aspect)
                 || ret
@@ -933,6 +934,7 @@ fn infer_fun_decl(
     let mut reabstraction = Substitution::new();
     for (marker_tv, aspect_name) in &pending_opaque_returns {
         let resolved_marker = partial_subst.apply(&InferType::Var(*marker_tv));
+        #[allow(clippy::match_same_arms)] // Var and the wildcard document distinct, deliberate no-ops
         match &resolved_marker {
             InferType::Var(_) => {
                 // Linked case: marker is still a free var (tied to a generic
@@ -943,21 +945,18 @@ fn infer_fun_decl(
             InferType::Concrete(_) | InferType::Named(_, _) => {
                 // Unlinked case: marker collapsed to a concrete type during the
                 // body's own solve. Convert to a `Type` for recording.
-                let concrete_ty = match infer_type_to_type(&resolved_marker, &fun.span) {
-                    Ok(ty) => ty,
-                    Err(_) => {
-                        // The concrete type still has free vars (mixed case:
-                        // real generics + opaque return). Not in the RFC's
-                        // examples — skip opaque handling, let it fall through
-                        // to ordinary generic behavior.
-                        continue;
-                    }
+                let Ok(concrete_ty) = infer_type_to_type(&resolved_marker, &fun.span) else {
+                    // The concrete type still has free vars (mixed case:
+                    // real generics + opaque return). Not in the RFC's
+                    // examples — skip opaque handling, let it fall through
+                    // to ordinary generic behavior.
+                    continue;
                 };
                 // Verify the aspect bound at definition time (RFC-0037 §1.1):
                 // the concrete type must implement the declared aspect.
                 if !ctx
                     .registry()
-                    .type_satisfies_aspect(&ctx.current_module_path(), &concrete_ty, aspect_name)
+                    .type_satisfies_aspect(ctx.current_module_path(), &concrete_ty, aspect_name)
                 {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0012,
@@ -1794,14 +1793,28 @@ fn infer_expr(
                         
                         // Solve constraints to get a complete substitution
                         let solved = ctx.solve()?;
-let _solved = ctx.default_literal_vars(&solved);
-                        
-                        // Get a fresh type variable generator for instantiation
-                        let mut gen = ctx.fresh_var_generator();
-                        
-                        // Instantiate the scheme with renaming to get fresh vars
-                        let (instantiated_ty, renaming) = 
-                            crate::typeinference::instantiate_with_renaming(&scheme, &mut gen);
+                        let _solved = ctx.default_literal_vars(&solved);
+
+                        // Instantiate the scheme with renaming to get fresh vars.
+                        // Must mint from ctx's own live TypeVar generator (not a
+                        // disposable one forked via fresh_var_generator, which
+                        // snapshots the counter without ever advancing it) --
+                        // otherwise every subsequent ordinary ctx.fresh_var() call
+                        // in the rest of this function body reissues the exact
+                        // same ids just handed out here, aliasing this call's
+                        // opaque marker with unrelated later TypeVars. Confirmed
+                        // by reproduction: three or more opaque-returning calls in
+                        // one block, with .display() called on at least two of
+                        // them before a third, corrupted the third's inferred type.
+                        let mut renaming: HashMap<TypeVar, TypeVar> =
+                            HashMap::with_capacity(scheme.quantified_vars.len());
+                        let mut rename_subst = Substitution::new();
+                        for &var in &scheme.quantified_vars {
+                            let fresh = ctx.fresh_type_var_raw();
+                            rename_subst.bind(var, InferType::Var(fresh));
+                            renaming.insert(var, fresh);
+                        }
+                        let instantiated_ty = rename_subst.apply(&scheme.ty);
                         
                         if let InferType::Fun(params, ret) = instantiated_ty {
                             // Constrain arguments to match the instantiated function type

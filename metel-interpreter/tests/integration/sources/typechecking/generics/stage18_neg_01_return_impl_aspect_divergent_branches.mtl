@@ -20,14 +20,14 @@ impl Display for MyInt {
 }
 
 impl Display for MyString {
-	fun display(&self) -> String {
-		self.value.clone()
+	fun display(self) -> String {
+		self.value
 	}
 }
 
 // RFC §1.1 - divergent branches returning different concrete types
 fun bad(flag: boolean) -> impl Display {
-	if flag {
+	if (flag) { // ERROR[T0001]
 		MyInt { value: 42 }
 	} else {
 		MyString { value: "hello".to_string() }

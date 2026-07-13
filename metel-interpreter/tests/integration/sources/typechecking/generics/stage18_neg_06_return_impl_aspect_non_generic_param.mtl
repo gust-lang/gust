@@ -21,12 +21,12 @@ fun make_int() -> impl Display {
 }
 
 // Function that takes concrete MyInt parameter, not generic
-fn take_concrete_int(x: MyInt) -> i64 {
+fun take_concrete_int(x: MyInt) -> i64 {
 	x.value
 }
 
 fun main() {
 	let int_val = make_int();
 	// This should fail - cannot pass opaque return to concrete parameter
-	let result = take_concrete_int(int_val);
+	let result = take_concrete_int(int_val); // ERROR[T0018]
 }

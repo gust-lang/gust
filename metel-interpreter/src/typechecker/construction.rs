@@ -563,6 +563,7 @@ fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<TypedDecl, Mete
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl, MetelError> {
     // Native functions carry no Metel body; lower the host binding to a NativeKey
     // and emit a Native body for the evaluator to dispatch (METEL-182).

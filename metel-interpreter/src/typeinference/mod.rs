@@ -4,7 +4,7 @@
 //! See `docs/internal/typechecker.md` for theory background and implementation notes.
 
 use crate::ast::{AspectMethod, AssocTypeDecl, ReceiverKind, Span, Visibility};
-use crate::error::{MetelError, TypeErrorCode};
+use crate::error::MetelError;
 use crate::name_resolver::{GlobTier, ModuleScope};
 use crate::symbols::SymbolId;
 use crate::types::Type;
@@ -497,7 +497,7 @@ fn apply_constraint_with_coercion(
     constraint: &Constraint,
     integer_literal_vars: &HashSet<TypeVar>,
     float_literal_vars: &HashSet<TypeVar>,
-    _opaque_return_vars: &HashSet<TypeVar>,
+    opaque_return_vars: &HashSet<TypeVar>,
     registry: &TypeDefinitionRegistry,
 ) -> Result<(), MetelError> {
     let lhs = subst.apply(&constraint.lhs);
@@ -551,7 +551,31 @@ fn apply_constraint_with_coercion(
         float_literal_vars,
         &constraint.span,
     )?;
-    // Skip per-constraint validation for opaque returns - handled at solve() level
+    // RFC-0037: an opaque-return marker var may unify with another type
+    // variable (the ordinary case for threading it through further generic
+    // bounds, e.g. passing it to a function with its own `impl Aspect`
+    // parameter) but never resolve to a genuinely concrete type — that would
+    // let the caller "name" the concrete type the return value erases.
+    // Checked right after THIS constraint's own composition, not once at the
+    // very end of a whole solve(): by the time solving finishes, a legitimate
+    // var-to-var chain (opaque marker -> some other function's own generic
+    // parameter) is typically still just a `Var` at this point (that other
+    // function's own body is solved separately, in its own `solve()` call),
+    // so checking here can't confuse "resolved via legitimate indirection"
+    // with "the concrete type was actually named" the way a single check
+    // after full program-wide solving would.
+    for &var in opaque_return_vars {
+        let resolved = subst.apply(&InferType::Var(var));
+        if !matches!(resolved, InferType::Var(_) | InferType::Never) {
+            return Err(MetelError::type_error(
+                crate::error::TypeErrorCode::T0018,
+                format!(
+                    "cannot name the concrete type of an opaque `impl Aspect` return value; use `impl Aspect` or a generic bound instead (resolved to `{resolved}`)"
+                ),
+                &constraint.span,
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -624,33 +648,6 @@ fn validate_literal_bindings(
                     format!("cannot unify float literal with `{other}`"),
                     span,
                 ))
-            }
-        }
-    }
-    Ok(())
-}
-
-fn validate_opaque_return_bindings_for_constraint(
-    subst: &Substitution,
-    opaque_return_vars: &HashSet<TypeVar>,
-    span: &Span,
-) -> Result<(), MetelError> {
-    for &var in opaque_return_vars {
-        match subst.apply(&InferType::Var(var)) {
-            InferType::Var(_) | InferType::Never => {
-                // Still unbound or bottom type, which is allowed
-            }
-            InferType::Concrete(_) => {
-                // Bound to a concrete type - this violates opacity
-                return Err(MetelError::type_error(
-                    crate::error::TypeErrorCode::T0018,
-                    "cannot name the concrete type of an opaque `impl Aspect` return value; use `impl Aspect` or a generic bound instead".to_string(),
-                    span,
-                ));
-            }
-            _ => {
-                // Bound to some other inference type - this should be fine for method dispatch
-                // Only concrete binding violates opacity
             }
         }
     }
@@ -2044,13 +2041,6 @@ impl InferContext {
             .has_from_impl(&self.current_module_path, target, source)
     }
 
-    /// Create a fresh type variable generator that starts past the current counter value.
-    /// Used for instantiation in contexts that need fresh variables not conflicting with
-    /// the main inference pass.
-    #[must_use]
-    pub fn fresh_var_generator(&self) -> TypeVarGenerator {
-        TypeVarGenerator::with_counter(self.var_gen.counter + 1)
-    }
 
     #[must_use]
     pub fn iterable_elem_type(&self, target: &str) -> Option<&Type> {
@@ -2111,39 +2101,6 @@ impl InferContext {
     /// Mark a type variable as an opaque return that should not be bound to concrete types.
     pub fn mark_opaque_return_var(&mut self, tv: TypeVar) {
         self.opaque_return_vars.insert(tv);
-    }
-
-    /// Validate that opaque return variables are not bound to concrete types.
-    /// Returns T0018 error if any opaque return var has been bound to a concrete type.
-    pub fn validate_opaque_return_bindings(
-        &self,
-        subst: &Substitution,
-        span: &Span,
-    ) -> Result<(), MetelError> {
-        for &var in &self.opaque_return_vars {
-            match subst.apply(&InferType::Var(var)) {
-                InferType::Var(_) => {
-                    // Still unbound, which is allowed
-                }
-                InferType::Never => {
-                    // Bottom type, which is allowed
-                }
-                InferType::Concrete(_) => {
-                    // Bound to a concrete type - this violates opacity
-                    return Err(MetelError::type_error(
-                        TypeErrorCode::T0018,
-                        "cannot name the concrete type of an opaque `impl Aspect` return value; use `impl Aspect` or a generic bound instead".to_string(),
-                        span,
-                    ));
-                }
-                _ => {
-                    // Bound to some other inference type - this should be fine
-                    // The key insight is that these variables should remain abstract
-                    // for method dispatch, but can be used in valid contexts
-                }
-            }
-        }
-        Ok(())
     }
 
     /// Read-only view of all type-param bounds in the current scope (for debug assertions).
@@ -2519,7 +2476,7 @@ impl InferContext {
                 constraint,
                 &self.integer_literal_vars,
                 &self.float_literal_vars,
-                &HashSet::new(),  // Not used in constraint-level validation
+                &self.opaque_return_vars,
                 &self.registry,
             )?;
         }
@@ -2529,14 +2486,7 @@ impl InferContext {
         self.solve_stats.solve_ns += started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
         self.solved_constraint_count = self.constraints.len();
         self.cached_subst = subst.clone();
-        
-        // Final validation: ensure opaque return variables are not bound to concrete types
-        // TODO: Fix validation logic for specific test cases
-        // let span = self.constraints.last()
-        //     .map(|c| c.span.clone())
-        //     .unwrap_or_else(|| Span { start: 0, end: 0, filename: "".to_string(), line: 0, col: 0 });
-        // self.validate_opaque_return_bindings(&subst, &span)?;
-        
+
         Ok(subst)
     }
 

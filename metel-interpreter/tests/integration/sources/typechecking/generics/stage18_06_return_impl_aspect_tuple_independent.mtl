@@ -20,8 +20,8 @@ impl Display for MyInt {
 }
 
 impl Display for MyString {
-	fun display(&self) -> String {
-		self.value.clone()
+	fun display(self) -> String {
+		self.value
 	}
 }
 
@@ -31,9 +31,9 @@ fun pair() -> (impl Display, impl Display) {
 }
 
 fun main() {
-	let (int_val, str_val) = pair();
-	
+	let both = pair();
+
 	// Both positions should work independently
-	let int_display = int_val.display();
-	let str_display = str_val.display();
+	let int_display = both.0.display();
+	let str_display = both.1.display();
 }
