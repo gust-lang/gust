@@ -1,0 +1,17 @@
+// Test that a negative bound (!Drop) correctly rejects when the type DOES implement Drop via conditional impl
+aspect Drop { fun drop(self); }
+struct Arena<T: !Drop> { items: T[] }
+struct Pair<A, B> { first: A, second: B }
+// Pair implements Drop when BOTH A and B implement Drop
+impl<A: Drop, B: Drop> Drop for Pair<A, B> { fun drop(self) {} }
+struct Resource { x: i64 }
+impl Drop for Resource { fun drop(self) {} }
+
+// This should FAIL: Arena<Pair<Resource, Resource>> should be rejected because
+// Pair<Resource, Resource> DOES implement Drop via the conditional impl,
+// violating the !Drop bound. Before the fix, this would incorrectly succeed.
+fun bad(r: Resource) -> Arena<Pair<Resource, Resource>> {
+    Arena { items: [Pair { first: r, second: r }] }  // should be T0012
+}
+
+fun main() {}

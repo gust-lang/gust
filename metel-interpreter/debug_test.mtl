@@ -1,0 +1,11 @@
+// Simple test to check conditional impl behavior
+aspect Drop { fun drop(self); }
+struct Pair<A, B> { first: A, second: B }
+// Pair implements Drop only when BOTH A and B implement Drop
+impl<A: Drop, B: Drop> Drop for Pair<A, B> { fun drop(self) {} }
+struct Resource { x: i64 }
+// Resource does NOT implement Drop
+
+fun main() {
+    let p = Pair { first: Resource { x: 1 }, second: Resource { x: 2 } };
+}
