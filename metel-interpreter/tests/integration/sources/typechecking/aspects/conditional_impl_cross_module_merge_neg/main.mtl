@@ -1,0 +1,12 @@
+// Cross-module conditional impl regression (RFC-0036 / merge_from boundary):
+// The conditional impl requires A: Display AND B: Display. Pair<i64, Pair<i64, i64>>
+// violates the bound for B (Pair itself has no Display impl) — greet() must fail
+// with T0012.
+
+import pair_module::{Pair, Greet};
+
+fun main() {
+    let inner: Pair<i64, i64> = Pair { first: 1, second: 2 };
+    let p = Pair { first: 5, second: inner };
+    let s: String = p.greet(); // ERROR[T0012]
+}

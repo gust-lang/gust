@@ -1,0 +1,26 @@
+// RFC-0036 §2.2: conditional impl with where clause, called with a satisfying
+// concrete type.
+
+aspect Printable {
+    fun print(self) -> String;
+}
+
+impl Printable for i64 {
+    fun print(self) -> String { return "i64"; }
+}
+
+struct Pair<A, B> {
+    first: A,
+    second: B,
+}
+
+impl<A, B> Printable for Pair<A, B> where A: Printable, B: Printable {
+    fun print(self) -> String {
+        return "pair";
+    }
+}
+
+fun main() {
+    let p = Pair { first: 5, second: 10 };
+    let s: String = p.print();
+}

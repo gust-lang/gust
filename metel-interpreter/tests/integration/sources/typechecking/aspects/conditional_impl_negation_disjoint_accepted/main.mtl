@@ -1,0 +1,29 @@
+// RFC-0036 §3.1's accepted example verbatim: `impl<T: Copy> ...` and
+// `impl<T: !Copy> ...` for the same aspect/struct are provably disjoint via
+// syntactic negation and must NOT be reported as a coherence conflict.
+//
+// (Previously believed unparseable and skipped by the original #241
+// implementation -- confirmed working end to end: parsing, use-site bound
+// checking, and coherence disjointness detection all handle `!Aspect`.)
+
+aspect Copy2 {
+    fun dup(self) -> i64;
+}
+
+aspect Serialize2 {
+    fun ser(self) -> String;
+}
+
+struct Wrapper<T> {
+    val: T,
+}
+
+impl<T: Copy2> Serialize2 for Wrapper<T> {
+    fun ser(self) -> String { return "copyable"; }
+}
+
+impl<T: !Copy2> Serialize2 for Wrapper<T> {
+    fun ser(self) -> String { return "not-copyable"; }
+}
+
+fun main() {}

@@ -1,0 +1,31 @@
+// RFC-0036 §2.2: mirror of stage17_05 with a type argument that genuinely
+// does NOT satisfy the conditional impl's bound -> must still be rejected
+// when passed through an unrelated generic function's own bound.
+
+aspect Printable {
+    fun print(self) -> String;
+}
+
+struct NoPrint {
+    value: i64,
+}
+
+struct Pair<A, B> {
+    first: A,
+    second: B,
+}
+
+impl<A: Printable, B: Printable> Printable for Pair<A, B> {
+    fun print(self) -> String {
+        return "pair";
+    }
+}
+
+fun describe<T: Printable>(x: T) -> String {
+    return x.print();
+}
+
+fun main() {
+    let p = Pair { first: NoPrint { value: 1 }, second: NoPrint { value: 2 } };
+    let s: String = describe(p); // ERROR[T0012]
+}

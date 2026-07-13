@@ -1571,6 +1571,39 @@ fn construct_expr(
                         subst = subst.compose(&s);
                     }
                 }
+                // RFC-0036 §2.2 use-site check: build var→concrete mapping and
+                // verify that the concrete receiver type satisfies the method
+                // scheme's conditional bounds.
+                let mut var_to_type: HashMap<TypeVar, Type> = HashMap::new();
+                for &tv in &scheme.quantified_vars {
+                    if let Ok(t) = infer_type_to_type(&subst.apply(&InferType::Var(tv)), span) {
+                        var_to_type.insert(tv, t);
+                    }
+                }
+                check_scheme_bounds(
+                    method,
+                    &scheme,
+                    &var_to_type,
+                    span,
+                    ctx.registry,
+                    ctx.current_module,
+                )?;
+                check_scheme_neg_bounds(
+                    method,
+                    &scheme,
+                    &var_to_type,
+                    span,
+                    ctx.registry,
+                    ctx.current_module,
+                )?;
+                check_scheme_assoc_eq(
+                    method,
+                    &scheme,
+                    &var_to_type,
+                    span,
+                    ctx.registry,
+                    ctx.current_module,
+                )?;
                 let method_fun_ty = infer_type_to_type(&subst.apply(&scheme.ty), span)?;
                 (method_fun_ty, typed_args)
             };
@@ -3126,7 +3159,7 @@ fn check_type_satisfies_bounds(
         },
     };
     for aspect in aspect_names {
-        if !registry.impl_aspect_env_has(current_module, &type_name, aspect) {
+        if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
             return Err(MetelError::type_error(
                 TypeErrorCode::T0012,
                 format!("`{type_name}` does not implement `{aspect}` (required by `{fun_name}`)"),
@@ -3157,11 +3190,11 @@ fn check_type_does_not_satisfy_bound(
         },
     };
     for aspect in neg_aspect_names {
-        if registry.impl_aspect_env_has(current_module, &type_name, aspect) {
+        if registry.type_satisfies_aspect(current_module, concrete, aspect) {
             // RFC-0072 §2.3: Copy implies !Drop. Scoped to this exact pair —
             // do not generalize into a general aspect-exclusion mechanism.
             if aspect == "Drop"
-                && registry.impl_aspect_env_has(current_module, &type_name, "Copy")
+                && registry.type_satisfies_aspect(current_module, concrete, "Copy")
             {
                 continue;
             }

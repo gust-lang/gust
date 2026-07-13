@@ -1,0 +1,14 @@
+pub struct Pair<A, B> {
+    pub first: A,
+    pub second: B,
+}
+
+pub aspect Greet {
+    fun greet(&self) -> String;
+}
+
+impl<A: Display, B: Display> Greet for Pair<A, B> {
+    fun greet(&self) -> String {
+        return "pair";
+    }
+}
