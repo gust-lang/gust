@@ -491,6 +491,17 @@ fn register_program_decls(
                     // `impl_aspect_env` — this fixes the confirmed bug where a
                     // conditional impl was silently marking the aspect as
                     // unconditionally implemented.
+                    //
+                    // OPEN QUESTION (decision 9): `impl<T: !Copy> !Aspect for T`
+                    // (negative polarity + conditional bounds) is NOT specified
+                    // anywhere — RFC-0072 §4 only discusses negative bounds AS
+                    // CONDITIONS inside POSITIVE impls, and RFC-0081 has no
+                    // generic/conditional/where support. The existing `ib.polarity
+                    // == Polarity::Positive` guard above ensures negative impls
+                    // never reach this conditional registration path; they fall
+                    // through to the existing issue #264 negative-impl handling
+                    // unchanged. Do not attempt conditional semantics for negative
+                    // impls until an RFC specifies them.
                     if is_generic_target {
                         let generic_names = registry
                             .struct_generic_names_for(target_name.as_str())
