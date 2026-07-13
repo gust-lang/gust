@@ -1011,6 +1011,14 @@ pub struct TypeDefinitionRegistry {
     /// Populated INSTEAD OF `impl_aspect_env` when `is_generic_target && (impl_bounds ||
     /// impl_neg_bounds non-empty)` — see `register_conditional_impl_bounds`.
     conditional_impl_bounds: HashMap<(SymbolId, String), Vec<ConditionalImplBoundEntry>>,
+    /// RFC-0060 §5 / issue #244: concrete (no impl-level generics) negative impls,
+    /// keyed by `(target_type_id, aspect_name)`. Value: one `Vec<Type>` per registered
+    /// negative impl, the target's own concrete type args (e.g. `[i64]` for
+    /// `impl !Marker for Foo<i64> {}`) — consulted by `type_satisfies_aspect` to let
+    /// an explicit negative impl override a blanket positive impl for this exact
+    /// instantiation. Blanket/conditional negative impls are out of scope (decision 9,
+    /// `registry.rs`) and never populate this table.
+    neg_impl_env: HashMap<(SymbolId, String), Vec<Vec<Type>>>,
     /// Global `(module, name) -> SymbolId` table. See `impl_aspect_env`'s doc.
     symbols: Rc<HashMap<(Vec<String>, String), SymbolId>>,
     /// Every module's resolved import scope. See `impl_aspect_env`'s doc.
@@ -1047,6 +1055,7 @@ impl TypeDefinitionRegistry {
             aspect_method_defs: HashMap::new(),
             impl_aspect_env: HashMap::new(),
             conditional_impl_bounds: HashMap::new(),
+            neg_impl_env: HashMap::new(),
             symbols: Rc::new(HashMap::new()),
             scopes: Rc::new(HashMap::new()),
             aspect_assoc_type_decls: HashMap::new(),
@@ -1213,6 +1222,33 @@ impl TypeDefinitionRegistry {
             .push((pos_bounds, neg_bounds));
     }
 
+    /// Register a concrete negative impl (RFC-0060 §5 / issue #244): `impl !Aspect
+    /// for Target` with no impl-level generics. `target_args` is the target's own
+    /// concrete type-arg list (e.g. `[i64]` for `impl !Marker for Foo<i64> {}`).
+    pub fn register_neg_impl(
+        &mut self,
+        current_module: &[String],
+        target: &str,
+        aspect: &str,
+        target_args: Vec<Type>,
+    ) {
+        let Some(target_id) = self.resolve_type_position_id(current_module, target) else {
+            return;
+        };
+        self.neg_impl_env
+            .entry((target_id, aspect.to_string()))
+            .or_default()
+            .push(target_args);
+    }
+
+    /// Whether an explicit negative impl exists for this exact concrete instantiation
+    /// (RFC-0060 §5 priority: a negative impl overrides a blanket positive impl).
+    fn neg_impl_overrides(&self, target_id: SymbolId, aspect_name: &str, type_args: &[Type]) -> bool {
+        self.neg_impl_env
+            .get(&(target_id, aspect_name.to_string()))
+            .is_some_and(|entries| entries.iter().any(|args| args.as_slice() == type_args))
+    }
+
     /// Check one conditional impl entry: for each type-argument position, every
     /// positive bound aspect must be satisfied and every negative bound aspect must
     /// not be satisfied.
@@ -1272,9 +1308,23 @@ impl TypeDefinitionRegistry {
                     Type::F64 => "f64",
                     _ => return false,
                 };
+                let Some(target_id) = self.resolve_type_position_id(current_module, name) else {
+                    return false;
+                };
+                if self.neg_impl_overrides(target_id, aspect_name, &[]) {
+                    return false;
+                }
                 return self.impl_aspect_env_has(current_module, name, aspect_name);
             }
         };
+        // RFC-0060 §5: an explicit negative impl for this exact instantiation
+        // overrides everything else — check this before consulting either the
+        // unconditional or conditional-impl positive paths.
+        if let Some(target_id) = self.resolve_type_position_id(current_module, name) {
+            if self.neg_impl_overrides(target_id, aspect_name, inner_args) {
+                return false;
+            }
+        }
         // Direct check.
         if self.impl_aspect_env_has(current_module, name, aspect_name) {
             return true;
@@ -1690,6 +1740,12 @@ impl TypeDefinitionRegistry {
             // Concatenate: multiple modules can each declare a conditional impl
             // for the same (target, aspect) pair.
             self.conditional_impl_bounds
+                .entry(k.clone())
+                .or_default()
+                .extend(v.iter().cloned());
+        }
+        for (k, v) in &other.neg_impl_env {
+            self.neg_impl_env
                 .entry(k.clone())
                 .or_default()
                 .extend(v.iter().cloned());

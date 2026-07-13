@@ -566,6 +566,33 @@ fn register_program_decls(
                         }
                     }
                 }
+            } else if ib.polarity == Polarity::Negative && ib.generics.is_empty() {
+                // RFC-0060 §5 / issue #244: register a CONCRETE negative impl (no
+                // impl-level generics — a blanket/conditional negative impl, e.g.
+                // `impl<T> !Aspect for Foo<T>`, is explicitly out of scope per
+                // decision 9 above) so `type_satisfies_aspect` can consult it and
+                // let it override a blanket positive impl for this exact
+                // instantiation, per RFC-0060 §5's priority order.
+                if let Some(aspect_name) = &ib.aspect_name {
+                    if let TypeExpr::Named(_, target_type_args) = &ib.target_type {
+                        let concrete_target_args: Vec<crate::types::Type> = target_type_args
+                            .iter()
+                            .filter_map(|te| match type_expr_to_infer(te) {
+                                InferType::Concrete(t) => Some(t),
+                                InferType::Named(n, _) => {
+                                    Some(crate::types::Type::Named(n, vec![]))
+                                }
+                                _ => None,
+                            })
+                            .collect();
+                        registry.register_neg_impl(
+                            current_module_path,
+                            &target_name,
+                            aspect_name,
+                            concrete_target_args,
+                        );
+                    }
+                }
             }
         }
     }
