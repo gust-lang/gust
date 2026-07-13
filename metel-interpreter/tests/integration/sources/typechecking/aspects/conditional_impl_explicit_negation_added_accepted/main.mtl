@@ -1,0 +1,32 @@
+// RFC-0036 §3.1's fix-up example verbatim: two conditional impls of the same
+// aspect for the same struct, one bounded `T: Clone2 + !Display2` and the
+// other `T: Display2` -- disjoint via the explicitly-added negation on
+// `Display2`, so no coherence conflict, even though this exercises the
+// multi-bound-conjunction path (positive AND negative bounds in one impl's
+// generic param), not just the single-bound case.
+
+aspect Clone2 {
+    fun clone2(self) -> i64;
+}
+
+aspect Display2 {
+    fun show(self) -> String;
+}
+
+aspect Serialize2 {
+    fun ser(self) -> String;
+}
+
+struct Wrapper<T> {
+    val: T,
+}
+
+impl<T: Clone2 + !Display2> Serialize2 for Wrapper<T> {
+    fun ser(self) -> String { return "no-display"; }
+}
+
+impl<T: Display2> Serialize2 for Wrapper<T> {
+    fun ser(self) -> String { return "display"; }
+}
+
+fun main() {}
