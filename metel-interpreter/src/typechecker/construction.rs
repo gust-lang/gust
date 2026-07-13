@@ -3050,7 +3050,7 @@ fn check_fun_call_assoc_eq(
 /// RFC-0082 §4: enforce associated-type equality constraints from a scheme's
 /// `assoc_eq_constraints` field.
 fn check_scheme_assoc_eq(
-    fun_name: &str,
+    _fun_name: &str,
     scheme: &TypeScheme,
     var_to_type: &HashMap<TypeVar, Type>,
     span: &Span,
@@ -3265,20 +3265,19 @@ fn instantiate_scheme_for_call(
     // RFC-0082 backfill: for each projection in the scheme, resolve the base
     // type param to a concrete type and bind the projection's placeholder var
     // to the concrete associated type from the impl.
-    for proj in &scheme.assoc_projections {
-        if let Some((base_pos, aspect, assoc, placeholder_tv)) = proj {
-            let base_orig = scheme.quantified_vars[*base_pos];
-            let fresh_base = renaming.get(&base_orig).copied().unwrap_or(base_orig);
-            if let InferType::Named(base_name, _) = subst.apply(&InferType::Var(fresh_base)) {
-                if let Some(concrete_ty) =
-                    registry.impl_assoc_type(current_module, &base_name, aspect, assoc)
-                {
-                    if let Some(fresh_placeholder) = renaming.get(placeholder_tv) {
-                        subst.bind(
-                            *fresh_placeholder,
-                            InferType::Concrete(concrete_ty.clone()),
-                        );
-                    }
+    for proj in scheme.assoc_projections.iter().flatten() {
+        let (base_pos, aspect, assoc, placeholder_tv) = proj;
+        let base_orig = scheme.quantified_vars[*base_pos];
+        let fresh_base = renaming.get(&base_orig).copied().unwrap_or(base_orig);
+        if let InferType::Named(base_name, _) = subst.apply(&InferType::Var(fresh_base)) {
+            if let Some(concrete_ty) =
+                registry.impl_assoc_type(current_module, &base_name, aspect, assoc)
+            {
+                if let Some(fresh_placeholder) = renaming.get(placeholder_tv) {
+                    subst.bind(
+                        *fresh_placeholder,
+                        InferType::Concrete(concrete_ty.clone()),
+                    );
                 }
             }
         }
@@ -3329,16 +3328,13 @@ fn instantiate_scheme_with_turbofish(
         var_to_concrete.insert(qvar, concrete_ty.clone());
     }
     // RFC-0082 backfill: bind projection placeholder vars to their concrete associated types.
-    for proj in &scheme.assoc_projections {
-        if let Some((_base_pos, aspect, assoc, placeholder_tv)) = proj {
-            if let Some(base_concrete) = var_to_concrete.get(&scheme.quantified_vars[*_base_pos]) {
-                if let Type::Named(base_name, _) = base_concrete {
-                    if let Some(concrete_ty) =
-                        registry.impl_assoc_type(current_module, base_name, aspect, assoc)
-                    {
-                        subst.bind(*placeholder_tv, InferType::Concrete(concrete_ty.clone()));
-                    }
-                }
+    for proj in scheme.assoc_projections.iter().flatten() {
+        let (_base_pos, aspect, assoc, placeholder_tv) = proj;
+        if let Some(Type::Named(base_name, _)) = var_to_concrete.get(&scheme.quantified_vars[*_base_pos]) {
+            if let Some(concrete_ty) =
+                registry.impl_assoc_type(current_module, base_name, aspect, assoc)
+            {
+                subst.bind(*placeholder_tv, InferType::Concrete(concrete_ty.clone()));
             }
         }
     }
@@ -3381,20 +3377,19 @@ fn instantiate_scheme_with_expected_ret(
     })?;
     subst = subst.compose(&s);
     // RFC-0082 backfill: bind projection placeholder vars to their concrete associated types.
-    for proj in &scheme.assoc_projections {
-        if let Some((base_pos, aspect, assoc, placeholder_tv)) = proj {
-            let base_orig = scheme.quantified_vars[*base_pos];
-            let fresh_base = renaming.get(&base_orig).copied().unwrap_or(base_orig);
-            if let InferType::Named(base_name, _) = subst.apply(&InferType::Var(fresh_base)) {
-                if let Some(concrete_ty) =
-                    registry.impl_assoc_type(current_module, &base_name, aspect, assoc)
-                {
-                    if let Some(fresh_placeholder) = renaming.get(placeholder_tv) {
-                        subst.bind(
-                            *fresh_placeholder,
-                            InferType::Concrete(concrete_ty.clone()),
-                        );
-                    }
+    for proj in scheme.assoc_projections.iter().flatten() {
+        let (base_pos, aspect, assoc, placeholder_tv) = proj;
+        let base_orig = scheme.quantified_vars[*base_pos];
+        let fresh_base = renaming.get(&base_orig).copied().unwrap_or(base_orig);
+        if let InferType::Named(base_name, _) = subst.apply(&InferType::Var(fresh_base)) {
+            if let Some(concrete_ty) =
+                registry.impl_assoc_type(current_module, &base_name, aspect, assoc)
+            {
+                if let Some(fresh_placeholder) = renaming.get(placeholder_tv) {
+                    subst.bind(
+                        *fresh_placeholder,
+                        InferType::Concrete(concrete_ty.clone()),
+                    );
                 }
             }
         }

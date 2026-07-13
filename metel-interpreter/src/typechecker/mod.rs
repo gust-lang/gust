@@ -184,6 +184,8 @@ fn refresh_scheme_for_export(
         // Order is preserved by the renaming, so positional bounds stay valid.
         bounds: scheme.bounds.clone(),
         neg_bounds: scheme.neg_bounds.clone(),
+        assoc_projections: vec![],
+        assoc_eq_constraints: vec![],
         ty,
     }
 }

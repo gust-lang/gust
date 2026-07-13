@@ -224,6 +224,7 @@ pub(super) fn type_expr_to_infer_with_self(te: &TypeExpr, self_ty_name: &str) ->
 /// Convert a source-level `TypeExpr` to an `InferType` with associated-type
 /// resolution context. Used when converting type annotations inside aspect
 /// method signatures (§1.2 bare-name sugar) or concrete projection positions.
+#[allow(dead_code)] // wired by future callers; public surface kept for step 8/9.
 pub(super) fn type_expr_to_infer_with_assoc_ctx(
     te: &TypeExpr,
     generics: &HashMap<String, TypeVar>,

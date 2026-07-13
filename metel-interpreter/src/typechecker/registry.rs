@@ -589,6 +589,8 @@ fn register_generic_impl_method_schemes(
                 param_names: vec![],
                 bounds: vec![],
                 neg_bounds: vec![],
+                assoc_projections: vec![],
+                assoc_eq_constraints: vec![],
                 ty: InferType::Fun(param_types, Box::new(ret_ty)),
             },
             // struct_tvars: only the type's params are pinned from the receiver;

@@ -766,6 +766,7 @@ impl TypeScheme {
 
     /// Attach per-quantified-var equality constraints (RFC-0082 §4).
     #[must_use]
+    #[allow(dead_code)] // wired by inference.rs when where-clause eq constraints are generated
     pub fn with_assoc_eq_constraints(
         mut self,
         constraints: Vec<Vec<(String, String, InferType)>>,
@@ -1199,6 +1200,7 @@ impl TypeDefinitionRegistry {
         self.neg_fun_bounds.get(name)
     }
 
+    #[allow(dead_code)]
     pub fn register_fun_assoc_eq_constraints(
         &mut self,
         name: String,
@@ -1810,6 +1812,7 @@ impl InferContext {
 
     /// Read-only view of all type-param bounds in the current scope (for debug assertions).
     #[must_use]
+    #[allow(dead_code)]
     pub fn type_param_bounds(&self) -> &HashMap<TypeVar, Vec<String>> {
         &self.current_type_param_bounds
     }
@@ -1878,6 +1881,7 @@ impl InferContext {
         self.registry.register_neg_fun_bounds(name, bounds);
     }
 
+    #[allow(dead_code)]
     pub fn register_fun_assoc_eq_constraints(
         &mut self,
         name: String,

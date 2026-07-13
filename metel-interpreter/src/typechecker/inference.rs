@@ -611,7 +611,7 @@ fn infer_fun_decl(
                                 "ambiguous associated type `{assoc_name}`: multiple aspects declare it: {}",
                                 matching_aspects.join(", ")
                             ),
-                            &*proj_span,
+                            proj_span,
                         ));
                     }
                     if let Some(aspect) = matching_aspects.into_iter().next() {
@@ -827,7 +827,7 @@ fn infer_impl_method(
                                 "ambiguous associated type `{assoc_name}`: multiple aspects declare it: {}",
                                 matching_aspects.join(", ")
                             ),
-                            &*proj_span,
+                            proj_span,
                         ));
                     }
                     if let Some(aspect) = matching_aspects.into_iter().next() {
@@ -3221,7 +3221,7 @@ fn lower_projections_in_expr(
                 .iter()
                 .map(|a| crate::ast::MatchArm {
                     pattern: a.pattern.clone(),
-                    guard: a.guard.as_ref().map(|g| go(g)),
+                    guard: a.guard.as_ref().map(&go),
                     body: lower_projections_in_block(&a.body, generics),
                     span: a.span.clone(),
                 })
@@ -3368,7 +3368,7 @@ pub(super) fn lower_projections_in_program(program: Program) -> Program {
     let decls = program
         .decls
         .into_iter()
-        .map(|decl| lower_projections_in_decl(decl))
+        .map(lower_projections_in_decl)
         .collect();
     Program { decls, ..program }
 }
