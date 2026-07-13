@@ -708,6 +708,7 @@ fn register_generic_impl_method_schemes(
                 neg_bounds: vec![],
                 assoc_projections: vec![],
                 assoc_eq_constraints: vec![],
+                opaque_returns: vec![],
                 ty: InferType::Fun(param_types, Box::new(ret_ty)),
             }
             .with_bounds(&by_var)

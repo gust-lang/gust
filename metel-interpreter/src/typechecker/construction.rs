@@ -604,6 +604,7 @@ fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl
             neg_bounds: vec![],
             assoc_projections: vec![],
             assoc_eq_constraints: vec![],
+            opaque_returns: vec![],
             ty: InferType::Fun(
                 entry
                     .params

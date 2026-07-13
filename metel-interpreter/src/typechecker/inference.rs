@@ -455,6 +455,7 @@ fn infer_decl(
                         neg_bounds: HashMap::new(),
                         assoc_projections: HashMap::new(),
                         assoc_eq: HashMap::new(),
+                        opaque_returns: HashMap::new(),
                     });
                     return Ok(InferType::unit());
                 }
@@ -662,6 +663,7 @@ fn infer_fun_decl(
             neg_bounds,
             assoc_projections: HashMap::new(),
             assoc_eq,
+            opaque_returns: HashMap::new(),
         });
         return Ok(());
     }
@@ -887,6 +889,7 @@ fn infer_fun_decl(
         neg_bounds,
         assoc_projections: proj_map,
         assoc_eq,
+        opaque_returns: HashMap::new(),
     });
     Ok(())
 }

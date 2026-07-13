@@ -695,6 +695,15 @@ pub struct TypeScheme {
     /// `assoc_eq_constraints[i]` lists `(left_proj, right_proj, type)` constraints
     /// where both sides resolve to the i-th quantified var's projection.
     pub assoc_eq_constraints: Vec<Vec<(String, String, InferType)>>,
+    /// Per-quantified-var opaque-return metadata (RFC-0037). Index-aligned with
+    /// `quantified_vars`. `Some((aspect_name, concrete_ty))` means the i-th
+    /// quantified var is a return-position `impl Aspect` occurrence whose concrete
+    /// type is fixed by the function's own body (not chosen per call, unlike an
+    /// ordinary generic). The caller never sees `concrete_ty` directly — used only
+    /// to (a) verify the aspect bound once at definition time, (b) let construction
+    /// build a concrete `Type` for the call expression and the function's own
+    /// eagerly-built body. `None` means no opaque return at this position.
+    pub opaque_returns: Vec<Option<(String, Type)>>,
     pub ty: InferType,
 }
 
@@ -709,6 +718,7 @@ impl TypeScheme {
             neg_bounds: vec![],
             assoc_projections: vec![],
             assoc_eq_constraints: vec![],
+            opaque_returns: vec![],
             ty,
         }
     }
@@ -779,6 +789,25 @@ impl TypeScheme {
             .collect();
         self
     }
+
+    /// Attach per-var opaque-return metadata (RFC-0037), given a `TypeVar` →
+    /// `(aspect_name, concrete_type)` map. Mirrors `with_bounds`/`with_neg_bounds`:
+    /// robust to quantifier ordering, each quantified var looks up its own entry.
+    #[must_use]
+    pub fn with_opaque_returns(
+        mut self,
+        by_var: &std::collections::HashMap<TypeVar, (String, Type)>,
+    ) -> Self {
+        if by_var.is_empty() {
+            return self;
+        }
+        self.opaque_returns = self
+            .quantified_vars
+            .iter()
+            .map(|v| by_var.get(v).cloned())
+            .collect();
+        self
+    }
 }
 
 impl std::fmt::Display for TypeScheme {
@@ -816,6 +845,7 @@ pub fn generalize(ty: InferType, env_free_vars: &HashSet<TypeVar>) -> TypeScheme
         neg_bounds: vec![],
         assoc_projections: vec![],
         assoc_eq_constraints: vec![],
+        opaque_returns: vec![],
         ty,
     }
 }
