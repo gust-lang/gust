@@ -658,6 +658,65 @@ fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl
             ));
         }
         FunBody::Typed(typed_block)
+    } else if scheme.quantified_vars.iter().all(|qvar| {
+        scheme.opaque_returns.iter().any(|opaque| {
+            if let Some((_, _concrete_ty)) = opaque {
+                // Check if this quantified var is bound to a concrete type in opaque_returns
+                // We need to find if there's an opaque entry that covers this quantified var position
+                if let Some(idx) = scheme.quantified_vars.iter().position(|v| v == qvar) {
+                    scheme.opaque_returns.get(idx).is_some()
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        })
+    }) {
+        // All quantified vars are accounted for by opaque_returns - eager build
+        let mut subst = Substitution::new();
+        for (i, qvar) in scheme.quantified_vars.iter().enumerate() {
+            if let Some(Some((_, concrete_ty))) = scheme.opaque_returns.get(i) {
+                subst.bind(*qvar, InferType::Concrete(concrete_ty.clone()));
+            }
+        }
+        let substituted_ty = subst.apply(&scheme.ty);
+        let (param_types, ret_ty) = match substituted_ty {
+            InferType::Fun(params, ret) => {
+                let pts = params
+                    .iter()
+                    .map(|p| infer_type_to_type(p, &fun.span))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let rt = infer_type_to_type(&ret, &fun.span).ok();
+                (pts, rt)
+            }
+            _ => {
+                return Err(MetelError::internal(format!(
+                    "expected Fun type for `{}`",
+                    fun.name
+                )))
+            }
+        };
+        ctx.push_scope();
+        for (param, ty) in fun.params.iter().zip(param_types.iter()) {
+            ctx.bind(&param.name, ty.clone());
+        }
+        let saved_return = ctx.push_return_type(ret_ty.clone());
+        let typed_block = construct_block(&fun.body, ret_ty.as_ref(), ctx)?;
+        ctx.pop_return_type(saved_return);
+        ctx.pop_scope();
+        // RFC-0078 §6: a function declared `-> !` must diverge on every path.
+        if matches!(ret_ty, Some(Type::Never)) && !fun_body_diverges(&typed_block) {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0016,
+                format!(
+                    "function `{}` is declared `-> !` but does not diverge on all paths",
+                    fun.name
+                ),
+                &fun.span,
+            ));
+        }
+        FunBody::Typed(typed_block)
     } else {
         FunBody::Generic(fun.body.clone())
     };
@@ -3278,6 +3337,20 @@ fn instantiate_scheme_for_call(
         }
     }
 
+    // RFC-0037 backfill: for each opaque-return quantified var, bind its fresh
+    // copy to the concrete type recorded at definition time. This lets the
+    // `infer_type_to_type` calls below succeed using the known concrete type
+    // rather than requiring ordinary substitution to have resolved it.
+    for (i, opaque) in scheme.opaque_returns.iter().enumerate() {
+        if let Some((_aspect, concrete_ty)) = opaque {
+            if let Some(&orig_tv) = scheme.quantified_vars.get(i) {
+                if let Some(&fresh_tv) = renaming.get(&orig_tv) {
+                    subst.bind(fresh_tv, InferType::Concrete(concrete_ty.clone()));
+                }
+            }
+        }
+    }
+
     let concrete_params: Vec<Type> = params
         .iter()
         .map(|p| infer_type_to_type(&subst.apply(p), span))
@@ -3333,6 +3406,14 @@ fn instantiate_scheme_with_turbofish(
             }
         }
     }
+    // RFC-0037 backfill: bind opaque-return vars to their concrete types.
+    for (i, opaque) in scheme.opaque_returns.iter().enumerate() {
+        if let Some((_aspect, concrete_ty)) = opaque {
+            if let Some(&orig_tv) = scheme.quantified_vars.get(i) {
+                subst.bind(orig_tv, InferType::Concrete(concrete_ty.clone()));
+            }
+        }
+    }
     let instantiated = subst.apply(&scheme.ty);
     let concrete_ty = infer_type_to_type(&instantiated, span)?;
     Ok((concrete_ty, var_to_concrete))
@@ -3385,6 +3466,16 @@ fn instantiate_scheme_with_expected_ret(
                         *fresh_placeholder,
                         InferType::Concrete(concrete_ty.clone()),
                     );
+                }
+            }
+        }
+    }
+    // RFC-0037 backfill: bind opaque-return vars to their concrete types.
+    for (i, opaque) in scheme.opaque_returns.iter().enumerate() {
+        if let Some((_aspect, concrete_ty)) = opaque {
+            if let Some(&orig_tv) = scheme.quantified_vars.get(i) {
+                if let Some(&fresh_tv) = renaming.get(&orig_tv) {
+                    subst.bind(fresh_tv, InferType::Concrete(concrete_ty.clone()));
                 }
             }
         }
