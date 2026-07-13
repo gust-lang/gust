@@ -1,0 +1,29 @@
+// RFC-0036: runtime end-to-end confirmation that conditional impl dispatch
+// actually calls the correct method body and returns the expected value.
+
+aspect Display {
+    fun display(self) -> String;
+}
+
+impl Display for i64 {
+    fun display(self) -> String { return "i64"; }
+}
+
+struct Box1<T> {
+    value: T,
+}
+
+aspect Label {
+    fun label(&self) -> String;
+}
+
+impl<T: Display> Label for Box1<T> {
+    fun label(&self) -> String {
+        return "display-box";
+    }
+}
+
+fun main() {
+    let a = Box1 { value: 5 };
+    assert(a.label() == "display-box");
+}

@@ -1,0 +1,29 @@
+// RFC-0036 §2.3: conditional impl bounds visible through a generic function.
+
+aspect Printable {
+    fun print(self) -> String;
+}
+
+impl Printable for i64 {
+    fun print(self) -> String { return "i64"; }
+}
+
+struct Pair<A, B> {
+    first: A,
+    second: B,
+}
+
+impl<A: Printable, B: Printable> Printable for Pair<A, B> {
+    fun print(self) -> String {
+        return "pair";
+    }
+}
+
+fun print_pair<A: Printable, B: Printable>(p: Pair<A, B>) {
+    let s: String = p.print();
+}
+
+fun main() {
+    let p = Pair { first: 5, second: 10 };
+    print_pair(p);
+}

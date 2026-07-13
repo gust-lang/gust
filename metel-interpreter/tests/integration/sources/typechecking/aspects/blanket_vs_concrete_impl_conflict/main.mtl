@@ -1,0 +1,24 @@
+// RFC-0060 §2: a blanket impl and a concrete impl of the same aspect
+// conflict when the concrete instantiation is already covered by the
+// blanket -- the pre-#244 overlap check only ever compared identically-
+// shaped canonical targets, so this shape-crossing pair silently missed
+// each other. Fixed by treating TypeParam as a wildcard when comparing
+// canonicalized targets (issue #244).
+
+aspect Marker {
+    fun mark(self) -> String;
+}
+
+struct Foo<T> {
+    value: T,
+}
+
+impl<T> Marker for Foo<T> {
+    fun mark(self) -> String { return "blanket"; }
+}
+
+impl Marker for Foo<i64> { // ERROR[T0015]
+    fun mark(self) -> String { return "concrete"; }
+}
+
+fun main() {}

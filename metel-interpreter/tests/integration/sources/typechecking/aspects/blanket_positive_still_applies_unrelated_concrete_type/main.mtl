@@ -1,0 +1,24 @@
+// Regression guard: a negative impl for one concrete instantiation must not
+// affect an unrelated instantiation of the same generic struct -- Foo<boolean>
+// has no negative impl of its own, so the blanket impl still applies.
+
+aspect Marker {
+    fun mark(self) -> String;
+}
+
+struct Foo<T> {
+    value: T,
+}
+
+impl<T> Marker for Foo<T> {
+    fun mark(self) -> String { return "blanket"; }
+}
+
+impl !Marker for Foo<i64> {}
+
+fun needs_marker<U: Marker>(x: U) {}
+
+fun main() {
+    let f = Foo { value: true };
+    needs_marker(f);
+}

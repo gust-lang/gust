@@ -1,0 +1,12 @@
+// Test negative bound directly
+aspect Drop { fun drop(self); }
+struct Arena<T: !Drop> { items: T[] }
+struct Pair<A, B> { first: A, second: B }
+// Pair implements Drop only when BOTH A and B implement Drop
+impl<A: Drop, B: Drop> Drop for Pair<A, B> { fun drop(self) {} }
+struct Resource { x: i64 }
+// Resource does NOT implement Drop
+
+fun main() {
+    let a: Arena<Pair<Resource, Resource>> = Arena { items: [] }; // This should work
+}

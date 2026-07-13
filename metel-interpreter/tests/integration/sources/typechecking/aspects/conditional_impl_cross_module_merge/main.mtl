@@ -1,0 +1,15 @@
+// Cross-module conditional impl regression (RFC-0036 / merge_from boundary):
+// Pair<A, B> + conditional impl live in pair_module.mtl. This main.mtl imports
+// them and calls greet() on a satisfying concrete instantiation — exercising the
+// full path: import → merge_from → method_scheme lookup → bound check.
+//
+// A SECOND fixture (conditional_impl_cross_module_merge_neg) imports the same
+// module and calls greet() on a violating instantiation to confirm T0012.
+
+import pair_module::{Pair, Greet};
+
+fun main() {
+    let p = Pair { first: 5, second: "hello" };
+    let s: String = p.greet();
+    assert(s == "pair");
+}

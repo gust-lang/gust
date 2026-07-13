@@ -478,16 +478,9 @@ fn infer_decl(
             Ok(InferType::unit())
         }
         Decl::Struct(_) | Decl::Enum(_) | Decl::Aspect(_) => Ok(InferType::unit()),
-        Decl::Impl(ib) if !ib.generics.is_empty() => {
-            // RFC-0036 conditional impls / RFC-0061 structural blanket impls: real
-            // bound-satisfaction checking at each instantiation is issue #241/#245's
-            // job, not this one's. `target_name` may not even name a real struct/enum
-            // (RFC-0061's structural targets, or a bare type-parameter blanket) — skip
-            // inference entirely here, mirroring construction.rs's `FunBody::Generic`
-            // deferral for the same impls, so the two passes agree on what's checked.
-            Ok(InferType::unit())
-        }
         Decl::Impl(ib) => {
+            // Extract the target type name; bail for non-named targets (structural
+            // blanket impls are still out of scope).
             let target_name = match &ib.target_type {
                 TypeExpr::Named(name, _) => name.rsplit("::").next().unwrap_or(name).to_string(),
                 _ => {
@@ -554,6 +547,34 @@ fn infer_decl(
                                                 _ => None,
                                             };
                                             if let Some(name) = concrete_name {
+                                                // Check if this name matches one of the impl's own generic parameters
+                                                if let Some(gp) = ib.generics.iter().find(|p| p.name == name) {
+                                                    // This is the impl's own generic parameter - check its declared bounds
+                                                    let param_bounds = gp.bounds.iter()
+                                                        .filter(|b| b.polarity == Polarity::Positive)
+                                                        .filter_map(|b| {
+                                                            if let TypeExpr::Named(n, _) = &b.aspect {
+                                                                Some(n.clone())
+                                                            } else {
+                                                                None
+                                                            }
+                                                        })
+                                                        .collect::<Vec<_>>();
+                                                    
+                                                    if param_bounds.contains(bound_aspect) {
+                                                        // The bound is satisfied by the impl's own parameter bounds
+                                                        continue;
+                                                    }
+                                                    return Err(MetelError::type_error(
+                                                        TypeErrorCode::T0012,
+                                                        format!(
+                                                            "associated type `{}` bound `{}` is not satisfied by `{}`",
+                                                            decl.name, bound_aspect, name
+                                                        ),
+                                                        &ib.span,
+                                                    ));
+                                                }
+                                                // Original behavior for concrete types
                                                 if !ctx.registry().impl_aspect_env_has(
                                                     ctx.current_module_path(),
                                                     &name,
@@ -588,7 +609,7 @@ fn infer_decl(
                 }
             }
             for method in &ib.methods {
-                infer_impl_method(method, &target_name, ctx, fun_generalizations)?;
+                infer_impl_method(method, ib, &target_name, ctx, fun_generalizations)?;
             }
             // `inherited_defaults` is only ever populated inside the `Some(aspect_name)`
             // branch above, so this is always `Some` when the loop body runs.
@@ -876,6 +897,7 @@ fn infer_fun_decl(
 #[allow(clippy::too_many_lines)]
 fn infer_impl_method(
     method: &FunDecl,
+    ib: &crate::ast::ImplBlock,
     target_name: &str,
     ctx: &mut InferContext,
     fun_generalizations: &mut Vec<FunGeneralization>,
@@ -908,6 +930,34 @@ fn infer_impl_method(
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // RFC-0036 §2.2: compute impl-level bounds (from the impl block's own
+    // where clause / inline bounds) and merge them into `struct_bounds` so that
+    // method dispatch and type annotations inside the body can see impl-level
+    // constraints (e.g. `impl<T: Display> Greet for Box1<T>` needs `T: Display`
+    // visible when resolving `self.value.to_string()`).
+    let generic_names_for_impl: Vec<String> = ctx
+        .struct_generic_names_for(target_name)
+        .cloned()
+        .unwrap_or_default();
+    let synth = super::registry::synth_generics_for_impl(&generic_names_for_impl, &ib.generics);
+    let impl_bounds: Vec<Vec<String>> =
+        super::registry::collect_type_param_bounds(&synth, ib.where_clause.as_ref());
+    let impl_neg_bounds: Vec<Vec<String>> =
+        super::registry::collect_negative_type_param_bounds(&synth, ib.where_clause.as_ref());
+
+    // Merge impl-level bounds into struct_bounds (union: keep any existing
+    // struct-level bounds and add the impl's).
+    for (i, tv) in struct_tvars_ordered.iter().enumerate() {
+        if let Some(ib_bounds) = impl_bounds.get(i) {
+            if !ib_bounds.is_empty() {
+                struct_bounds
+                    .entry(*tv)
+                    .or_default()
+                    .extend(ib_bounds.iter().cloned());
             }
         }
     }
@@ -1049,7 +1099,28 @@ fn infer_impl_method(
             .iter()
             .any(|v| struct_tvars_free.contains(v))
     {
-        let scheme = generalize(resolved_fun_ty, &std::collections::HashSet::new());
+        let mut scheme = generalize(resolved_fun_ty, &std::collections::HashSet::new());
+        // RFC-0036 §2.2: attach impl-level bounds keyed by resolved tvars so
+        // use-site checking can verify the concrete receiver satisfies them.
+        let by_var: std::collections::HashMap<TypeVar, Vec<String>> = impl_bounds
+            .iter()
+            .enumerate()
+            .filter_map(|(i, bounds)| {
+                if bounds.is_empty() { return None; }
+                let resolved_tv = struct_tvars_resolved.get(i)?;
+                Some((*resolved_tv, bounds.clone()))
+            })
+            .collect();
+        let by_neg_var: std::collections::HashMap<TypeVar, Vec<String>> = impl_neg_bounds
+            .iter()
+            .enumerate()
+            .filter_map(|(i, bounds)| {
+                if bounds.is_empty() { return None; }
+                let resolved_tv = struct_tvars_resolved.get(i)?;
+                Some((*resolved_tv, bounds.clone()))
+            })
+            .collect();
+        scheme = scheme.with_bounds(&by_var).with_neg_bounds(&by_neg_var);
         let scheme = if body_assoc_log.is_empty() {
             scheme
         } else {
@@ -1057,6 +1128,12 @@ fn infer_impl_method(
             scheme.with_assoc_projections(&proj_map)
         };
         ctx.register_method_scheme(
+            target_name.to_string(),
+            method.name.clone(),
+            scheme.clone(),
+            struct_tvars_resolved.clone(),
+        );
+        ctx.register_method_scheme_variant(
             target_name.to_string(),
             method.name.clone(),
             scheme,

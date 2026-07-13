@@ -1,0 +1,32 @@
+// RFC-0036 §2.2: a conditional impl's satisfaction must be checked, not just
+// assumed unsatisfied, when the conditionally-implementing type is passed as
+// an argument bound on an UNRELATED generic function (not just via direct
+// method dispatch on the receiver itself).
+
+aspect Printable {
+    fun print(self) -> String;
+}
+
+impl Printable for i64 {
+    fun print(self) -> String { return "i64"; }
+}
+
+struct Pair<A, B> {
+    first: A,
+    second: B,
+}
+
+impl<A: Printable, B: Printable> Printable for Pair<A, B> {
+    fun print(self) -> String {
+        return "pair";
+    }
+}
+
+fun describe<T: Printable>(x: T) -> String {
+    return x.print();
+}
+
+fun main() {
+    let p = Pair { first: 5, second: 10 };
+    let s: String = describe(p);
+}

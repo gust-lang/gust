@@ -1571,6 +1571,39 @@ fn construct_expr(
                         subst = subst.compose(&s);
                     }
                 }
+                // RFC-0036 §2.2 use-site check: build var→concrete mapping and
+                // verify that the concrete receiver type satisfies the method
+                // scheme's conditional bounds.
+                let mut var_to_type: HashMap<TypeVar, Type> = HashMap::new();
+                for &tv in &scheme.quantified_vars {
+                    if let Ok(t) = infer_type_to_type(&subst.apply(&InferType::Var(tv)), span) {
+                        var_to_type.insert(tv, t);
+                    }
+                }
+                check_scheme_bounds(
+                    method,
+                    &scheme,
+                    &var_to_type,
+                    span,
+                    ctx.registry,
+                    ctx.current_module,
+                )?;
+                check_scheme_neg_bounds(
+                    method,
+                    &scheme,
+                    &var_to_type,
+                    span,
+                    ctx.registry,
+                    ctx.current_module,
+                )?;
+                check_scheme_assoc_eq(
+                    method,
+                    &scheme,
+                    &var_to_type,
+                    span,
+                    ctx.registry,
+                    ctx.current_module,
+                )?;
                 let method_fun_ty = infer_type_to_type(&subst.apply(&scheme.ty), span)?;
                 (method_fun_ty, typed_args)
             };
@@ -1658,30 +1691,24 @@ fn construct_expr(
                             let Some(arg) = type_args.get(i) else {
                                 continue;
                             };
-                            let type_arg_name = match arg {
-                                Type::Named(n, _) => n.clone(),
+                            let concrete_arg = match arg {
+                                Type::Named(_, _) => arg.clone(),
                                 _ => continue,
                             };
                             for aspect in bounds {
-                                let has_impl = ctx.registry.impl_aspect_env_has(
+                                check_type_satisfies_bounds(
+                                    &concrete_arg,
+                                    std::slice::from_ref(aspect),
+                                    type_name,
+                                    span,
+                                    ctx.registry,
                                     ctx.current_module,
-                                    &type_arg_name,
-                                    aspect,
-                                );
-                                if !has_impl {
-                                    return Err(MetelError::type_error(
-                                        TypeErrorCode::T0012,
-                                        format!("`{type_arg_name}` does not implement `{aspect}` (required by `{type_name}`)"),
-                                        span,
-                                    ));
-                                }
+                                )?;
                             }
                         }
                     }
                     // T0012 negative bounds: check each resolved type arg does NOT
                     // implement the declared negative bounds (RFC-0072, issue #243).
-                    // TODO(#241): interaction with conditional impls (RFC-0036) is out of
-                    // scope; whoever implements #241 must re-examine this check.
                     if let Some(neg_param_bounds) = ctx.registry.neg_type_param_bounds_for(type_name) {
                         for (i, neg_bounds) in neg_param_bounds.iter().enumerate() {
                             if neg_bounds.is_empty() {
@@ -1690,34 +1717,19 @@ fn construct_expr(
                             let Some(arg) = type_args.get(i) else {
                                 continue;
                             };
-                            let type_arg_name = match arg {
-                                Type::Named(n, _) => n.clone(),
+                            let concrete_arg = match arg {
+                                Type::Named(_, _) => arg.clone(),
                                 _ => continue,
                             };
                             for aspect in neg_bounds {
-                                if ctx.registry.impl_aspect_env_has(
+                                check_type_does_not_satisfy_bound(
+                                    &concrete_arg,
+                                    std::slice::from_ref(aspect),
+                                    type_name,
+                                    span,
+                                    ctx.registry,
                                     ctx.current_module,
-                                    &type_arg_name,
-                                    aspect,
-                                ) {
-                                    // RFC-0072 §2.3: Copy implies !Drop.
-                                    if aspect == "Drop"
-                                        && ctx.registry.impl_aspect_env_has(
-                                            ctx.current_module,
-                                            &type_arg_name,
-                                            "Copy",
-                                        )
-                                    {
-                                        continue;
-                                    }
-                                    return Err(MetelError::type_error(
-                                        TypeErrorCode::T0012,
-                                        format!(
-                                            "`{type_arg_name}` implements `{aspect}`; `!{aspect}` bound not satisfied (required by `{type_name}`)"
-                                        ),
-                                        span,
-                                    ));
-                                }
+                                )?;
                             }
                         }
                     }
@@ -2430,60 +2442,42 @@ fn construct_enum_literal_ty(
             if bounds.is_empty() {
                 continue;
             }
-            let type_name = match concrete_args.get(i) {
-                Some(Type::Named(n, _)) => n.clone(),
+            let concrete_arg = match concrete_args.get(i) {
+                Some(t @ Type::Named(_, _)) => t.clone(),
                 _ => continue,
             };
             for aspect in bounds {
-                if !ctx
-                    .registry
-                    .impl_aspect_env_has(ctx.current_module, &type_name, aspect)
-                {
-                    return Err(MetelError::type_error(
-                        TypeErrorCode::T0012,
-                        format!("`{type_name}` does not implement `{aspect}` (required by `{enum_name}`)"),
-                        span,
-                    ));
-                }
+                check_type_satisfies_bounds(
+                    &concrete_arg,
+                    std::slice::from_ref(aspect),
+                    enum_name,
+                    span,
+                    ctx.registry,
+                    ctx.current_module,
+                )?;
             }
         }
     }
     // T0012 negative bounds: check each resolved type arg does NOT implement
     // the declared negative bounds (RFC-0072, issue #243).
-    // TODO(#241): interaction with conditional impls (RFC-0036) is out of
-    // scope; whoever implements #241 must re-examine this check.
     if let Some(neg_param_bounds) = ctx.registry.neg_type_param_bounds_for(enum_name) {
         for (i, neg_bounds) in neg_param_bounds.iter().enumerate() {
             if neg_bounds.is_empty() {
                 continue;
             }
-            let type_name = match concrete_args.get(i) {
-                Some(Type::Named(n, _)) => n.clone(),
+            let concrete_arg = match concrete_args.get(i) {
+                Some(t @ Type::Named(_, _)) => t.clone(),
                 _ => continue,
             };
             for aspect in neg_bounds {
-                if ctx
-                    .registry
-                    .impl_aspect_env_has(ctx.current_module, &type_name, aspect)
-                {
-                    // RFC-0072 §2.3: Copy implies !Drop.
-                    if aspect == "Drop"
-                        && ctx.registry.impl_aspect_env_has(
-                            ctx.current_module,
-                            &type_name,
-                            "Copy",
-                        )
-                    {
-                        continue;
-                    }
-                    return Err(MetelError::type_error(
-                        TypeErrorCode::T0012,
-                        format!(
-                            "`{type_name}` implements `{aspect}`; `!{aspect}` bound not satisfied (required by `{enum_name}`)"
-                        ),
-                        span,
-                    ));
-                }
+                check_type_does_not_satisfy_bound(
+                    &concrete_arg,
+                    std::slice::from_ref(aspect),
+                    enum_name,
+                    span,
+                    ctx.registry,
+                    ctx.current_module,
+                )?;
             }
         }
     }
@@ -3126,7 +3120,7 @@ fn check_type_satisfies_bounds(
         },
     };
     for aspect in aspect_names {
-        if !registry.impl_aspect_env_has(current_module, &type_name, aspect) {
+        if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
             return Err(MetelError::type_error(
                 TypeErrorCode::T0012,
                 format!("`{type_name}` does not implement `{aspect}` (required by `{fun_name}`)"),
@@ -3157,11 +3151,11 @@ fn check_type_does_not_satisfy_bound(
         },
     };
     for aspect in neg_aspect_names {
-        if registry.impl_aspect_env_has(current_module, &type_name, aspect) {
+        if registry.type_satisfies_aspect(current_module, concrete, aspect) {
             // RFC-0072 §2.3: Copy implies !Drop. Scoped to this exact pair —
             // do not generalize into a general aspect-exclusion mechanism.
             if aspect == "Drop"
-                && registry.impl_aspect_env_has(current_module, &type_name, "Copy")
+                && registry.type_satisfies_aspect(current_module, concrete, "Copy")
             {
                 continue;
             }
