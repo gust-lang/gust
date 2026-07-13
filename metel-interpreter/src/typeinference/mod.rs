@@ -933,6 +933,13 @@ pub struct TypeDefinitionRegistry {
     /// type params. Key: (`type_name`, `method_name`) → (scheme, `struct_tvars_ordered`).
     /// `struct_tvars_ordered`[i] corresponds to the i-th type arg of the receiver at the call site.
     method_scheme_env: HashMap<String, HashMap<String, (TypeScheme, Vec<TypeVar>)>>,
+    /// RFC-0036 §3.1: multiple conditional impls of the same aspect for the same struct
+    /// providing the same method name. Key: (`type_name`, `method_name`) → Vec of
+    /// (scheme, `struct_tvars`). `register_method_scheme_variant` pushes; `method_scheme_for`
+    /// (singular) keeps returning the last-registered entry for backward compatibility.
+    /// Construction checks this ONLY when >1 entries exist, selecting the first whose
+    /// bounds are satisfied by the concrete instantiation.
+    method_scheme_variants: HashMap<String, HashMap<String, Vec<(TypeScheme, Vec<TypeVar>)>>>,
     /// Per-type-param aspect bounds for generic structs and enums.
     /// Key: type name. Value: one Vec<String> per type param (same order as `struct_type_params`),
     /// each containing the aspect names that param must satisfy.
@@ -991,6 +998,13 @@ pub struct TypeDefinitionRegistry {
     /// would make a local `From`/`Iterable` declaration invisibly shadow the builtin
     /// one for this bookkeeping — a real regression caught by that exact test.
     impl_aspect_env: HashMap<(SymbolId, String), Vec<Vec<Type>>>,
+    /// RFC-0036 §2.2/§3.1: per-conditional-impl bound metadata.
+    /// Key: `(target_type_id, aspect_name)`. Value: Vec of `(pos_bounds, neg_bounds)`
+    /// where `pos_bounds[i]` / `neg_bounds[i]` are the aspect names required / forbidden
+    /// at the i-th type-argument position of the target type, for ONE conditional impl.
+    /// Populated INSTEAD OF `impl_aspect_env` when `is_generic_target && (impl_bounds ||
+    /// impl_neg_bounds non-empty)` — see `register_conditional_impl_bounds`.
+    conditional_impl_bounds: HashMap<(SymbolId, String), Vec<(Vec<Vec<String>>, Vec<Vec<String>>)>>,
     /// Global `(module, name) -> SymbolId` table. See `impl_aspect_env`'s doc.
     symbols: Rc<HashMap<(Vec<String>, String), SymbolId>>,
     /// Every module's resolved import scope. See `impl_aspect_env`'s doc.
@@ -1011,6 +1025,7 @@ impl TypeDefinitionRegistry {
             struct_type_params: HashMap::new(),
             struct_generic_names: HashMap::new(),
             method_scheme_env: HashMap::new(),
+            method_scheme_variants: HashMap::new(),
             type_param_bounds: HashMap::new(),
             neg_type_param_bounds: HashMap::new(),
             fun_bounds: HashMap::new(),
@@ -1025,6 +1040,7 @@ impl TypeDefinitionRegistry {
             aspect_decl_modules: HashMap::new(),
             aspect_method_defs: HashMap::new(),
             impl_aspect_env: HashMap::new(),
+            conditional_impl_bounds: HashMap::new(),
             symbols: Rc::new(HashMap::new()),
             scopes: Rc::new(HashMap::new()),
             aspect_assoc_type_decls: HashMap::new(),
@@ -1155,6 +1171,159 @@ impl TypeDefinitionRegistry {
         method_name: &str,
     ) -> Option<&(TypeScheme, Vec<TypeVar>)> {
         self.method_scheme_env.get(type_name)?.get(method_name)
+    }
+
+    /// Push a variant method scheme (RFC-0036 §3.1 multi-impl dispatch).
+    pub fn register_method_scheme_variant(
+        &mut self,
+        type_name: String,
+        method_name: String,
+        scheme: TypeScheme,
+        struct_tvars: Vec<TypeVar>,
+    ) {
+        self.method_scheme_variants
+            .entry(type_name)
+            .or_default()
+            .entry(method_name)
+            .or_default()
+            .push((scheme, struct_tvars));
+    }
+
+    /// Return all variant method schemes, if more than one exists.
+    #[must_use]
+    pub fn method_scheme_variants_for(
+        &self,
+        type_name: &str,
+        method_name: &str,
+    ) -> Option<&Vec<(TypeScheme, Vec<TypeVar>)>> {
+        self.method_scheme_variants
+            .get(type_name)?
+            .get(method_name)
+            .filter(|v| v.len() > 1)
+    }
+
+    /// Register the conditional impl bounds for a `(target_id, aspect)` key (RFC-0036).
+    pub fn register_conditional_impl_bounds(
+        &mut self,
+        current_module: &[String],
+        target: &str,
+        aspect: &str,
+        pos_bounds: Vec<Vec<String>>,
+        neg_bounds: Vec<Vec<String>>,
+    ) {
+        let Some(target_id) = self.resolve_type_position_id(current_module, target) else {
+            return;
+        };
+        self.conditional_impl_bounds
+            .entry((target_id, aspect.to_string()))
+            .or_default()
+            .push((pos_bounds, neg_bounds));
+    }
+
+    /// Check whether `type_name` with concrete `type_args` satisfies the conditional
+    /// impl for `aspect_name` (RFC-0036 §2.1). Falls back to `impl_aspect_env_has`
+    /// for unconditional impls.
+    #[must_use]
+    pub fn aspect_satisfied_by(
+        &self,
+        current_module: &[String],
+        type_name: &str,
+        type_args: &[Type],
+        aspect_name: &str,
+    ) -> bool {
+        let Some(target_id) = self.resolve_type_position_id(current_module, type_name) else {
+            return false;
+        };
+        // Check conditional impls first.
+        let aspect_key = aspect_name.to_string();
+        if let Some(entries) = self.conditional_impl_bounds.get(&(target_id, aspect_key.clone())) {
+            for (pos_bounds, neg_bounds) in entries {
+                if self.check_conditional_entry(current_module, type_args, pos_bounds, neg_bounds) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        // Fallback: unconditional impl (covers non-generic types and unconditional generic impls).
+        self.impl_aspect_env
+            .contains_key(&(target_id, aspect_key))
+    }
+
+    /// Check one conditional impl entry: for each type-argument position, every
+    /// positive bound aspect must be satisfied and every negative bound aspect must
+    /// not be satisfied.
+    fn check_conditional_entry(
+        &self,
+        current_module: &[String],
+        type_args: &[Type],
+        pos_bounds: &[Vec<String>],
+        neg_bounds: &[Vec<String>],
+    ) -> bool {
+        for (i, arg) in type_args.iter().enumerate() {
+            if let Some(required) = pos_bounds.get(i) {
+                for aspect in required {
+                    if !self.type_satisfies_aspect(current_module, arg, aspect) {
+                        return false;
+                    }
+                }
+            }
+            if let Some(forbidden) = neg_bounds.get(i) {
+                for aspect in forbidden {
+                    if self.type_satisfies_aspect(current_module, arg, aspect) {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    }
+
+    /// Check whether a concrete `Type` satisfies `aspect_name`, recursing into
+    /// nested generic type arguments.
+    fn type_satisfies_aspect(
+        &self,
+        current_module: &[String],
+        ty: &Type,
+        aspect_name: &str,
+    ) -> bool {
+        let (name, inner_args) = match ty {
+            Type::Named(n, args) => (n.as_str(), args.as_slice()),
+            other => {
+                // Primitives — convert to registry name and check directly.
+                let name = match other {
+                    Type::Str => "String",
+                    Type::Boolean => "boolean",
+                    Type::Char => "Char",
+                    Type::I8 => "i8",
+                    Type::I16 => "i16",
+                    Type::I32 => "i32",
+                    Type::I64 => "i64",
+                    Type::U8 => "u8",
+                    Type::U16 => "u16",
+                    Type::U32 => "u32",
+                    Type::U64 => "u64",
+                    Type::F32 => "f32",
+                    Type::F64 => "f64",
+                    _ => return false,
+                };
+                return self.impl_aspect_env_has(current_module, name, aspect_name);
+            }
+        };
+        // Direct check.
+        if self.impl_aspect_env_has(current_module, name, aspect_name) {
+            return true;
+        }
+        // Check conditional impls for this named type.
+        if let Some(target_id) = self.resolve_type_position_id(current_module, name) {
+            if let Some(entries) = self.conditional_impl_bounds.get(&(target_id, aspect_name.to_string())) {
+                for (pos_bounds, neg_bounds) in entries {
+                    if self.check_conditional_entry(current_module, inner_args, pos_bounds, neg_bounds) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
 
     pub fn register_type_param_bounds(&mut self, name: String, bounds: Vec<Vec<String>>) {
@@ -1468,6 +1637,17 @@ impl TypeDefinitionRegistry {
                     .or_insert_with(|| scheme.clone());
             }
         }
+        for (k, v) in &other.method_scheme_variants {
+            // Concatenate variant lists (cross-module conditional impls for the
+            // same method are legitimate).
+            let entry = self.method_scheme_variants.entry(k.clone()).or_default();
+            for (method_name, variants) in v {
+                entry
+                    .entry(method_name.clone())
+                    .or_default()
+                    .extend(variants.iter().cloned());
+            }
+        }
         for (k, v) in &other.type_param_bounds {
             self.type_param_bounds
                 .entry(k.clone())
@@ -1539,6 +1719,14 @@ impl TypeDefinitionRegistry {
             self.impl_aspect_env
                 .entry(k.clone())
                 .or_insert_with(|| v.clone());
+        }
+        for (k, v) in &other.conditional_impl_bounds {
+            // Concatenate: multiple modules can each declare a conditional impl
+            // for the same (target, aspect) pair.
+            self.conditional_impl_bounds
+                .entry(k.clone())
+                .or_default()
+                .extend(v.iter().cloned());
         }
         for (k, v) in &other.aspect_assoc_type_decls {
             self.aspect_assoc_type_decls
@@ -1909,6 +2097,17 @@ impl InferContext {
     ) {
         self.registry
             .register_method_scheme(type_name, method_name, scheme, struct_tvars);
+    }
+
+    pub fn register_method_scheme_variant(
+        &mut self,
+        type_name: String,
+        method_name: String,
+        scheme: TypeScheme,
+        struct_tvars: Vec<TypeVar>,
+    ) {
+        self.registry
+            .register_method_scheme_variant(type_name, method_name, scheme, struct_tvars);
     }
 
     #[must_use]

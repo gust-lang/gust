@@ -576,6 +576,22 @@ fn register_generic_impl_method_schemes(
         .cloned()
         .zip(type_params.iter().copied())
         .collect();
+    // RFC-0036: compute impl-level bounds from the impl block's generics + where clause.
+    let synth = synth_generics_for_impl(&generic_names, &ib.generics);
+    let impl_bounds = collect_type_param_bounds(&synth, ib.where_clause.as_ref());
+    let impl_neg_bounds = collect_negative_type_param_bounds(&synth, ib.where_clause.as_ref());
+    let by_var: HashMap<TypeVar, Vec<String>> = type_params
+        .iter()
+        .zip(impl_bounds.iter())
+        .filter(|(_, b)| !b.is_empty())
+        .map(|(&tv, b)| (tv, b.clone()))
+        .collect();
+    let by_neg_var: HashMap<TypeVar, Vec<String>> = type_params
+        .iter()
+        .zip(impl_neg_bounds.iter())
+        .filter(|(_, b)| !b.is_empty())
+        .map(|(&tv, b)| (tv, b.clone()))
+        .collect();
     let self_ty = InferType::Named(
         target_name.to_string(),
         type_params.iter().map(|tv| InferType::Var(*tv)).collect(),
@@ -609,10 +625,7 @@ fn register_generic_impl_method_schemes(
             .map_or_else(InferType::unit, |ann| {
                 type_expr_to_infer_with_generics(ann, &gen_map)
             });
-        registry.register_method_scheme(
-            target_name.to_string(),
-            method.name.clone(),
-            TypeScheme {
+        let scheme = TypeScheme {
                 quantified_vars: quantified,
                 param_names: vec![],
                 bounds: vec![],
@@ -620,10 +633,23 @@ fn register_generic_impl_method_schemes(
                 assoc_projections: vec![],
                 assoc_eq_constraints: vec![],
                 ty: InferType::Fun(param_types, Box::new(ret_ty)),
-            },
-            // struct_tvars: only the type's params are pinned from the receiver;
-            // method-level generics are recovered from the arguments at the call site.
-            type_params.clone(),
+            }
+            .with_bounds(&by_var)
+            .with_neg_bounds(&by_neg_var);
+        // struct_tvars: only the type's params are pinned from the receiver;
+        // method-level generics are recovered from the arguments at the call site.
+        let struct_tvars = type_params.clone();
+        registry.register_method_scheme(
+            target_name.to_string(),
+            method.name.clone(),
+            scheme.clone(),
+            struct_tvars.clone(),
+        );
+        registry.register_method_scheme_variant(
+            target_name.to_string(),
+            method.name.clone(),
+            scheme,
+            struct_tvars,
         );
         registry.register_method_receiver(target_name.to_string(), method.name.clone(), receiver);
     }
