@@ -1692,16 +1692,16 @@ fn construct_expr(
                                 continue;
                             };
                             let concrete_arg = match arg {
-                                Type::Named(n, _) => Type::Named(n.clone(), vec![]),
+                                Type::Named(_, _) => arg.clone(),
                                 _ => continue,
                             };
                             for aspect in bounds {
                                 check_type_satisfies_bounds(
                                     &concrete_arg,
-                                    &[aspect.clone()],
+                                    std::slice::from_ref(aspect),
                                     type_name,
                                     span,
-                                    &ctx.registry,
+                                    ctx.registry,
                                     ctx.current_module,
                                 )?;
                             }
@@ -1718,16 +1718,16 @@ fn construct_expr(
                                 continue;
                             };
                             let concrete_arg = match arg {
-                                Type::Named(n, _) => Type::Named(n.clone(), vec![]),
+                                Type::Named(_, _) => arg.clone(),
                                 _ => continue,
                             };
                             for aspect in neg_bounds {
                                 check_type_does_not_satisfy_bound(
                                     &concrete_arg,
-                                    &[aspect.clone()],
+                                    std::slice::from_ref(aspect),
                                     type_name,
                                     span,
-                                    &ctx.registry,
+                                    ctx.registry,
                                     ctx.current_module,
                                 )?;
                             }
@@ -2443,16 +2443,16 @@ fn construct_enum_literal_ty(
                 continue;
             }
             let concrete_arg = match concrete_args.get(i) {
-                Some(Type::Named(n, _)) => Type::Named(n.clone(), vec![]),
+                Some(t @ Type::Named(_, _)) => t.clone(),
                 _ => continue,
             };
             for aspect in bounds {
                 check_type_satisfies_bounds(
                     &concrete_arg,
-                    &[aspect.clone()],
+                    std::slice::from_ref(aspect),
                     enum_name,
                     span,
-                    &ctx.registry,
+                    ctx.registry,
                     ctx.current_module,
                 )?;
             }
@@ -2466,16 +2466,16 @@ fn construct_enum_literal_ty(
                 continue;
             }
             let concrete_arg = match concrete_args.get(i) {
-                Some(Type::Named(n, _)) => Type::Named(n.clone(), vec![]),
+                Some(t @ Type::Named(_, _)) => t.clone(),
                 _ => continue,
             };
             for aspect in neg_bounds {
                 check_type_does_not_satisfy_bound(
                     &concrete_arg,
-                    &[aspect.clone()],
+                    std::slice::from_ref(aspect),
                     enum_name,
                     span,
-                    &ctx.registry,
+                    ctx.registry,
                     ctx.current_module,
                 )?;
             }

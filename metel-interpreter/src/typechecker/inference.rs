@@ -16,7 +16,7 @@ use super::conversions::{
     infer_type_to_type, type_expr_to_infer, type_expr_to_infer_with_generics,
     type_expr_to_infer_with_generics_and_self, type_expr_to_infer_with_self, type_to_infer,
 };
-use super::{FunGeneralization, registry::{collect_type_param_bounds, synth_generics_for_impl}};
+use super::FunGeneralization;
 
 /// Build the per-quantified-var `assoc_projections` map from the body's recorded
 /// projection log and the post-solve substitution. Each entry
@@ -564,32 +564,30 @@ fn infer_decl(
                                                     if param_bounds.contains(bound_aspect) {
                                                         // The bound is satisfied by the impl's own parameter bounds
                                                         continue;
-                                                    } else {
-                                                        return Err(MetelError::type_error(
-                                                            TypeErrorCode::T0012,
-                                                            format!(
-                                                                "associated type `{}` bound `{}` is not satisfied by `{}`",
-                                                                decl.name, bound_aspect, name
-                                                            ),
-                                                            &ib.span,
-                                                        ));
                                                     }
-                                                } else {
-                                                    // Original behavior for concrete types
-                                                    if !ctx.registry().impl_aspect_env_has(
-                                                        ctx.current_module_path(),
-                                                        &name,
-                                                        bound_aspect,
-                                                    ) {
-                                                        return Err(MetelError::type_error(
-                                                            TypeErrorCode::T0012,
-                                                            format!(
-                                                                "associated type `{}` bound `{}` is not satisfied by `{}`",
-                                                                decl.name, bound_aspect, name
-                                                            ),
-                                                            &ib.span,
-                                                        ));
-                                                    }
+                                                    return Err(MetelError::type_error(
+                                                        TypeErrorCode::T0012,
+                                                        format!(
+                                                            "associated type `{}` bound `{}` is not satisfied by `{}`",
+                                                            decl.name, bound_aspect, name
+                                                        ),
+                                                        &ib.span,
+                                                    ));
+                                                }
+                                                // Original behavior for concrete types
+                                                if !ctx.registry().impl_aspect_env_has(
+                                                    ctx.current_module_path(),
+                                                    &name,
+                                                    bound_aspect,
+                                                ) {
+                                                    return Err(MetelError::type_error(
+                                                        TypeErrorCode::T0012,
+                                                        format!(
+                                                            "associated type `{}` bound `{}` is not satisfied by `{}`",
+                                                            decl.name, bound_aspect, name
+                                                        ),
+                                                        &ib.span,
+                                                    ));
                                                 }
                                             }
                                         }
