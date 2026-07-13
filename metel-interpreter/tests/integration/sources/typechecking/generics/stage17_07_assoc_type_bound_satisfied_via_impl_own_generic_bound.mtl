@@ -1,0 +1,9 @@
+// Test that associated type bounds are satisfied when the impl's own generic bound covers the requirement
+aspect Deref { type Target: Display; fun deref(self: &Self) -> &Target; }
+aspect Display { fun display(self) -> String; }
+struct Wrapper<T> { value: T }
+impl<T: Display> Deref for Wrapper<T> {
+    type Target = T;
+    fun deref(self: &Wrapper<T>) -> &T { &self.value }
+}
+fun main() {}

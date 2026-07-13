@@ -16,7 +16,7 @@ use super::conversions::{
     infer_type_to_type, type_expr_to_infer, type_expr_to_infer_with_generics,
     type_expr_to_infer_with_generics_and_self, type_expr_to_infer_with_self, type_to_infer,
 };
-use super::FunGeneralization;
+use super::{FunGeneralization, registry::{collect_type_param_bounds, synth_generics_for_impl}};
 
 /// Build the per-quantified-var `assoc_projections` map from the body's recorded
 /// projection log and the post-solve substitution. Each entry
@@ -547,19 +547,49 @@ fn infer_decl(
                                                 _ => None,
                                             };
                                             if let Some(name) = concrete_name {
-                                                if !ctx.registry().impl_aspect_env_has(
-                                                    ctx.current_module_path(),
-                                                    &name,
-                                                    bound_aspect,
-                                                ) {
-                                                    return Err(MetelError::type_error(
-                                                        TypeErrorCode::T0012,
-                                                        format!(
-                                                            "associated type `{}` bound `{}` is not satisfied by `{}`",
-                                                            decl.name, bound_aspect, name
-                                                        ),
-                                                        &ib.span,
-                                                    ));
+                                                // Check if this name matches one of the impl's own generic parameters
+                                                if let Some(gp) = ib.generics.iter().find(|p| p.name == name) {
+                                                    // This is the impl's own generic parameter - check its declared bounds
+                                                    let param_bounds = gp.bounds.iter()
+                                                        .filter(|b| b.polarity == Polarity::Positive)
+                                                        .filter_map(|b| {
+                                                            if let TypeExpr::Named(n, _) = &b.aspect {
+                                                                Some(n.clone())
+                                                            } else {
+                                                                None
+                                                            }
+                                                        })
+                                                        .collect::<Vec<_>>();
+                                                    
+                                                    if param_bounds.contains(bound_aspect) {
+                                                        // The bound is satisfied by the impl's own parameter bounds
+                                                        continue;
+                                                    } else {
+                                                        return Err(MetelError::type_error(
+                                                            TypeErrorCode::T0012,
+                                                            format!(
+                                                                "associated type `{}` bound `{}` is not satisfied by `{}`",
+                                                                decl.name, bound_aspect, name
+                                                            ),
+                                                            &ib.span,
+                                                        ));
+                                                    }
+                                                } else {
+                                                    // Original behavior for concrete types
+                                                    if !ctx.registry().impl_aspect_env_has(
+                                                        ctx.current_module_path(),
+                                                        &name,
+                                                        bound_aspect,
+                                                    ) {
+                                                        return Err(MetelError::type_error(
+                                                            TypeErrorCode::T0012,
+                                                            format!(
+                                                                "associated type `{}` bound `{}` is not satisfied by `{}`",
+                                                                decl.name, bound_aspect, name
+                                                            ),
+                                                            &ib.span,
+                                                        ));
+                                                    }
                                                 }
                                             }
                                         }
