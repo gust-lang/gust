@@ -525,16 +525,21 @@ impl RuntimeRegistry {
         aspect_id: SymbolId,
         method_name: &str,
     ) -> Option<RuntimeMethod> {
-        self.types.get(&type_id)?.aspect_impls.iter().rev().find_map(|ai| {
-            if ai.aspect_id == Some(aspect_id) {
-                ai.methods
-                    .get(method_name)
-                    .cloned()
-                    .filter(|m| m.receiver.is_some())
-            } else {
-                None
-            }
-        })
+        self.types
+            .get(&type_id)?
+            .aspect_impls
+            .iter()
+            .rev()
+            .find_map(|ai| {
+                if ai.aspect_id == Some(aspect_id) {
+                    ai.methods
+                        .get(method_name)
+                        .cloned()
+                        .filter(|m| m.receiver.is_some())
+                } else {
+                    None
+                }
+            })
     }
 
     pub fn register_pattern_method(
@@ -957,7 +962,9 @@ fn runtime_type_key(ty: &TypeExpr) -> String {
             }
         }
         TypeExpr::ImplAspect { bound, .. } => format!("impl {}", runtime_type_key(bound)),
-        TypeExpr::Projection { base, assoc_name, .. } => {
+        TypeExpr::Projection {
+            base, assoc_name, ..
+        } => {
             format!("{}::{assoc_name}", runtime_type_key(base))
         }
     }
@@ -1407,9 +1414,10 @@ fn run_passes(
                 // Native functions bind directly to their host implementation.
                 // Overloaded ones (symbol_id set) go to the symbol registry.
                 if let FunBody::Native(key) = &f.body {
-                    let value =
-                        Value::Callable(crate::evaluator::builtins::native_host_impl(*key));
-                    if let Some(id) = f.symbol_id { runtime.register_symbol_value(id, value) } else {
+                    let value = Value::Callable(crate::evaluator::builtins::native_host_impl(*key));
+                    if let Some(id) = f.symbol_id {
+                        runtime.register_symbol_value(id, value)
+                    } else {
                         // Ordinary top-level fn: bind by name (first-class uses) and,
                         // when it has a stable identity, also register it by SymbolId so
                         // direct calls dispatch through `callee_id` (METEL-187).
@@ -1434,17 +1442,17 @@ fn run_passes(
                     type_ctx: ctx,
                     fun_type: None,
                 })));
-                if let Some(id) = f.symbol_id { runtime.register_symbol_value(id, value) } else {
+                if let Some(id) = f.symbol_id {
+                    runtime.register_symbol_value(id, value)
+                } else {
                     if let Some(id) = f.def_id {
                         runtime.register_symbol_value(id, value.clone());
                     }
                     let _ = env.set(&f.name, value);
                 }
             }
-            TypedDecl::Impl(impl_block) => {
-                if let crate::ast::TypeExpr::Named(type_name, _) = &impl_block.target_type {
-                    // The target type's stable id keys the runtime registry (METEL-185).
-                    // Fall back to its builtin id when resolution wasn't available.
+            TypedDecl::Impl(impl_block) => match &impl_block.target_type {
+                crate::ast::TypeExpr::Named(type_name, _) => {
                     let Some(target_id) = impl_block
                         .target_type_id
                         .or_else(|| builtins::builtin_type_id(type_name))
@@ -1452,8 +1460,6 @@ fn run_passes(
                         continue;
                     };
                     for method in &impl_block.methods {
-                        // Native methods bind to their host implementation;
-                        // others wrap their (typed/generic) body in a closure.
                         let body_callable = match &method.body {
                             FunBody::Native(key) => {
                                 crate::evaluator::builtins::native_host_impl(*key)
@@ -1466,14 +1472,16 @@ fn run_passes(
                                 type_ctx: None,
                                 fun_type: None,
                             })),
-                            FunBody::Generic(b) => RuntimeCallable::Closure(Rc::new(ClosureValue {
-                                name: Some(method.name.clone()),
-                                params: method.params.clone(),
-                                body: ClosureBody::Untyped(b.clone()),
-                                captured: env.clone(),
-                                type_ctx: env.type_ctx.clone(),
-                                fun_type: None,
-                            })),
+                            FunBody::Generic(b) => {
+                                RuntimeCallable::Closure(Rc::new(ClosureValue {
+                                    name: Some(method.name.clone()),
+                                    params: method.params.clone(),
+                                    body: ClosureBody::Untyped(b.clone()),
+                                    captured: env.clone(),
+                                    type_ctx: env.type_ctx.clone(),
+                                    fun_type: None,
+                                }))
+                            }
                         };
                         let runtime_method = runtime_method_from_decl(
                             format!("{type_name}::{}", method.name),
@@ -1512,7 +1520,47 @@ fn run_passes(
                         }
                     }
                 }
-            }
+                crate::ast::TypeExpr::Array(_) => {
+                    for method in &impl_block.methods {
+                        let body_callable = match &method.body {
+                            FunBody::Native(key) => {
+                                crate::evaluator::builtins::native_host_impl(*key)
+                            }
+                            FunBody::Typed(b) => RuntimeCallable::Closure(Rc::new(ClosureValue {
+                                name: Some(method.name.clone()),
+                                params: method.params.clone(),
+                                body: ClosureBody::Typed(b.clone()),
+                                captured: env.clone(),
+                                type_ctx: None,
+                                fun_type: None,
+                            })),
+                            FunBody::Generic(b) => {
+                                RuntimeCallable::Closure(Rc::new(ClosureValue {
+                                    name: Some(method.name.clone()),
+                                    params: method.params.clone(),
+                                    body: ClosureBody::Untyped(b.clone()),
+                                    captured: env.clone(),
+                                    type_ctx: env.type_ctx.clone(),
+                                    fun_type: None,
+                                }))
+                            }
+                        };
+                        let runtime_method = runtime_method_from_decl(
+                            format!("Array::{}", method.name),
+                            method,
+                            body_callable,
+                        );
+                        if runtime_method.receiver.is_some() {
+                            runtime.register_pattern_method(
+                                RuntimeTypePattern::Array,
+                                &method.name,
+                                runtime_method,
+                            );
+                        }
+                    }
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -1819,6 +1867,7 @@ fn eval_for_in(
     env: &mut Environment,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
+    let iterable = deref_value(&iterable, span)?.unwrap_or(iterable);
     // Fast path for built-in sequence types.
     let fast_items: Option<Vec<Value>> = match &iterable {
         Value::Array(rc) => Some(rc.borrow().clone()),
@@ -2050,8 +2099,7 @@ fn eval_assign_expr(
             field,
             span: tspan,
         } => {
-            let (rc, path) =
-                lvalue::resolve_field_assign_root(object, field, env, runtime, tspan)?;
+            let (rc, path) = lvalue::resolve_field_assign_root(object, field, env, runtime, tspan)?;
             let mut borrowed = rc.borrow_mut();
             let mut cur: &mut Value = &mut borrowed;
             for segment in &path[..path.len() - 1] {
@@ -2466,7 +2514,9 @@ pub fn eval_expr(
                     (UnaryOp::Neg, Value::F64(f)) => Value::F64(-f),
                     (UnaryOp::Neg, Value::F32(f)) => Value::F32(-f),
                     (UnaryOp::Not, Value::Boolean(b)) => Value::Boolean(!b),
-                    (UnaryOp::Deref, Value::Reference(rc) | Value::MutReference(rc)) => rc.borrow().clone(),
+                    (UnaryOp::Deref, Value::Reference(rc) | Value::MutReference(rc)) => {
+                        rc.borrow().clone()
+                    }
                     (UnaryOp::Deref, Value::MutFieldReference { root, path }) => {
                         read_path(&root.borrow(), &path, span)?
                     }
@@ -2643,15 +2693,12 @@ pub fn eval_expr(
         TypedExpr::SingletonCoerce { inner, field, .. } => {
             let value = eval_expr(inner, env, runtime)?.into_value();
             match value {
-                Value::Enum { mut fields, .. } => fields
-                    .remove(field)
-                    .map(Signal::Value)
-                    .ok_or_else(|| MetelError::internal(format!(
-                        "singleton coercion: missing field `{field}`"
-                    ))),
-                _ => Err(MetelError::internal(
-                    "singleton coercion on non-enum value",
-                )),
+                Value::Enum { mut fields, .. } => {
+                    fields.remove(field).map(Signal::Value).ok_or_else(|| {
+                        MetelError::internal(format!("singleton coercion: missing field `{field}`"))
+                    })
+                }
+                _ => Err(MetelError::internal("singleton coercion on non-enum value")),
             }
         }
 

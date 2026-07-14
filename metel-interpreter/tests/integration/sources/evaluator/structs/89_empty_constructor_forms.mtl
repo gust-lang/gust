@@ -1,0 +1,27 @@
+struct Empty {}
+
+enum Flag {
+    On {},
+}
+
+fun use_empty(x: Empty) -> i64 {
+    1
+}
+
+fun use_flag(f: Flag) -> i64 {
+    match f {
+        Flag::On => 7,
+    }
+}
+
+fun main() {
+    let a = Empty;
+    let b = Empty {};
+    let x = Flag::On;
+    let y = Flag::On {};
+
+    assert(use_empty(a) == 1);
+    assert(use_empty(b) == 1);
+    assert(use_flag(x) == 7);
+    assert(use_flag(y) == 7);
+}

@@ -333,18 +333,14 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             if t1 == t2 {
                 Ok(Substitution::new())
             } else {
-                Err(MetelError::internal(format!(
-                    "cannot unify {a} with {b}"
-                )))
+                Err(MetelError::internal(format!("cannot unify {a} with {b}")))
             }
         }
         (InferType::Var(v), _) => bind_var(*v, b),
         (_, InferType::Var(v)) => bind_var(*v, a),
         (InferType::Fun(params1, ret1), InferType::Fun(params2, ret2)) => {
             if params1.len() != params2.len() {
-                return Err(MetelError::internal(format!(
-                    "cannot unify {a} with {b}"
-                )));
+                return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
             }
             let mut subst = Substitution::new();
             for (p1, p2) in params1.iter().zip(params2.iter()) {
@@ -357,9 +353,7 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
         }
         (InferType::Tuple(ts1), InferType::Tuple(ts2)) => {
             if ts1.len() != ts2.len() {
-                return Err(MetelError::internal(format!(
-                    "cannot unify {a} with {b}"
-                )));
+                return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
             }
             let mut subst = Substitution::new();
             for (t1, t2) in ts1.iter().zip(ts2.iter()) {
@@ -370,22 +364,20 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
         }
         (InferType::SizedArray(t1, n1), InferType::SizedArray(t2, n2)) => {
             if n1 != n2 {
-                return Err(MetelError::internal(format!(
-                    "cannot unify {a} with {b}"
-                )));
+                return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
             }
             unify(t1, t2)
         }
         // [T; N] coerces to T[] (one-directional)
-        (InferType::Array(t1) | InferType::SizedArray(t1, _), InferType::Array(t2)) |
-(InferType::Array(t1), InferType::SizedArray(t2, _)) |
-(InferType::Reference(t1) | InferType::MutReference(t1),
-InferType::Reference(t2) | InferType::MutReference(t2)) => unify(t1, t2),
+        (InferType::Array(t1) | InferType::SizedArray(t1, _), InferType::Array(t2))
+        | (InferType::Array(t1), InferType::SizedArray(t2, _))
+        | (
+            InferType::Reference(t1) | InferType::MutReference(t1),
+            InferType::Reference(t2) | InferType::MutReference(t2),
+        ) => unify(t1, t2),
         (InferType::Named(n1, args1), InferType::Named(n2, args2)) => {
             if n1 != n2 || args1.len() != args2.len() {
-                return Err(MetelError::internal(format!(
-                    "cannot unify {a} with {b}"
-                )));
+                return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
             }
             let mut subst = Substitution::new();
             for (a1, a2) in args1.iter().zip(args2.iter()) {
@@ -394,9 +386,7 @@ InferType::Reference(t2) | InferType::MutReference(t2)) => unify(t1, t2),
             }
             Ok(subst)
         }
-        _ => Err(MetelError::internal(format!(
-            "cannot unify {a} with {b}"
-        ))),
+        _ => Err(MetelError::internal(format!("cannot unify {a} with {b}"))),
     }
 }
 
@@ -441,7 +431,8 @@ fn is_float_type(t: &Type) -> bool {
 /// # Errors
 /// Returns an error if any constraint fails to unify, or if an integer/float
 /// literal type variable resolves to a non-numeric concrete type (T0001).
-#[allow(dead_code)] // kept as a standalone solver helper for tests and profiling comparisons
+#[allow(dead_code)]
+// kept as a standalone solver helper for tests and profiling comparisons
 // Not generalized over `S: BuildHasher` -- this is single-binary interpreter
 // code with one hasher throughout, never swapped; the generic bound would add
 // noise with no real caller benefit.
@@ -502,7 +493,9 @@ fn apply_constraint_with_coercion(
 ) -> Result<(), MetelError> {
     let lhs = subst.apply(&constraint.lhs);
     let rhs = subst.apply(&constraint.rhs);
-    let solved = if let Ok(s) = unify(&lhs, &rhs) { s } else {
+    let solved = if let Ok(s) = unify(&lhs, &rhs) {
+        s
+    } else {
         let lhs_field = singleton_coerce_field_ty(registry, &lhs);
         let rhs_field = singleton_coerce_field_ty(registry, &rhs);
         let mk_err = || {
@@ -767,7 +760,10 @@ impl TypeScheme {
 
     /// Attach per-var negative aspect bounds, mirroring `with_bounds`.
     #[must_use]
-    pub fn with_neg_bounds(mut self, by_var: &std::collections::HashMap<TypeVar, Vec<String>>) -> Self {
+    pub fn with_neg_bounds(
+        mut self,
+        by_var: &std::collections::HashMap<TypeVar, Vec<String>>,
+    ) -> Self {
         if by_var.values().all(std::vec::Vec::is_empty) {
             return self;
         }
@@ -794,9 +790,12 @@ impl TypeScheme {
             .quantified_vars
             .iter()
             .enumerate()
-            .map(|(i, v)| proj_map.get(v).cloned().or_else(|| {
-                proj_map.values().find(|(pos, _, _, _)| *pos == i).cloned()
-            }))
+            .map(|(i, v)| {
+                proj_map
+                    .get(v)
+                    .cloned()
+                    .or_else(|| proj_map.values().find(|(pos, _, _, _)| *pos == i).cloned())
+            })
             .collect();
         self
     }
@@ -980,6 +979,8 @@ pub type ConditionalImplBoundEntry = (Vec<Vec<String>>, Vec<Vec<String>>);
 /// One registered method scheme variant: `(scheme, struct_tvars)`,
 /// see `TypeDefinitionRegistry::method_scheme_variants`.
 pub type MethodSchemeVariant = (TypeScheme, Vec<TypeVar>);
+/// One registered array method scheme variant: `(scheme, element_tvars)`.
+pub type ArrayMethodSchemeVariant = (TypeScheme, Vec<TypeVar>);
 
 #[derive(Debug, Clone)]
 pub struct TypeDefinitionRegistry {
@@ -1003,6 +1004,11 @@ pub struct TypeDefinitionRegistry {
     /// NOTE: nothing currently reads this list back to disambiguate between variants —
     /// see the open question flagged in commit e20718e / issue #264.
     method_scheme_variants: HashMap<String, HashMap<String, Vec<MethodSchemeVariant>>>,
+    /// Method schemes for structural array targets (`impl<T> Aspect for T[]`). The
+    /// pinned vars correspond to the receiver array's element type positions.
+    array_method_scheme_env: HashMap<String, (TypeScheme, Vec<TypeVar>)>,
+    /// Variant list mirroring `method_scheme_variants` for array-target impls.
+    array_method_scheme_variants: HashMap<String, Vec<ArrayMethodSchemeVariant>>,
     /// Per-type-param aspect bounds for generic structs and enums.
     /// Key: type name. Value: one Vec<String> per type param (same order as `struct_type_params`),
     /// each containing the aspect names that param must satisfy.
@@ -1027,6 +1033,8 @@ pub struct TypeDefinitionRegistry {
     struct_scope_stack: Vec<Vec<String>>,
     method_env: HashMap<String, HashMap<String, InferType>>,
     method_receiver_env: HashMap<String, HashMap<String, ReceiverKind>>,
+    array_method_env: HashMap<String, InferType>,
+    array_method_receiver_env: HashMap<String, ReceiverKind>,
     enum_env: HashMap<String, EnumInfo>,
     /// enum name → declaring module path.
     enum_decl_modules: HashMap<String, Vec<String>>,
@@ -1068,11 +1076,20 @@ pub struct TypeDefinitionRegistry {
     /// Populated INSTEAD OF `impl_aspect_env` when `is_generic_target && (impl_bounds ||
     /// impl_neg_bounds non-empty)` — see `register_conditional_impl_bounds`.
     conditional_impl_bounds: HashMap<(SymbolId, String), Vec<ConditionalImplBoundEntry>>,
+    /// Bare-parameter blanket impl metadata (`impl<T> Aspect for T`), keyed by
+    /// aspect name alone because the target has no nominal head to resolve.
+    bare_impl_bounds: HashMap<String, Vec<ConditionalImplBoundEntry>>,
+    /// Conditional impl metadata for structural array targets (`impl<T: Bound> Aspect for T[]`).
+    array_impl_bounds: HashMap<String, Vec<ConditionalImplBoundEntry>>,
     /// Generic negative impl metadata, keyed by `(target_type_id, aspect_name)`.
     /// Mirrors `conditional_impl_bounds`, but a matching entry means the aspect is
     /// explicitly absent for that instantiation (`impl<T> !Aspect for Foo<T> {}`),
     /// so `type_satisfies_aspect` must return false before consulting positive impls.
     neg_conditional_impl_bounds: HashMap<(SymbolId, String), Vec<ConditionalImplBoundEntry>>,
+    /// Bare-parameter negative blanket impl metadata (`impl<T> !Aspect for T`).
+    bare_neg_impl_bounds: HashMap<String, Vec<ConditionalImplBoundEntry>>,
+    /// Negative conditional impl metadata for structural array targets.
+    array_neg_impl_bounds: HashMap<String, Vec<ConditionalImplBoundEntry>>,
     /// RFC-0060 §5 / issue #244: concrete negative impls, keyed by
     /// `(target_type_id, aspect_name)`. Value: one `Vec<Type>` per registered
     /// negative impl, the target's own concrete type args (e.g. `[i64]` for
@@ -1101,6 +1118,8 @@ impl TypeDefinitionRegistry {
             struct_generic_names: HashMap::new(),
             method_scheme_env: HashMap::new(),
             method_scheme_variants: HashMap::new(),
+            array_method_scheme_env: HashMap::new(),
+            array_method_scheme_variants: HashMap::new(),
             type_param_bounds: HashMap::new(),
             neg_type_param_bounds: HashMap::new(),
             fun_bounds: HashMap::new(),
@@ -1109,6 +1128,8 @@ impl TypeDefinitionRegistry {
             struct_scope_stack: Vec::new(),
             method_env: HashMap::new(),
             method_receiver_env: HashMap::new(),
+            array_method_env: HashMap::new(),
+            array_method_receiver_env: HashMap::new(),
             enum_env: HashMap::new(),
             enum_decl_modules: HashMap::new(),
             aspect_env: HashMap::new(),
@@ -1116,7 +1137,11 @@ impl TypeDefinitionRegistry {
             aspect_method_defs: HashMap::new(),
             impl_aspect_env: HashMap::new(),
             conditional_impl_bounds: HashMap::new(),
+            bare_impl_bounds: HashMap::new(),
+            array_impl_bounds: HashMap::new(),
             neg_conditional_impl_bounds: HashMap::new(),
+            bare_neg_impl_bounds: HashMap::new(),
+            array_neg_impl_bounds: HashMap::new(),
             neg_impl_env: HashMap::new(),
             symbols: Rc::new(HashMap::new()),
             scopes: Rc::new(HashMap::new()),
@@ -1215,6 +1240,19 @@ impl TypeDefinitionRegistry {
             .insert(method_name, receiver_kind);
     }
 
+    pub fn register_array_method(&mut self, method_name: String, fun_ty: InferType) {
+        self.array_method_env.insert(method_name, fun_ty);
+    }
+
+    pub fn register_array_method_receiver(
+        &mut self,
+        method_name: String,
+        receiver_kind: ReceiverKind,
+    ) {
+        self.array_method_receiver_env
+            .insert(method_name, receiver_kind);
+    }
+
     pub fn register_struct_type_params(&mut self, name: String, type_params: Vec<TypeVar>) {
         self.struct_type_params.insert(name, type_params);
     }
@@ -1266,6 +1304,36 @@ impl TypeDefinitionRegistry {
             .push((scheme, struct_tvars));
     }
 
+    pub fn register_array_method_scheme(
+        &mut self,
+        method_name: String,
+        scheme: TypeScheme,
+        element_tvars: Vec<TypeVar>,
+    ) {
+        self.array_method_scheme_env
+            .insert(method_name, (scheme, element_tvars));
+    }
+
+    #[must_use]
+    pub fn array_method_scheme_for(
+        &self,
+        method_name: &str,
+    ) -> Option<&(TypeScheme, Vec<TypeVar>)> {
+        self.array_method_scheme_env.get(method_name)
+    }
+
+    pub fn register_array_method_scheme_variant(
+        &mut self,
+        method_name: String,
+        scheme: TypeScheme,
+        element_tvars: Vec<TypeVar>,
+    ) {
+        self.array_method_scheme_variants
+            .entry(method_name)
+            .or_default()
+            .push((scheme, element_tvars));
+    }
+
     /// Register the conditional impl bounds for a `(target_id, aspect)` key (RFC-0036).
     pub fn register_conditional_impl_bounds(
         &mut self,
@@ -1305,6 +1373,54 @@ impl TypeDefinitionRegistry {
             .push((pos_bounds, neg_bounds));
     }
 
+    pub fn register_bare_impl_bounds(
+        &mut self,
+        aspect: &str,
+        pos_bounds: Vec<Vec<String>>,
+        neg_bounds: Vec<Vec<String>>,
+    ) {
+        self.bare_impl_bounds
+            .entry(aspect.to_string())
+            .or_default()
+            .push((pos_bounds, neg_bounds));
+    }
+
+    pub fn register_array_impl_bounds(
+        &mut self,
+        aspect: &str,
+        pos_bounds: Vec<Vec<String>>,
+        neg_bounds: Vec<Vec<String>>,
+    ) {
+        self.array_impl_bounds
+            .entry(aspect.to_string())
+            .or_default()
+            .push((pos_bounds, neg_bounds));
+    }
+
+    pub fn register_neg_bare_impl_bounds(
+        &mut self,
+        aspect: &str,
+        pos_bounds: Vec<Vec<String>>,
+        neg_bounds: Vec<Vec<String>>,
+    ) {
+        self.bare_neg_impl_bounds
+            .entry(aspect.to_string())
+            .or_default()
+            .push((pos_bounds, neg_bounds));
+    }
+
+    pub fn register_neg_array_impl_bounds(
+        &mut self,
+        aspect: &str,
+        pos_bounds: Vec<Vec<String>>,
+        neg_bounds: Vec<Vec<String>>,
+    ) {
+        self.array_neg_impl_bounds
+            .entry(aspect.to_string())
+            .or_default()
+            .push((pos_bounds, neg_bounds));
+    }
+
     /// Register a concrete negative impl (RFC-0060 §5 / issue #244): `impl !Aspect
     /// for Target`. `target_args` is the target's own concrete type-arg list
     /// (e.g. `[i64]` for `impl !Marker for Foo<i64> {}`).
@@ -1326,7 +1442,12 @@ impl TypeDefinitionRegistry {
 
     /// Whether an explicit negative impl exists for this exact concrete instantiation
     /// (RFC-0060 §5 priority: a negative impl overrides a blanket positive impl).
-    fn neg_impl_overrides(&self, target_id: SymbolId, aspect_name: &str, type_args: &[Type]) -> bool {
+    fn neg_impl_overrides(
+        &self,
+        target_id: SymbolId,
+        aspect_name: &str,
+        type_args: &[Type],
+    ) -> bool {
         self.neg_impl_env
             .get(&(target_id, aspect_name.to_string()))
             .is_some_and(|entries| entries.iter().any(|args| args.as_slice() == type_args))
@@ -1371,10 +1492,104 @@ impl TypeDefinitionRegistry {
         ty: &Type,
         aspect_name: &str,
     ) -> bool {
-        let (name, inner_args) = match ty {
-            Type::Named(n, args) => (n.as_str(), args.as_slice()),
+        if let Some(entries) = self.bare_neg_impl_bounds.get(aspect_name) {
+            for (pos_bounds, neg_bounds) in entries {
+                if self.check_conditional_entry(
+                    current_module,
+                    std::slice::from_ref(ty),
+                    pos_bounds,
+                    neg_bounds,
+                ) {
+                    return false;
+                }
+            }
+        }
+        if let Some(entries) = self.bare_impl_bounds.get(aspect_name) {
+            for (pos_bounds, neg_bounds) in entries {
+                if self.check_conditional_entry(
+                    current_module,
+                    std::slice::from_ref(ty),
+                    pos_bounds,
+                    neg_bounds,
+                ) {
+                    return true;
+                }
+            }
+        }
+        match ty {
+            Type::Array(elem) => {
+                let inner_args = std::slice::from_ref(elem.as_ref());
+                if let Some(entries) = self.array_neg_impl_bounds.get(aspect_name) {
+                    for (pos_bounds, neg_bounds) in entries {
+                        if self.check_conditional_entry(
+                            current_module,
+                            inner_args,
+                            pos_bounds,
+                            neg_bounds,
+                        ) {
+                            return false;
+                        }
+                    }
+                }
+                if let Some(entries) = self.array_impl_bounds.get(aspect_name) {
+                    for (pos_bounds, neg_bounds) in entries {
+                        if self.check_conditional_entry(
+                            current_module,
+                            inner_args,
+                            pos_bounds,
+                            neg_bounds,
+                        ) {
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
+            Type::Named(name, inner_args) => {
+                let name = name.as_str();
+                if let Some(target_id) = self.resolve_type_position_id(current_module, name) {
+                    if let Some(entries) = self
+                        .neg_conditional_impl_bounds
+                        .get(&(target_id, aspect_name.to_string()))
+                    {
+                        for (pos_bounds, neg_bounds) in entries {
+                            if self.check_conditional_entry(
+                                current_module,
+                                inner_args,
+                                pos_bounds,
+                                neg_bounds,
+                            ) {
+                                return false;
+                            }
+                        }
+                    }
+                    if self.neg_impl_overrides(target_id, aspect_name, inner_args) {
+                        return false;
+                    }
+                }
+                if self.impl_aspect_env_has(current_module, name, aspect_name) {
+                    return true;
+                }
+                if let Some(target_id) = self.resolve_type_position_id(current_module, name) {
+                    if let Some(entries) = self
+                        .conditional_impl_bounds
+                        .get(&(target_id, aspect_name.to_string()))
+                    {
+                        for (pos_bounds, neg_bounds) in entries {
+                            if self.check_conditional_entry(
+                                current_module,
+                                inner_args,
+                                pos_bounds,
+                                neg_bounds,
+                            ) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                false
+            }
             other => {
-                // Primitives — convert to registry name and check directly.
                 let name = match other {
                     Type::Str => "String",
                     Type::Boolean => "boolean",
@@ -1399,7 +1614,8 @@ impl TypeDefinitionRegistry {
                     .get(&(target_id, aspect_name.to_string()))
                 {
                     for (pos_bounds, neg_bounds) in entries {
-                        if self.check_conditional_entry(current_module, &[], pos_bounds, neg_bounds) {
+                        if self.check_conditional_entry(current_module, &[], pos_bounds, neg_bounds)
+                        {
                             return false;
                         }
                     }
@@ -1407,42 +1623,9 @@ impl TypeDefinitionRegistry {
                 if self.neg_impl_overrides(target_id, aspect_name, &[]) {
                     return false;
                 }
-                return self.impl_aspect_env_has(current_module, name, aspect_name);
-            }
-        };
-        // RFC-0060 §5: an explicit negative impl for this exact instantiation
-        // overrides everything else — check this before consulting either the
-        // unconditional or conditional-impl positive paths.
-        if let Some(target_id) = self.resolve_type_position_id(current_module, name) {
-            if let Some(entries) = self
-                .neg_conditional_impl_bounds
-                .get(&(target_id, aspect_name.to_string()))
-            {
-                for (pos_bounds, neg_bounds) in entries {
-                    if self.check_conditional_entry(current_module, inner_args, pos_bounds, neg_bounds) {
-                        return false;
-                    }
-                }
-            }
-            if self.neg_impl_overrides(target_id, aspect_name, inner_args) {
-                return false;
+                self.impl_aspect_env_has(current_module, name, aspect_name)
             }
         }
-        // Direct check.
-        if self.impl_aspect_env_has(current_module, name, aspect_name) {
-            return true;
-        }
-        // Check conditional impls for this named type.
-        if let Some(target_id) = self.resolve_type_position_id(current_module, name) {
-            if let Some(entries) = self.conditional_impl_bounds.get(&(target_id, aspect_name.to_string())) {
-                for (pos_bounds, neg_bounds) in entries {
-                    if self.check_conditional_entry(current_module, inner_args, pos_bounds, neg_bounds) {
-                        return true;
-                    }
-                }
-            }
-        }
-        false
     }
 
     pub fn register_type_param_bounds(&mut self, name: String, bounds: Vec<Vec<String>>) {
@@ -1503,7 +1686,11 @@ impl TypeDefinitionRegistry {
         self.neg_fun_bounds.get(name)
     }
 
-    pub fn register_fun_assoc_eq_constraints(&mut self, name: String, constraints: AssocEqConstraints) {
+    pub fn register_fun_assoc_eq_constraints(
+        &mut self,
+        name: String,
+        constraints: AssocEqConstraints,
+    ) {
         if !constraints.is_empty() {
             self.fun_assoc_eq_constraints.insert(name, constraints);
         }
@@ -1535,12 +1722,22 @@ impl TypeDefinitionRegistry {
     }
 
     #[must_use]
+    pub fn array_method_type(&self, method_name: &str) -> Option<&InferType> {
+        self.array_method_env.get(method_name)
+    }
+
+    #[must_use]
     pub fn method_receiver_kind(
         &self,
         type_name: &str,
         method_name: &str,
     ) -> Option<&ReceiverKind> {
         self.method_receiver_env.get(type_name)?.get(method_name)
+    }
+
+    #[must_use]
+    pub fn array_method_receiver_kind(&self, method_name: &str) -> Option<&ReceiverKind> {
+        self.array_method_receiver_env.get(method_name)
     }
 
     #[must_use]
@@ -1767,6 +1964,17 @@ impl TypeDefinitionRegistry {
                     .extend(variants.iter().cloned());
             }
         }
+        for (method_name, scheme) in &other.array_method_scheme_env {
+            self.array_method_scheme_env
+                .entry(method_name.clone())
+                .or_insert_with(|| scheme.clone());
+        }
+        for (method_name, variants) in &other.array_method_scheme_variants {
+            self.array_method_scheme_variants
+                .entry(method_name.clone())
+                .or_default()
+                .extend(variants.iter().cloned());
+        }
         for (k, v) in &other.type_param_bounds {
             self.type_param_bounds
                 .entry(k.clone())
@@ -1800,7 +2008,9 @@ impl TypeDefinitionRegistry {
             // silently drop whichever one is merged second.
             let entry = self.method_env.entry(k.clone()).or_default();
             for (method_name, ty) in v {
-                entry.entry(method_name.clone()).or_insert_with(|| ty.clone());
+                entry
+                    .entry(method_name.clone())
+                    .or_insert_with(|| ty.clone());
             }
         }
         for (k, v) in &other.method_receiver_env {
@@ -1810,6 +2020,16 @@ impl TypeDefinitionRegistry {
                     .entry(method_name.clone())
                     .or_insert_with(|| receiver.clone());
             }
+        }
+        for (method_name, ty) in &other.array_method_env {
+            self.array_method_env
+                .entry(method_name.clone())
+                .or_insert_with(|| ty.clone());
+        }
+        for (method_name, receiver) in &other.array_method_receiver_env {
+            self.array_method_receiver_env
+                .entry(method_name.clone())
+                .or_insert_with(|| receiver.clone());
         }
         for (k, v) in &other.enum_env {
             self.enum_env.entry(k.clone()).or_insert_with(|| v.clone());
@@ -1847,8 +2067,32 @@ impl TypeDefinitionRegistry {
                 .or_default()
                 .extend(v.iter().cloned());
         }
+        for (k, v) in &other.bare_impl_bounds {
+            self.bare_impl_bounds
+                .entry(k.clone())
+                .or_default()
+                .extend(v.iter().cloned());
+        }
+        for (k, v) in &other.array_impl_bounds {
+            self.array_impl_bounds
+                .entry(k.clone())
+                .or_default()
+                .extend(v.iter().cloned());
+        }
         for (k, v) in &other.neg_conditional_impl_bounds {
             self.neg_conditional_impl_bounds
+                .entry(k.clone())
+                .or_default()
+                .extend(v.iter().cloned());
+        }
+        for (k, v) in &other.bare_neg_impl_bounds {
+            self.bare_neg_impl_bounds
+                .entry(k.clone())
+                .or_default()
+                .extend(v.iter().cloned());
+        }
+        for (k, v) in &other.array_neg_impl_bounds {
+            self.array_neg_impl_bounds
                 .entry(k.clone())
                 .or_default()
                 .extend(v.iter().cloned());
@@ -2053,6 +2297,10 @@ impl InferContext {
             .register_method(type_name, method_name, fun_ty);
     }
 
+    pub fn register_array_method(&mut self, method_name: String, fun_ty: InferType) {
+        self.registry.register_array_method(method_name, fun_ty);
+    }
+
     #[must_use]
     pub fn get_struct_fields(&self, name: &str) -> Option<&Vec<crate::typeinference::FieldEntry>> {
         self.registry.struct_fields(name)
@@ -2064,12 +2312,22 @@ impl InferContext {
     }
 
     #[must_use]
+    pub fn get_array_method_type(&self, method_name: &str) -> Option<&InferType> {
+        self.registry.array_method_type(method_name)
+    }
+
+    #[must_use]
     pub fn get_method_receiver_kind(
         &self,
         type_name: &str,
         method_name: &str,
     ) -> Option<&ReceiverKind> {
         self.registry.method_receiver_kind(type_name, method_name)
+    }
+
+    #[must_use]
+    pub fn get_array_method_receiver_kind(&self, method_name: &str) -> Option<&ReceiverKind> {
+        self.registry.array_method_receiver_kind(method_name)
     }
 
     pub fn register_enum(&mut self, name: String, info: EnumInfo) {
@@ -2092,7 +2350,6 @@ impl InferContext {
         self.registry
             .has_from_impl(&self.current_module_path, target, source)
     }
-
 
     #[must_use]
     pub fn iterable_elem_type(&self, target: &str) -> Option<&Type> {
@@ -2147,7 +2404,10 @@ impl InferContext {
 
     /// Register an aspect bound for a type variable (for opaque return values).
     pub fn register_type_var_bound(&mut self, tv: TypeVar, aspect: String) {
-        self.current_type_param_bounds.entry(tv).or_default().push(aspect);
+        self.current_type_param_bounds
+            .entry(tv)
+            .or_default()
+            .push(aspect);
     }
 
     /// Mark a type variable as an opaque return that should not be bound to concrete types.
@@ -2193,7 +2453,8 @@ impl InferContext {
             return existing;
         }
         let placeholder = self.var_gen.fresh();
-        self.current_assoc_projections.insert(key.clone(), placeholder);
+        self.current_assoc_projections
+            .insert(key.clone(), placeholder);
         self.recorded_assoc_projections
             .push((key.0, key.1, assoc_name, placeholder));
         placeholder
@@ -2219,7 +2480,11 @@ impl InferContext {
         self.registry.register_neg_fun_bounds(name, bounds);
     }
 
-    pub fn register_fun_assoc_eq_constraints(&mut self, name: String, constraints: AssocEqConstraints) {
+    pub fn register_fun_assoc_eq_constraints(
+        &mut self,
+        name: String,
+        constraints: AssocEqConstraints,
+    ) {
         self.registry
             .register_fun_assoc_eq_constraints(name, constraints);
     }
@@ -2245,6 +2510,16 @@ impl InferContext {
             .register_method_scheme(type_name, method_name, scheme, struct_tvars);
     }
 
+    pub fn register_array_method_scheme(
+        &mut self,
+        method_name: String,
+        scheme: TypeScheme,
+        element_tvars: Vec<TypeVar>,
+    ) {
+        self.registry
+            .register_array_method_scheme(method_name, scheme, element_tvars);
+    }
+
     pub fn register_method_scheme_variant(
         &mut self,
         type_name: String,
@@ -2256,6 +2531,16 @@ impl InferContext {
             .register_method_scheme_variant(type_name, method_name, scheme, struct_tvars);
     }
 
+    pub fn register_array_method_scheme_variant(
+        &mut self,
+        method_name: String,
+        scheme: TypeScheme,
+        element_tvars: Vec<TypeVar>,
+    ) {
+        self.registry
+            .register_array_method_scheme_variant(method_name, scheme, element_tvars);
+    }
+
     #[must_use]
     pub fn method_scheme_for(
         &self,
@@ -2263,6 +2548,14 @@ impl InferContext {
         method_name: &str,
     ) -> Option<&(TypeScheme, Vec<TypeVar>)> {
         self.registry.method_scheme_for(type_name, method_name)
+    }
+
+    #[must_use]
+    pub fn array_method_scheme_for(
+        &self,
+        method_name: &str,
+    ) -> Option<&(TypeScheme, Vec<TypeVar>)> {
+        self.registry.array_method_scheme_for(method_name)
     }
 
     /// Return a new generator whose counter starts immediately past all vars

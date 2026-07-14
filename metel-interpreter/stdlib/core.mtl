@@ -396,6 +396,21 @@ extend String: Display {
     native(@std.core.to_string) fun to_string(&self) -> String;
 }
 
+extend<T: Display> T[]: Display {
+    fun to_string(&self) -> String {
+        var out = "[";
+        var first = true;
+        for (item in self) {
+            if (!first) {
+                out = out + ", ";
+            }
+            out = out + item.to_string();
+            first = false;
+        }
+        return out + "]";
+    }
+}
+
 // ── Numeric From conversions (full cross-product) ──────────────────────────
 // The host implementation is selected per TARGET type; the source type is
 // carried by the runtime value, so each target's impls share one key.

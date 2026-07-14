@@ -107,9 +107,11 @@ fn native_assert(args: &[Value], span: &crate::ast::Span) -> Result<Value, Metel
 fn native_assert_msg(args: &[Value], span: &crate::ast::Span) -> Result<Value, MetelError> {
     match (args.first(), args.get(1)) {
         (Some(Value::Boolean(true)), _) => Ok(Value::Unit),
-        (Some(Value::Boolean(false)), Some(Value::Str(msg))) => {
-            Err(MetelError::panic(RuntimeErrorCode::R0013, msg.clone(), span))
-        }
+        (Some(Value::Boolean(false)), Some(Value::Str(msg))) => Err(MetelError::panic(
+            RuntimeErrorCode::R0013,
+            msg.clone(),
+            span,
+        )),
         (Some(Value::Boolean(false)), _) => Err(MetelError::panic(
             RuntimeErrorCode::R0013,
             "assertion failed",
@@ -143,7 +145,10 @@ fn native_yolo_err(args: &[Value], span: &crate::ast::Span) -> Result<Value, Met
     match args.first() {
         Some(error) => Err(MetelError::panic(
             RuntimeErrorCode::R0014,
-            format!("called `.yolo()` on an `Err` value: {}", format_value(error)),
+            format!(
+                "called `.yolo()` on an `Err` value: {}",
+                format_value(error)
+            ),
             span,
         )),
         None => Err(MetelError::internal("yolo_err: expected one argument")),
@@ -153,7 +158,11 @@ fn native_yolo_err(args: &[Value], span: &crate::ast::Span) -> Result<Value, Met
 /// `std::core::panic(msg: String) -> !` (RFC-0078). Always panics with `msg`.
 fn native_panic(args: &[Value], span: &crate::ast::Span) -> Result<Value, MetelError> {
     match args.first() {
-        Some(Value::Str(msg)) => Err(MetelError::panic(RuntimeErrorCode::R0015, msg.clone(), span)),
+        Some(Value::Str(msg)) => Err(MetelError::panic(
+            RuntimeErrorCode::R0015,
+            msg.clone(),
+            span,
+        )),
         _ => Err(MetelError::internal("panic: expected one String argument")),
     }
 }
@@ -197,25 +206,30 @@ fn string_array_value(strings: Vec<String>) -> Value {
 }
 
 fn native_string_is_empty(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    Ok(Value::Boolean(str_at(args, 0, "string_is_empty")?.is_empty()))
+    Ok(Value::Boolean(
+        str_at(args, 0, "string_is_empty")?.is_empty(),
+    ))
 }
 
 fn native_string_to_upper(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    Ok(Value::Str(str_at(args, 0, "string_to_upper")?.to_uppercase()))
+    Ok(Value::Str(
+        str_at(args, 0, "string_to_upper")?.to_uppercase(),
+    ))
 }
 
 fn native_string_to_lower(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    Ok(Value::Str(str_at(args, 0, "string_to_lower")?.to_lowercase()))
+    Ok(Value::Str(
+        str_at(args, 0, "string_to_lower")?.to_lowercase(),
+    ))
 }
 
 fn native_string_trim(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
-    Ok(Value::Str(str_at(args, 0, "string_trim")?.trim().to_string()))
+    Ok(Value::Str(
+        str_at(args, 0, "string_trim")?.trim().to_string(),
+    ))
 }
 
-fn native_string_trim_start(
-    args: &[Value],
-    _span: &crate::ast::Span,
-) -> Result<Value, MetelError> {
+fn native_string_trim_start(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     Ok(Value::Str(
         str_at(args, 0, "string_trim_start")?
             .trim_start()
@@ -534,9 +548,7 @@ fn native_list_as_slice(args: &[Value], _span: &crate::ast::Span) -> Result<Valu
 
 fn native_env_var(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     match args.first() {
-        Some(Value::Str(name)) => {
-            Ok(perhaps_value(std::env::var(name).ok().map(Value::Str)))
-        }
+        Some(Value::Str(name)) => Ok(perhaps_value(std::env::var(name).ok().map(Value::Str))),
         _ => Err(MetelError::internal("std::env::get: expected (String)")),
     }
 }
@@ -605,10 +617,7 @@ fn str_at(args: &[Value], idx: usize, label: &str) -> Result<String, MetelError>
     }
 }
 
-fn native_fs_read_to_string(
-    args: &[Value],
-    _span: &crate::ast::Span,
-) -> Result<Value, MetelError> {
+fn native_fs_read_to_string(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     let path = str_at(args, 0, "std::fs::read_to_string")?;
     Ok(io_result(std::fs::read_to_string(&path).map(Value::Str)))
 }
@@ -616,13 +625,12 @@ fn native_fs_read_to_string(
 fn native_fs_write_string(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     let path = str_at(args, 0, "std::fs::write_string")?;
     let contents = str_at(args, 1, "std::fs::write_string")?;
-    Ok(io_result(std::fs::write(&path, contents).map(|()| Value::Unit)))
+    Ok(io_result(
+        std::fs::write(&path, contents).map(|()| Value::Unit),
+    ))
 }
 
-fn native_fs_append_string(
-    args: &[Value],
-    _span: &crate::ast::Span,
-) -> Result<Value, MetelError> {
+fn native_fs_append_string(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     use std::io::Write;
     let path = str_at(args, 0, "std::fs::append_string")?;
     let contents = str_at(args, 1, "std::fs::append_string")?;
@@ -660,12 +668,11 @@ fn native_fs_create_dir(args: &[Value], _span: &crate::ast::Span) -> Result<Valu
     Ok(io_result(std::fs::create_dir(&path).map(|()| Value::Unit)))
 }
 
-fn native_fs_create_dir_all(
-    args: &[Value],
-    _span: &crate::ast::Span,
-) -> Result<Value, MetelError> {
+fn native_fs_create_dir_all(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     let path = str_at(args, 0, "std::fs::create_dir_all")?;
-    Ok(io_result(std::fs::create_dir_all(&path).map(|()| Value::Unit)))
+    Ok(io_result(
+        std::fs::create_dir_all(&path).map(|()| Value::Unit),
+    ))
 }
 
 fn native_fs_remove_file(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
@@ -678,12 +685,11 @@ fn native_fs_remove_dir(args: &[Value], _span: &crate::ast::Span) -> Result<Valu
     Ok(io_result(std::fs::remove_dir(&path).map(|()| Value::Unit)))
 }
 
-fn native_fs_remove_dir_all(
-    args: &[Value],
-    _span: &crate::ast::Span,
-) -> Result<Value, MetelError> {
+fn native_fs_remove_dir_all(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     let path = str_at(args, 0, "std::fs::remove_dir_all")?;
-    Ok(io_result(std::fs::remove_dir_all(&path).map(|()| Value::Unit)))
+    Ok(io_result(
+        std::fs::remove_dir_all(&path).map(|()| Value::Unit),
+    ))
 }
 
 // ── std::process host implementations ──────────────────────────────────────
@@ -748,81 +754,68 @@ fn native_process_run(args: &[Value], _span: &crate::ast::Span) -> Result<Value,
 /// lowered [`NativeKey`]. Total over the closed enum — every variant maps to a
 /// host fn (enforced by the coverage test).
 pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
-    let (label, fun): (&str, NativeFn) =
-        match key {
-            NativeKey::StdCorePrint => ("std::core::print", native_print),
-            NativeKey::StdCorePrintln => ("std::core::println", native_println),
-            NativeKey::StdCoreDbg => ("std::core::dbg", native_dbg),
-            NativeKey::StdCoreAssert => ("std::core::assert", native_assert),
-            NativeKey::StdCoreAssertMsg => ("std::core::assert_msg", native_assert_msg),
-            NativeKey::StdCoreClock => ("std::core::clock", native_clock),
-            NativeKey::StdCoreYoloNone => ("std::core::yolo_none", native_yolo_none),
-            NativeKey::StdCoreYoloErr => ("std::core::yolo_err", native_yolo_err),
-            NativeKey::StdCorePanic => ("std::core::panic", native_panic),
-            NativeKey::StdCoreStringLen => ("String::len", native_string_len),
-            NativeKey::StdCoreStringIsEmpty => ("String::is_empty", native_string_is_empty),
-            NativeKey::StdCoreStringToUpper => ("String::to_upper", native_string_to_upper),
-            NativeKey::StdCoreStringToLower => ("String::to_lower", native_string_to_lower),
-            NativeKey::StdCoreStringTrim => ("String::trim", native_string_trim),
-            NativeKey::StdCoreStringTrimStart => {
-                ("String::trim_start", native_string_trim_start)
-            }
-            NativeKey::StdCoreStringTrimEnd => ("String::trim_end", native_string_trim_end),
-            NativeKey::StdCoreStringContains => ("String::contains", native_string_contains),
-            NativeKey::StdCoreStringStartsWith => {
-                ("String::starts_with", native_string_starts_with)
-            }
-            NativeKey::StdCoreStringEndsWith => ("String::ends_with", native_string_ends_with),
-            NativeKey::StdCoreStringIndexOf => ("String::index_of", native_string_index_of),
-            NativeKey::StdCoreStringSplit => ("String::split", native_string_split),
-            NativeKey::StdCoreStringReplace => ("String::replace", native_string_replace),
-            NativeKey::StdCoreStringRepeat => ("String::repeat", native_string_repeat),
-            NativeKey::StdCoreStringJoin => ("String::join", native_string_join),
-            NativeKey::StdCoreStringChars => ("String::chars", native_string_chars),
-            NativeKey::StdCoreStringCharAt => ("String::char_at", native_string_char_at),
-            NativeKey::StdCoreStringSubstring => ("String::substring", native_string_substring),
-            NativeKey::StdCoreToString => ("Display::to_string", native_to_string),
-            NativeKey::StdCoreI8From => ("i8::from", native_i8_from),
-            NativeKey::StdCoreI16From => ("i16::from", native_i16_from),
-            NativeKey::StdCoreI32From => ("i32::from", native_i32_from),
-            NativeKey::StdCoreI64From => ("i64::from", native_i64_from),
-            NativeKey::StdCoreU8From => ("u8::from", native_u8_from),
-            NativeKey::StdCoreU16From => ("u16::from", native_u16_from),
-            NativeKey::StdCoreU32From => ("u32::from", native_u32_from),
-            NativeKey::StdCoreU64From => ("u64::from", native_u64_from),
-            NativeKey::StdCoreF32From => ("f32::from", native_f32_from),
-            NativeKey::StdCoreF64From => ("f64::from", native_f64_from),
-            NativeKey::StdCoreCharFrom => ("Char::from", native_char_from),
-            NativeKey::StdCoreListNew => ("List::new", native_list_new),
-            NativeKey::StdCoreListFrom => ("List::from", native_list_from),
-            NativeKey::StdCoreListPush => ("List::push", native_list_push),
-            NativeKey::StdCoreListPop => ("List::pop", native_list_pop),
-            NativeKey::StdCoreListLen => ("List::len", native_list_len),
-            NativeKey::StdCoreListGet => ("List::get", native_list_get),
-            NativeKey::StdCoreListAsSlice => ("List::as_slice", native_list_as_slice),
-            NativeKey::StdEnvVar => ("std::env::get", native_env_var),
-            NativeKey::StdEnvVars => ("std::env::vars", native_env_vars),
-            NativeKey::StdFsReadToString => {
-                ("std::fs::read_to_string", native_fs_read_to_string)
-            }
-            NativeKey::StdFsWriteString => ("std::fs::write_string", native_fs_write_string),
-            NativeKey::StdFsAppendString => {
-                ("std::fs::append_string", native_fs_append_string)
-            }
-            NativeKey::StdFsExists => ("std::fs::exists", native_fs_exists),
-            NativeKey::StdFsReadDir => ("std::fs::read_dir", native_fs_read_dir),
-            NativeKey::StdFsCreateDir => ("std::fs::create_dir", native_fs_create_dir),
-            NativeKey::StdFsCreateDirAll => {
-                ("std::fs::create_dir_all", native_fs_create_dir_all)
-            }
-            NativeKey::StdFsRemoveFile => ("std::fs::remove_file", native_fs_remove_file),
-            NativeKey::StdFsRemoveDir => ("std::fs::remove_dir", native_fs_remove_dir),
-            NativeKey::StdFsRemoveDirAll => {
-                ("std::fs::remove_dir_all", native_fs_remove_dir_all)
-            }
-            NativeKey::StdProcessArgs => ("std::process::args", native_process_args),
-            NativeKey::StdProcessRun => ("std::process::run", native_process_run),
-        };
+    let (label, fun): (&str, NativeFn) = match key {
+        NativeKey::StdCorePrint => ("std::core::print", native_print),
+        NativeKey::StdCorePrintln => ("std::core::println", native_println),
+        NativeKey::StdCoreDbg => ("std::core::dbg", native_dbg),
+        NativeKey::StdCoreAssert => ("std::core::assert", native_assert),
+        NativeKey::StdCoreAssertMsg => ("std::core::assert_msg", native_assert_msg),
+        NativeKey::StdCoreClock => ("std::core::clock", native_clock),
+        NativeKey::StdCoreYoloNone => ("std::core::yolo_none", native_yolo_none),
+        NativeKey::StdCoreYoloErr => ("std::core::yolo_err", native_yolo_err),
+        NativeKey::StdCorePanic => ("std::core::panic", native_panic),
+        NativeKey::StdCoreStringLen => ("String::len", native_string_len),
+        NativeKey::StdCoreStringIsEmpty => ("String::is_empty", native_string_is_empty),
+        NativeKey::StdCoreStringToUpper => ("String::to_upper", native_string_to_upper),
+        NativeKey::StdCoreStringToLower => ("String::to_lower", native_string_to_lower),
+        NativeKey::StdCoreStringTrim => ("String::trim", native_string_trim),
+        NativeKey::StdCoreStringTrimStart => ("String::trim_start", native_string_trim_start),
+        NativeKey::StdCoreStringTrimEnd => ("String::trim_end", native_string_trim_end),
+        NativeKey::StdCoreStringContains => ("String::contains", native_string_contains),
+        NativeKey::StdCoreStringStartsWith => ("String::starts_with", native_string_starts_with),
+        NativeKey::StdCoreStringEndsWith => ("String::ends_with", native_string_ends_with),
+        NativeKey::StdCoreStringIndexOf => ("String::index_of", native_string_index_of),
+        NativeKey::StdCoreStringSplit => ("String::split", native_string_split),
+        NativeKey::StdCoreStringReplace => ("String::replace", native_string_replace),
+        NativeKey::StdCoreStringRepeat => ("String::repeat", native_string_repeat),
+        NativeKey::StdCoreStringJoin => ("String::join", native_string_join),
+        NativeKey::StdCoreStringChars => ("String::chars", native_string_chars),
+        NativeKey::StdCoreStringCharAt => ("String::char_at", native_string_char_at),
+        NativeKey::StdCoreStringSubstring => ("String::substring", native_string_substring),
+        NativeKey::StdCoreToString => ("Display::to_string", native_to_string),
+        NativeKey::StdCoreI8From => ("i8::from", native_i8_from),
+        NativeKey::StdCoreI16From => ("i16::from", native_i16_from),
+        NativeKey::StdCoreI32From => ("i32::from", native_i32_from),
+        NativeKey::StdCoreI64From => ("i64::from", native_i64_from),
+        NativeKey::StdCoreU8From => ("u8::from", native_u8_from),
+        NativeKey::StdCoreU16From => ("u16::from", native_u16_from),
+        NativeKey::StdCoreU32From => ("u32::from", native_u32_from),
+        NativeKey::StdCoreU64From => ("u64::from", native_u64_from),
+        NativeKey::StdCoreF32From => ("f32::from", native_f32_from),
+        NativeKey::StdCoreF64From => ("f64::from", native_f64_from),
+        NativeKey::StdCoreCharFrom => ("Char::from", native_char_from),
+        NativeKey::StdCoreListNew => ("List::new", native_list_new),
+        NativeKey::StdCoreListFrom => ("List::from", native_list_from),
+        NativeKey::StdCoreListPush => ("List::push", native_list_push),
+        NativeKey::StdCoreListPop => ("List::pop", native_list_pop),
+        NativeKey::StdCoreListLen => ("List::len", native_list_len),
+        NativeKey::StdCoreListGet => ("List::get", native_list_get),
+        NativeKey::StdCoreListAsSlice => ("List::as_slice", native_list_as_slice),
+        NativeKey::StdEnvVar => ("std::env::get", native_env_var),
+        NativeKey::StdEnvVars => ("std::env::vars", native_env_vars),
+        NativeKey::StdFsReadToString => ("std::fs::read_to_string", native_fs_read_to_string),
+        NativeKey::StdFsWriteString => ("std::fs::write_string", native_fs_write_string),
+        NativeKey::StdFsAppendString => ("std::fs::append_string", native_fs_append_string),
+        NativeKey::StdFsExists => ("std::fs::exists", native_fs_exists),
+        NativeKey::StdFsReadDir => ("std::fs::read_dir", native_fs_read_dir),
+        NativeKey::StdFsCreateDir => ("std::fs::create_dir", native_fs_create_dir),
+        NativeKey::StdFsCreateDirAll => ("std::fs::create_dir_all", native_fs_create_dir_all),
+        NativeKey::StdFsRemoveFile => ("std::fs::remove_file", native_fs_remove_file),
+        NativeKey::StdFsRemoveDir => ("std::fs::remove_dir", native_fs_remove_dir),
+        NativeKey::StdFsRemoveDirAll => ("std::fs::remove_dir_all", native_fs_remove_dir_all),
+        NativeKey::StdProcessArgs => ("std::process::args", native_process_args),
+        NativeKey::StdProcessRun => ("std::process::run", native_process_run),
+    };
     RuntimeCallable::Intrinsic {
         label: label.to_string(),
         fun,
@@ -854,7 +847,12 @@ pub(super) fn builtin_aspect_id(aspect_name: &str) -> Option<crate::symbols::Sym
 /// seeding register builtin type entries under the same id the rest of the
 /// pipeline uses, so the runtime type registry is keyed purely by id (METEL-185).
 pub(super) fn builtin_type_id(type_name: &str) -> Option<crate::symbols::SymbolId> {
-    use crate::symbols::{SYM_TYPE_BOOLEAN, SYM_TYPE_STRING, SYM_TYPE_CHAR, SYM_TYPE_I8, SYM_TYPE_I16, SYM_TYPE_I32, SYM_TYPE_I64, SYM_TYPE_U8, SYM_TYPE_U16, SYM_TYPE_U32, SYM_TYPE_U64, SYM_TYPE_F32, SYM_TYPE_F64, SYM_TYPE_LIST, SYM_TYPE_PERHAPS, SYM_TYPE_RESULT, SYM_TYPE_RANGE, SYM_TYPE_RANGE_INCLUSIVE};
+    use crate::symbols::{
+        SYM_TYPE_BOOLEAN, SYM_TYPE_CHAR, SYM_TYPE_F32, SYM_TYPE_F64, SYM_TYPE_I16, SYM_TYPE_I32,
+        SYM_TYPE_I64, SYM_TYPE_I8, SYM_TYPE_LIST, SYM_TYPE_PERHAPS, SYM_TYPE_RANGE,
+        SYM_TYPE_RANGE_INCLUSIVE, SYM_TYPE_RESULT, SYM_TYPE_STRING, SYM_TYPE_U16, SYM_TYPE_U32,
+        SYM_TYPE_U64, SYM_TYPE_U8,
+    };
     Some(match type_name {
         "boolean" => SYM_TYPE_BOOLEAN,
         "String" => SYM_TYPE_STRING,
@@ -919,7 +917,9 @@ fn register_core_natives_from_embedded(runtime: &mut RuntimeRegistry) {
                     // Only native methods are derivable here; a Metel-bodied
                     // core impl method would need elaboration, which this
                     // single-program seeding path does not run.
-                    let Some(binding) = &method.native else { continue };
+                    let Some(binding) = &method.native else {
+                        continue;
+                    };
                     let key = key_for(binding);
                     let receiver = method.params.first().and_then(|p| p.receiver.clone());
                     let params: Vec<RuntimeTypeRef> = method
@@ -1001,20 +1001,14 @@ pub(super) fn register_builtins(runtime: &mut RuntimeRegistry) {
         }
     }
 
-    fn intrinsic(
-        label: &str,
-        fun: NativeFn,
-    ) -> RuntimeCallable {
+    fn intrinsic(label: &str, fun: NativeFn) -> RuntimeCallable {
         RuntimeCallable::Intrinsic {
             label: label.to_string(),
             fun,
         }
     }
 
-    fn builtin_value(
-        label: &str,
-        fun: NativeFn,
-    ) -> RuntimeCallable {
+    fn builtin_value(label: &str, fun: NativeFn) -> RuntimeCallable {
         intrinsic(label, fun)
     }
 

@@ -59,7 +59,8 @@ fn call_runtime_callable(
                 ClosureBody::Untyped(b) => {
                     let scheme_and_ctx = closure
                         .name
-                        .as_deref().zip(closure.type_ctx.as_ref())
+                        .as_deref()
+                        .zip(closure.type_ctx.as_ref())
                         .and_then(|(name, type_ctx)| {
                             type_ctx.scheme_env.get(name).map(|s| (s, type_ctx))
                         });
@@ -182,17 +183,27 @@ pub(super) fn call_method_function(
                     // in the registry's method env under (receiver type, method
                     // name); fall back to the flat scheme env for the rare case a
                     // free generic closure reaches this path.
-                    let resolved = closure.name.as_deref().zip(closure.type_ctx.as_ref()).and_then(
-                        |(name, type_ctx)| {
-                            let recv_name = receiver_type_name(&receiver_type);
-                            let method_scheme = recv_name.and_then(|tn| {
-                                type_ctx.registry.method_scheme_for(tn, name).map(|(s, _)| s)
-                            });
+                    let resolved = closure
+                        .name
+                        .as_deref()
+                        .zip(closure.type_ctx.as_ref())
+                        .and_then(|(name, type_ctx)| {
+                            let method_scheme = match &receiver_type {
+                                crate::types::Type::Array(_) => type_ctx
+                                    .registry
+                                    .array_method_scheme_for(name)
+                                    .map(|(s, _)| s),
+                                _ => receiver_type_name(&receiver_type).and_then(|tn| {
+                                    type_ctx
+                                        .registry
+                                        .method_scheme_for(tn, name)
+                                        .map(|(s, _)| s)
+                                }),
+                            };
                             method_scheme
                                 .or_else(|| type_ctx.scheme_env.get(name))
                                 .map(|scheme| (scheme, type_ctx))
-                        },
-                    );
+                        });
                     match resolved {
                         Some((scheme, type_ctx)) => {
                             // The scheme's signature includes `self`, so the arg

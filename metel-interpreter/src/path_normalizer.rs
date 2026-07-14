@@ -55,7 +55,12 @@ pub fn normalize(
 
     for loaded in &mut graph.modules {
         let scope = names.scopes.get(&loaded.module_path);
-        normalize_program_decls(&mut loaded.program.decls, scope, &module_names, &names.symbols)?;
+        normalize_program_decls(
+            &mut loaded.program.decls,
+            scope,
+            &module_names,
+            &names.symbols,
+        )?;
     }
     Ok(NormalizedModuleGraph(graph))
 }
@@ -195,7 +200,9 @@ fn normalize_expr(
         }
 
         Expr::Path(segments, span) => {
-            if let Some((resolved, symbol_id)) = try_resolve_path(segments, scope, module_names, symbols) {
+            if let Some((resolved, symbol_id)) =
+                try_resolve_path(segments, scope, module_names, symbols)
+            {
                 let original = std::mem::take(segments);
                 *expr = Expr::ResolvedPath {
                     resolved,
@@ -362,7 +369,11 @@ fn try_resolve_path(
     if let Some(s) = scope {
         // 1. Explicit import with matching source
         for (local_name, binding) in &s.explicit {
-            if binding.source_module.first().map(std::string::String::as_str) == Some(first.as_str())
+            if binding
+                .source_module
+                .first()
+                .map(std::string::String::as_str)
+                == Some(first.as_str())
                 && &binding.source_name == declared_name
             {
                 return Some((local_name.clone(), Some(binding.symbol_id)));
@@ -371,7 +382,8 @@ fn try_resolve_path(
         // 2. Glob import from this module — local name == source name
         let source_module: Vec<String> = segments[..segments.len() - 1].to_vec();
         if s.globs.iter().any(|(_, g)| {
-            g == &source_module || g.first().map(std::string::String::as_str) == Some(first.as_str())
+            g == &source_module
+                || g.first().map(std::string::String::as_str) == Some(first.as_str())
         }) {
             return Some((declared_name.clone(), None));
         }

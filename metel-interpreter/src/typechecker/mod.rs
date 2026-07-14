@@ -11,7 +11,10 @@ use crate::name_resolver::{GlobTier, ResolvedNames};
 use crate::path_normalizer::NormalizedModuleGraph;
 use crate::symbols::SymbolId;
 use crate::typed_ast::{ResolvedImportRef, TypedDecl, TypedModule, TypedModuleGraph};
-use crate::typeinference::{TypeScheme, TypeDefinitionRegistry, InferType, TypeVar, TypeVarGenerator, InferContext, generalize_with_names, Substitution, unify};
+use crate::typeinference::{
+    generalize_with_names, unify, InferContext, InferType, Substitution, TypeDefinitionRegistry,
+    TypeScheme, TypeVar, TypeVarGenerator,
+};
 
 mod construction;
 mod conversions;
@@ -180,19 +183,12 @@ impl GlobalExports {
 /// into the dedicated export `TypeVar` range. Sound for the closed schemes that
 /// cross module boundaries (T0010 guarantees pub functions are fully annotated;
 /// native signatures are annotation-derived). See `export_gen` in `check_graph`.
-fn refresh_scheme_for_export(
-    scheme: &TypeScheme,
-    gen: &mut TypeVarGenerator,
-) -> TypeScheme {
+fn refresh_scheme_for_export(scheme: &TypeScheme, gen: &mut TypeVarGenerator) -> TypeScheme {
     if scheme.quantified_vars.is_empty() {
         return scheme.clone();
     }
     let (ty, renaming) = crate::typeinference::instantiate_with_renaming(scheme, gen);
-    let quantified_vars = scheme
-        .quantified_vars
-        .iter()
-        .map(|v| renaming[v])
-        .collect();
+    let quantified_vars = scheme.quantified_vars.iter().map(|v| renaming[v]).collect();
     TypeScheme {
         quantified_vars,
         param_names: scheme.param_names.clone(),
@@ -608,10 +604,7 @@ fn filter_pub_schemes(
 /// Run the type checker over an untyped AST, producing a fully typed AST.
 /// `native` declarations may appear only in standard-library modules (those
 /// whose path begins with `std`). Reject them anywhere else (METEL-182).
-fn enforce_native_stdlib_only(
-    program: &Program,
-    module_path: &[String],
-) -> Result<(), MetelError> {
+fn enforce_native_stdlib_only(program: &Program, module_path: &[String]) -> Result<(), MetelError> {
     fn check_fun(fun: &crate::ast::FunDecl) -> Result<(), MetelError> {
         match &fun.native {
             Some(binding) => Err(MetelError::type_error(
@@ -825,13 +818,12 @@ fn check_impl_with_report(
         // fg.fun_ty is already post-inline-solve (resolved_ty from infer_fun_decl).
         // Applying the final module-level subst would collapse generic TypeVars that
         // happened to appear in other functions' constraints. (METEL-137)
-        let scheme =
-            generalize_with_names(fg.fun_ty, &fg.env_fvs, &fg.name_map)
-                .with_bounds(&fg.bounds)
-                .with_neg_bounds(&fg.neg_bounds)
-                .with_assoc_projections(&fg.assoc_projections)
-                .with_assoc_eq_constraints(&fg.assoc_eq)
-                .with_opaque_returns(&fg.opaque_returns);
+        let scheme = generalize_with_names(fg.fun_ty, &fg.env_fvs, &fg.name_map)
+            .with_bounds(&fg.bounds)
+            .with_neg_bounds(&fg.neg_bounds)
+            .with_assoc_projections(&fg.assoc_projections)
+            .with_assoc_eq_constraints(&fg.assoc_eq)
+            .with_opaque_returns(&fg.opaque_returns);
         scheme_env.insert(fg.name, scheme);
     }
     // Imported schemes must be visible in the construction pass so calls to imported

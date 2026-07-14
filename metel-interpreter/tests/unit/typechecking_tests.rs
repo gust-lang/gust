@@ -17,13 +17,15 @@ fn check_source(source: &str) -> Result<(), MetelError> {
     let path = std::env::temp_dir().join(format!("metel_unit_{}_{n}.mtl", std::process::id()));
     {
         let mut file = std::fs::File::create(&path).expect("create temp fixture");
-        file.write_all(source.as_bytes()).expect("write temp fixture");
+        file.write_all(source.as_bytes())
+            .expect("write temp fixture");
     }
     let result = (|| {
         let graph = module_loader::load_root(&path)?;
         let names = name_resolver::resolve(&graph)?;
         let normalized = path_normalizer::normalize(graph, &names)?;
-        typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default()).map(|_| ())
+        typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())
+            .map(|_| ())
     })();
     let _ = std::fs::remove_file(&path);
     result

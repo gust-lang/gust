@@ -350,7 +350,10 @@ fn resolve_module(
     // Reuse this module's own re-exports (already computed in `resolve`'s second
     // pass) rather than recomputing them — same result, one fewer pass over the
     // export tree.
-    let re_exports = all_re_exports.get(&loaded.module_path).cloned().unwrap_or_default();
+    let re_exports = all_re_exports
+        .get(&loaded.module_path)
+        .cloned()
+        .unwrap_or_default();
     let mut scope = ModuleScope {
         explicit: HashMap::new(),
         globs: Vec::new(),
@@ -1096,7 +1099,10 @@ mod tests {
         // id `Ast`'s own declaration was interned under — not a fresh id minted for
         // `(["parser"], "Ast")`, which nothing would ever register a runtime value
         // under, since `Ast` isn't actually declared in `parser` itself.
-        let real_id = names.symbols[&(vec!["parser".to_string(), "ast".to_string()], "Ast".to_string())];
+        let real_id = names.symbols[&(
+            vec!["parser".to_string(), "ast".to_string()],
+            "Ast".to_string(),
+        )];
         assert_eq!(
             binding.symbol_id, real_id,
             "an import of a re-exported name must reuse its real declaration's id"

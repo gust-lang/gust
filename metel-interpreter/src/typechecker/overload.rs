@@ -21,8 +21,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use crate::ast::{Decl, Expr, FunDecl, Span};
 use crate::error::{MetelError, TypeErrorCode};
 use crate::symbols::SymbolId;
-use crate::types::Type;
 use crate::typeinference::{OverloadEntry, OverloadTable};
+use crate::types::Type;
 
 use super::conversions::{infer_type_to_type, type_expr_to_infer};
 
@@ -89,9 +89,7 @@ pub(super) fn build_overload_table(decls: &[Decl]) -> Result<OverloadTable, Mete
         .collect();
     for (name, entries) in core {
         if !local_fun_names.contains(name.as_str()) {
-            table
-                .entry(name.clone())
-                .or_insert_with(|| entries.clone());
+            table.entry(name.clone()).or_insert_with(|| entries.clone());
         }
     }
     Ok(table)
@@ -206,7 +204,12 @@ pub(super) fn callee_name(callee: &Expr) -> Option<&str> {
 
 /// Error for a call to an overloaded name where no candidate matches the argument
 /// types exactly. Lists the available signatures.
-pub(super) fn no_match_error(name: &str, arg_types: &[Type], entries: &[OverloadEntry], span: &Span) -> MetelError {
+pub(super) fn no_match_error(
+    name: &str,
+    arg_types: &[Type],
+    entries: &[OverloadEntry],
+    span: &Span,
+) -> MetelError {
     let got = arg_types
         .iter()
         .map(std::string::ToString::to_string)
@@ -217,7 +220,11 @@ pub(super) fn no_match_error(name: &str, arg_types: &[Type], entries: &[Overload
         .map(|e| {
             format!(
                 "({})",
-                e.params.iter().map(std::string::ToString::to_string).collect::<Vec<_>>().join(", ")
+                e.params
+                    .iter()
+                    .map(std::string::ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
             )
         })
         .collect::<Vec<_>>()

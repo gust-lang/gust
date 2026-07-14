@@ -1,0 +1,19 @@
+// RFC-0097: a bare-parameter blanket impl is permitted only through the
+// aspect side of the orphan rule. Here the target `T` is never local, but the
+// aspect is, so the impl is accepted.
+
+aspect Marker {
+    fun mark(self) -> String;
+}
+
+extend<T> T: Marker {
+    fun mark(self) -> String {
+        return "ok";
+    }
+}
+
+fun needs_marker<U: Marker>(x: U) {}
+
+fun main() {
+    needs_marker(42);
+}

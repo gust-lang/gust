@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use super::Value;
 use crate::ast::Span;
-use crate::types::Type;
 use crate::typeinference::TypeDefinitionRegistry;
+use crate::types::Type;
 
 /// Derive a concrete `Type` from a runtime `Value`.
 ///
@@ -45,13 +45,8 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
         Value::Struct { name, fields, .. } => {
             let field_types: HashMap<String, Type> =
                 fields.iter().map(|(k, v)| (k.clone(), go(v))).collect();
-            let args = crate::typechecker::infer_named_type_args(
-                name,
-                None,
-                &field_types,
-                registry,
-                span,
-            );
+            let args =
+                crate::typechecker::infer_named_type_args(name, None, &field_types, registry, span);
             Type::Named(name.clone(), args)
         }
         Value::Enum {

@@ -513,7 +513,9 @@ fn parse_extend_impl_block(
                         Rule::extend_aspect_list => {
                             aspects = parse_extend_aspect_list(inner, filename)?
                         }
-                        Rule::where_clause => where_clause = Some(parse_where_clause(inner, filename)?),
+                        Rule::where_clause => {
+                            where_clause = Some(parse_where_clause(inner, filename)?)
+                        }
                         _ => {}
                     }
                 }
@@ -522,8 +524,12 @@ fn parse_extend_impl_block(
                 for inner in p.into_inner() {
                     match inner.as_rule() {
                         Rule::extend_aspect => aspects.push(parse_extend_aspect(inner, filename)?),
-                        Rule::where_clause => where_clause = Some(parse_where_clause(inner, filename)?),
-                        Rule::assoc_type_def => assoc_type_defs.push(parse_assoc_type_def(inner, filename)?),
+                        Rule::where_clause => {
+                            where_clause = Some(parse_where_clause(inner, filename)?)
+                        }
+                        Rule::assoc_type_def => {
+                            assoc_type_defs.push(parse_assoc_type_def(inner, filename)?)
+                        }
                         Rule::fun_decl => methods.push(parse_fun_decl(inner, filename)?),
                         _ => {}
                     }
@@ -533,8 +539,8 @@ fn parse_extend_impl_block(
         }
     }
 
-    let target_type =
-        target_type.ok_or_else(|| MetelError::internal("extend_impl_block: missing target type"))?;
+    let target_type = target_type
+        .ok_or_else(|| MetelError::internal("extend_impl_block: missing target type"))?;
 
     if bodyless {
         if aspects.is_empty() {

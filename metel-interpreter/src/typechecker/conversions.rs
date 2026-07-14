@@ -43,7 +43,10 @@ fn type_expr_to_infer_in_context(
                                     span: Span::new(0, 0, ""),
                                 };
                                 return type_expr_to_infer_in_context(
-                                    &proj, generics, self_ty_name, assoc_ctx,
+                                    &proj,
+                                    generics,
+                                    self_ty_name,
+                                    assoc_ctx,
                                 );
                             }
                         }
@@ -96,7 +99,12 @@ fn type_expr_to_infer_in_context(
             assoc_ctx,
         ))),
         TypeExpr::SizedArray(t, n) => InferType::SizedArray(
-            Box::new(type_expr_to_infer_in_context(t, generics, self_ty_name, assoc_ctx)),
+            Box::new(type_expr_to_infer_in_context(
+                t,
+                generics,
+                self_ty_name,
+                assoc_ctx,
+            )),
             *n,
         ),
         TypeExpr::Reference(t) => InferType::Reference(Box::new(type_expr_to_infer_in_context(
@@ -105,14 +113,9 @@ fn type_expr_to_infer_in_context(
             self_ty_name,
             assoc_ctx,
         ))),
-        TypeExpr::MutReference(t) => {
-            InferType::MutReference(Box::new(type_expr_to_infer_in_context(
-                t,
-                generics,
-                self_ty_name,
-                assoc_ctx,
-            )))
-        }
+        TypeExpr::MutReference(t) => InferType::MutReference(Box::new(
+            type_expr_to_infer_in_context(t, generics, self_ty_name, assoc_ctx),
+        )),
         TypeExpr::Fun(ps, ret) => InferType::Fun(
             ps.iter()
                 .map(|p| type_expr_to_infer_in_context(p, generics, self_ty_name, assoc_ctx))
@@ -129,17 +132,11 @@ fn type_expr_to_infer_in_context(
         // Look up the aspect that declares this assoc name and resolve to the
         // concrete binding from the impl.
         TypeExpr::Projection {
-            base,
-            assoc_name,
-            ..
+            base, assoc_name, ..
         } => {
             // Resolve the base type.
-            let base_ty = type_expr_to_infer_in_context(
-                base.as_ref(),
-                generics,
-                self_ty_name,
-                assoc_ctx,
-            );
+            let base_ty =
+                type_expr_to_infer_in_context(base.as_ref(), generics, self_ty_name, assoc_ctx);
             // If the base is a TypeVar (generic param), the concrete case
             // doesn't apply — fall back to a Named placeholder (abstract case
             // is handled by the caller in inference.rs with &mut InferContext).
@@ -159,12 +156,10 @@ fn type_expr_to_infer_in_context(
                 // If current_aspect is known (we're inside an aspect method or an
                 // impl block's own conversion), resolve directly against it.
                 if let Some(aspect) = ctx.current_aspect {
-                    if let Some(ty) = ctx.registry.impl_assoc_type(
-                        ctx.current_module,
-                        bn,
-                        aspect,
-                        assoc_name,
-                    ) {
+                    if let Some(ty) =
+                        ctx.registry
+                            .impl_assoc_type(ctx.current_module, bn, aspect, assoc_name)
+                    {
                         return type_to_infer(ty);
                     }
                 }
@@ -252,7 +247,9 @@ pub(super) fn infer_type_to_type(ty: &InferType, span: &Span) -> Result<Type, Me
             Ok(Type::SizedArray(Box::new(infer_type_to_type(t, span)?), *n))
         }
         InferType::Reference(t) => Ok(Type::Reference(Box::new(infer_type_to_type(t, span)?))),
-        InferType::MutReference(t) => Ok(Type::MutReference(Box::new(infer_type_to_type(t, span)?))),
+        InferType::MutReference(t) => {
+            Ok(Type::MutReference(Box::new(infer_type_to_type(t, span)?)))
+        }
         InferType::Named(name, args) => {
             let a: Result<Vec<_>, _> = args.iter().map(|a| infer_type_to_type(a, span)).collect();
             let args = a?;

@@ -444,7 +444,8 @@ mod tests {
         let err = validate_std_namespace(&["std".to_string()], path)
             .expect_err("a user module named `std` must be rejected");
         assert!(
-            err.to_string().contains("reserved for the standard library"),
+            err.to_string()
+                .contains("reserved for the standard library"),
             "got: {err}"
         );
         // Nested under std is also rejected.

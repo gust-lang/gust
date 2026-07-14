@@ -8,7 +8,7 @@ use metel::{
 };
 
 use super::fixture::{
-    main_source_path, ExpectStatus, FixtureConfig, GraphChecks, ProgramChecks, CorePreludeMode,
+    main_source_path, CorePreludeMode, ExpectStatus, FixtureConfig, GraphChecks, ProgramChecks,
 };
 
 pub fn run_fixture(path: &Path, config: &FixtureConfig) {
@@ -80,7 +80,8 @@ fn run_evaluate(path: &Path) -> Result<(), MetelError> {
     let names = name_resolver::resolve(&graph)?;
     let normalized = path_normalizer::normalize(graph, &names)?;
     coherence::check(&normalized, &names)?;
-    let typed = typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())?;
+    let typed =
+        typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())?;
     let elaborated = elaborator::elaborate(typed, &names)?;
     evaluator::evaluate_graph(elaborated)
 }
@@ -248,7 +249,8 @@ fn assert_graph_checks(
             .filter(|m| m.module_path.first().map(String::as_str) != Some("std"))
             .count();
         assert_eq!(
-            user_modules, expected,
+            user_modules,
+            expected,
             "wrong module count for {}",
             path.display()
         );

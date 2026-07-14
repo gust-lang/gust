@@ -92,10 +92,7 @@ struct NativeFunTyResult {
     assoc_eq: HashMap<TypeVar, Vec<(String, String, InferType)>>,
 }
 
-fn native_fun_ty(
-    fun: &FunDecl,
-    ctx: &mut InferContext,
-) -> Result<NativeFunTyResult, MetelError> {
+fn native_fun_ty(fun: &FunDecl, ctx: &mut InferContext) -> Result<NativeFunTyResult, MetelError> {
     // Generic native functions (e.g. `print<T: Display>`) map each type
     // parameter to a fresh TypeVar; the caller generalizes the result into a
     // polymorphic scheme carrying the bounds.
@@ -153,7 +150,13 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
             if fun.native.is_some() {
                 if let Ok(result) = native_fun_ty(fun, ctx) {
                     let env_fvs = ctx.env_free_vars();
-                    ctx.bind_poly(&fun.name, generalize(result.fun_ty, &env_fvs).with_bounds(&result.bounds).with_neg_bounds(&result.neg_bounds).with_assoc_eq_constraints(&result.assoc_eq));
+                    ctx.bind_poly(
+                        &fun.name,
+                        generalize(result.fun_ty, &env_fvs)
+                            .with_bounds(&result.bounds)
+                            .with_neg_bounds(&result.neg_bounds)
+                            .with_assoc_eq_constraints(&result.assoc_eq),
+                    );
                 }
                 continue;
             }
@@ -179,12 +182,12 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                 }
 
                 let te_to_infer = |te: &TypeExpr, ctx: &mut InferContext| -> InferType {
-        if let TypeExpr::Projection {
-            base,
-            ref assoc_name,
-            ..
-        } = te
-        {
+                    if let TypeExpr::Projection {
+                        base,
+                        ref assoc_name,
+                        ..
+                    } = te
+                    {
                         if let TypeExpr::Named(ref n, _) = **base {
                             if let Some(&base_tv) = generic_map.get(n.as_str()) {
                                 // NOTE: use the locally-computed `type_var_bounds` map, not
@@ -239,11 +242,8 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                         // pre-registration constraint.
                         let mut rw_counter = 0usize;
                         let mut replacements: Vec<(String, String)> = Vec::new();
-                        let rewritten = rewrite_impl_aspect_returns(
-                            ann,
-                            &mut rw_counter,
-                            &mut replacements,
-                        );
+                        let rewritten =
+                            rewrite_impl_aspect_returns(ann, &mut rw_counter, &mut replacements);
                         let mut extended_map = generic_map.clone();
                         for (placeholder, _) in &replacements {
                             let tv = ctx.fresh_type_var_raw();
@@ -502,10 +502,12 @@ fn infer_decl(
         }
         Decl::Struct(_) | Decl::Enum(_) | Decl::Aspect(_) => Ok(InferType::unit()),
         Decl::Impl(ib) => {
-            // Extract the target type name; bail for non-named targets (structural
-            // blanket impls are still out of scope).
+            // Structural blanket impl targets (`T[]`) have no nominal head. As in
+            // construction, keep a nominal target name only when one exists; generic
+            // structural impl bodies are inferred against their own type-parameter map.
             let target_name = match &ib.target_type {
                 TypeExpr::Named(name, _) => name.rsplit("::").next().unwrap_or(name).to_string(),
+                _ if !ib.generics.is_empty() => String::new(),
                 _ => {
                     return Err(MetelError::internal(
                         "generic impl blocks not yet supported",
@@ -546,9 +548,14 @@ fn infer_decl(
                     // the concrete binding must satisfy it.
                     // TODO(#241): generic impls are skipped above; assoc-type
                     // completeness for blanket impls is #241's job.
-                    if let Some(assoc_decls) = ctx.registry().aspect_assoc_type_decls(aspect_name).cloned() {
-                        let provided_assoc: std::collections::HashMap<&str, &TypeExpr> =
-                            ib.assoc_type_defs.iter().map(|d| (d.name.as_str(), &d.ty)).collect();
+                    if let Some(assoc_decls) =
+                        ctx.registry().aspect_assoc_type_decls(aspect_name).cloned()
+                    {
+                        let provided_assoc: std::collections::HashMap<&str, &TypeExpr> = ib
+                            .assoc_type_defs
+                            .iter()
+                            .map(|d| (d.name.as_str(), &d.ty))
+                            .collect();
                         for decl in &assoc_decls {
                             if let Some(concrete_ty_expr) = provided_assoc.get(decl.name.as_str()) {
                                 // §1.1: if the declaration has a bound, check the
@@ -571,19 +578,26 @@ fn infer_decl(
                                             };
                                             if let Some(name) = concrete_name {
                                                 // Check if this name matches one of the impl's own generic parameters
-                                                if let Some(gp) = ib.generics.iter().find(|p| p.name == name) {
+                                                if let Some(gp) =
+                                                    ib.generics.iter().find(|p| p.name == name)
+                                                {
                                                     // This is the impl's own generic parameter - check its declared bounds
-                                                    let param_bounds = gp.bounds.iter()
-                                                        .filter(|b| b.polarity == Polarity::Positive)
+                                                    let param_bounds = gp
+                                                        .bounds
+                                                        .iter()
+                                                        .filter(|b| {
+                                                            b.polarity == Polarity::Positive
+                                                        })
                                                         .filter_map(|b| {
-                                                            if let TypeExpr::Named(n, _) = &b.aspect {
+                                                            if let TypeExpr::Named(n, _) = &b.aspect
+                                                            {
                                                                 Some(n.clone())
                                                             } else {
                                                                 None
                                                             }
                                                         })
                                                         .collect::<Vec<_>>();
-                                                    
+
                                                     if param_bounds.contains(bound_aspect) {
                                                         // The bound is satisfied by the impl's own parameter bounds
                                                         continue;
@@ -705,9 +719,11 @@ fn rewrite_impl_aspect_returns(
                 .map(|e| rewrite_impl_aspect_returns(e, counter, replacements))
                 .collect(),
         ),
-        TypeExpr::Array(elem) => {
-            TypeExpr::Array(Box::new(rewrite_impl_aspect_returns(elem, counter, replacements)))
-        }
+        TypeExpr::Array(elem) => TypeExpr::Array(Box::new(rewrite_impl_aspect_returns(
+            elem,
+            counter,
+            replacements,
+        ))),
         TypeExpr::SizedArray(elem, n) => TypeExpr::SizedArray(
             Box::new(rewrite_impl_aspect_returns(elem, counter, replacements)),
             *n,
@@ -725,9 +741,8 @@ fn rewrite_impl_aspect_returns(
                 .iter()
                 .map(|p| rewrite_impl_aspect_returns(p, counter, replacements))
                 .collect(),
-            ret.as_ref().map(|r| {
-                Box::new(rewrite_impl_aspect_returns(r, counter, replacements))
-            }),
+            ret.as_ref()
+                .map(|r| Box::new(rewrite_impl_aspect_returns(r, counter, replacements))),
         ),
         TypeExpr::Unit | TypeExpr::Projection { .. } => te.clone(),
     }
@@ -745,7 +760,12 @@ fn infer_fun_decl(
     // Native functions have no Metel body to infer. Validate and record their
     // annotated signature for the construction pass; dispatch is by NativeKey.
     if fun.native.is_some() {
-        let NativeFunTyResult { fun_ty, bounds, neg_bounds, assoc_eq } = native_fun_ty(fun, ctx)?;
+        let NativeFunTyResult {
+            fun_ty,
+            bounds,
+            neg_bounds,
+            assoc_eq,
+        } = native_fun_ty(fun, ctx)?;
         // Overloaded native definitions (std::core's assert pair) are
         // dispatched by SymbolId and never enter the name-keyed scheme env.
         if ctx.is_overloaded(&fun.name) {
@@ -754,7 +774,10 @@ fn infer_fun_decl(
         let env_fvs = ctx.env_free_vars();
         ctx.bind_poly(
             &fun.name,
-            generalize(fun_ty.clone(), &env_fvs).with_bounds(&bounds).with_neg_bounds(&neg_bounds).with_assoc_eq_constraints(&assoc_eq),
+            generalize(fun_ty.clone(), &env_fvs)
+                .with_bounds(&bounds)
+                .with_neg_bounds(&neg_bounds)
+                .with_assoc_eq_constraints(&assoc_eq),
         );
         fun_generalizations.push(FunGeneralization {
             name: fun.name.clone(),
@@ -934,7 +957,8 @@ fn infer_fun_decl(
     let mut reabstraction = Substitution::new();
     for (marker_tv, aspect_name) in &pending_opaque_returns {
         let resolved_marker = partial_subst.apply(&InferType::Var(*marker_tv));
-        #[allow(clippy::match_same_arms)] // Var and the wildcard document distinct, deliberate no-ops
+        #[allow(clippy::match_same_arms)]
+        // Var and the wildcard document distinct, deliberate no-ops
         match &resolved_marker {
             InferType::Var(_) => {
                 // Linked case: marker is still a free var (tied to a generic
@@ -954,10 +978,11 @@ fn infer_fun_decl(
                 };
                 // Verify the aspect bound at definition time (RFC-0037 §1.1):
                 // the concrete type must implement the declared aspect.
-                if !ctx
-                    .registry()
-                    .type_satisfies_aspect(ctx.current_module_path(), &concrete_ty, aspect_name)
-                {
+                if !ctx.registry().type_satisfies_aspect(
+                    ctx.current_module_path(),
+                    &concrete_ty,
+                    aspect_name,
+                ) {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0012,
                         format!(
@@ -1099,6 +1124,17 @@ fn infer_impl_method(
     ctx: &mut InferContext,
     fun_generalizations: &mut Vec<FunGeneralization>,
 ) -> Result<(), MetelError> {
+    let array_target_generic_name = match &ib.target_type {
+        TypeExpr::Array(inner) => match inner.as_ref() {
+            TypeExpr::Named(name, args) if args.is_empty() => ib
+                .generics
+                .iter()
+                .find(|gp| gp.name == *name)
+                .map(|_| name.as_str()),
+            _ => None,
+        },
+        _ => None,
+    };
     // Start with the method's own generic params.
     let mut generic_map: HashMap<String, TypeVar> = method
         .generics
@@ -1129,6 +1165,12 @@ fn infer_impl_method(
                 }
             }
         }
+    } else if let Some(name) = array_target_generic_name {
+        if !generic_map.contains_key(name) {
+            let tv = ctx.fresh_type_var_raw();
+            generic_map.insert(name.to_string(), tv);
+            struct_tvars_ordered.push(tv);
+        }
     }
 
     // RFC-0036 §2.2: compute impl-level bounds (from the impl block's own
@@ -1136,10 +1178,13 @@ fn infer_impl_method(
     // method dispatch and type annotations inside the body can see impl-level
     // constraints (e.g. `impl<T: Display> Greet for Box1<T>` needs `T: Display`
     // visible when resolving `self.value.to_string()`).
-    let generic_names_for_impl: Vec<String> = ctx
-        .struct_generic_names_for(target_name)
-        .cloned()
-        .unwrap_or_default();
+    let generic_names_for_impl: Vec<String> = if let Some(name) = array_target_generic_name {
+        vec![name.to_string()]
+    } else {
+        ctx.struct_generic_names_for(target_name)
+            .cloned()
+            .unwrap_or_default()
+    };
     let synth = super::registry::synth_generics_for_impl(&generic_names_for_impl, &ib.generics);
     let impl_bounds: Vec<Vec<String>> =
         super::registry::collect_type_param_bounds(&synth, ib.where_clause.as_ref());
@@ -1212,7 +1257,13 @@ fn infer_impl_method(
     // For a primitive target (`impl Display for i64`) the self type must be the
     // concrete primitive, since call sites produce `Concrete(Type::I64)` and the
     // unifier has no Named↔Concrete bridge (METEL-181).
-    let self_ty = if let Some(prim) = primitive_type_from_name(target_name) {
+    let self_ty = if let Some(element_tv) = struct_tvars_ordered
+        .first()
+        .copied()
+        .filter(|_| array_target_generic_name.is_some())
+    {
+        InferType::Array(Box::new(InferType::Var(element_tv)))
+    } else if let Some(prim) = primitive_type_from_name(target_name) {
         InferType::Concrete(prim)
     } else if struct_tvars_ordered.is_empty() {
         InferType::Named(target_name.to_string(), vec![])
@@ -1303,7 +1354,9 @@ fn infer_impl_method(
             .iter()
             .enumerate()
             .filter_map(|(i, bounds)| {
-                if bounds.is_empty() { return None; }
+                if bounds.is_empty() {
+                    return None;
+                }
                 let resolved_tv = struct_tvars_resolved.get(i)?;
                 Some((*resolved_tv, bounds.clone()))
             })
@@ -1312,7 +1365,9 @@ fn infer_impl_method(
             .iter()
             .enumerate()
             .filter_map(|(i, bounds)| {
-                if bounds.is_empty() { return None; }
+                if bounds.is_empty() {
+                    return None;
+                }
                 let resolved_tv = struct_tvars_resolved.get(i)?;
                 Some((*resolved_tv, bounds.clone()))
             })
@@ -1324,18 +1379,33 @@ fn infer_impl_method(
             let proj_map = build_assoc_projection_map(&body_assoc_log, &partial_subst, &scheme);
             scheme.with_assoc_projections(&proj_map)
         };
-        ctx.register_method_scheme(
-            target_name.to_string(),
-            method.name.clone(),
-            scheme.clone(),
-            struct_tvars_resolved.clone(),
-        );
-        ctx.register_method_scheme_variant(
-            target_name.to_string(),
-            method.name.clone(),
-            scheme,
-            struct_tvars_resolved,
-        );
+        if array_target_generic_name.is_some() {
+            ctx.register_array_method_scheme(
+                method.name.clone(),
+                scheme.clone(),
+                struct_tvars_resolved.clone(),
+            );
+            ctx.register_array_method_scheme_variant(
+                method.name.clone(),
+                scheme,
+                struct_tvars_resolved,
+            );
+        } else {
+            ctx.register_method_scheme(
+                target_name.to_string(),
+                method.name.clone(),
+                scheme.clone(),
+                struct_tvars_resolved.clone(),
+            );
+            ctx.register_method_scheme_variant(
+                target_name.to_string(),
+                method.name.clone(),
+                scheme,
+                struct_tvars_resolved,
+            );
+        }
+    } else if array_target_generic_name.is_some() {
+        ctx.register_array_method(method.name.clone(), resolved_fun_ty);
     } else {
         ctx.register_method(
             target_name.to_string(),
@@ -1585,7 +1655,7 @@ fn infer_stmt(
             let iter_ty = infer_expr(&fi.iterable, ctx, fun_generalizations)?;
             let elem_ty = ctx.fresh_var();
             let partial = ctx.solve()?;
-            let resolved_iter = partial.apply(&iter_ty);
+            let resolved_iter = peel_all_references(&partial.apply(&iter_ty));
             match &resolved_iter {
                 InferType::Array(elem) | InferType::SizedArray(elem, _) => {
                     ctx.add_constraint(elem_ty.clone(), *elem.clone(), fi.span.clone());
@@ -1647,13 +1717,26 @@ fn infer_expr(
             if let Some(err) = ctx.check_glob_conflict(name, span) {
                 return Err(err);
             }
-            ctx.lookup(name).ok_or_else(|| {
-                MetelError::type_error(
-                    TypeErrorCode::T0003,
-                    format!("undefined name `{name}`"),
-                    span,
-                )
-            })
+            if let Some(ty) = ctx.lookup(name) {
+                return Ok(ty);
+            }
+            if let Some(fields) = ctx.get_struct_fields(name) {
+                if fields.is_empty() {
+                    let type_args: Vec<InferType> = ctx
+                        .get_struct_type_params(name)
+                        .cloned()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|_| ctx.fresh_var())
+                        .collect();
+                    return Ok(InferType::Named(name.clone(), type_args));
+                }
+            }
+            Err(MetelError::type_error(
+                TypeErrorCode::T0003,
+                format!("undefined name `{name}`"),
+                span,
+            ))
         }
         Expr::ResolvedPath {
             resolved,
@@ -1780,7 +1863,7 @@ fn infer_expr(
                     return Ok(ret_var);
                 }
             }
-            
+
             // Check for opaque-returning function and do dedicated instantiation
             if let Some(callee_name) = super::overload::callee_name(callee) {
                 if let Some(scheme) = ctx.poly_scheme(callee_name) {
@@ -1790,7 +1873,7 @@ fn infer_expr(
                             .iter()
                             .map(|a| infer_expr(a, ctx, fun_generalizations))
                             .collect::<Result<_, _>>()?;
-                        
+
                         // Solve constraints to get a complete substitution
                         let solved = ctx.solve()?;
                         let _solved = ctx.default_literal_vars(&solved);
@@ -1815,13 +1898,13 @@ fn infer_expr(
                             renaming.insert(var, fresh);
                         }
                         let instantiated_ty = rename_subst.apply(&scheme.ty);
-                        
+
                         if let InferType::Fun(params, ret) = instantiated_ty {
                             // Constrain arguments to match the instantiated function type
                             for (arg_ty, param) in arg_infer.iter().zip(params.iter()) {
                                 ctx.add_constraint(arg_ty.clone(), param.clone(), span.clone());
                             }
-                            
+
                             // Register aspect bounds and mark opacity guards for each opaque return
                             for (i, opaque) in scheme.opaque_returns.iter().enumerate() {
                                 if let Some((aspect, _)) = opaque {
@@ -1833,13 +1916,13 @@ fn infer_expr(
                                     }
                                 }
                             }
-                            
+
                             return Ok(*ret);
                         }
                     }
                 }
             }
-            
+
             let callee_ty = infer_expr(callee, ctx, fun_generalizations)?;
             // Auto-deref: &(() -> T) and &mut (() -> T) are callable directly.
             let callee_ty = match ctx.solve()?.apply(&callee_ty) {
@@ -2075,6 +2158,72 @@ fn infer_expr(
 
             if let Some(result) = builtin_pattern_method_type(&recv_ty, method, &arg_tys, span) {
                 return result;
+            }
+
+            // Fast path: concrete named type — look up method as usual.
+            let peeled_recv = peel_all_references(&recv_ty);
+            if let InferType::Array(elem) = &peeled_recv {
+                let method_ty = if let Some(ty) = ctx.get_array_method_type(method).cloned() {
+                    ty
+                } else if let Some((scheme, struct_tvars)) = ctx
+                    .array_method_scheme_for(method)
+                    .map(|(s, t)| (s.clone(), t.clone()))
+                {
+                    let mut inst = Substitution::new();
+                    let mut renaming: HashMap<TypeVar, TypeVar> = HashMap::new();
+                    for &qv in &scheme.quantified_vars {
+                        let fresh = ctx.fresh_type_var_raw();
+                        inst.bind(qv, InferType::Var(fresh));
+                        renaming.insert(qv, fresh);
+                    }
+                    let instance = inst.apply(&scheme.ty);
+                    let mut pin = Substitution::new();
+                    for (&tv, arg) in struct_tvars.iter().zip(std::iter::once(elem.as_ref())) {
+                        if let Some(&fresh) = renaming.get(&tv) {
+                            pin.bind(fresh, arg.clone());
+                        }
+                    }
+                    pin.apply(&instance)
+                } else {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0003,
+                        format!("no method `{method}` on array type"),
+                        span,
+                    ));
+                };
+
+                if matches!(
+                    ctx.get_array_method_receiver_kind(method),
+                    Some(crate::ast::ReceiverKind::RefMut)
+                ) && !chain_provides_mut_access(&recv_ty)
+                {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0008,
+                        format!(
+                            "cannot call `&mut self` method `{method}` through shared receiver"
+                        ),
+                        span,
+                    ));
+                }
+
+                if let InferType::Fun(params, ret) = &method_ty {
+                    if params.len().saturating_sub(1) != arg_tys.len() {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0004,
+                            format!(
+                                "expected {} argument(s), got {}",
+                                params.len().saturating_sub(1),
+                                arg_tys.len()
+                            ),
+                            span,
+                        ));
+                    }
+                    for (arg_ty, param) in arg_tys.iter().zip(params.iter().skip(1)) {
+                        ctx.add_constraint(arg_ty.clone(), param.clone(), span.clone());
+                    }
+                    return Ok(*ret.clone());
+                }
+                return Err(MetelError::internal("array method type is not a function"));
             }
 
             // Fast path: concrete named type — look up method as usual.
@@ -2661,15 +2810,11 @@ fn builtin_pattern_method_type(
     arg_tys: &[InferType],
     span: &Span,
 ) -> Option<Result<InferType, MetelError>> {
-    if matches!(recv_ty, InferType::Array(_) | InferType::SizedArray(_, _)) {
-        if method == "len" && arg_tys.is_empty() {
-            return Some(Ok(InferType::int()));
-        }
-        return Some(Err(MetelError::type_error(
-            TypeErrorCode::T0003,
-            format!("no method `{method}` on array type; use `List<T>` for mutable collections"),
-            span,
-        )));
+    if matches!(recv_ty, InferType::Array(_) | InferType::SizedArray(_, _))
+        && method == "len"
+        && arg_tys.is_empty()
+    {
+        return Some(Ok(InferType::int()));
     }
 
     None
@@ -3432,18 +3577,16 @@ fn lower_projections_in_decl(decl: Decl) -> Decl {
     match decl {
         Decl::Fun(fun) => Decl::Fun(lower_projections_in_fun(&fun, &[])),
         Decl::Let(let_decl) => Decl::Let(crate::ast::LetDecl {
-            type_ann: let_decl
-                .type_ann
-                .as_ref()
-                .map(|t| lower_projections_in_type(t, &std::collections::HashSet::new(), &let_decl.span)),
+            type_ann: let_decl.type_ann.as_ref().map(|t| {
+                lower_projections_in_type(t, &std::collections::HashSet::new(), &let_decl.span)
+            }),
             value: lower_projections_in_expr(&let_decl.value, &std::collections::HashSet::new()),
             ..let_decl
         }),
         Decl::Mut(mut_decl) => Decl::Mut(crate::ast::MutDecl {
-            type_ann: mut_decl
-                .type_ann
-                .as_ref()
-                .map(|t| lower_projections_in_type(t, &std::collections::HashSet::new(), &mut_decl.span)),
+            type_ann: mut_decl.type_ann.as_ref().map(|t| {
+                lower_projections_in_type(t, &std::collections::HashSet::new(), &mut_decl.span)
+            }),
             value: lower_projections_in_expr(&mut_decl.value, &std::collections::HashSet::new()),
             ..mut_decl
         }),
@@ -3597,15 +3740,13 @@ fn lower_projections_in_stmt(
                 span: fs.span.clone(),
             }))
         }
-        crate::ast::Stmt::ForIn(fis) => crate::ast::Stmt::ForIn(Box::new(
-            crate::ast::ForInStmt {
-                binding: fis.binding.clone(),
-                mutable: fis.mutable,
-                iterable: lower_projections_in_expr(&fis.iterable, generics),
-                body: lower_projections_in_block(&fis.body, generics),
-                span: fis.span.clone(),
-            },
-        )),
+        crate::ast::Stmt::ForIn(fis) => crate::ast::Stmt::ForIn(Box::new(crate::ast::ForInStmt {
+            binding: fis.binding.clone(),
+            mutable: fis.mutable,
+            iterable: lower_projections_in_expr(&fis.iterable, generics),
+            body: lower_projections_in_block(&fis.body, generics),
+            span: fis.span.clone(),
+        })),
         crate::ast::Stmt::Expr(e) => crate::ast::Stmt::Expr(lower_projections_in_expr(e, generics)),
     }
 }
@@ -3614,10 +3755,7 @@ fn lower_projections_in_stmt(
 // one coherent dispatch table across many small functions with no real gain
 // in clarity.
 #[allow(clippy::too_many_lines)]
-fn lower_projections_in_expr(
-    expr: &Expr,
-    generics: &std::collections::HashSet<String>,
-) -> Expr {
+fn lower_projections_in_expr(expr: &Expr, generics: &std::collections::HashSet<String>) -> Expr {
     let go = |e: &Expr| lower_projections_in_expr(e, generics);
     match expr {
         Expr::Call {
@@ -3659,11 +3797,7 @@ fn lower_projections_in_expr(
             target_type: lower_projections_in_type(target_type, generics, span),
             span: span.clone(),
         },
-        Expr::Ascribe {
-            expr: e,
-            ann,
-            span,
-        } => Expr::Ascribe {
+        Expr::Ascribe { expr: e, ann, span } => Expr::Ascribe {
             expr: Box::new(go(e)),
             ann: lower_projections_in_type(ann, generics, span),
             span: span.clone(),
@@ -3740,21 +3874,27 @@ fn lower_projections_in_expr(
             span: span.clone(),
         },
         Expr::FieldAccess {
-            object, field, span,
+            object,
+            field,
+            span,
         } => Expr::FieldAccess {
             object: Box::new(go(object)),
             field: field.clone(),
             span: span.clone(),
         },
         Expr::TupleAccess {
-            object, index, span,
+            object,
+            index,
+            span,
         } => Expr::TupleAccess {
             object: Box::new(go(object)),
             index: *index,
             span: span.clone(),
         },
         Expr::Index {
-            object, index, span,
+            object,
+            index,
+            span,
         } => Expr::Index {
             object: Box::new(go(object)),
             index: Box::new(go(index)),

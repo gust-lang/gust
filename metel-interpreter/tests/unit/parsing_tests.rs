@@ -62,8 +62,8 @@ aspect Send;
 
 extend Packet: Copy2, !Send;
 "#;
-    let program = parser::parse(source, "integrated_extend_surface.mtl")
-        .unwrap_or_else(|e| panic!("{e}"));
+    let program =
+        parser::parse(source, "integrated_extend_surface.mtl").unwrap_or_else(|e| panic!("{e}"));
 
     assert_eq!(program.decls.len(), 4);
 
@@ -401,10 +401,7 @@ fun annotates() {
             }
             Decl::Fun(f) => match f.name.as_str() {
                 "vars" => {
-                    expect_tuple_array(
-                        f.return_type.as_ref().expect("vars return type"),
-                        "return",
-                    );
+                    expect_tuple_array(f.return_type.as_ref().expect("vars return type"), "return");
                     saw_return = true;
                 }
                 "takes" => {

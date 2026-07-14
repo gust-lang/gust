@@ -119,6 +119,35 @@ pub(super) fn synth_generics_for_impl(
         .collect()
 }
 
+fn bare_target_generic_name(ib: &crate::ast::ImplBlock) -> Option<&str> {
+    let TypeExpr::Named(name, args) = &ib.target_type else {
+        return None;
+    };
+    if !args.is_empty() {
+        return None;
+    }
+    ib.generics
+        .iter()
+        .find(|gp| gp.name == *name)
+        .map(|gp| gp.name.as_str())
+}
+
+fn array_target_generic_name(ib: &crate::ast::ImplBlock) -> Option<&str> {
+    let TypeExpr::Array(inner) = &ib.target_type else {
+        return None;
+    };
+    let TypeExpr::Named(name, args) = inner.as_ref() else {
+        return None;
+    };
+    if !args.is_empty() {
+        return None;
+    }
+    ib.generics
+        .iter()
+        .find(|gp| gp.name == *name)
+        .map(|gp| gp.name.as_str())
+}
+
 /// Derive the prelude schemes by parsing the embedded `std::core` source:
 /// free `native` functions by name, plus static native methods on generic
 /// structs as joined-key schemes (`List::new`) quantified over the struct's
@@ -166,7 +195,8 @@ fn populate_schemes_from_embedded_core(
                 let ret = fun.return_type.as_ref().map_or_else(InferType::unit, &te);
                 let fun_ty = InferType::Fun(params, Box::new(ret));
                 let bounds = super::inference::collect_fun_type_var_bounds(fun, &generic_map);
-                let neg_bounds = super::inference::collect_negative_fun_type_var_bounds(fun, &generic_map);
+                let neg_bounds =
+                    super::inference::collect_negative_fun_type_var_bounds(fun, &generic_map);
                 let scheme = crate::typeinference::generalize(fun_ty, &HashSet::default())
                     .with_bounds(&bounds)
                     .with_neg_bounds(&neg_bounds);
@@ -343,7 +373,8 @@ fn register_program_decls(
                 if bounds.iter().any(|b| !b.is_empty()) {
                     registry.register_type_param_bounds(sd.name.clone(), bounds);
                 }
-                let neg_bounds = collect_negative_type_param_bounds(&sd.generics, sd.where_clause.as_ref());
+                let neg_bounds =
+                    collect_negative_type_param_bounds(&sd.generics, sd.where_clause.as_ref());
                 if neg_bounds.iter().any(|b| !b.is_empty()) {
                     registry.register_neg_type_param_bounds(sd.name.clone(), neg_bounds);
                 }
@@ -389,7 +420,8 @@ fn register_program_decls(
                 if bounds.iter().any(|b| !b.is_empty()) {
                     registry.register_type_param_bounds(ed.name.clone(), bounds);
                 }
-                let neg_bounds = collect_negative_type_param_bounds(&ed.generics, ed.where_clause.as_ref());
+                let neg_bounds =
+                    collect_negative_type_param_bounds(&ed.generics, ed.where_clause.as_ref());
                 if neg_bounds.iter().any(|b| !b.is_empty()) {
                     registry.register_neg_type_param_bounds(ed.name.clone(), neg_bounds);
                 }
@@ -407,68 +439,42 @@ fn register_program_decls(
     // infer_impl_method in inference.rs registers them correctly as polymorphic schemes.
     for decl in decls {
         if let Decl::Impl(ib) = decl {
-            let target_name = match &ib.target_type {
-                TypeExpr::Named(name, _) => name.clone(),
-                _ => continue,
+            let nominal_target_name = match &ib.target_type {
+                TypeExpr::Named(name, _) => Some(name.clone()),
+                _ => None,
             };
-            // A generic struct OR generic enum (both register non-empty generic
-            // names). Their Metel method bodies are inferred by infer_impl_method
-            // with TypeVars as polymorphic schemes, so skip the concrete
-            // registration here — registering a concrete `(Enum, T) -> T` entry
-            // would shadow the scheme and make the method-level `T` a dangling
-            // Named("T"). NATIVE methods have no body and are never inferred, so
-            // their annotated signatures are registered as polymorphic schemes
-            // over the type's params (List<T> in std::core).
-            // Also deferred whenever the impl block itself declares generics
-            // (RFC-0036/RFC-0061, issue #233) — `target_name` may not even name a
-            // real struct/enum in that case (a bare type-parameter blanket target,
-            // or — skipped above via `continue` — a structural target), so
-            // registering concrete method schemes against it here would be wrong.
-            let is_generic_target = !ib.generics.is_empty()
-                || registry
-                    .struct_generic_names_for(target_name.as_str())
-                    .is_some_and(|names| !names.is_empty());
-            if is_generic_target {
-                register_generic_impl_method_schemes(ib, &target_name, gen, registry);
-            } else {
-                register_impl_methods(ib.methods.iter(), &target_name, gen, registry);
-                // A negative impl (RFC-0081, `impl !Aspect for Type {}`, issue #264)
-                // carries no methods of its own (enforced empty by the parser) and
-                // must not inherit the aspect's default-bodied methods either — it's
-                // a declaration of non-implementation, not a real impl missing some
-                // overrides. Without this guard the registry would believe the type
-                // has the aspect's default methods callable, exactly backwards from
-                // what `impl !Aspect` means.
-                if ib.polarity == Polarity::Positive {
-                    register_default_aspect_methods(
-                        ib,
-                        &target_name,
-                        gen,
-                        registry,
-                        current_module_path,
-                    );
+            let is_array_generic_target = array_target_generic_name(ib).is_some();
+            if nominal_target_name.is_none() && !is_array_generic_target {
+                continue;
+            }
+
+            let is_generic_target = is_array_generic_target
+                || !ib.generics.is_empty()
+                || nominal_target_name.as_ref().is_some_and(|target_name| {
+                    registry
+                        .struct_generic_names_for(target_name.as_str())
+                        .is_some_and(|names| !names.is_empty())
+                });
+
+            if is_array_generic_target {
+                register_array_impl_method_schemes(ib, gen, registry);
+            } else if let Some(target_name) = nominal_target_name.as_ref() {
+                if is_generic_target {
+                    register_generic_impl_method_schemes(ib, target_name, gen, registry);
+                } else {
+                    register_impl_methods(ib.methods.iter(), target_name, gen, registry);
+                    if ib.polarity == Polarity::Positive {
+                        register_default_aspect_methods(
+                            ib,
+                            target_name,
+                            gen,
+                            registry,
+                            current_module_path,
+                        );
+                    }
                 }
             }
-            // Track which aspects this type implements (with concrete type args).
-            // TODO(generic-impl): `impl<T>` syntax now exists (issue #233), but this
-            // conversion still isn't generic-param-aware: type args that are generic
-            // params arrive as Named("T",[]) here and are stored verbatim, causing
-            // has_from_impl / iterable_elem_type lookups to fail for a conditional
-            // impl's own type params. `is_generic_target` above already keeps this
-            // whole block from running for those impls, so the immediate crash risk
-            // is gone, but a correct conversion (wildcard sentinel or a separate
-            // generic-impl registry) is still issue #241/#245's job, not this one's.
-            //
-            // Negative impls (RFC-0081, `impl !Aspect for Type {}`) must not reach
-            // this registration at all — `ib.polarity == Negative` means the type
-            // definitively does NOT implement the aspect; registering it here would
-            // make positive-bound checks silently and wrongly succeed. Orphan rule,
-            // finality (conflict with a concrete positive impl), and not inheriting
-            // the aspect's default-bodied methods are all handled now (issue #264).
-            // Still deferred: actually taking priority over a *blanket* positive
-            // impl, and being consulted by `T: !Aspect` bound satisfaction — both
-            // need RFC-0036/RFC-0072 (issues #241/#243) to have real semantics
-            // first; there's nothing to override or consult yet.
+
             if ib.polarity == Polarity::Positive {
                 if let Some(aspect_name) = &ib.aspect_name {
                     let type_args: Vec<crate::types::Type> = ib
@@ -485,102 +491,142 @@ fn register_program_decls(
                             }
                         })
                         .collect();
-                    // RFC-0036 §2.2/§3.1: when `is_generic_target` and the impl
-                    // carries conditional bounds, register into
-                    // `conditional_impl_bounds` INSTEAD OF the unconditional
-                    // `impl_aspect_env` — this fixes the confirmed bug where a
-                    // conditional impl was silently marking the aspect as
-                    // unconditionally implemented.
-                    //
                     if is_generic_target {
-                        let generic_names = registry
-                            .struct_generic_names_for(target_name.as_str())
-                            .cloned()
-                            .unwrap_or_default();
-                        let synth = synth_generics_for_impl(&generic_names, &ib.generics);
-                        let pos_bounds = collect_type_param_bounds(&synth, ib.where_clause.as_ref());
-                        let neg_bounds = collect_negative_type_param_bounds(&synth, ib.where_clause.as_ref());
-                        if pos_bounds.iter().any(|b| !b.is_empty())
-                            || neg_bounds.iter().any(|b| !b.is_empty())
-                        {
-                            registry.register_conditional_impl_bounds(
-                                current_module_path,
-                                &target_name,
+                        if bare_target_generic_name(ib).is_some() {
+                            let pos_bounds =
+                                collect_type_param_bounds(&ib.generics, ib.where_clause.as_ref());
+                            let neg_bounds = collect_negative_type_param_bounds(
+                                &ib.generics,
+                                ib.where_clause.as_ref(),
+                            );
+                            registry.register_bare_impl_bounds(aspect_name, pos_bounds, neg_bounds);
+                        } else if is_array_generic_target {
+                            let pos_bounds =
+                                collect_type_param_bounds(&ib.generics, ib.where_clause.as_ref());
+                            let neg_bounds = collect_negative_type_param_bounds(
+                                &ib.generics,
+                                ib.where_clause.as_ref(),
+                            );
+                            registry.register_array_impl_bounds(
                                 aspect_name,
                                 pos_bounds,
                                 neg_bounds,
                             );
-                        } else {
-                            // Unconditional generic impl (no conditional bounds)
-                            // — register normally so `aspect_satisfied_by` fallback
-                            // works.
-                            registry.register_aspect_impl(
-                                current_module_path,
-                                &target_name,
-                                aspect_name,
-                                type_args,
+                        } else if let Some(target_name) = nominal_target_name.as_ref() {
+                            let generic_names = registry
+                                .struct_generic_names_for(target_name.as_str())
+                                .cloned()
+                                .unwrap_or_default();
+                            let synth = synth_generics_for_impl(&generic_names, &ib.generics);
+                            let pos_bounds =
+                                collect_type_param_bounds(&synth, ib.where_clause.as_ref());
+                            let neg_bounds = collect_negative_type_param_bounds(
+                                &synth,
+                                ib.where_clause.as_ref(),
                             );
+                            if pos_bounds.iter().any(|b| !b.is_empty())
+                                || neg_bounds.iter().any(|b| !b.is_empty())
+                            {
+                                registry.register_conditional_impl_bounds(
+                                    current_module_path,
+                                    target_name,
+                                    aspect_name,
+                                    pos_bounds,
+                                    neg_bounds,
+                                );
+                            } else {
+                                registry.register_aspect_impl(
+                                    current_module_path,
+                                    target_name,
+                                    aspect_name,
+                                    type_args,
+                                );
+                            }
                         }
-                    } else {
-                        // Non-generic target: unconditional impl as before.
+                    } else if let Some(target_name) = nominal_target_name.as_ref() {
                         registry.register_aspect_impl(
                             current_module_path,
-                            &target_name,
+                            target_name,
                             aspect_name,
                             type_args,
                         );
                     }
-                    // RFC-0082 §2: register concrete associated-type bindings for
-                    // non-generic impls. Generic impls are deferred to #241.
-                    if !is_generic_target && !ib.assoc_type_defs.is_empty() {
-                        let mut bindings = HashMap::new();
-                        for def in &ib.assoc_type_defs {
-                            let infer_ty = super::conversions::type_expr_to_infer_with_self(
-                                &def.ty,
-                                &target_name,
-                            );
-                            let dummy = Span::new(0, 0, "");
-                            if let Ok(concrete_ty) =
-                                super::conversions::infer_type_to_type(&infer_ty, &dummy)
-                            {
-                                bindings.insert(def.name.clone(), concrete_ty);
+                    if let Some(target_name) = nominal_target_name.as_ref() {
+                        if !is_generic_target && !ib.assoc_type_defs.is_empty() {
+                            let mut bindings = HashMap::new();
+                            for def in &ib.assoc_type_defs {
+                                let infer_ty = super::conversions::type_expr_to_infer_with_self(
+                                    &def.ty,
+                                    target_name,
+                                );
+                                let dummy = Span::new(0, 0, "");
+                                if let Ok(concrete_ty) =
+                                    super::conversions::infer_type_to_type(&infer_ty, &dummy)
+                                {
+                                    bindings.insert(def.name.clone(), concrete_ty);
+                                }
                             }
-                        }
-                        if !bindings.is_empty() {
-                            registry.register_impl_assoc_types(
-                                current_module_path,
-                                &target_name,
-                                aspect_name,
-                                bindings,
-                            );
+                            if !bindings.is_empty() {
+                                registry.register_impl_assoc_types(
+                                    current_module_path,
+                                    target_name,
+                                    aspect_name,
+                                    bindings,
+                                );
+                            }
                         }
                     }
                 }
             } else if ib.polarity == Polarity::Negative {
                 if let Some(aspect_name) = &ib.aspect_name {
                     if !ib.generics.is_empty() {
-                        // RFC-0081's primary use case is a blanket generic negative
-                        // impl such as `impl<T> !Send for Rc<T> {}`. Reuse the same
-                        // per-parameter bound bookkeeping as positive conditional
-                        // impls, but route it into the negative table so matching
-                        // instantiations are treated as explicitly *not*
-                        // implementing the aspect.
-                        let generic_names = registry
-                            .struct_generic_names_for(target_name.as_str())
-                            .cloned()
-                            .unwrap_or_default();
-                        let synth = synth_generics_for_impl(&generic_names, &ib.generics);
-                        let pos_bounds = collect_type_param_bounds(&synth, ib.where_clause.as_ref());
-                        let neg_bounds =
-                            collect_negative_type_param_bounds(&synth, ib.where_clause.as_ref());
-                        registry.register_neg_conditional_impl_bounds(
-                            current_module_path,
-                            &target_name,
-                            aspect_name,
-                            pos_bounds,
-                            neg_bounds,
-                        );
-                    } else if let TypeExpr::Named(_, target_type_args) = &ib.target_type {
+                        if bare_target_generic_name(ib).is_some() {
+                            let pos_bounds =
+                                collect_type_param_bounds(&ib.generics, ib.where_clause.as_ref());
+                            let neg_bounds = collect_negative_type_param_bounds(
+                                &ib.generics,
+                                ib.where_clause.as_ref(),
+                            );
+                            registry.register_neg_bare_impl_bounds(
+                                aspect_name,
+                                pos_bounds,
+                                neg_bounds,
+                            );
+                        } else if is_array_generic_target {
+                            let pos_bounds =
+                                collect_type_param_bounds(&ib.generics, ib.where_clause.as_ref());
+                            let neg_bounds = collect_negative_type_param_bounds(
+                                &ib.generics,
+                                ib.where_clause.as_ref(),
+                            );
+                            registry.register_neg_array_impl_bounds(
+                                aspect_name,
+                                pos_bounds,
+                                neg_bounds,
+                            );
+                        } else if let Some(target_name) = nominal_target_name.as_ref() {
+                            let generic_names = registry
+                                .struct_generic_names_for(target_name.as_str())
+                                .cloned()
+                                .unwrap_or_default();
+                            let synth = synth_generics_for_impl(&generic_names, &ib.generics);
+                            let pos_bounds =
+                                collect_type_param_bounds(&synth, ib.where_clause.as_ref());
+                            let neg_bounds = collect_negative_type_param_bounds(
+                                &synth,
+                                ib.where_clause.as_ref(),
+                            );
+                            registry.register_neg_conditional_impl_bounds(
+                                current_module_path,
+                                target_name,
+                                aspect_name,
+                                pos_bounds,
+                                neg_bounds,
+                            );
+                        }
+                    } else if let (Some(target_name), TypeExpr::Named(_, target_type_args)) =
+                        (nominal_target_name.as_ref(), &ib.target_type)
+                    {
                         let concrete_target_args: Vec<crate::types::Type> = target_type_args
                             .iter()
                             .filter_map(|te| match type_expr_to_infer(te) {
@@ -593,7 +639,7 @@ fn register_program_decls(
                             .collect();
                         registry.register_neg_impl(
                             current_module_path,
-                            &target_name,
+                            target_name,
                             aspect_name,
                             concrete_target_args,
                         );
@@ -708,17 +754,17 @@ fn register_generic_impl_method_schemes(
                 type_expr_to_infer_with_generics(ann, &gen_map)
             });
         let scheme = TypeScheme {
-                quantified_vars: quantified,
-                param_names: vec![],
-                bounds: vec![],
-                neg_bounds: vec![],
-                assoc_projections: vec![],
-                assoc_eq_constraints: vec![],
-                opaque_returns: vec![],
-                ty: InferType::Fun(param_types, Box::new(ret_ty)),
-            }
-            .with_bounds(&by_var)
-            .with_neg_bounds(&by_neg_var);
+            quantified_vars: quantified,
+            param_names: vec![],
+            bounds: vec![],
+            neg_bounds: vec![],
+            assoc_projections: vec![],
+            assoc_eq_constraints: vec![],
+            opaque_returns: vec![],
+            ty: InferType::Fun(param_types, Box::new(ret_ty)),
+        }
+        .with_bounds(&by_var)
+        .with_neg_bounds(&by_neg_var);
         // struct_tvars: only the type's params are pinned from the receiver;
         // method-level generics are recovered from the arguments at the call site.
         let struct_tvars = type_params.clone();
@@ -735,6 +781,83 @@ fn register_generic_impl_method_schemes(
             struct_tvars,
         );
         registry.register_method_receiver(target_name.to_string(), method.name.clone(), receiver);
+    }
+}
+
+fn register_array_impl_method_schemes(
+    ib: &crate::ast::ImplBlock,
+    gen: &mut TypeVarGenerator,
+    registry: &mut TypeDefinitionRegistry,
+) {
+    let Some(element_name) = array_target_generic_name(ib) else {
+        return;
+    };
+    let element_tv = gen.fresh();
+    let mut type_gen_map = HashMap::new();
+    type_gen_map.insert(element_name.to_string(), element_tv);
+    let by_var: HashMap<TypeVar, Vec<String>> = std::iter::once(element_tv)
+        .zip(collect_type_param_bounds(
+            &ib.generics,
+            ib.where_clause.as_ref(),
+        ))
+        .filter(|(_, b)| !b.is_empty())
+        .collect();
+    let by_neg_var: HashMap<TypeVar, Vec<String>> = std::iter::once(element_tv)
+        .zip(collect_negative_type_param_bounds(
+            &ib.generics,
+            ib.where_clause.as_ref(),
+        ))
+        .filter(|(_, b)| !b.is_empty())
+        .collect();
+    let self_ty = InferType::Array(Box::new(InferType::Var(element_tv)));
+    for method in &ib.methods {
+        let Some(receiver) = method.params.first().and_then(|p| p.receiver.clone()) else {
+            continue;
+        };
+        let mut gen_map = type_gen_map.clone();
+        let mut quantified = vec![element_tv];
+        for g in &method.generics {
+            let tv = gen.fresh();
+            gen_map.insert(g.name.clone(), tv);
+            quantified.push(tv);
+        }
+        let mut param_types = vec![self_ty.clone()];
+        for p in method.params.iter().filter(|p| p.receiver.is_none()) {
+            let ann = p
+                .type_ann
+                .as_ref()
+                .expect("declarations on structural array impls are fully annotated");
+            param_types.push(type_expr_to_infer_with_generics(ann, &gen_map));
+        }
+        let ret_ty = method
+            .return_type
+            .as_ref()
+            .map_or_else(InferType::unit, |ann| {
+                type_expr_to_infer_with_generics(ann, &gen_map)
+            });
+        let scheme = TypeScheme {
+            quantified_vars: quantified,
+            param_names: vec![],
+            bounds: vec![],
+            neg_bounds: vec![],
+            assoc_projections: vec![],
+            assoc_eq_constraints: vec![],
+            opaque_returns: vec![],
+            ty: InferType::Fun(param_types, Box::new(ret_ty)),
+        }
+        .with_bounds(&by_var)
+        .with_neg_bounds(&by_neg_var);
+        registry.register_array_method_scheme(
+            method.name.clone(),
+            scheme.clone(),
+            vec![element_tv],
+        );
+        registry.register_array_method_scheme_variant(
+            method.name.clone(),
+            scheme,
+            vec![element_tv],
+        );
+        registry.register_array_method_receiver(method.name.clone(), receiver);
     }
 }
 
@@ -842,12 +965,7 @@ fn register_default_aspect_method(
                 InferType::Concrete,
             )
         } else if let Some(ann) = &p.type_ann {
-            type_expr_to_infer_with_assoc_ctx(
-                ann,
-                &empty_generics,
-                Some(target_name),
-                &assoc_ctx,
-            )
+            type_expr_to_infer_with_assoc_ctx(ann, &empty_generics, Some(target_name), &assoc_ctx)
         } else {
             InferType::Var(gen.fresh())
         };

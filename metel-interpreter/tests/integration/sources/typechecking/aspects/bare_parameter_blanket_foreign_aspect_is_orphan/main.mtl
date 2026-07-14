@@ -1,0 +1,11 @@
+// RFC-0097: a bare-parameter blanket impl can never satisfy the orphan rule via
+// the target side, since bare `T` has no declaring module at all. Using a
+// foreign aspect must therefore be rejected.
+
+extend<T> T: Display { // ERROR[T0014]
+    fun to_string(self) -> String {
+        return "?";
+    }
+}
+
+fun main() {}

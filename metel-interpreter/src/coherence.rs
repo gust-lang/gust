@@ -212,7 +212,13 @@ fn scoped_type_param_bounds(ib: &ImplBlock) -> (Vec<Vec<String>>, Vec<Vec<String
 
     // From where clause: `where T: Copy` → same merge
     if let Some(wc) = &ib.where_clause {
-        merge_where_clause_bounds(wc, &name_to_target_pos, &impl_param_names, &mut pos_bounds, &mut neg_bounds);
+        merge_where_clause_bounds(
+            wc,
+            &name_to_target_pos,
+            &impl_param_names,
+            &mut pos_bounds,
+            &mut neg_bounds,
+        );
     }
 
     (pos_bounds, neg_bounds)
@@ -275,7 +281,11 @@ fn provably_disjoint(
 /// if it names one at all. Structural types (tuples, arrays, pointers,
 /// function types) have no owning module, so they can never satisfy the
 /// orphan rule's "local" half on their own — only `Named` types can.
-fn outermost_id(names: &ResolvedNames, current_module: &[String], ty: &TypeExpr) -> Option<SymbolId> {
+fn outermost_id(
+    names: &ResolvedNames,
+    current_module: &[String],
+    ty: &TypeExpr,
+) -> Option<SymbolId> {
     match ty {
         TypeExpr::Named(name, _) => resolve_id(names, current_module, name),
         _ => None,
@@ -332,7 +342,10 @@ fn canonical_types_compatible(a: &CanonicalType, b: &CanonicalType) -> bool {
         }
         (CanonicalType::Tuple(xs), CanonicalType::Tuple(ys)) => {
             xs.len() == ys.len()
-                && xs.iter().zip(ys).all(|(x, y)| canonical_types_compatible(x, y))
+                && xs
+                    .iter()
+                    .zip(ys)
+                    .all(|(x, y)| canonical_types_compatible(x, y))
         }
         (CanonicalType::Array(x), CanonicalType::Array(y)) => canonical_types_compatible(x, y),
         (CanonicalType::SizedArray(x, n1), CanonicalType::SizedArray(y, n2)) => {
@@ -344,7 +357,10 @@ fn canonical_types_compatible(a: &CanonicalType, b: &CanonicalType) -> bool {
         }
         (CanonicalType::Fun(ps1, r1), CanonicalType::Fun(ps2, r2)) => {
             ps1.len() == ps2.len()
-                && ps1.iter().zip(ps2).all(|(x, y)| canonical_types_compatible(x, y))
+                && ps1
+                    .iter()
+                    .zip(ps2)
+                    .all(|(x, y)| canonical_types_compatible(x, y))
                 && match (r1, r2) {
                     (Some(a), Some(b)) => canonical_types_compatible(a, b),
                     (None, None) => true,
@@ -382,7 +398,11 @@ fn contains_type_param(ct: &CanonicalType) -> bool {
     }
 }
 
-fn is_local(declaring: &HashMap<SymbolId, Vec<String>>, id: Option<SymbolId>, module: &[String]) -> bool {
+fn is_local(
+    declaring: &HashMap<SymbolId, Vec<String>>,
+    id: Option<SymbolId>,
+    module: &[String],
+) -> bool {
     id.and_then(|id| declaring.get(&id))
         .is_some_and(|m| m.as_slice() == module)
 }
@@ -409,7 +429,8 @@ fn concrete_satisfies_bounds(
                 && &imp.canonical_key.1 == concrete
         })
     };
-    pos_required.iter().all(|a| has_direct_impl(a)) && !neg_required.iter().any(|a| has_direct_impl(a))
+    pos_required.iter().all(|a| has_direct_impl(a))
+        && !neg_required.iter().any(|a| has_direct_impl(a))
 }
 
 /// Whether two shape-compatible impls of the same aspect actually overlap —
@@ -422,25 +443,31 @@ fn impls_actually_overlap(impls: &[CollectedImpl], a: &CollectedImpl, b: &Collec
     if provably_disjoint(&a.scoped_bounds, &b.scoped_bounds) {
         return false;
     }
-    let (CanonicalType::Resolved(_, a_args) | CanonicalType::Unresolved(_, a_args)) = &a.canonical_key.1
+    let (CanonicalType::Resolved(_, a_args) | CanonicalType::Unresolved(_, a_args)) =
+        &a.canonical_key.1
     else {
         return true; // no per-position args to cross-check further
     };
-    let (CanonicalType::Resolved(_, b_args) | CanonicalType::Unresolved(_, b_args)) = &b.canonical_key.1
+    let (CanonicalType::Resolved(_, b_args) | CanonicalType::Unresolved(_, b_args)) =
+        &b.canonical_key.1
     else {
         return true;
     };
     for i in 0..a_args.len().min(b_args.len()) {
         let a_pos = &a_args[i];
         let b_pos = &b_args[i];
-        if matches!(a_pos, CanonicalType::TypeParam(_)) && !matches!(b_pos, CanonicalType::TypeParam(_)) {
+        if matches!(a_pos, CanonicalType::TypeParam(_))
+            && !matches!(b_pos, CanonicalType::TypeParam(_))
+        {
             let pos = a.scoped_bounds.0.get(i).map_or(&[] as &[String], |v| v);
             let neg = a.scoped_bounds.1.get(i).map_or(&[] as &[String], |v| v);
             if !concrete_satisfies_bounds(impls, b_pos, pos, neg) {
                 return false;
             }
         }
-        if matches!(b_pos, CanonicalType::TypeParam(_)) && !matches!(a_pos, CanonicalType::TypeParam(_)) {
+        if matches!(b_pos, CanonicalType::TypeParam(_))
+            && !matches!(a_pos, CanonicalType::TypeParam(_))
+        {
             let pos = b.scoped_bounds.0.get(i).map_or(&[] as &[String], |v| v);
             let neg = b.scoped_bounds.1.get(i).map_or(&[] as &[String], |v| v);
             if !concrete_satisfies_bounds(impls, a_pos, pos, neg) {
@@ -555,7 +582,11 @@ pub fn check(graph: &NormalizedModuleGraph, names: &ResolvedNames) -> Result<(),
                 // conflict (RFC-0081 §2.2/issue #264) — polarity mismatch only
                 // excuses the pair when the positive side is a blanket.
                 if a.polarity != b.polarity {
-                    let positive = if a.polarity == Polarity::Positive { a } else { b };
+                    let positive = if a.polarity == Polarity::Positive {
+                        a
+                    } else {
+                        b
+                    };
                     if contains_type_param(&positive.canonical_key.1) {
                         continue;
                     }
