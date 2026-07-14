@@ -3,8 +3,8 @@ fun main() {
     let x = loop { break 42; };
     assert(x == 42);
     // Continue skips the current iteration.
-    let mut count = 0;
-    let mut i = 0;
+    var count = 0;
+    var i = 0;
     loop {
         if (i >= 5) { break; }
         i = i + 1;
@@ -13,8 +13,8 @@ fun main() {
     }
     assert(count == 4);
     // Assignments inside the loop are visible in subsequent iterations.
-    let mut acc = 0;
-    let mut j = 1;
+    var acc = 0;
+    var j = 1;
     loop {
         if (j > 5) { break; }
         acc += j;

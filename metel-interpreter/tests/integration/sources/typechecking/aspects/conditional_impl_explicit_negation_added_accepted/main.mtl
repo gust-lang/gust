@@ -21,11 +21,11 @@ struct Wrapper<T> {
     val: T,
 }
 
-impl<T: Clone2 + !Display2> Serialize2 for Wrapper<T> {
+extend<T: Clone2 + !Display2> Wrapper<T>: Serialize2 {
     fun ser(self) -> String { return "no-display"; }
 }
 
-impl<T: Display2> Serialize2 for Wrapper<T> {
+extend<T: Display2> Wrapper<T>: Serialize2 {
     fun ser(self) -> String { return "display"; }
 }
 

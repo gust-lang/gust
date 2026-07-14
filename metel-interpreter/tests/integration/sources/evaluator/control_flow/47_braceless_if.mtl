@@ -2,7 +2,7 @@
 
 fun main() {
     // Braceless if in statement position (no else).
-    let mut x = 0;
+    var x = 0;
     if (true) x = 1;
     assert(x == 1);
 
@@ -18,7 +18,7 @@ fun main() {
     assert(b == 20);
 
     // Nested braceless: inner if has no else — ok.
-    let mut flag = false;
+    var flag = false;
     if (true) if (true) flag = true;
     assert(flag);
 
@@ -26,8 +26,8 @@ fun main() {
     assert((if (true) 7 else 8) == 7);
 
     // Braceless if in a loop.
-    let mut sum = 0;
-    let mut i = 0;
+    var sum = 0;
+    var i = 0;
     while (i < 5) {
         if (i % 2 == 0) sum = sum + i;
         i = i + 1;

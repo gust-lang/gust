@@ -18,7 +18,7 @@ let s: String = loop {
 };
 
 // Loop with conditional break
-let mut i: i64  = 0;
+var i: i64  = 0;
 let result: i64 = loop {
     i += 1;
     if (i == 5) {
@@ -27,7 +27,7 @@ let result: i64 = loop {
 };
 
 // while loop still works
-let mut n: i64  = 0;
+var n: i64  = 0;
 while (n < 10) {
     n += 1;
     if (n == 5) {

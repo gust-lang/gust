@@ -2,9 +2,9 @@
 // List<T> + fixed-size arrays working together in a numeric processing pipeline.
 
 struct Sample {
-    pub raw: i16,
-    pub scaled: f32,
-    pub bucket: u8,
+    public raw: i16,
+    public scaled: f32,
+    public bucket: u8,
 }
 
 fun scale(v: i16, factor: f32) -> f32 {
@@ -16,18 +16,18 @@ fun bucket_of(v: f32, bucket_size: f32) -> u8 {
 }
 
 fun mean_f32(values: List<f32>) -> f32 {
-    let mut sum: f32 = 0.0;
+    var sum: f32 = 0.0;
     let sl = values.as_slice();
-    for (let v in sl) {
+    for (v in sl) {
         sum += v;
     }
     sum / (values.len() as f32)
 }
 
 fun sum_i32(values: List<i32>) -> i64 {
-    let mut total: i64 = 0;
+    var total: i64 = 0;
     let sl = values.as_slice();
-    for (let v in sl) {
+    for (v in sl) {
         let wide: i64 = v as i64;
         total = total + wide;
     }
@@ -41,9 +41,9 @@ fun main() {
     let factor: f32 = 0.5;
     let bucket_size: f32 = 25.0;
 
-    let mut samples: List<Sample> = List::new();
+    var samples: List<Sample> = List::new();
     let sl = raw_readings;
-    let mut idx: u64 = 0;
+    var idx: u64 = 0;
     while (idx < 5) {
         let r = sl[idx];
         let s = scale(r, factor);
@@ -81,9 +81,9 @@ fun main() {
     };
 
     // Collect scaled values into a List<f32> and compute mean.
-    let mut scaled_vals: List<f32> = List::new();
+    var scaled_vals: List<f32> = List::new();
     let s_slice = samples.as_slice();
-    for (let s in s_slice) {
+    for (s in s_slice) {
         scaled_vals.push(s.scaled);
     }
     let m = mean_f32(scaled_vals);
@@ -99,7 +99,7 @@ fun main() {
     assert(narrow == 255u8);
 
     // i32 accumulation via sum_i32.
-    let mut int_vals: List<i32> = List::new();
+    var int_vals: List<i32> = List::new();
     int_vals.push(10);
     int_vals.push(20);
     int_vals.push(30);

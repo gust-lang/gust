@@ -17,7 +17,7 @@ struct Partial {
     value: i64,
 }
 
-impl Printable for Partial {
+extend Partial: Printable {
     fun print(self) {}
 }
 

@@ -44,7 +44,7 @@ fun main() {
     }
 
     // --- mutable bindings ---
-    let mut counter = 0;
+    var counter = 0;
     counter = counter + 1;
     counter += 10;
     counter -= 3;

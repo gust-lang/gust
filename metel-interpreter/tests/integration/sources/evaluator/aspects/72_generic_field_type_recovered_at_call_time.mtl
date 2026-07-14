@@ -20,7 +20,7 @@ aspect Greet {
     fun greet(&self) -> String;
 }
 
-impl<T: Display> Greet for Box1<T> {
+extend<T: Display> Box1<T>: Greet {
     fun greet(&self) -> String {
         return "hello, " + self.value.to_string();
     }
@@ -34,7 +34,7 @@ aspect Farewell {
     fun farewell(&self) -> String;
 }
 
-impl Farewell for Plain {
+extend Plain: Farewell {
     fun farewell(&self) -> String {
         return "bye";
     }

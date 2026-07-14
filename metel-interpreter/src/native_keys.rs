@@ -112,7 +112,7 @@ pub enum NativeKey {
     StdCoreListAsSlice,
 
     // ── std::env ────────────────────────────────────────────────────────────
-    /// `env::var(String) -> Perhaps<String>` — value of an environment variable.
+    /// `env::get(String) -> Perhaps<String>` — value of an environment variable.
     StdEnvVar,
     /// `env::vars() -> EnvVar[]` — all environment variables.
     StdEnvVars,
@@ -199,7 +199,7 @@ impl NativeKey {
             ["std", "core", "list_len"] => NativeKey::StdCoreListLen,
             ["std", "core", "list_get"] => NativeKey::StdCoreListGet,
             ["std", "core", "list_as_slice"] => NativeKey::StdCoreListAsSlice,
-            ["std", "env", "var"] => NativeKey::StdEnvVar,
+            ["std", "env", "get"] => NativeKey::StdEnvVar,
             ["std", "env", "vars"] => NativeKey::StdEnvVars,
             ["std", "fs", "read_to_string"] => NativeKey::StdFsReadToString,
             ["std", "fs", "write_string"] => NativeKey::StdFsWriteString,
@@ -268,7 +268,7 @@ impl NativeKey {
             NativeKey::StdCoreListLen => "@std.core.list_len",
             NativeKey::StdCoreListGet => "@std.core.list_get",
             NativeKey::StdCoreListAsSlice => "@std.core.list_as_slice",
-            NativeKey::StdEnvVar => "@std.env.var",
+            NativeKey::StdEnvVar => "@std.env.get",
             NativeKey::StdEnvVars => "@std.env.vars",
             NativeKey::StdFsReadToString => "@std.fs.read_to_string",
             NativeKey::StdFsWriteString => "@std.fs.write_string",

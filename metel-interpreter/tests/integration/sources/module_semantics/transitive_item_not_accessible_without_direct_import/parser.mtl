@@ -1,2 +1,2 @@
 import lexer::*;
-pub fun parse() -> i64 { return tokenize(); }
+public fun parse() -> i64 { return tokenize(); }

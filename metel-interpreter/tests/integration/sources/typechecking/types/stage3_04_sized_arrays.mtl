@@ -22,8 +22,8 @@ let coerced: i64 = first(zeros);
 
 // For-in over sized array.
 fun total(xs: [i64; 3]) -> i64 {
-    let mut acc = 0;
-    for (let x in xs) {
+    var acc = 0;
+    for (x in xs) {
         acc += x;
     }
     acc

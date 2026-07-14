@@ -12,7 +12,7 @@ aspect Serializable {
 struct A { value: i64 }
 struct B { value: i64 }
 
-impl Printable for A { fun print(self) {} }
+extend A: Printable { fun print(self) {} }
 
 // B does NOT implement Serializable.
 

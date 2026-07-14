@@ -15,9 +15,9 @@ fun main() {
     assert(y == 7);
 
     // Mixed shared/mut chain.
-    let mut m = 9;
-    let mr: &mut i64 = &mut m;
-    let rmr: &&mut i64 = &mr;
+    var m = 9;
+    let mr: &var i64 = &var m;
+    let rmr: &&var i64 = &mr;
     let z: i64 = rmr;
     assert(z == 9);
 

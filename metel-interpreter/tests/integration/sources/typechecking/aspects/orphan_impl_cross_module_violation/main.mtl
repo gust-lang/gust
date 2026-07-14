@@ -6,7 +6,7 @@
 import greet_aspect::Greet;
 import widget::Widget;
 
-impl Greet for Widget { // ERROR[T0014]
+extend Widget: Greet { // ERROR[T0014]
     fun greet(self) -> String {
         return "hi";
     }

@@ -2,21 +2,21 @@
 // Covers issue #128: T/U in body annotations must resolve to TypeVars, not Named types.
 
 fun collect_matching<T>(arr: T[], pred: (T) -> boolean) -> List<T> {
-    let mut result: List<T> = List::new();
-    for (let x in arr) {
+    var result: List<T> = List::new();
+    for (x in arr) {
         if (pred(x)) { result.push(x); }
     }
     result
 }
 
 fun map_to<T, U>(arr: T[], f: (T) -> U) -> List<U> {
-    let mut out: List<U> = List::new();
-    for (let x in arr) { out.push(f(x)); }
+    var out: List<U> = List::new();
+    for (x in arr) { out.push(f(x)); }
     out
 }
 
 fun wrap_pair<A, B>(a: A, b: B) -> List<A> {
-    let mut items: List<A> = List::new();
+    var items: List<A> = List::new();
     items.push(a);
     items
 }

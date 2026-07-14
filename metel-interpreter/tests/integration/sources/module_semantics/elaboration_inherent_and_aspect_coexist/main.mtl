@@ -11,18 +11,18 @@ struct Counter {
     step: i64,
 }
 
-impl Counter {
+extend Counter {
     // Inherent constructor and methods
     fun new(start: i64, step: i64) -> Counter {
         Counter { value: start, step: step }
     }
-    fun tick(&mut self) {
+    fun tick(&var self) {
         self.value = self.value + self.step;
     }
     fun value(self) -> i64 { self.value }
 }
 
-impl Printable for Counter {
+extend Counter: Printable {
     // Aspect method — must not conflict with the inherent `value` method above.
     fun summary(self) -> String {
         "Counter(" + self.value.to_string() + ", step=" + self.step.to_string() + ")"
@@ -30,7 +30,7 @@ impl Printable for Counter {
 }
 
 fun main() {
-    let mut c = Counter::new(0, 3);
+    var c = Counter::new(0, 3);
 
     // Inherent methods work
     assert(c.value() == 0);

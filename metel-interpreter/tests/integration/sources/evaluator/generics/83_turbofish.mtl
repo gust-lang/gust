@@ -1,7 +1,7 @@
 fun identity<T>(x: T) -> T { x }
 fun first<A, B>(a: A, b: B) -> A { a }
 fun wrap<T>(x: T) -> List<T> {
-    let mut arr: List<T> = List::new();
+    var arr: List<T> = List::new();
     arr.push(x);
     arr
 }

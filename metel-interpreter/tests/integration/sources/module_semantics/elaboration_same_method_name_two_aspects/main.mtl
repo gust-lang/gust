@@ -15,12 +15,12 @@ aspect Greetable {
 struct Dog { name: String }
 struct Cat { name: String }
 
-impl Sayable for Dog {
+extend Dog: Sayable {
     fun label(self) -> String { "dog:" + self.name }
     fun greet(self) -> String { "woof from " + self.name }
 }
 
-impl Greetable for Cat {
+extend Cat: Greetable {
     fun label(self) -> String { "cat:" + self.name }
     fun farewell(self) -> String { "purr from " + self.name }
 }

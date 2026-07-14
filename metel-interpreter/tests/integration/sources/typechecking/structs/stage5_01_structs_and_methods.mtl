@@ -5,7 +5,7 @@ struct Point {
     y: f64,
 }
 
-impl Point {
+extend Point {
     fun sum(self) -> f64 {
         self.x + self.y
     }
@@ -14,7 +14,7 @@ impl Point {
         Point { x: self.x + dx, y: self.y + dy }
     }
 
-    fun scale(&mut self, factor: f64) {
+    fun scale(&var self, factor: f64) {
         self.x = self.x * factor;
         self.y = self.y * factor;
     }
@@ -38,7 +38,7 @@ struct Counter {
     value: i64,
 }
 
-impl Counter {
+extend Counter {
     fun get(self) -> i64 {
         self.value
     }
@@ -47,7 +47,7 @@ impl Counter {
         self.value + other.value
     }
 
-    fun reset(&mut self) {
+    fun reset(&var self) {
         self.value = 0;
     }
 }

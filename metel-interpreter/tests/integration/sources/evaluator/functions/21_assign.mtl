@@ -1,10 +1,10 @@
 fun main() {
     // Plain assignment overwrites.
-    let mut x = 1;
+    var x = 1;
     x = 99;
     assert(x == 99);
     // Compound integer operators.
-    let mut n = 20;
+    var n = 20;
     n -= 5;
     assert(n == 15);
     n *= 2;
@@ -14,7 +14,7 @@ fun main() {
     n %= 3;
     assert(n == 1);
     // Compound float operators.
-    let mut f = 10.0;
+    var f = 10.0;
     f += 5.0;
     assert(f == 15.0);
     f -= 3.0;

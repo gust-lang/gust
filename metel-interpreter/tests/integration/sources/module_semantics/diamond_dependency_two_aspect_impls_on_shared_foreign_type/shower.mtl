@@ -1,10 +1,10 @@
 import base::Point;
 
-pub aspect Shower {
+public aspect Shower {
     fun show(self) -> String;
 }
 
-impl Shower for Point {
+extend Point: Shower {
     fun show(self) -> String {
         return "point";
     }

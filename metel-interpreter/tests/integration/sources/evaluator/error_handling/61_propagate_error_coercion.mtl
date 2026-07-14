@@ -12,7 +12,7 @@ struct AppError {
     msg: String,
 }
 
-impl From<ParseError> for AppError {
+extend AppError: From<ParseError> {
     fun from(value: ParseError) -> AppError {
         return AppError { msg: "parse error: " + value.msg };
     }

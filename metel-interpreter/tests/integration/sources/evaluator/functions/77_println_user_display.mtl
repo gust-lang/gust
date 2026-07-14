@@ -6,7 +6,7 @@
 
 struct Point { x: i64, y: i64 }
 
-impl Display for Point {
+extend Point: Display {
 	fun to_string(&self) -> String {
 		"(${self.x}, ${self.y})"
 	}
@@ -14,7 +14,7 @@ impl Display for Point {
 
 enum Color { Red, Green }
 
-impl Display for Color {
+extend Color: Display {
 	fun to_string(&self) -> String {
 		match (self) {
 			Color::Red => "red",

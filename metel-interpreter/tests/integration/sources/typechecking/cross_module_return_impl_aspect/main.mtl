@@ -11,13 +11,13 @@ struct MyFloat {
 	value: f64,
 }
 
-impl Display for MyFloat {
+extend MyFloat: Display {
 	fun display(&self) -> String {
 		self.value.to_string()
 	}
 }
 
-pub fun make_float() -> impl Display {
+public fun make_float() -> impl Display {
 	MyFloat { value: 3.14 }
 }
 

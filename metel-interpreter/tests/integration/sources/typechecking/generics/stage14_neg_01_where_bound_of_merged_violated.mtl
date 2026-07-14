@@ -13,7 +13,7 @@ struct PrintOnly {
     value: i64,
 }
 
-impl Printable for PrintOnly {
+extend PrintOnly: Printable {
     fun print(self) {}
 }
 

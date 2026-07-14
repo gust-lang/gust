@@ -64,8 +64,8 @@ struct Counter {
     value: i64,
 }
 
-impl Counter {
-    fun increment(&mut self) {
+extend Counter {
+    fun increment(&var self) {
         self.value += 1;
     }
 }

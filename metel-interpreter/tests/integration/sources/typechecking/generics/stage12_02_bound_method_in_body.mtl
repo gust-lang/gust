@@ -8,7 +8,7 @@ struct Item {
     name: String,
 }
 
-impl Describable for Item {
+extend Item: Describable {
     fun describe(self) -> String {
         self.name
     }

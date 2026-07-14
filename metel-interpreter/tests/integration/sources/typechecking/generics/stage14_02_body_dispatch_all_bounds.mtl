@@ -13,11 +13,11 @@ struct Record {
     name: String,
 }
 
-impl Printable for Record {
+extend Record: Printable {
     fun print(self) {}
 }
 
-impl Serializable for Record {
+extend Record: Serializable {
     fun serialize(self) -> String {
         self.name
     }

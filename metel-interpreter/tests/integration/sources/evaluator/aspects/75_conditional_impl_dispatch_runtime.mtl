@@ -5,7 +5,7 @@ aspect Display {
     fun display(self) -> String;
 }
 
-impl Display for i64 {
+extend i64: Display {
     fun display(self) -> String { return "i64"; }
 }
 
@@ -17,7 +17,7 @@ aspect Label {
     fun label(&self) -> String;
 }
 
-impl<T: Display> Label for Box1<T> {
+extend<T: Display> Box1<T>: Label {
     fun label(&self) -> String {
         return "display-box";
     }

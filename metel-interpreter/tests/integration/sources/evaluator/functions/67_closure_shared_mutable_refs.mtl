@@ -1,6 +1,6 @@
 fun get_closures() {
-    let mut shared = 0;
-    let mut ptr = &mut shared;
+    var shared = 0;
+    var ptr = &var shared;
     let first_closure = () -> {
         ptr += 1;
     };

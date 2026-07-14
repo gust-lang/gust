@@ -1,6 +1,6 @@
 // Returns a closure that closes over a counter, incrementing on each call.
 fun make_counter(start: i64) -> () -> i64 {
-    let mut n = start;
+    var n = start;
     () -> i64 { n += 1; n }
 }
 // Closure that captures two variables from different outer scopes.

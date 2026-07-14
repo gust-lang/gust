@@ -1,7 +1,7 @@
-pub fun sum(arr: i64[]) -> i64 {         
+public fun sum(arr: i64[]) -> i64 {         
     assert(arr.len() > 0);         
-    let mut total = 0;         
-    let mut i = 0;         
+    var total = 0;         
+    var i = 0;         
     while (i < arr.len()) { total += arr[i as u64]; i += 1; }         
     return total;         
 }

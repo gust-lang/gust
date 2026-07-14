@@ -13,11 +13,11 @@ struct Wrapper {
     value: i64,
 }
 
-impl A for Wrapper {
+extend Wrapper: A {
     type Item = i64;
 }
 
-impl B for Wrapper {
+extend Wrapper: B {
     type Item = i64;
 }
 

@@ -1,21 +1,21 @@
 // RFC-0067a §3: auto-deref for field access/method dispatch already chains through
 // arbitrary depth ("&&T derefs through both levels") independent of read-copy —
-// confirms this pre-existing guarantee explicitly under the new &T/&mut T syntax.
+// confirms this pre-existing guarantee explicitly under the new &T/&var T syntax.
 struct Counter { value: i64 }
 
-impl Counter {
+extend Counter {
     fun get(&self) -> i64 {
         self.value
     }
-    fun bump(&mut self) {
+    fun bump(&var self) {
         self.value += 1;
     }
 }
 
 fun main() {
-    let mut c = Counter { value: 1 };
-    let r: &mut Counter = &mut c;
-    let rr: &&mut Counter = &r;
+    var c = Counter { value: 1 };
+    let r: &var Counter = &var c;
+    let rr: &&var Counter = &r;
 
     assert(rr.value == 1);
     assert(rr.get() == 1);

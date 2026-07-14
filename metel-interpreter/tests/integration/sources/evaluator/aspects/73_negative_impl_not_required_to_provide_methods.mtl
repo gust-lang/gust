@@ -13,7 +13,7 @@ struct Robot {
     id: i64,
 }
 
-impl !Greet for Robot {}
+extend Robot: !Greet;
 
 fun main() {
     assert(1 == 1);

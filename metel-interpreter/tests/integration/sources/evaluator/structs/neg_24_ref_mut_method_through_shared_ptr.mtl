@@ -1,18 +1,18 @@
 // TYPECHECK_ERROR[T0006]
-// Calling a &mut self method through a &T (immutable) reference is rejected.
+// Calling a &var self method through a &T (immutable) reference is rejected.
 
 struct Counter {
     value: i64,
 }
 
-impl Counter {
-    fun increment(&mut self) {
+extend Counter {
+    fun increment(&var self) {
         self.value += 1;
     }
 }
 
 fun main() {
-    let mut c = Counter { value: 0 };
+    var c = Counter { value: 0 };
     let p: &Counter = &c;
     p.increment();
 }

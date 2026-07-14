@@ -14,7 +14,7 @@ aspect Shape {
     }
 }
 
-impl Shape for Point {
+extend Point: Shape {
     fun label(self) -> String {
         return "(" + self.x.to_string() + ", " + self.y.to_string() + ")";
     }

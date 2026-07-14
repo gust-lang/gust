@@ -60,23 +60,23 @@ fun record_swap<K, V>(r: Record<K, V>) -> Record<V, K> {
 // ── Generic pipeline combinators ──────────────────────────────────────────────
 
 fun filter_array<T>(arr: T[], pred: (T) -> boolean) -> T[] {
-    let mut out: List<T> = List::new();
-    for (let x in arr) {
+    var out: List<T> = List::new();
+    for (x in arr) {
         if (pred(x)) { out.push(x); }
     }
     out.as_slice()
 }
 
 fun map_array<T, U>(arr: T[], f: (T) -> U) -> U[] {
-    let mut out: List<U> = List::new();
-    for (let x in arr) { out.push(f(x)); }
+    var out: List<U> = List::new();
+    for (x in arr) { out.push(f(x)); }
     out.as_slice()
 }
 
 fun zip_with<A, B, C>(a: A[], b: B[], f: (A, B) -> C) -> C[] {
-    let mut out: List<C> = List::new();
+    var out: List<C> = List::new();
     let len = if (a.len() < b.len()) a.len() else b.len();
-    let mut i = 0;
+    var i = 0;
     while (i < len) {
         out.push(f(a[i as u64], b[i as u64]));
         i += 1;
@@ -85,22 +85,22 @@ fun zip_with<A, B, C>(a: A[], b: B[], f: (A, B) -> C) -> C[] {
 }
 
 fun any<T>(arr: T[], pred: (T) -> boolean) -> boolean {
-    for (let x in arr) {
+    for (x in arr) {
         if (pred(x)) { return true; }
     }
     false
 }
 
 fun all<T>(arr: T[], pred: (T) -> boolean) -> boolean {
-    for (let x in arr) {
+    for (x in arr) {
         if (!pred(x)) { return false; }
     }
     true
 }
 
 fun take<T>(arr: T[], n: i64) -> T[] {
-    let mut out: List<T> = List::new();
-    let mut i = 0;
+    var out: List<T> = List::new();
+    var i = 0;
     while (i < n && i < arr.len()) {
         out.push(arr[i as u64]);
         i += 1;
@@ -109,8 +109,8 @@ fun take<T>(arr: T[], n: i64) -> T[] {
 }
 
 fun drop<T>(arr: T[], n: i64) -> T[] {
-    let mut out: List<T> = List::new();
-    let mut i = n;
+    var out: List<T> = List::new();
+    var i = n;
     while (i < arr.len()) {
         out.push(arr[i as u64]);
         i += 1;

@@ -10,7 +10,7 @@ struct IntBox {
     value: i64,
 }
 
-impl Container for IntBox { // ERROR[T0017]
+extend IntBox: Container { // ERROR[T0017]
     // Missing: type Item = ...;
     fun get(&self) -> i64 {
         return self.value;

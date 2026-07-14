@@ -7,7 +7,7 @@ struct Stack<T> {
     items: T[],
 }
 
-impl Stack<T> {
+extend Stack<T> {
     fun peek(self, fallback: T) -> T {
         fallback
     }

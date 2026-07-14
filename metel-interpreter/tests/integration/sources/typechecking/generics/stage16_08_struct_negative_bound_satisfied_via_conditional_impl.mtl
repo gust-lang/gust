@@ -3,7 +3,7 @@ aspect Drop { fun drop(self); }
 struct Arena<T: !Drop> { items: T[] }
 struct Pair<A, B> { first: A, second: B }
 // Pair implements Drop only when BOTH A and B implement Drop
-impl<A: Drop, B: Drop> Drop for Pair<A, B> { fun drop(self) {} }
+extend<A: Drop, B: Drop> Pair<A, B>: Drop { fun drop(self) {} }
 struct Resource { x: i64 }
 // Resource does NOT implement Drop, so the conditional impl doesn't apply
 

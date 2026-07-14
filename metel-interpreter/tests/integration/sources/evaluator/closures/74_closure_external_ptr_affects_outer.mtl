@@ -1,10 +1,10 @@
-// A &mut reference created in the outer scope and captured by a closure retains its
+// A &var reference created in the outer scope and captured by a closure retains its
 // connection to the original binding: deep_clone_value preserves the inner Rc of a
 // reference value rather than copying it. Mutations through the captured reference
 // must be visible in the outer scope.
 fun main() {
-    let mut x = 10;
-    let p: &mut i64 = &mut x;
+    var x = 10;
+    let p: &var i64 = &var x;
 
     let f = () -> () {
         p = 42;

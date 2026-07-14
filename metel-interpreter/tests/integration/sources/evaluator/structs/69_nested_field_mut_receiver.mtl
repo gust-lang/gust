@@ -1,4 +1,4 @@
-// Tests that &mut self methods called on a nested struct field mutate the
+// Tests that &var self methods called on a nested struct field mutate the
 // original field in place (METEL-112).
 
 struct Counter {
@@ -6,12 +6,12 @@ struct Counter {
     step:  i64,
 }
 
-impl Counter {
+extend Counter {
     fun new(step: i64) -> Counter {
         Counter { value: 0, step: step }
     }
 
-    fun tick(&mut self) {
+    fun tick(&var self) {
         self.value += self.step;
     }
 
@@ -23,7 +23,7 @@ impl Counter {
         self.value > 0
     }
 
-    fun reset(&mut self) {
+    fun reset(&var self) {
         self.value = 0;
     }
 }
@@ -40,7 +40,7 @@ struct Nested {
 // ── Basic nested field mutation ───────────────────────────────────────────────
 
 fun test_nested_field_mut() {
-    let mut pair = Pair { a: Counter::new(1), b: Counter::new(10) };
+    var pair = Pair { a: Counter::new(1), b: Counter::new(10) };
     pair.a.tick();
     pair.b.tick();
     pair.b.tick();
@@ -51,7 +51,7 @@ fun test_nested_field_mut() {
 // ── Multiple mutations accumulate ─────────────────────────────────────────────
 
 fun test_nested_mut_accumulates() {
-    let mut pair = Pair { a: Counter::new(3), b: Counter::new(0) };
+    var pair = Pair { a: Counter::new(3), b: Counter::new(0) };
     pair.a.tick();  // 3
     pair.a.tick();  // 6
     pair.a.tick();  // 9
@@ -63,7 +63,7 @@ fun test_nested_mut_accumulates() {
 // ── &self on nested field is unaffected ──────────────────────────────────────
 
 fun test_nested_ref_reads() {
-    let mut pair = Pair { a: Counter::new(5), b: Counter::new(0) };
+    var pair = Pair { a: Counter::new(5), b: Counter::new(0) };
     pair.a.tick();
     assert(pair.a.get() == 5);
     assert(pair.a.is_positive() == true);
@@ -74,7 +74,7 @@ fun test_nested_ref_reads() {
 // ── Two independent nested fields ────────────────────────────────────────────
 
 fun test_two_independent_fields() {
-    let mut pair = Pair { a: Counter::new(1), b: Counter::new(2) };
+    var pair = Pair { a: Counter::new(1), b: Counter::new(2) };
     pair.a.tick();
     pair.b.tick();
     pair.b.tick();
@@ -85,7 +85,7 @@ fun test_two_independent_fields() {
 // ── Double nesting ───────────────────────────────────────────────────────────
 
 fun test_double_nested_field_mut() {
-    let mut n = Nested {
+    var n = Nested {
         outer: Pair { a: Counter::new(7), b: Counter::new(0) }
     };
     n.outer.a.tick();

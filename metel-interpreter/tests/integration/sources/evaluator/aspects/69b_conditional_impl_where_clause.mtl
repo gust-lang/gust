@@ -12,7 +12,7 @@ aspect Farewell {
     fun farewell(&self) -> String;
 }
 
-impl Farewell for Box2<T> where T: Display {
+extend Box2<T>: Farewell where T: Display {
     fun farewell(&self) -> String {
         return "bye";
     }

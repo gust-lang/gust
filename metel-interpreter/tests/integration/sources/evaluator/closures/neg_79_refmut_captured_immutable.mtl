@@ -1,10 +1,10 @@
-// A closure cannot take &mut of a captured immutable binding.
+// A closure cannot take &var of a captured immutable binding.
 // The captured binding inherits its mutability from the outer let declaration.
 // TYPECHECK_ERROR[immutable binding]
 fun main() {
     let x = 10;
     let f = () -> {
-        let p: &mut i64 = &mut x;
+        let p: &var i64 = &var x;
         p = 42;
     };
     f();

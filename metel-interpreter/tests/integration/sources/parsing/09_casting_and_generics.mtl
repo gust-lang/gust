@@ -11,25 +11,25 @@ struct Box<T> {
     value: T,
 }
 
-impl Box<i64> {
+extend Box<i64> {
     fun new(v: i64) -> Box<i64> {
         return Box { value: v };
     }
 }
 
-impl Box<String> {
+extend Box<String> {
     fun new(v: String) -> Box<String> {
         return Box { value: v };
     }
 }
 
-impl Display for Box<i64> {
+extend Box<i64>: Display {
     fun display(self) -> String {
         return "Box(" + int_to_string(self.value) + ")";
     }
 }
 
-impl Display for Box<String> {
+extend Box<String>: Display {
     fun display(self) -> String {
         return "Box(" + self.value + ")";
     }
@@ -40,7 +40,7 @@ struct Pair<A, B> {
     second: B,
 }
 
-impl Pair<i64, f64> {
+extend Pair<i64, f64> {
     fun new(a: i64, b: f64) -> Pair<i64, f64> {
         return Pair { first: a, second: b };
     }

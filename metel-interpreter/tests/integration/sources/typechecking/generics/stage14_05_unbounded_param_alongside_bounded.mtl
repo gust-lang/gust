@@ -8,7 +8,7 @@ aspect Printable {
 struct Label { text: String }
 struct Payload { data: i64 }
 
-impl Printable for Label { fun print(self) {} }
+extend Label: Printable { fun print(self) {} }
 
 fun tag<T, U: Printable>(payload: T, label: U) -> T {
     label.print();

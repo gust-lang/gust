@@ -1,8 +1,8 @@
-// Direct assignment to a captured let mut binding inside a closure operates on
+// Direct assignment to a captured var binding inside a closure operates on
 // the closure's deep-cloned copy of the env, not the original. The outer binding
 // must remain unchanged after the call.
 fun main() {
-    let mut x = 10;
+    var x = 10;
 
     let f = () -> () {
         x = 42;

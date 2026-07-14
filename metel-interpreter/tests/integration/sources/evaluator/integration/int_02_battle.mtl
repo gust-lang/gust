@@ -27,7 +27,7 @@ struct Fighter {
 
 // ── Fighter methods ───────────────────────────────────────────────────────────
 
-impl Fighter {
+extend Fighter {
     fun is_alive(self) -> boolean {
         self.hp > 0
     }
@@ -151,8 +151,8 @@ fun format_round(round: i64, f1: Fighter, f2: Fighter) -> String {
 
 // Sum of HP across all fighters in the party.
 fun total_party_hp(party: Fighter[]) -> i64 {
-    let mut total = 0;
-    for (let f in party) { total += f.hp; }
+    var total = 0;
+    for (f in party) { total += f.hp; }
     total
 }
 
@@ -160,8 +160,8 @@ fun total_party_hp(party: Fighter[]) -> i64 {
 fun best_attacker_idx(party: Fighter[]) -> Perhaps<i64> {
     let n = party.len();
     if (n == 0) { return None; }
-    let mut best = 0;
-    for (let mut i = 1; i < n; i += 1) {
+    var best = 0;
+    for (var i = 1; i < n; i += 1) {
         if (party[i as u64].attack > party[best as u64].attack) {
             best = i;
         }
@@ -177,9 +177,9 @@ fun simulate_rounds(
     action_fn: (Fighter, Fighter) -> Action,
     n:         i64
 ) -> (Fighter, Fighter) {
-    let mut f1 = f1_init;
-    let mut f2 = f2_init;
-    let mut i = 0;
+    var f1 = f1_init;
+    var f2 = f2_init;
+    var i = 0;
     while (i < n) {
         let a  = action_fn(f1, f2);
         let r  = resolve(a, f1, f2);
@@ -202,9 +202,9 @@ fun battle(
     s2:         (Fighter, Fighter) -> Action,
     max_rounds: i64
 ) -> Perhaps<String> {
-    let mut f1 = f1_init;
-    let mut f2 = f2_init;
-    let mut round = 0;
+    var f1 = f1_init;
+    var f2 = f2_init;
+    var round = 0;
     while (round < max_rounds) {
         // Fighter 1 acts.
         let a1 = s1(f1, f2);
@@ -399,23 +399,23 @@ fun main() {
     match no_best { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
 
     // 19. Count alive fighters in party via for-in (all have hp > 0).
-    let mut alive_count = 0;
-    for (let f in party) {
+    var alive_count = 0;
+    for (f in party) {
         if (f.is_alive()) { alive_count += 1; }
     }
     assert(alive_count == 3);
 
     // 20. Range for-in: accumulate damage Knight deals over 5 rounds (25-2=23/round).
-    let mut total_damage = 0;
-    for (let r in 0..5) {
+    var total_damage = 0;
+    for (r in 0..5) {
         total_damage += knight.attack - goblin.defense;
     }
     assert(total_damage == 115);
 
     // 21. C-style for: apply Defend action `n` times and check final defense.
     // Goblin starts at defense=2; each Defend adds 3.  After 4 rounds: 2+4*3=14.
-    let mut cur_goblin = goblin;
-    for (let mut k = 0; k < 4; k += 1) {
+    var cur_goblin = goblin;
+    for (var k = 0; k < 4; k += 1) {
         let rd = resolve(Action::Defend, cur_goblin, knight);
         cur_goblin = rd.0;
     }

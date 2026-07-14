@@ -4,7 +4,7 @@ aspect Doubler {
 	fun doubled(&self) -> i64;
 }
 
-impl Doubler for i64 {
+extend i64: Doubler {
 	fun doubled(&self) -> i64 {
 		self + self
 	}

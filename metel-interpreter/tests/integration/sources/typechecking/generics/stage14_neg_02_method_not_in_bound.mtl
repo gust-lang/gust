@@ -7,7 +7,7 @@ aspect Printable {
 
 struct Item { name: String }
 
-impl Printable for Item { fun print(self) {} }
+extend Item: Printable { fun print(self) {} }
 
 fun bad<T: Printable>(x: T) {
     x.nonexistent_method() // ERROR[T0003]

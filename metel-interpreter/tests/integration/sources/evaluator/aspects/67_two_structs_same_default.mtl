@@ -17,13 +17,13 @@ aspect Named {
     }
 }
 
-impl Named for Dog {
+extend Dog: Named {
     fun name(self) -> String {
         return self.name;
     }
 }
 
-impl Named for Cat {
+extend Cat: Named {
     fun name(self) -> String {
         return self.name;
     }

@@ -12,8 +12,8 @@ aspect Serializable {
 struct A { value: i64 }
 struct B { name: String }
 
-impl Printable for A { fun print(self) {} }
-impl Serializable for B {
+extend A: Printable { fun print(self) {} }
+extend B: Serializable {
     fun serialize(self) -> String { self.name }
 }
 

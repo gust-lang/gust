@@ -1,11 +1,11 @@
 // Test A: for-in over inferred Array<() -> ()> — should typecheck
 fun test_inferred_array() {
-    let mut result = 0;
-    let ptr = &mut result;
+    var result = 0;
+    let ptr = &var result;
     let a = () -> { ptr += 1; };
     let b = () -> { ptr += 2; };
     let funs = [a, b];
-    for (let f in funs) {
+    for (f in funs) {
         f();
     }
     assert(result == 3);
@@ -13,14 +13,14 @@ fun test_inferred_array() {
 
 // Test B: explicit Array<() -> ()> parameter — should typecheck
 fun apply(funs: Array<() -> ()>) {
-    for (let f in funs) {
+    for (f in funs) {
         f();
     }
 }
 
 fun test_explicit_annotated_param() {
-    let mut result = 0;
-    let ptr = &mut result;
+    var result = 0;
+    let ptr = &var result;
     let a = () -> { ptr += 10; };
     let b = () -> { ptr += 20; };
     apply([a, b]);
@@ -29,8 +29,8 @@ fun test_explicit_annotated_param() {
 
 // Test C: closures from tuple access — verify they are () -> (), not &() -> ()
 fun get_pair() {
-    let mut x = 0;
-    let ptr = &mut x;
+    var x = 0;
+    let ptr = &var x;
     let inc = () -> { ptr += 1; };
     let add2 = () -> { ptr += 2; };
     (inc, add2, x)
@@ -45,49 +45,49 @@ fun test_tuple_closure_type() {
 }
 
 // Test D: nested tuple — mirrors get_closure_sets pattern
-fun get_closures(ptr: &mut i64) {
+fun get_closures(ptr: &var i64) {
     let a = () -> { ptr += 1; };
     let b = () -> { ptr += 2; };
     (a, b)
 }
 
 fun apply2(funs: Array<() -> ()>) {
-    for (let f in funs) {
+    for (f in funs) {
         f();
     }
 }
 
 fun test_nested_tuple_into_array() {
-    let mut val = 0;
-    let sets = get_closures(&mut val);
+    var val = 0;
+    let sets = get_closures(&var val);
     // Putting tuple-accessed closures into an array and passing to annotated fn
     apply2([sets.0, sets.1]);
     assert(val == 3);
 }
 
 // Test E: double-nested tuple access (mirrors 69_nice_closure_abuse pattern)
-fun get_closures2(ptr: &mut i64) {
+fun get_closures2(ptr: &var i64) {
     let a = () -> { ptr += 1; };
     let b = () -> { ptr += 2; };
     let read = () -> i64 { return ptr; };
     (a, b, read)
 }
 
-fun get_closure_sets2(ptr: &mut i64) {
+fun get_closure_sets2(ptr: &var i64) {
     let first = get_closures2(ptr);
     let second = get_closures2(ptr);
     (first, second)
 }
 
 fun apply3(funs: Array<() -> ()>) {
-    for (let f in funs) {
+    for (f in funs) {
         f();
     }
 }
 
 fun test_double_nested_tuple() {
-    let mut val = 1;
-    let sets = get_closure_sets2(&mut val);
+    var val = 1;
+    let sets = get_closure_sets2(&var val);
     // sets.1.0 is second-set's first closure (adds 1)
     // sets.0.1 is first-set's second closure (adds 2)
     apply3([sets.1.0, sets.0.1]);
@@ -95,29 +95,29 @@ fun test_double_nested_tuple() {
 }
 
 // Test F: exact mirror of test 69 (using `return` syntax and extra unused binding)
-fun get_closures_f(ptr: &mut i64) {
+fun get_closures_f(ptr: &var i64) {
     let first_closure = () -> { ptr += 1; };
     let second_closure = () -> { ptr += 2; };
     let third_closure = () -> i64 { return ptr; };
     return (first_closure, second_closure, third_closure);
 }
 
-fun get_closure_sets_f(ptr: &mut i64) {
-    let mut shared_value = 0;
+fun get_closure_sets_f(ptr: &var i64) {
+    var shared_value = 0;
     let first_closure_set = get_closures_f(ptr);
     let second_closure_set = get_closures_f(ptr);
     (first_closure_set, second_closure_set)
 }
 
 fun apply_functions_f(funs: Array<() -> ()>) {
-    for (let fn in funs) {
+    for (fn in funs) {
         fn();
     }
 }
 
 fun test_exact_69_structure() {
-    let mut shared_value = 1;
-    let closure_sets = get_closure_sets_f(&mut shared_value);
+    var shared_value = 1;
+    let closure_sets = get_closure_sets_f(&var shared_value);
     apply_functions_f([closure_sets.1.0, closure_sets.0.1]);
     assert(closure_sets.0.2() == shared_value && closure_sets.1.2() == shared_value);
 }

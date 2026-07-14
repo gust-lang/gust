@@ -109,16 +109,16 @@ fun main() {
     assert(heavy.len() == 3);
 
     // 15. C-style for: manual effort accumulation
-    let mut manual_sum = 0;
-    for (let mut i = 0; i < tasks.len(); i += 1) {
+    var manual_sum = 0;
+    for (var i = 0; i < tasks.len(); i += 1) {
         manual_sum += tasks[i as u64].effort;
     }
     assert(manual_sum == 15);
 
     // 16. while loop: count high-priority non-done tasks
     // t1(High,Open) and t5(High,InProgress) qualify; t3(High,Done) does not
-    let mut hp_active = 0;
-    let mut idx = 0;
+    var hp_active = 0;
+    var idx = 0;
     while (idx < tasks.len()) {
         let t = tasks[idx as u64];
         if (is_high_priority(t) && !is_done(t)) { hp_active += 1; }
@@ -127,8 +127,8 @@ fun main() {
     assert(hp_active == 2);
 
     // 17. Range for-in: sum 0+1+2+3+4 = 10
-    let mut range_sum = 0;
-    for (let i in 0..5) { range_sum += i; }
+    var range_sum = 0;
+    for (i in 0..5) { range_sum += i; }
     assert(range_sum == 10);
 
     // 18. Type cast: total effort i64 -> f64

@@ -492,16 +492,6 @@ fn register_program_decls(
                     // conditional impl was silently marking the aspect as
                     // unconditionally implemented.
                     //
-                    // OPEN QUESTION (decision 9): `impl<T: !Copy> !Aspect for T`
-                    // (negative polarity + conditional bounds) is NOT specified
-                    // anywhere — RFC-0072 §4 only discusses negative bounds AS
-                    // CONDITIONS inside POSITIVE impls, and RFC-0081 has no
-                    // generic/conditional/where support. The existing `ib.polarity
-                    // == Polarity::Positive` guard above ensures negative impls
-                    // never reach this conditional registration path; they fall
-                    // through to the existing issue #264 negative-impl handling
-                    // unchanged. Do not attempt conditional semantics for negative
-                    // impls until an RFC specifies them.
                     if is_generic_target {
                         let generic_names = registry
                             .struct_generic_names_for(target_name.as_str())
@@ -566,15 +556,31 @@ fn register_program_decls(
                         }
                     }
                 }
-            } else if ib.polarity == Polarity::Negative && ib.generics.is_empty() {
-                // RFC-0060 §5 / issue #244: register a CONCRETE negative impl (no
-                // impl-level generics — a blanket/conditional negative impl, e.g.
-                // `impl<T> !Aspect for Foo<T>`, is explicitly out of scope per
-                // decision 9 above) so `type_satisfies_aspect` can consult it and
-                // let it override a blanket positive impl for this exact
-                // instantiation, per RFC-0060 §5's priority order.
+            } else if ib.polarity == Polarity::Negative {
                 if let Some(aspect_name) = &ib.aspect_name {
-                    if let TypeExpr::Named(_, target_type_args) = &ib.target_type {
+                    if !ib.generics.is_empty() {
+                        // RFC-0081's primary use case is a blanket generic negative
+                        // impl such as `impl<T> !Send for Rc<T> {}`. Reuse the same
+                        // per-parameter bound bookkeeping as positive conditional
+                        // impls, but route it into the negative table so matching
+                        // instantiations are treated as explicitly *not*
+                        // implementing the aspect.
+                        let generic_names = registry
+                            .struct_generic_names_for(target_name.as_str())
+                            .cloned()
+                            .unwrap_or_default();
+                        let synth = synth_generics_for_impl(&generic_names, &ib.generics);
+                        let pos_bounds = collect_type_param_bounds(&synth, ib.where_clause.as_ref());
+                        let neg_bounds =
+                            collect_negative_type_param_bounds(&synth, ib.where_clause.as_ref());
+                        registry.register_neg_conditional_impl_bounds(
+                            current_module_path,
+                            &target_name,
+                            aspect_name,
+                            pos_bounds,
+                            neg_bounds,
+                        );
+                    } else if let TypeExpr::Named(_, target_type_args) = &ib.target_type {
                         let concrete_target_args: Vec<crate::types::Type> = target_type_args
                             .iter()
                             .filter_map(|te| match type_expr_to_infer(te) {

@@ -12,7 +12,7 @@ struct Item {
     value: i64,
 }
 
-impl Display for Item {
+extend Item: Display {
     fun display(self) -> String {
         "Item"
     }

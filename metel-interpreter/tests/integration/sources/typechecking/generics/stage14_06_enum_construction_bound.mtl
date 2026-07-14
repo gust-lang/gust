@@ -12,7 +12,7 @@ enum Container<T: Printable> {
 
 struct Item { name: String }
 
-impl Printable for Item { fun print(self) {} }
+extend Item: Printable { fun print(self) {} }
 
 fun wrap(item: Item) -> Container<Item> {
     Container::Some { value: item }

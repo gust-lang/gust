@@ -10,13 +10,13 @@ struct MyInt {
 }
 
 // Note: this struct has another method not in Display
-impl MyInt {
+extend MyInt {
 	fun double(&self) -> i64 {
 		self.value * 2
 	}
 }
 
-impl Display for MyInt {
+extend MyInt: Display {
 	fun display(&self) -> String {
 		self.value.to_string()
 	}

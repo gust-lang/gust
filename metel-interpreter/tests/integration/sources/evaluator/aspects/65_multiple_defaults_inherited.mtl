@@ -17,7 +17,7 @@ aspect Stats {
     }
 }
 
-impl Stats for Counter {
+extend Counter: Stats {
     fun value(self) -> i64 {
         return self.count;
     }

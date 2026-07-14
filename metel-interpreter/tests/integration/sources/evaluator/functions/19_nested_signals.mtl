@@ -1,6 +1,6 @@
 fun main() {
     // Break only breaks the innermost loop.
-    let mut outer_ran = 0;
+    var outer_ran = 0;
     loop {
         while (true) { break; }
         outer_ran = 1;
@@ -8,12 +8,12 @@ fun main() {
     }
     assert(outer_ran == 1);
     // Each outer iteration starts with a fresh inner scope.
-    let mut total = 0;
-    let mut k = 0;
+    var total = 0;
+    var k = 0;
     loop {
         k += 1;
         if (k > 3) { break; }
-        let mut j = 0;
+        var j = 0;
         loop {
             j += 1;
             if (j >= 2) { break; }

@@ -8,7 +8,7 @@ aspect Validatable {
 
 struct Item { value: i64 }
 
-impl Validatable for Item {
+extend Item: Validatable {
     fun validate(self, code: i64) -> boolean { self.value == code }
 }
 

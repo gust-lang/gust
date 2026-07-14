@@ -1,1 +1,1 @@
-pub fun helper_fn() -> i64 { return 7; }
+public fun helper_fn() -> i64 { return 7; }

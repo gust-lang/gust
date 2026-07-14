@@ -9,14 +9,14 @@ struct Counter {
     limit:   i64,
 }
 
-impl Counter {
+extend Counter {
     fun new(limit: i64) -> Counter {
         return Counter { current: 0, limit: limit };
     }
 }
 
-impl Iterable<i64> for Counter {
-    fun next(&mut self) -> Perhaps<i64> {
+extend Counter: Iterable<i64> {
+    fun next(&var self) -> Perhaps<i64> {
         if (self.current < self.limit) {
             let val = self.current;
             self.current = self.current + 1;
@@ -27,9 +27,9 @@ impl Iterable<i64> for Counter {
 }
 
 fun main() {
-    let mut sum = 0;
+    var sum = 0;
     let c = Counter::new(5);
-    for (let x in c) {
+    for (x in c) {
         sum += x;
     }
     assert(sum == 10); // 0+1+2+3+4

@@ -1,2 +1,2 @@
 import base::shared;
-pub fun right_answer() -> i64 { return shared() + 1; }
+public fun right_answer() -> i64 { return shared() + 1; }

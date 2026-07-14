@@ -6,7 +6,7 @@ aspect Greet {
 
 struct Person { name: i64 }
 
-impl Greet for Person {
+extend Person: Greet {
     fun greet(self) -> String { return "hello"; }
     // Missing `farewell` — should be a typecheck error.
 }

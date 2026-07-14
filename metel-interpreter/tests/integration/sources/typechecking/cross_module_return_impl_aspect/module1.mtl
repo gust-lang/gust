@@ -1,4 +1,4 @@
-// Cross-module test: module1 with pub function returning impl Aspect
+// Cross-module test: module1 with public function returning impl Aspect
 
 aspect Display {
 	fun display(&self) -> String;
@@ -8,12 +8,12 @@ struct MyInt {
 	value: i64,
 }
 
-impl Display for MyInt {
+extend MyInt: Display {
 	fun display(&self) -> String {
 		self.value.to_string()
 	}
 }
 
-pub fun make_public_int() -> impl Display {
+public fun make_public_int() -> impl Display {
 	MyInt { value: 42 }
 }

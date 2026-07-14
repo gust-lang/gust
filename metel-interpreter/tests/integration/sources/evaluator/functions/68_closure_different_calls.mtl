@@ -1,6 +1,6 @@
 // Creates a tuple of three closures that all operate on the same mutable reference
 // Returns: (increment_by_1, increment_by_2, get_current_value)
-fun get_closures(ptr: &mut i64) {
+fun get_closures(ptr: &var i64) {
 
     // First closure: increments the value at ptr by 1
     let first_closure = () -> {
@@ -25,10 +25,10 @@ fun get_closures(ptr: &mut i64) {
 // Creates two independent sets of closures, each operating on the same shared value
 // Both closure sets point to the same memory location via ptr
 // Returns: ((set1_closure1, set1_closure2, set1_closure3), (set2_closure1, set2_closure2, set2_closure3))
-fun get_closure_sets(ptr: &mut i64) {
+fun get_closure_sets(ptr: &var i64) {
 
     // Note: shared_value is declared but not used (leftover from refactoring?)
-    let mut shared_value = 0;
+    var shared_value = 0;
 
     // Create the first set of three closures, all capturing ptr
     let first_closure_set = get_closures(ptr);
@@ -45,11 +45,11 @@ fun get_closure_sets(ptr: &mut i64) {
 fun main() {
 
     // Initialize a mutable integer that will be shared across all closures
-    let mut shared_value = 1;
+    var shared_value = 1;
 
     // Get two closure sets; both sets operate on the same shared_value
     // Structure: closure_sets.0 = first_closure_set, closure_sets.1 = second_closure_set
-    let closure_sets = get_closure_sets(&mut shared_value);
+    let closure_sets = get_closure_sets(&var shared_value);
 
     // Execute the first closure from the second set: increments shared_value by 1
     // shared_value: 1 → 2

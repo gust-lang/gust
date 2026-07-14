@@ -6,7 +6,7 @@ struct User {
     name: String,
 }
 
-impl Display for User {
+extend User: Display {
     fun to_string(&self) -> String {
         "User(${self.name})"
     }
@@ -17,7 +17,7 @@ enum Status {
     Busy,
 }
 
-impl Display for Status {
+extend Status: Display {
     fun to_string(&self) -> String {
         match (self) {
             Status::Ready => "ready",

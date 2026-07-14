@@ -1,2 +1,2 @@
 fun internal() { }
-pub fun call() -> i64 { return 0; }
+public fun call() -> i64 { return 0; }

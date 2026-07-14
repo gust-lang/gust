@@ -11,7 +11,7 @@ struct IntBox {
     value: i64,
 }
 
-impl Container for IntBox {
+extend IntBox: Container {
     type Item = i64;
     fun get(&self) -> i64 {
         return self.value;

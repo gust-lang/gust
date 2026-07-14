@@ -29,9 +29,9 @@ fun to_lower(c: Char) -> Char {
 }
 
 fun count_uppercase(chars: List<Char>) -> i64 {
-    let mut count = 0;
+    var count = 0;
     let sl = chars.as_slice();
-    for (let c in sl) {
+    for (c in sl) {
         if (is_uppercase(c)) {
             count += 1;
         }
@@ -63,7 +63,7 @@ fun main() {
     assert(to_lower('z') == 'z');
 
     // Build a List<Char> from individual chars.
-    let mut chars: List<Char> = List::new();
+    var chars: List<Char> = List::new();
     chars.push('H');
     chars.push('e');
     chars.push('L');
@@ -75,24 +75,24 @@ fun main() {
     assert(count_uppercase(chars) == 3);
 
     // Uppercase all chars and verify.
-    let mut upper_chars: List<Char> = List::new();
+    var upper_chars: List<Char> = List::new();
     let sl = chars.as_slice();
-    for (let c in sl) {
+    for (c in sl) {
         upper_chars.push(to_upper(c));
     }
     assert(count_uppercase(upper_chars) == 5);
 
     // Lowercase all.
-    let mut lower_chars: List<Char> = List::new();
+    var lower_chars: List<Char> = List::new();
     let usl = upper_chars.as_slice();
-    for (let c in usl) {
+    for (c in usl) {
         lower_chars.push(to_lower(c));
     }
     assert(count_uppercase(lower_chars) == 0);
 
     // Char arithmetic via u32 — build a range 'a'..'e'.
-    let mut alphabet_slice: List<Char> = List::new();
-    let mut code_i: u32 = 'a' as u32;
+    var alphabet_slice: List<Char> = List::new();
+    var code_i: u32 = 'a' as u32;
     while (code_i <= ('e' as u32)) {
         alphabet_slice.push(code_i as Char);
         code_i += 1u32;

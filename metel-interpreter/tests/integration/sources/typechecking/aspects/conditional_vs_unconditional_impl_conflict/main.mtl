@@ -16,12 +16,12 @@ struct Pair<A, B> {
 }
 
 // Unconditional blanket impl — no bounds, scoped bounds are all-empty.
-impl<A, B> Printable for Pair<A, B> {
+extend<A, B> Pair<A, B>: Printable {
     fun print(self) -> String { return "unconditional"; }
 }
 
 // Conditional impl — Display bound at position 0.
-impl<C: Display> Printable for Pair<C, C> { // ERROR[T0015]
+extend<C: Display> Pair<C, C>: Printable { // ERROR[T0015]
     fun print(self) -> String { return "conditional"; }
 }
 

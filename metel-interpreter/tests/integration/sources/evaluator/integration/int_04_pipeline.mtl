@@ -24,7 +24,7 @@ aspect From<T> {
 }
 
 aspect Iterable<T> {
-    fun next(&mut self) -> Perhaps<T>;
+    fun next(&var self) -> Perhaps<T>;
 }
 
 // ── Error types ────────────────────────────────────────────────────────────────
@@ -33,13 +33,13 @@ struct LexError   { msg: String }
 struct ParseError { msg: String }
 struct AppError   { msg: String }
 
-impl From<LexError> for AppError {
+extend AppError: From<LexError> {
     fun from(value: LexError) -> AppError {
         AppError { msg: "lex: " + value.msg }
     }
 }
 
-impl From<ParseError> for AppError {
+extend AppError: From<ParseError> {
     fun from(value: ParseError) -> AppError {
         AppError { msg: "parse: " + value.msg }
     }
@@ -50,12 +50,12 @@ impl From<ParseError> for AppError {
 struct Token  { kind: String, value: i64 }
 struct Number { raw: i64 }
 
-impl Transformable for Number {
+extend Number: Transformable {
     fun double(self) -> i64 { self.raw * 2 }
     fun negate(self) -> i64 { 0 - self.raw }
 }
 
-impl Summarizable for Number {
+extend Number: Summarizable {
     fun summary(self) -> String {
         "Number(" + self.raw.to_string() + ")"
     }
@@ -65,13 +65,13 @@ impl Summarizable for Number {
 
 struct NumberList { data: i64[], pos: i64 }
 
-impl NumberList {
+extend NumberList {
     fun new(data: i64[]) -> NumberList { NumberList { data: data, pos: 0 } }
     fun len(self) -> i64 { self.data.len() }
 }
 
-impl Iterable<i64> for NumberList {
-    fun next(&mut self) -> Perhaps<i64> {
+extend NumberList: Iterable<i64> {
+    fun next(&var self) -> Perhaps<i64> {
         if (self.pos < self.data.len()) {
             let v = self.data[self.pos as u64];
             self.pos = self.pos + 1;
@@ -132,14 +132,14 @@ fun main() {
     // Iterable<i64>: sum of [1,2,3,4,5]
     let list = NumberList::new([1, 2, 3, 4, 5]);
     assert(list.len() == 5);
-    let mut total = 0;
-    for (let x in list) { total += x; }
+    var total = 0;
+    for (x in list) { total += x; }
     assert(total == 15);
 
     // Empty NumberList: loop body never runs
-    let mut ran = false;
+    var ran = false;
     let empty_ints: i64[] = [];
-    for (let _x in NumberList::new(empty_ints)) { ran = true; }
+    for (_x in NumberList::new(empty_ints)) { ran = true; }
     assert(!ran);
 
     // ? success: "1" → Token → Number(1)
@@ -179,8 +179,8 @@ fun main() {
 
     // Iterable with doubles accumulated
     let list2 = NumberList::new([10, 20, 30]);
-    let mut doubled_sum = 0;
-    for (let x in list2) { doubled_sum += x * 2; }
+    var doubled_sum = 0;
+    for (x in list2) { doubled_sum += x * 2; }
     assert(doubled_sum == 120);
 
     // built-in i64 as f64

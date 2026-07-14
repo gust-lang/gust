@@ -11,7 +11,7 @@ fun add_one(x: i64) -> i64 { x + 1 }
 fun add_two(x: i64) -> i64 { x + 2 }
 
 let apply_fn = add_one;
-let mut reassignable_fn = add_one;
+var reassignable_fn = add_one;
 
 fun main() {
     // A plain top-level `let` bound to a function value dispatches by id.

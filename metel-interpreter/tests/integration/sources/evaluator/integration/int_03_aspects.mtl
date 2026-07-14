@@ -25,7 +25,7 @@ aspect Describable {
 }
 
 aspect Iterable<T> {
-    fun next(&mut self) -> Perhaps<T>;
+    fun next(&var self) -> Perhaps<T>;
 }
 
 aspect From<T> {
@@ -47,7 +47,7 @@ fun approx(a: f64, b: f64) -> boolean {
 struct Circle    { radius: i64 }
 struct Rectangle { width: i64, height: i64 }
 
-impl Measurable for Circle {
+extend Circle: Measurable {
     fun area(self) -> f64 {
         let r = self.radius as f64;
         pi() * r * r
@@ -57,13 +57,13 @@ impl Measurable for Circle {
     }
 }
 
-impl Describable for Circle {
+extend Circle: Describable {
     fun describe(self) -> String {
         "Circle(r=" + self.radius.to_string() + ")"
     }
 }
 
-impl Measurable for Rectangle {
+extend Rectangle: Measurable {
     fun area(self) -> f64 {
         (self.width * self.height) as f64
     }
@@ -72,7 +72,7 @@ impl Measurable for Rectangle {
     }
 }
 
-impl Describable for Rectangle {
+extend Rectangle: Describable {
     fun describe(self) -> String {
         "Rect(" + self.width.to_string() + "x" + self.height.to_string() + ")"
     }
@@ -82,13 +82,13 @@ impl Describable for Rectangle {
 
 struct AreaList { data: f64[], pos: i64 }
 
-impl AreaList {
+extend AreaList {
     fun new(data: f64[]) -> AreaList { AreaList { data: data, pos: 0 } }
     fun len(self) -> i64 { self.data.len() }
 }
 
-impl Iterable<f64> for AreaList {
-    fun next(&mut self) -> Perhaps<f64> {
+extend AreaList: Iterable<f64> {
+    fun next(&var self) -> Perhaps<f64> {
         if (self.pos < self.data.len()) {
             let v = self.data[self.pos as u64];
             self.pos = self.pos + 1;
@@ -104,13 +104,13 @@ impl Iterable<f64> for AreaList {
 struct Celsius    { degrees: f64 }
 struct Fahrenheit { degrees: f64 }
 
-impl From<Celsius> for Fahrenheit {
+extend Fahrenheit: From<Celsius> {
     fun from(value: Celsius) -> Fahrenheit {
         Fahrenheit { degrees: value.degrees * 1.8 + 32.0 }
     }
 }
 
-impl From<Fahrenheit> for Celsius {
+extend Celsius: From<Fahrenheit> {
     fun from(value: Fahrenheit) -> Celsius {
         Celsius { degrees: (value.degrees - 32.0) / 1.8 }
     }
@@ -121,7 +121,7 @@ impl From<Fahrenheit> for Celsius {
 struct ParseError { msg: String }
 struct ShapeError { msg: String }
 
-impl From<ParseError> for ShapeError {
+extend ShapeError: From<ParseError> {
     fun from(value: ParseError) -> ShapeError {
         ShapeError { msg: "parse error: " + value.msg }
     }
@@ -206,15 +206,15 @@ fun main() {
     let areas: f64[] = [c5.area(), r34.area(), c10.area()];
     let seq = AreaList::new(areas);
     assert(seq.len() == 3);
-    let mut total_area = 0.0;
-    for (let a in seq) { total_area += a; }
+    var total_area = 0.0;
+    for (a in seq) { total_area += a; }
     // ≈ 78.54 + 12.0 + 314.16 = 404.70
     assert(approx(total_area, 404.70));
 
     // Empty Iterable: loop body never runs
-    let mut body_ran: boolean  = false;
+    var body_ran: boolean  = false;
     let empty_areas: f64[] = [];
-    for (let _a in AreaList::new(empty_areas)) { body_ran = true; }
+    for (_a in AreaList::new(empty_areas)) { body_ran = true; }
     assert(!body_ran);
 
     // From<Celsius> for Fahrenheit: boiling point

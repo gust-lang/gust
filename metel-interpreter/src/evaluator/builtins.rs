@@ -537,7 +537,7 @@ fn native_env_var(args: &[Value], _span: &crate::ast::Span) -> Result<Value, Met
         Some(Value::Str(name)) => {
             Ok(perhaps_value(std::env::var(name).ok().map(Value::Str)))
         }
-        _ => Err(MetelError::internal("std::env::var: expected (String)")),
+        _ => Err(MetelError::internal("std::env::get: expected (String)")),
     }
 }
 
@@ -800,7 +800,7 @@ pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
             NativeKey::StdCoreListLen => ("List::len", native_list_len),
             NativeKey::StdCoreListGet => ("List::get", native_list_get),
             NativeKey::StdCoreListAsSlice => ("List::as_slice", native_list_as_slice),
-            NativeKey::StdEnvVar => ("std::env::var", native_env_var),
+            NativeKey::StdEnvVar => ("std::env::get", native_env_var),
             NativeKey::StdEnvVars => ("std::env::vars", native_env_vars),
             NativeKey::StdFsReadToString => {
                 ("std::fs::read_to_string", native_fs_read_to_string)

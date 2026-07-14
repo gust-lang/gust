@@ -1,7 +1,7 @@
 // Test that associated type bounds are satisfied when the impl's own generic bound covers the requirement
 aspect Deref { type Target: Display; fun deref(self) -> Target; }
 struct Wrapper<T> { value: T }
-impl<T: Display> Deref for Wrapper<T> {
+extend<T: Display> Wrapper<T>: Deref {
     type Target = T;
     fun deref(self) -> T { self.value }
 }

@@ -1,35 +1,35 @@
 
-pub fun fold_left<T, A>(arr: T[], init: A, f: (A, T) -> A) -> A {
-    let mut acc = init;
-    for (let x in arr) {
+public fun fold_left<T, A>(arr: T[], init: A, f: (A, T) -> A) -> A {
+    var acc = init;
+    for (x in arr) {
         acc = f(acc, x);
     }
     acc
 }
 
-pub fun find_first<T>(arr: T[], pred: (T) -> boolean) -> Perhaps<T> {
-    for (let x in arr) {
+public fun find_first<T>(arr: T[], pred: (T) -> boolean) -> Perhaps<T> {
+    for (x in arr) {
         if (pred(x)) { return Perhaps::Some { value: x }; }
     }
     None
 }
 
-pub fun sum_ints(arr: i64[]) -> i64 {
-    let mut total = 0;
-    for (let x in arr) { total += x; }
+public fun sum_ints(arr: i64[]) -> i64 {
+    var total = 0;
+    for (x in arr) { total += x; }
     total
 }
 
-pub fun filter_array<T>(arr: T[], pred: (T) -> boolean) -> T[] {
-    let mut out: List<T> = List::new();
-    for (let x in arr) {
+public fun filter_array<T>(arr: T[], pred: (T) -> boolean) -> T[] {
+    var out: List<T> = List::new();
+    for (x in arr) {
         if (pred(x)) { out.push(x); }
     }
     out.as_slice()
 }
 
-pub fun map_array<T, U>(arr: T[], f: (T) -> U) -> U[] {
-    let mut out: List<U> = List::new();
-    for (let x in arr) { out.push(f(x)); }
+public fun map_array<T, U>(arr: T[], f: (T) -> U) -> U[] {
+    var out: List<U> = List::new();
+    for (x in arr) { out.push(f(x)); }
     out.as_slice()
 }

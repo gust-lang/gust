@@ -1934,9 +1934,345 @@ fn range_field(
 
 // ── Expression evaluation ─────────────────────────────────────────────────────
 
-// Exhaustive match over every AST/type-system variant; splitting it up would
-// scatter one coherent dispatch table across many small functions with no
-// real gain in clarity.
+#[inline(never)]
+fn eval_assign_expr(
+    target: &crate::typed_ast::TypedPlace,
+    op: &crate::ast::AssignOp,
+    value: &TypedExpr,
+    span: &Span,
+    env: &mut Environment,
+    runtime: &RuntimeRegistry,
+) -> Result<Signal, MetelError> {
+    use crate::typed_ast::TypedPlace;
+
+    let rhs = eval_expr(value, env, runtime)?.into_value();
+    match target {
+        TypedPlace::Ident(name, ident_span) => {
+            let new_val = if matches!(op, crate::ast::AssignOp::Assign) {
+                rhs
+            } else {
+                let cur = env.get(name).ok_or_else(|| {
+                    MetelError::panic(
+                        RuntimeErrorCode::R0003,
+                        format!("assign: undefined `{name}`"),
+                        ident_span,
+                    )
+                })?;
+                lvalue::apply_assign_op(op, cur, rhs, span)?
+            };
+            if !env.set(name, new_val) {
+                return Err(MetelError::panic(
+                    RuntimeErrorCode::R0003,
+                    format!("assign: undefined `{name}`"),
+                    ident_span,
+                ));
+            }
+            Ok(Signal::Value(Value::Unit))
+        }
+
+        TypedPlace::Deref {
+            object,
+            span: tspan,
+        } => {
+            let ptr = eval_expr(object, env, runtime)?.into_value();
+            match ptr {
+                Value::Reference(rc) | Value::MutReference(rc) => {
+                    let new_val = if matches!(op, crate::ast::AssignOp::Assign) {
+                        rhs
+                    } else {
+                        let cur = rc.borrow().clone();
+                        lvalue::apply_assign_op(op, cur, rhs, span)?
+                    };
+                    *rc.borrow_mut() = new_val;
+                }
+                Value::MutFieldReference { root, path } => {
+                    let new_val = if matches!(op, crate::ast::AssignOp::Assign) {
+                        rhs
+                    } else {
+                        let cur = read_path(&root.borrow(), &path, tspan)?;
+                        lvalue::apply_assign_op(op, cur, rhs, span)?
+                    };
+                    write_path(&mut root.borrow_mut(), &path, new_val, tspan)?;
+                }
+                _ => {
+                    return Err(MetelError::panic(
+                        RuntimeErrorCode::R0003,
+                        "assign: dereference target is not a pointer",
+                        tspan,
+                    ))
+                }
+            }
+            Ok(Signal::Value(Value::Unit))
+        }
+
+        TypedPlace::Index {
+            object,
+            index,
+            span: _tspan,
+        } => {
+            let arr_val = lvalue::eval_typed_place_value(object, env, runtime)?;
+            let idx_val = eval_expr(index, env, runtime)?.into_value();
+            let i = match idx_val {
+                Value::U64(u) => u as usize,
+                _ => {
+                    return Err(MetelError::internal(
+                        "index: expected u64 index (typechecker should have caught this)",
+                    ))
+                }
+            };
+            match arr_val {
+                Value::Array(rc) => {
+                    let len = rc.borrow().len();
+                    if i >= len {
+                        return Err(MetelError::panic(
+                            RuntimeErrorCode::R0004,
+                            format!("index {i} out of bounds (len {len})"),
+                            span,
+                        ));
+                    }
+                    let new_val = if matches!(op, crate::ast::AssignOp::Assign) {
+                        rhs
+                    } else {
+                        let cur = rc.borrow()[i].clone();
+                        lvalue::apply_assign_op(op, cur, rhs, span)?
+                    };
+                    rc.borrow_mut()[i] = new_val;
+                    Ok(Signal::Value(Value::Unit))
+                }
+                _ => Err(MetelError::internal(
+                    "index assign: receiver is not an Array (typechecker should have caught this)",
+                )),
+            }
+        }
+
+        TypedPlace::Field {
+            object,
+            field,
+            span: tspan,
+        } => {
+            let (rc, path) =
+                lvalue::resolve_field_assign_root(object, field, env, runtime, tspan)?;
+            let mut borrowed = rc.borrow_mut();
+            let mut cur: &mut Value = &mut borrowed;
+            for segment in &path[..path.len() - 1] {
+                cur = match cur {
+                    Value::Struct { fields, .. } | Value::Enum { fields, .. } => {
+                        fields.get_mut(*segment).ok_or_else(|| {
+                            MetelError::panic(
+                                RuntimeErrorCode::R0008,
+                                format!("field assign: no field `{segment}`"),
+                                tspan,
+                            )
+                        })?
+                    }
+                    _ => {
+                        return Err(MetelError::internal(format!(
+                            "field assign: `{segment}` is not a struct/enum"
+                        )))
+                    }
+                };
+            }
+            let (Value::Struct { fields, .. } | Value::Enum { fields, .. }) = cur else {
+                return Err(MetelError::internal(
+                    "field assign: receiver is not a struct/enum (typechecker should have caught this)",
+                ));
+            };
+            let leaf = path.last().expect("path is non-empty");
+            let new_val = if matches!(op, crate::ast::AssignOp::Assign) {
+                rhs
+            } else {
+                let cur = fields.get(*leaf).cloned().ok_or_else(|| {
+                    MetelError::panic(
+                        RuntimeErrorCode::R0008,
+                        format!("field assign: no field `{leaf}`"),
+                        tspan,
+                    )
+                })?;
+                lvalue::apply_assign_op(op, cur, rhs, span)?
+            };
+            fields.insert((*leaf).to_string(), new_val);
+            Ok(Signal::Value(Value::Unit))
+        }
+    }
+}
+
+#[inline(never)]
+fn eval_struct_literal_expr(
+    path: &[String],
+    fields: &[(String, TypedExpr)],
+    type_id: &Option<SymbolId>,
+    env: &mut Environment,
+    runtime: &RuntimeRegistry,
+) -> Result<Signal, MetelError> {
+    let mut field_vals: HashMap<String, Value> = HashMap::new();
+    for (name, expr) in fields {
+        field_vals.insert(name.clone(), eval_expr(expr, env, runtime)?.into_value());
+    }
+    if path.len() == 2 {
+        Ok(Signal::Value(Value::Enum {
+            name: path[0].clone(),
+            type_id: *type_id,
+            variant: path[1].clone(),
+            fields: field_vals,
+        }))
+    } else {
+        let name = path
+            .last()
+            .ok_or_else(|| MetelError::internal("struct literal: empty path"))?
+            .clone();
+        Ok(Signal::Value(Value::Struct {
+            name,
+            type_id: *type_id,
+            fields: field_vals,
+        }))
+    }
+}
+
+#[inline(never)]
+fn eval_method_call_expr(
+    receiver: &TypedExpr,
+    method: &str,
+    args: &[TypedExpr],
+    dispatch: &MethodDispatch,
+    span: &Span,
+    env: &mut Environment,
+    runtime: &RuntimeRegistry,
+) -> Result<Signal, MetelError> {
+    let recv_val = eval_expr(receiver, env, runtime)?.into_value();
+    let arg_vals: Vec<Value> = args
+        .iter()
+        .map(|a| eval_expr(a, env, runtime).map(Signal::into_value))
+        .collect::<Result<_, _>>()?;
+
+    let recv_type_view = deref_value(&recv_val, span)?.unwrap_or_else(|| recv_val.clone());
+    let method_entry = match dispatch {
+        MethodDispatch::Aspect { aspect_id } => runtime
+            .resolve_value_type_id(&recv_type_view)
+            .and_then(|tid| runtime.get_aspect_method_by_id(tid, *aspect_id, method))
+            .or_else(|| runtime.get_method_for_value(&recv_type_view, method)),
+        MethodDispatch::Inherent | MethodDispatch::Dynamic => {
+            runtime.get_method_for_value(&recv_type_view, method)
+        }
+    }
+    .ok_or_else(|| {
+        MetelError::panic(
+            RuntimeErrorCode::R0009,
+            format!("method `{method}` not found on this value"),
+            span,
+        )
+    })?;
+    let func = method_entry.body.clone();
+    match method_entry.receiver {
+        Some(crate::ast::ReceiverKind::Ref | crate::ast::ReceiverKind::RefMut) => {
+            let mut field_writeback: Option<FieldWriteback> = None;
+
+            let receiver_binding = match receiver {
+                TypedExpr::Ident(name, _, _) => match env.get_rc(name).map(|cell| {
+                    let mut current = cell;
+                    loop {
+                        let inner = match &*current.borrow() {
+                            Value::Reference(inner) | Value::MutReference(inner) => {
+                                Some(Rc::clone(inner))
+                            }
+                            _ => None,
+                        };
+                        match inner {
+                            Some(inner) => current = inner,
+                            None => break,
+                        }
+                    }
+                    current
+                }) {
+                    Some(cell) => call::ReceiverBinding::Shared(cell),
+                    None => call::ReceiverBinding::Value(recv_type_view.clone()),
+                },
+                TypedExpr::FieldAccess { .. } => match lvalue_field_cell(receiver, env) {
+                    Some((struct_cell, path, leaf_cell)) => {
+                        let binding = call::ReceiverBinding::Shared(Rc::clone(&leaf_cell));
+                        field_writeback = Some((struct_cell, path, leaf_cell));
+                        binding
+                    }
+                    None => receiver_cell_from_value(&recv_val)
+                        .map(call::ReceiverBinding::Shared)
+                        .unwrap_or(call::ReceiverBinding::Value(recv_type_view.clone())),
+                },
+                _ => receiver_cell_from_value(&recv_val)
+                    .map(call::ReceiverBinding::Shared)
+                    .unwrap_or(call::ReceiverBinding::Value(recv_type_view.clone())),
+            };
+
+            let result =
+                call::call_method_function(func, receiver_binding, arg_vals, span, runtime)?;
+
+            if let Some((struct_cell, path, leaf_cell)) = field_writeback {
+                let new_val = leaf_cell.borrow().clone();
+                let last = path.last().unwrap();
+                let prefix = &path[..path.len() - 1];
+                let mut borrow = struct_cell.borrow_mut();
+                let mut cur: &mut Value = &mut borrow;
+                for seg in prefix {
+                    match cur {
+                        Value::Struct { fields, .. } | Value::Enum { fields, .. } => {
+                            cur = fields.get_mut(seg.as_str()).unwrap();
+                        }
+                        _ => break,
+                    }
+                }
+                if let Value::Struct { fields, .. } | Value::Enum { fields, .. } = cur {
+                    fields.insert(last.clone(), new_val);
+                }
+            }
+
+            Ok(result)
+        }
+        Some(crate::ast::ReceiverKind::Value) => call::call_method_function(
+            func,
+            call::ReceiverBinding::Value(recv_type_view),
+            arg_vals,
+            span,
+            runtime,
+        ),
+        None => Err(MetelError::panic(
+            RuntimeErrorCode::R0009,
+            format!("runtime method `{method}` is not callable with a receiver"),
+            span,
+        )),
+    }
+}
+
+#[inline(never)]
+fn eval_call_expr(
+    callee: &TypedExpr,
+    args: &[TypedExpr],
+    callee_id: &Option<SymbolId>,
+    span: &Span,
+    env: &mut Environment,
+    runtime: &RuntimeRegistry,
+) -> Result<Signal, MetelError> {
+    let func_val = match callee_id {
+        Some(id) => match runtime.get_symbol_value(*id).cloned() {
+            Some(value) => value,
+            None if id.0 >= crate::symbols::OVERLOAD_SYM_START => {
+                return Err(MetelError::internal(format!(
+                    "no runtime value registered for overload symbol {id:?}"
+                )));
+            }
+            None if runtime.is_let_mut_def_id(*id) => eval_expr(callee, env, runtime)?.into_value(),
+            None => {
+                return Err(MetelError::internal(format!(
+                    "no runtime value registered for callable symbol {id:?}"
+                )));
+            }
+        },
+        None => eval_expr(callee, env, runtime)?.into_value(),
+    };
+    let arg_vals: Vec<Value> = args
+        .iter()
+        .map(|a| eval_expr(a, env, runtime).map(Signal::into_value))
+        .collect::<Result<_, _>>()?;
+    call::call_function(func_val, &arg_vals, span, runtime)
+}
+
 #[allow(clippy::too_many_lines)]
 /// # Errors
 /// Returns an error if evaluating `expr` (or any subexpression) raises an
@@ -2344,157 +2680,7 @@ pub fn eval_expr(
             value,
             span,
             ..
-        } => {
-            use crate::ast::AssignOp;
-            use crate::typed_ast::TypedPlace;
-            let rhs = eval_expr(value, env, runtime)?.into_value();
-            match target {
-                TypedPlace::Ident(name, ident_span) => {
-                    let new_val = if matches!(op, AssignOp::Assign) {
-                        rhs
-                    } else {
-                        let cur = env.get(name).ok_or_else(|| {
-                            MetelError::panic(
-                                RuntimeErrorCode::R0003,
-                                format!("assign: undefined `{name}`"),
-                                ident_span,
-                            )
-                        })?;
-                        lvalue::apply_assign_op(op, cur, rhs, span)?
-                    };
-                    if !env.set(name, new_val) {
-                        return Err(MetelError::panic(
-                            RuntimeErrorCode::R0003,
-                            format!("assign: undefined `{name}`"),
-                            ident_span,
-                        ));
-                    }
-                    Ok(Signal::Value(Value::Unit))
-                }
-
-                TypedPlace::Deref {
-                    object,
-                    span: tspan,
-                } => {
-                    let ptr = eval_expr(object, env, runtime)?.into_value();
-                    match ptr {
-                        Value::Reference(rc) | Value::MutReference(rc) => {
-                            let new_val = if matches!(op, AssignOp::Assign) {
-                                rhs
-                            } else {
-                                let cur = rc.borrow().clone();
-                                lvalue::apply_assign_op(op, cur, rhs, span)?
-                            };
-                            *rc.borrow_mut() = new_val;
-                        }
-                        Value::MutFieldReference { root, path } => {
-                            let new_val = if matches!(op, AssignOp::Assign) {
-                                rhs
-                            } else {
-                                let cur = read_path(&root.borrow(), &path, tspan)?;
-                                lvalue::apply_assign_op(op, cur, rhs, span)?
-                            };
-                            write_path(&mut root.borrow_mut(), &path, new_val, tspan)?;
-                        }
-                        _ => {
-                            return Err(MetelError::panic(
-                                RuntimeErrorCode::R0003,
-                                "assign: dereference target is not a pointer",
-                                tspan,
-                            ))
-                        }
-                    }
-                    Ok(Signal::Value(Value::Unit))
-                }
-
-                TypedPlace::Index {
-                    object,
-                    index,
-                    span: _tspan,
-                } => {
-                    let arr_val = lvalue::eval_typed_place_value(object, env, runtime)?;
-                    let idx_val = eval_expr(index, env, runtime)?.into_value();
-                    let i =
-                        match idx_val {
-                            Value::U64(u) => u as usize,
-                            _ => return Err(MetelError::internal(
-                                "index: expected u64 index (typechecker should have caught this)",
-                            )),
-                        };
-                    match arr_val {
-                        Value::Array(rc) => {
-                            let len = rc.borrow().len();
-                            if i >= len {
-                                return Err(MetelError::panic(
-                                    RuntimeErrorCode::R0004, format!("index {i} out of bounds (len {len})"), span,
-                                ));
-                            }
-                            let new_val = if matches!(op, AssignOp::Assign) {
-                                rhs
-                            } else {
-                                let cur = rc.borrow()[i].clone();
-                                lvalue::apply_assign_op(op, cur, rhs, span)?
-                            };
-                            rc.borrow_mut()[i] = new_val;
-                            Ok(Signal::Value(Value::Unit))
-                        }
-                        _ => Err(MetelError::internal(
-                            "index assign: receiver is not an Array (typechecker should have caught this)",
-                        )),
-                    }
-                }
-
-                TypedPlace::Field {
-                    object,
-                    field,
-                    span: tspan,
-                } => {
-                    let (rc, path) =
-                        lvalue::resolve_field_assign_root(object, field, env, runtime, tspan)?;
-                    let mut borrowed = rc.borrow_mut();
-                    // Navigate intermediate path segments to reach the parent struct.
-                    let mut cur: &mut Value = &mut borrowed;
-                    for segment in &path[..path.len() - 1] {
-                        cur = match cur {
-                            Value::Struct { fields, .. } | Value::Enum { fields, .. } => {
-                                fields.get_mut(*segment).ok_or_else(|| {
-                                    MetelError::panic(
-                                        RuntimeErrorCode::R0008,
-                                        format!("field assign: no field `{segment}`"),
-                                        tspan,
-                                    )
-                                })?
-                            }
-                            _ => {
-                                return Err(MetelError::internal(format!(
-                                    "field assign: `{segment}` is not a struct/enum"
-                                )))
-                            }
-                        };
-                    }
-                    let (Value::Struct { fields, .. } | Value::Enum { fields, .. }) = cur else {
-                        return Err(MetelError::internal(
-                            "field assign: receiver is not a struct/enum (typechecker should have caught this)",
-                        ));
-                    };
-                    let leaf = path.last().expect("path is non-empty");
-                    let new_val = if matches!(op, AssignOp::Assign) {
-                        rhs
-                    } else {
-                        let cur = fields.get(*leaf).cloned().ok_or_else(|| {
-                            MetelError::panic(
-                                RuntimeErrorCode::R0008,
-                                format!("field assign: no field `{leaf}`"),
-                                tspan,
-                            )
-                        })?;
-                        lvalue::apply_assign_op(op, cur, rhs, span)?
-                    };
-                    fields.insert((*leaf).to_string(), new_val);
-                    Ok(Signal::Value(Value::Unit))
-                }
-            }
-        }
+        } => eval_assign_expr(target, op, value, span, env, runtime),
 
         TypedExpr::StructLiteral {
             path,
@@ -2502,30 +2688,7 @@ pub fn eval_expr(
             type_id,
             span: _,
             ..
-        } => {
-            let mut field_vals: HashMap<String, Value> = HashMap::new();
-            for (name, expr) in fields {
-                field_vals.insert(name.clone(), eval_expr(expr, env, runtime)?.into_value());
-            }
-            if path.len() == 2 {
-                Ok(Signal::Value(Value::Enum {
-                    name: path[0].clone(),
-                    type_id: *type_id,
-                    variant: path[1].clone(),
-                    fields: field_vals,
-                }))
-            } else {
-                let name = path
-                    .last()
-                    .ok_or_else(|| MetelError::internal("struct literal: empty path"))?
-                    .clone();
-                Ok(Signal::Value(Value::Struct {
-                    name,
-                    type_id: *type_id,
-                    fields: field_vals,
-                }))
-            }
-        }
+        } => eval_struct_literal_expr(path, fields, type_id, env, runtime),
 
         TypedExpr::FieldAccess {
             object,
@@ -2562,136 +2725,7 @@ pub fn eval_expr(
             dispatch,
             span,
             ..
-        } => {
-            let recv_val = eval_expr(receiver, env, runtime)?.into_value();
-            let arg_vals: Vec<Value> = args
-                .iter()
-                .map(|a| eval_expr(a, env, runtime).map(Signal::into_value))
-                .collect::<Result<_, _>>()?;
-
-            // Runtime methods are dispatched through the runtime registry, not lexical env.
-            let recv_type_view = deref_value(&recv_val, span)?.unwrap_or_else(|| recv_val.clone());
-            let method_entry = match dispatch {
-                // Elaboration resolved this as an aspect call: resolve the receiver to its
-                // type SymbolId and dispatch the aspect method by id, falling back to the
-                // general value lookup (inherent + pattern methods).
-                MethodDispatch::Aspect { aspect_id } => runtime
-                    .resolve_value_type_id(&recv_type_view)
-                    .and_then(|tid| runtime.get_aspect_method_by_id(tid, *aspect_id, method))
-                    .or_else(|| runtime.get_method_for_value(&recv_type_view, method)),
-                // Inherent or unresolved: use the full lookup (inherent is tried first).
-                MethodDispatch::Inherent | MethodDispatch::Dynamic => {
-                    runtime.get_method_for_value(&recv_type_view, method)
-                }
-            }
-            .ok_or_else(|| {
-                MetelError::panic(
-                    RuntimeErrorCode::R0009,
-                    format!("method `{method}` not found on this value"),
-                    span,
-                )
-            })?;
-            let func = method_entry.body.clone();
-            match method_entry.receiver {
-                Some(crate::ast::ReceiverKind::Ref | crate::ast::ReceiverKind::RefMut) => {
-                    // For field-access chains (e.g. `pair.a.tick()`) we can't hand the
-                    // evaluator a direct Rc to the field because fields are stored by value
-                    // inside the parent struct's HashMap.  Instead we clone the leaf value
-                    // into a fresh cell, call through it, then write the (possibly mutated)
-                    // value back into the parent struct.
-                    let mut field_writeback: Option<FieldWriteback> = None;
-
-                    let receiver_binding = match receiver.as_ref() {
-                        TypedExpr::Ident(name, _, _) => {
-                            match env.get_rc(name).map(|cell| {
-                                // Follow every reference layer of a chain (RFC-0067a
-                                // §3's auto-deref chain guarantee), not just one —
-                                // `&&mut Counter` must reach the innermost cell that
-                                // actually holds the struct, not stop at the cell
-                                // holding the intermediate `&mut Counter` reference.
-                                let mut current = cell;
-                                loop {
-                                    let inner = match &*current.borrow() {
-                                        Value::Reference(inner) | Value::MutReference(inner) => {
-                                            Some(Rc::clone(inner))
-                                        }
-                                        _ => None,
-                                    };
-                                    match inner {
-                                        Some(inner) => current = inner,
-                                        None => break,
-                                    }
-                                }
-                                current
-                            }) {
-                                Some(cell) => call::ReceiverBinding::Shared(cell),
-                                None => call::ReceiverBinding::Value(recv_type_view.clone()),
-                            }
-                        }
-                        TypedExpr::FieldAccess { .. } => match lvalue_field_cell(receiver, env) {
-                            Some((struct_cell, path, leaf_cell)) => {
-                                let binding = call::ReceiverBinding::Shared(Rc::clone(&leaf_cell));
-                                field_writeback = Some((struct_cell, path, leaf_cell));
-                                binding
-                            }
-                            None => receiver_cell_from_value(&recv_val)
-                                .map(call::ReceiverBinding::Shared)
-                                .unwrap_or(call::ReceiverBinding::Value(recv_type_view.clone())),
-                        },
-                        _ => receiver_cell_from_value(&recv_val)
-                            .map(call::ReceiverBinding::Shared)
-                            .unwrap_or(call::ReceiverBinding::Value(recv_type_view.clone())),
-                    };
-
-                    let result = call::call_method_function(
-                        func,
-                        receiver_binding,
-                        arg_vals,
-                        span,
-                        runtime,
-                    )?;
-
-                    if let Some((struct_cell, path, leaf_cell)) = field_writeback {
-                        let new_val = leaf_cell.borrow().clone();
-                        let last = path.last().unwrap();
-                        let prefix = &path[..path.len() - 1];
-                        let mut borrow = struct_cell.borrow_mut();
-                        let mut cur: &mut Value = &mut borrow;
-                        for seg in prefix {
-                            match cur {
-                                Value::Struct { fields, .. } | Value::Enum { fields, .. } => {
-                                    cur = fields.get_mut(seg.as_str()).unwrap();
-                                }
-                                _ => break,
-                            }
-                        }
-                        if let Value::Struct { fields, .. } | Value::Enum { fields, .. } = cur {
-                            fields.insert(last.clone(), new_val);
-                        }
-                    }
-
-                    Ok(result)
-                }
-                Some(crate::ast::ReceiverKind::Value) => {
-                    // By-value `self`: bind the receiver as the first parameter.
-                    // Routed through call_method_function (not call_function) so a
-                    // generic method body's scheme is resolved from the registry's
-                    // method env, not the flat scheme env.
-                    call::call_method_function(
-                        func,
-                        call::ReceiverBinding::Value(recv_type_view),
-                        arg_vals,
-                        span,
-                        runtime,
-                    )
-                }
-                None => Err(MetelError::panic(
-                    RuntimeErrorCode::R0009,
-                    format!("runtime method `{method}` is not callable with a receiver"),
-                    span,
-                )),
-            }
-        }
+        } => eval_method_call_expr(receiver, method, args, dispatch, span, env, runtime),
 
         TypedExpr::Call {
             callee,
@@ -2699,46 +2733,7 @@ pub fn eval_expr(
             callee_id,
             span,
             ..
-        } => {
-            // A statically-resolved callee carries its SymbolId (METEL-180 overloads
-            // and METEL-187 ordinary top-level functions); dispatch through the symbol
-            // registry instead of evaluating the callee expression by name.
-            let func_val = match callee_id {
-                Some(id) => match runtime.get_symbol_value(*id).cloned() {
-                    Some(value) => value,
-                    // An overload id with no registered value is an internal error —
-                    // all overloads are registered in Pass 1a, before any user code runs.
-                    None if id.0 >= crate::symbols::OVERLOAD_SYM_START => {
-                        return Err(MetelError::internal(format!(
-                            "no runtime value registered for overload symbol {id:?}"
-                        )));
-                    }
-                    // A top-level `let`/`mut`'s id is registered lazily, when its own
-                    // Pass 2 initializer runs (ADR-0042) — a miss here can legitimately
-                    // mean "called before that line executed," the same "used before
-                    // defined" error `eval_expr` already produces via plain name lookup
-                    // (R0003), not a bug. Evaluating by name here reuses that existing,
-                    // correct error path rather than duplicating it.
-                    None if runtime.is_let_mut_def_id(*id) => {
-                        eval_expr(callee, env, runtime)?.into_value()
-                    }
-                    // Any other top-level callable id (ordinary `fn`s, registered in
-                    // Pass 1b before any user code runs) missing its value is a genuine
-                    // resolver/construction bug, not a legitimate runtime state.
-                    None => {
-                        return Err(MetelError::internal(format!(
-                            "no runtime value registered for callable symbol {id:?}"
-                        )));
-                    }
-                },
-                None => eval_expr(callee, env, runtime)?.into_value(),
-            };
-            let arg_vals: Vec<Value> = args
-                .iter()
-                .map(|a| eval_expr(a, env, runtime).map(Signal::into_value))
-                .collect::<Result<_, _>>()?;
-            call::call_function(func_val, &arg_vals, span, runtime)
-        }
+        } => eval_call_expr(callee, args, callee_id, span, env, runtime),
 
         TypedExpr::Closure {
             params, body, ty, ..

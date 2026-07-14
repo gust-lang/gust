@@ -1,30 +1,30 @@
 fun main() {
     // Basic exclusive range.
-    let mut sum = 0;
-    for (let i in 1..5) { sum += i; }
+    var sum = 0;
+    for (i in 1..5) { sum += i; }
     assert(sum == 10);
     // Basic inclusive range.
-    let mut sum2 = 0;
-    for (let i in 1..=4) { sum2 += i; }
+    var sum2 = 0;
+    for (i in 1..=4) { sum2 += i; }
     assert(sum2 == 10);
     // Empty exclusive range (start == end).
-    let mut c1 = 0;
-    for (let _i in 0..0) { c1 += 1; }
+    var c1 = 0;
+    for (_i in 0..0) { c1 += 1; }
     assert(c1 == 0);
     // Reverse range produces no iterations.
-    let mut c2 = 0;
-    for (let _i in 5..1) { c2 += 1; }
+    var c2 = 0;
+    for (_i in 5..1) { c2 += 1; }
     assert(c2 == 0);
     // Single-element exclusive range.
-    let mut single = 0;
-    for (let i in 7..8) { single += i; }
+    var single = 0;
+    for (i in 7..8) { single += i; }
     assert(single == 7);
     // Single-element inclusive range.
-    let mut single2 = 0;
-    for (let i in 5..=5) { single2 += i; }
+    var single2 = 0;
+    for (i in 5..=5) { single2 += i; }
     assert(single2 == 5);
     // Inclusive empty (start > end).
-    let mut c3 = 0;
-    for (let _i in 5..=4) { c3 += 1; }
+    var c3 = 0;
+    for (_i in 5..=4) { c3 += 1; }
     assert(c3 == 0);
 }

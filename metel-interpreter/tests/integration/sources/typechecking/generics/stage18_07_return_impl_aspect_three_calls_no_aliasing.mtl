@@ -21,13 +21,13 @@ struct MyString {
 	value: String,
 }
 
-impl Display for MyInt {
+extend MyInt: Display {
 	fun display(&self) -> String {
 		self.value.to_string()
 	}
 }
 
-impl Display for MyString {
+extend MyString: Display {
 	fun display(self) -> String {
 		self.value
 	}

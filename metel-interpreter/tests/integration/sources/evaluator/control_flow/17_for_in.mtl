@@ -1,42 +1,42 @@
 fun main() {
     // Array iteration.
     let arr = [10, 20, 30];
-    let mut sum = 0;
-    for (let x in arr) { sum += x; }
+    var sum = 0;
+    for (x in arr) { sum += x; }
     assert(sum == 60);
     // Exclusive range.
-    let mut sum2 = 0;
-    for (let i in 0..5) { sum2 += i; }
+    var sum2 = 0;
+    for (i in 0..5) { sum2 += i; }
     assert(sum2 == 10);
     // Inclusive range.
-    let mut sum3 = 0;
-    for (let i in 1..=4) { sum3 += i; }
+    var sum3 = 0;
+    for (i in 1..=4) { sum3 += i; }
     assert(sum3 == 10);
     // Mutable for-in binding may be rebound locally.
-    let mut bumped = 0;
-    for (let mut x in [1, 2, 3]) {
+    var bumped = 0;
+    for (var x in [1, 2, 3]) {
         x += 1;
         bumped += x;
     }
     assert(bumped == 9);
     // Break stops early.
-    let mut sum4 = 0;
-    for (let x in [1, 2, 3, 4, 5]) {
+    var sum4 = 0;
+    for (x in [1, 2, 3, 4, 5]) {
         if (x == 3) { break; }
         sum4 += x;
     }
     assert(sum4 == 3);
     // Continue skips the current element.
-    let mut sum5 = 0;
-    for (let x in [1, 2, 3, 4, 5]) {
+    var sum5 = 0;
+    for (x in [1, 2, 3, 4, 5]) {
         if (x == 3) { continue; }
         sum5 += x;
     }
     assert(sum5 == 12);
     // Binding does not leak into the outer scope.
     let x = 42;
-    let mut inner = 0;
-    for (let x in [1, 2, 3]) { inner += x; }
+    var inner = 0;
+    for (x in [1, 2, 3]) { inner += x; }
     assert(inner == 6);
     assert(x   == 42);
 }

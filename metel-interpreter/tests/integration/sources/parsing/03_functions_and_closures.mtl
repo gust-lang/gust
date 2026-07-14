@@ -24,8 +24,8 @@ fun identity<T>(value: T) -> T {
 }
 
 fun map_array(arr: i64[], f: (i64) -> i64) -> i64[] {
-    let mut result: i64[]  = [];
-    for (let item in arr) {
+    var result: i64[]  = [];
+    for (item in arr) {
         array_push(result, f(item));
     }
     return result;
@@ -49,7 +49,7 @@ fun main() {
     println(int_to_string(tripled));      // 21
 
     // --- closure mutating a captured mut variable ---
-    let mut count = 0;
+    var count = 0;
     let increment = () -> { count += 1; };
     increment();
     increment();
@@ -71,7 +71,7 @@ fun main() {
     // --- map_array (closure params inferred from map_array's signature) ---
     let nums: i64[] = [1, 2, 3, 4, 5];
     let squares = map_array(nums, (x) -> { return x * x; });
-    for (let n in squares) {
+    for (n in squares) {
         print(int_to_string(n) + " ");    // 1 4 9 16 25
     }
     println("");

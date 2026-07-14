@@ -12,11 +12,11 @@ aspect B {
 
 struct S { value: i64 }
 
-impl A for S {
+extend S: A {
     fun label(self) -> i64 { 1 }
 }
 
-impl B for S {
+extend S: B {
     fun label(self) -> i64 { 2 }
 }
 

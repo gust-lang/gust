@@ -1,0 +1,24 @@
+// RFC-0081's motivating generic form: a blanket negative impl must satisfy a
+// `!Aspect` bound even when a blanket positive impl for the same target head
+// also exists. The negative impl wins for every `Foo<T>` instantiation.
+
+aspect Marker {
+    fun mark(self) -> String;
+}
+
+struct Foo<T> {
+    value: T,
+}
+
+extend<T> Foo<T>: Marker {
+    fun mark(self) -> String { return "blanket"; }
+}
+
+extend<T> Foo<T>: !Marker;
+
+fun needs_not_marker<U: !Marker>(x: U) {}
+
+fun main() {
+    let f = Foo { value: 5 };
+    needs_not_marker(f);
+}

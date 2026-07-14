@@ -16,11 +16,11 @@ struct Pair<A, B> {
     second: B,
 }
 
-impl<A: Display> Printable for Pair<A, A> {
+extend<A: Display> Pair<A, A>: Printable {
     fun print(self) -> String { return "a"; }
 }
 
-impl<B: Display> Printable for Pair<B, B> { // ERROR[T0015]
+extend<B: Display> Pair<B, B>: Printable { // ERROR[T0015]
     fun print(self) -> String { return "b"; }
 }
 

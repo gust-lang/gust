@@ -14,13 +14,13 @@ struct Bad {
     value: i64,
 }
 
-impl Display for Bad {
+extend Bad: Display {
     fun display(self) -> String {
         "Bad"
     }
 }
 
-impl Drop for Bad {
+extend Bad: Drop {
     fun drop(self) {}
 }
 

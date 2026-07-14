@@ -1,10 +1,10 @@
 import base::Point;
 
-pub aspect Debugger {
+public aspect Debugger {
     fun dbg(self) -> String;
 }
 
-impl Debugger for Point {
+extend Point: Debugger {
     fun dbg(self) -> String {
         return "point-debug";
     }

@@ -10,7 +10,7 @@ enum Direction {
     West,
 }
 
-impl Direction {
+extend Direction {
     fun opposite(self) -> Direction {
         match self {
             Direction::North => Direction::South,
@@ -36,7 +36,7 @@ enum Shape {
     Triangle { base: f64, height: f64 },
 }
 
-impl Shape {
+extend Shape {
     fun area(self) -> f64 {
         match self {
             Shape::Circle { radius } => 3.14159 * radius * radius,

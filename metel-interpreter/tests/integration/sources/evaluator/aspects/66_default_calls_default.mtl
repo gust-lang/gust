@@ -16,7 +16,7 @@ aspect Ops {
     }
 }
 
-impl Ops for Measurement {
+extend Measurement: Ops {
     fun raw(self) -> i64 {
         return self.raw;
     }

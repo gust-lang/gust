@@ -12,7 +12,7 @@ struct SortedList<T: Comparable> {
 
 struct Num { value: i64 }
 
-impl Comparable for Num {
+extend Num: Comparable {
     fun compare(self, other: Num) -> i64 {
         self.value - other.value
     }

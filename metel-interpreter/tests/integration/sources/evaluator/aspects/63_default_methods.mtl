@@ -10,7 +10,7 @@ aspect Greet {
     }
 }
 
-impl Greet for Person {
+extend Person: Greet {
     fun name(self) -> String {
         return self.name;
     }

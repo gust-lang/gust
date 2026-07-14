@@ -1,11 +1,11 @@
-// RFC-0067a §1: &mut T coerces to &T (the reverse does not exist).
+// RFC-0067a §1: &var T coerces to &T (the reverse does not exist).
 fun read_shared(r: &i64) -> i64 {
     return r;
 }
 
 fun main() {
-    let mut n = 7;
-    let m: &mut i64 = &mut n;
+    var n = 7;
+    let m: &var i64 = &var n;
     let s: &i64 = m;
     assert(read_shared(s) == 7);
     assert(read_shared(m) == 7);

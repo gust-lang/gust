@@ -1,5 +1,5 @@
 fun find(arr: i64[], target: i64) -> Perhaps<i64> {
-    let mut i = 0;
+    var i = 0;
     while (i < arr.len()) {
         if (arr[i as u64] == target) {
             return Perhaps::Some { value: i };

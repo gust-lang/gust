@@ -261,7 +261,7 @@ pub fn method_symbol_name(target: &str, aspect: Option<&str>, method: &str) -> S
     }
 }
 
-/// Extract the surface type name of an impl target (`impl Foo { … }` → `Foo`).
+/// Extract the surface type name of an impl target (`extend Foo { … }` → `Foo`).
 /// Returns `None` for non-named targets (which the typechecker rejects elsewhere).
 fn impl_target_name(target: &TypeExpr) -> Option<&str> {
     match target {
@@ -1361,9 +1361,9 @@ mod tests {
         // SymbolId under their structured key, with a recorded definition span
         // (METEL-185 step 3a).
         let src = "struct Foo { x: i64 }\n\
-                   impl Foo { fun bar(self) -> i64 { self.x } }\n\
+                   extend Foo { fun bar(self) -> i64 { self.x } }\n\
                    aspect Greet { fun hi(self) -> i64; }\n\
-                   impl Greet for Foo { fun hi(self) -> i64 { 1 } }";
+                   extend Foo: Greet { fun hi(self) -> i64 { 1 } }";
         let program = crate::parser::parse(src, "t.mtl").expect("parse");
         let graph = make_graph(vec![(vec![], program)]);
         let names = resolve(&graph).unwrap();

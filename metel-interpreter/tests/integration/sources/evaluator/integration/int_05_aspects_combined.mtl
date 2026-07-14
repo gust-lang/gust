@@ -25,7 +25,7 @@ aspect From<T> {
 }
 
 aspect Iterable<T> {
-    fun next(&mut self) -> Perhaps<T>;
+    fun next(&var self) -> Perhaps<T>;
 }
 
 // ── Error types ────────────────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ aspect Iterable<T> {
 struct ConfigError { msg: String }
 struct RunError    { msg: String }
 
-impl From<ConfigError> for RunError {
+extend RunError: From<ConfigError> {
     fun from(value: ConfigError) -> RunError {
         RunError { msg: "config: " + value.msg }
     }
@@ -43,7 +43,7 @@ impl From<ConfigError> for RunError {
 
 struct Task { name: String, enabled: boolean }
 
-impl Runnable for Task {
+extend Task: Runnable {
     fun run(self) -> String {
         if (self.enabled) {
             self.name + ":ok"
@@ -53,7 +53,7 @@ impl Runnable for Task {
     }
 }
 
-impl Describable for Task {
+extend Task: Describable {
     fun describe(self) -> String {
         "Task[" + self.name + ", enabled=" + self.enabled.to_string() + "]"
     }
@@ -63,12 +63,12 @@ impl Describable for Task {
 
 struct Countdown { current: i64 }
 
-impl Countdown {
+extend Countdown {
     fun new(start: i64) -> Countdown { Countdown { current: start } }
 }
 
-impl Iterable<i64> for Countdown {
-    fun next(&mut self) -> Perhaps<i64> {
+extend Countdown: Iterable<i64> {
+    fun next(&var self) -> Perhaps<i64> {
         if (self.current > 0) {
             let v = self.current;
             self.current = self.current - 1;
@@ -115,18 +115,18 @@ fun main() {
     assert(t2.describe() == "Task[test, enabled=false]");
 
     // Countdown Iterable: 3,2,1
-    let mut count_sum = 0;
-    for (let v in Countdown::new(3)) { count_sum += v; }
+    var count_sum = 0;
+    for (v in Countdown::new(3)) { count_sum += v; }
     assert(count_sum == 6); // 3+2+1
 
     // Empty countdown
-    let mut ran = false;
-    for (let _v in Countdown::new(0)) { ran = true; }
+    var ran = false;
+    for (_v in Countdown::new(0)) { ran = true; }
     assert(!ran);
 
     // break inside for-in: stop after first even number
-    let mut first_even = -1;
-    for (let v in Countdown::new(10)) {
+    var first_even = -1;
+    for (v in Countdown::new(10)) {
         let rem = v - (v / 2 * 2);
         if (rem == 0) {
             first_even = v;
@@ -136,8 +136,8 @@ fun main() {
     assert(first_even == 10); // 10 is even, it's the first emitted (countdown from 10)
 
     // continue inside for-in: sum only odd numbers in [1..5]
-    let mut odd_sum = 0;
-    for (let v in Countdown::new(5)) {
+    var odd_sum = 0;
+    for (v in Countdown::new(5)) {
         let rem = v - (v / 2 * 2);
         if (rem == 0) { continue; }
         odd_sum += v;
@@ -145,9 +145,9 @@ fun main() {
     assert(odd_sum == 9); // 5+3+1
 
     // nested for-in: 3x3 multiplication table sum = (1+2+3)*(1+2+3) = 36
-    let mut mult_sum = 0;
-    for (let i in Countdown::new(3)) {
-        for (let j in Countdown::new(3)) {
+    var mult_sum = 0;
+    for (i in Countdown::new(3)) {
+        for (j in Countdown::new(3)) {
             mult_sum += i * j;
         }
     }

@@ -12,7 +12,7 @@ struct Fahrenheit {
     degrees: f64,
 }
 
-impl From<Celsius> for Fahrenheit {
+extend Fahrenheit: From<Celsius> {
     fun from(value: Celsius) -> Fahrenheit {
         return Fahrenheit { degrees: value.degrees * 1.8 + 32.0 };
     }

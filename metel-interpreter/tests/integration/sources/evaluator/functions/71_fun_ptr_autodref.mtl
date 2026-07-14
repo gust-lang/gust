@@ -7,12 +7,12 @@ fun test_immutable_fun_ptr_call() {
     assert(ptr() == 42);
 }
 
-// &mut () -> T is also auto-deref callable
+// &var () -> T is also auto-deref callable
 fun test_mutable_fun_ptr_call() {
-    let mut x = 0;
-    let p = &mut x;
-    let mut inc = () -> { p += 7; };
-    let mut_ptr = &mut inc;
+    var x = 0;
+    let p = &var x;
+    var inc = () -> { p += 7; };
+    let mut_ptr = &var inc;
     mut_ptr();
     assert(x == 7);
 }
@@ -29,14 +29,14 @@ fun test_fun_ptr_param() {
 
 // Array<&() -> ()> — iteration and call via auto-deref
 fun apply_ptrs(fns: Array<&() -> ()>) {
-    for (let f in fns) {
+    for (f in fns) {
         f();
     }
 }
 
 fun test_array_of_fun_ptrs() {
-    let mut total = 0;
-    let ptr = &mut total;
+    var total = 0;
+    let ptr = &var total;
     let add1 = () -> { ptr += 1; };
     let add10 = () -> { ptr += 10; };
     apply_ptrs([&add1, &add10]);
@@ -48,8 +48,8 @@ fun test_array_of_fun_ptrs() {
 // A closure that captures a &() -> () variable and calls it.
 // Before auto-deref, this required (*inc_ptr)() inside the outer closure.
 fun test_closure_captures_fun_ptr() {
-    let mut x = 0;
-    let p = &mut x;
+    var x = 0;
+    let p = &var x;
     let inc = () -> { p += 1; };
     let inc_ptr = &inc;              // type: &() -> ()
     let double_via_ptr = () -> {
@@ -60,12 +60,12 @@ fun test_closure_captures_fun_ptr() {
     assert(x == 2);
 }
 
-// Same pattern, but the reference is &mut () -> ()
+// Same pattern, but the reference is &var () -> ()
 fun test_closure_captures_mut_fun_ptr() {
-    let mut x = 0;
-    let p = &mut x;
-    let mut add5 = () -> { p += 5; };
-    let mut ptr = &mut add5;
+    var x = 0;
+    let p = &var x;
+    var add5 = () -> { p += 5; };
+    var ptr = &var add5;
     let triple = () -> {
         ptr();
         ptr();
@@ -80,7 +80,7 @@ fun test_closure_captures_mut_fun_ptr() {
 // Closures capture variables BY VALUE at creation time.
 // Mutations inside the closure do not affect the outer binding.
 fun test_capture_by_value() {
-    let mut x = 0;
+    var x = 0;
     let f = () -> { x += 1; };
     f();
     f();
@@ -89,10 +89,10 @@ fun test_capture_by_value() {
     assert(x == 0);
 }
 
-// Using &mut explicitly shares the mutation back to the outer scope.
+// Using &var explicitly shares the mutation back to the outer scope.
 fun test_capture_via_pointer_propagates() {
-    let mut x = 0;
-    let ptr = &mut x;
+    var x = 0;
+    let ptr = &var x;
     let f = () -> { ptr += 1; };
     f();
     f();

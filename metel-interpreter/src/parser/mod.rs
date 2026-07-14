@@ -61,7 +61,7 @@ fn parse_program(pairs: &mut Pairs<Rule>, filename: &str) -> Result<Program, Met
         match pair.as_rule() {
             Rule::import_decl => imports.push(parse_import_decl(pair, filename)?),
             Rule::export_decl => exports.push(parse_export_decl(pair, filename)?),
-            Rule::decl => decls.push(parse_decl(pair, filename)?),
+            Rule::decl => decls.extend(parse_decl(pair, filename)?),
             _ => {}
         }
     }
@@ -191,19 +191,31 @@ fn parse_import_item(pair: pest::iterators::Pair<Rule>) -> Result<ImportTree, Me
     Ok(ImportTree::Name { name, alias })
 }
 
-fn parse_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Decl, MetelError> {
+fn parse_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Vec<Decl>, MetelError> {
     // `decl` has exactly one child
     let inner = pair
         .into_inner()
         .next()
         .ok_or_else(|| MetelError::internal("decl: missing inner rule"))?;
+    if inner.as_rule() == Rule::impl_block {
+        return Ok(parse_impl_block(inner, filename)?
+            .into_iter()
+            .map(Decl::Impl)
+            .collect());
+    }
+    Ok(vec![parse_single_decl(inner, filename)?])
+}
+
+fn parse_single_decl(
+    inner: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<Decl, MetelError> {
     match inner.as_rule() {
         Rule::let_decl => Ok(Decl::Let(parse_let_decl(inner, filename)?)),
         Rule::let_mut_decl => Ok(Decl::Mut(parse_mut_decl(inner, filename)?)),
         Rule::fun_decl => Ok(Decl::Fun(parse_fun_decl(inner, filename)?)),
         Rule::struct_decl => Ok(Decl::Struct(parse_struct_decl(inner, filename)?)),
         Rule::enum_decl => Ok(Decl::Enum(parse_enum_decl(inner, filename)?)),
-        Rule::impl_block => Ok(Decl::Impl(parse_impl_block(inner, filename)?)),
         Rule::aspect_decl => Ok(Decl::Aspect(parse_aspect_decl(inner, filename)?)),
         Rule::stmt => Ok(Decl::Stmt(Box::new(parse_stmt(inner, filename)?))),
         r => Err(MetelError::internal(format!("decl: unexpected rule {r:?}"))),
@@ -242,7 +254,7 @@ fn parse_mut_decl(
     let name = if first.as_rule() == Rule::mut_kw {
         inner
             .next()
-            .ok_or_else(|| MetelError::internal("mut_decl: expected identifier after mut"))?
+            .ok_or_else(|| MetelError::internal("mut_decl: expected identifier after var"))?
             .as_str()
             .to_string()
     } else {
@@ -310,7 +322,7 @@ fn parse_fun_decl(
     let (visibility, name) = if first.as_rule() == Rule::pub_kw {
         let n = inner
             .next()
-            .ok_or_else(|| MetelError::internal("fun_decl: expected name after pub"))?
+            .ok_or_else(|| MetelError::internal("fun_decl: expected name after public"))?
             .as_str()
             .to_string();
         (Visibility::Public, n)
@@ -387,7 +399,7 @@ fn parse_struct_decl(
     let (visibility, name) = if first.as_rule() == Rule::pub_kw {
         let n = inner
             .next()
-            .ok_or_else(|| MetelError::internal("struct_decl: expected name after pub"))?
+            .ok_or_else(|| MetelError::internal("struct_decl: expected name after public"))?
             .as_str()
             .to_string();
         (Visibility::Public, n)
@@ -427,7 +439,7 @@ fn parse_enum_decl(
     let (visibility, name) = if first.as_rule() == Rule::pub_kw {
         let n = inner
             .next()
-            .ok_or_else(|| MetelError::internal("enum_decl: expected name after pub"))?
+            .ok_or_else(|| MetelError::internal("enum_decl: expected name after public"))?
             .as_str()
             .to_string();
         (Visibility::Public, n)
@@ -464,33 +476,162 @@ fn parse_enum_decl(
 fn parse_impl_block(
     pair: pest::iterators::Pair<Rule>,
     filename: &str,
-) -> Result<ImplBlock, MetelError> {
+) -> Result<Vec<ImplBlock>, MetelError> {
+    let inner = pair
+        .into_inner()
+        .next()
+        .ok_or_else(|| MetelError::internal("impl_block: expected inner impl form"))?;
+    match inner.as_rule() {
+        Rule::extend_impl_block => parse_extend_impl_block(inner, filename),
+        r => Err(MetelError::internal(format!(
+            "impl_block: unexpected inner rule {r:?}"
+        ))),
+    }
+}
+
+fn parse_extend_impl_block(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<Vec<ImplBlock>, MetelError> {
     let span = Span::of(&pair, filename);
-    // Grammar: "impl" ~ bang? ~ generic_params? ~ (named_type ~ "for")? ~ type_expr
-    //          ~ where_clause? ~ "{" ~ fun_decl* ~ "}"
-    // `named_type` (the aspect) and `type_expr` (the target) are distinguishable by
-    // rule, not position — no need for the positional/count-based heuristic this
-    // replaces (that heuristic broke once `generic_params`/`where_clause` could also
-    // appear as children).
-    let mut polarity = Polarity::Positive;
     let mut generics = vec![];
-    let mut aspect_name = None;
-    let mut aspect_type_args = vec![];
     let mut target_type = None;
     let mut where_clause = None;
     let mut assoc_type_defs = vec![];
     let mut methods = vec![];
+    let mut aspects = vec![];
+    let mut bodyless = false;
+
+    for p in pair.into_inner() {
+        match p.as_rule() {
+            Rule::generic_params => generics = parse_generic_params(p, filename)?,
+            Rule::type_expr => target_type = Some(parse_type_expr(p, filename)?),
+            Rule::extend_impl_bodyless => {
+                bodyless = true;
+                for inner in p.into_inner() {
+                    match inner.as_rule() {
+                        Rule::extend_aspect_list => {
+                            aspects = parse_extend_aspect_list(inner, filename)?
+                        }
+                        Rule::where_clause => where_clause = Some(parse_where_clause(inner, filename)?),
+                        _ => {}
+                    }
+                }
+            }
+            Rule::extend_impl_braced => {
+                for inner in p.into_inner() {
+                    match inner.as_rule() {
+                        Rule::extend_aspect => aspects.push(parse_extend_aspect(inner, filename)?),
+                        Rule::where_clause => where_clause = Some(parse_where_clause(inner, filename)?),
+                        Rule::assoc_type_def => assoc_type_defs.push(parse_assoc_type_def(inner, filename)?),
+                        Rule::fun_decl => methods.push(parse_fun_decl(inner, filename)?),
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let target_type =
+        target_type.ok_or_else(|| MetelError::internal("extend_impl_block: missing target type"))?;
+
+    if bodyless {
+        if aspects.is_empty() {
+            return Err(MetelError::parse(
+                ParseErrorCode::P0001,
+                "a bodyless `extend` requires at least one aspect",
+                &span,
+            ));
+        }
+        if aspects.len() > 1 && where_clause.is_some() {
+            return Err(MetelError::parse(
+                ParseErrorCode::P0001,
+                "a multi-aspect bodyless `extend` cannot carry a where-clause",
+                &span,
+            ));
+        }
+
+        return aspects
+            .into_iter()
+            .map(|(polarity, aspect_name, aspect_type_args)| {
+                Ok(ImplBlock {
+                    polarity,
+                    generics: generics.clone(),
+                    aspect_name: Some(aspect_name),
+                    aspect_type_args,
+                    target_type: target_type.clone(),
+                    where_clause: where_clause.clone(),
+                    assoc_type_defs: vec![],
+                    methods: vec![],
+                    span: span.clone(),
+                })
+            })
+            .collect();
+    }
+
+    if aspects.len() > 1 {
+        return Err(MetelError::parse(
+            ParseErrorCode::P0001,
+            "a braced `extend` can target at most one aspect",
+            &span,
+        ));
+    }
+
+    if let Some((polarity, _, _)) = aspects.first() {
+        if *polarity == Polarity::Negative {
+            return Err(MetelError::parse(
+                ParseErrorCode::P0001,
+                "a negative `extend` must use the bodyless `;` form",
+                &span,
+            ));
+        }
+    }
+
+    let (aspect_name, aspect_type_args) = match aspects.into_iter().next() {
+        Some((_, name, args)) => (Some(name), args),
+        None => (None, vec![]),
+    };
+
+    Ok(vec![ImplBlock {
+        polarity: Polarity::Positive,
+        generics,
+        aspect_name,
+        aspect_type_args,
+        target_type,
+        where_clause,
+        assoc_type_defs,
+        methods,
+        span,
+    }])
+}
+
+fn parse_extend_aspect_list(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<Vec<(Polarity, String, Vec<TypeExpr>)>, MetelError> {
+    pair.into_inner()
+        .filter(|p| p.as_rule() == Rule::extend_aspect)
+        .map(|p| parse_extend_aspect(p, filename))
+        .collect()
+}
+
+fn parse_extend_aspect(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<(Polarity, String, Vec<TypeExpr>), MetelError> {
+    let mut polarity = Polarity::Positive;
+    let mut aspect_name = None;
+    let mut aspect_type_args = vec![];
 
     for p in pair.into_inner() {
         match p.as_rule() {
             Rule::bang => polarity = Polarity::Negative,
-            Rule::generic_params => generics = parse_generic_params(p, filename)?,
             Rule::named_type => {
-                // named_type = { type_path ~ ("<" ~ type_args ~ ">")? }
                 let mut inner_pairs = p.into_inner();
-                let path_pair = inner_pairs
-                    .next()
-                    .ok_or_else(|| MetelError::internal("impl_block: expected aspect type path"))?;
+                let path_pair = inner_pairs.next().ok_or_else(|| {
+                    MetelError::internal("extend_aspect: expected aspect type path")
+                })?;
                 aspect_name = Some(collect_path_components(path_pair)?.join("::"));
                 for tp in inner_pairs {
                     if tp.as_rule() == Rule::type_args {
@@ -502,34 +643,15 @@ fn parse_impl_block(
                     }
                 }
             }
-            Rule::type_expr => target_type = Some(parse_type_expr(p, filename)?),
-            Rule::where_clause => where_clause = Some(parse_where_clause(p, filename)?),
-            Rule::assoc_type_def => assoc_type_defs.push(parse_assoc_type_def(p, filename)?),
-            Rule::fun_decl => methods.push(parse_fun_decl(p, filename)?),
             _ => {}
         }
     }
 
-    if polarity == Polarity::Negative && !methods.is_empty() {
-        return Err(MetelError::parse(
-            ParseErrorCode::P0001,
-            "a negative impl (`impl !Aspect for Type`) must have an empty body",
-            &span,
-        ));
-    }
-
-    Ok(ImplBlock {
+    Ok((
         polarity,
-        generics,
-        aspect_name,
+        aspect_name.ok_or_else(|| MetelError::internal("extend_aspect: missing aspect name"))?,
         aspect_type_args,
-        target_type: target_type
-            .ok_or_else(|| MetelError::internal("impl_block: no target type found"))?,
-        where_clause,
-        assoc_type_defs,
-        methods,
-        span,
-    })
+    ))
 }
 
 fn parse_param_list(
@@ -566,7 +688,7 @@ fn parse_param(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Para
             span,
         });
     }
-    if text == "&mut self" {
+    if text == "&var self" {
         return Ok(Param {
             mutable: false,
             receiver: Some(ReceiverKind::RefMut),
@@ -611,7 +733,7 @@ fn parse_struct_fields(
                 (
                     Visibility::Public,
                     it.next().ok_or_else(|| {
-                        MetelError::internal("struct_field: expected name after pub")
+                        MetelError::internal("struct_field: expected name after public")
                     })?,
                 )
             } else {
@@ -1918,7 +2040,7 @@ fn parse_unary_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result
             Box::new(parse_expr(child, filename)?),
             span,
         ))
-    } else if text.starts_with("&mut") {
+    } else if text.starts_with("&var") {
         Ok(Expr::UnaryOp(
             UnaryOp::RefMut,
             Box::new(parse_expr(child, filename)?),
@@ -2502,7 +2624,7 @@ fn parse_for_in_stmt(
     } else {
         let name = inner
             .next()
-            .ok_or_else(|| MetelError::internal("for_in: expected binding name after mut"))?
+            .ok_or_else(|| MetelError::internal("for_in: expected binding name after var"))?
             .as_str()
             .to_string();
         (true, name)
@@ -2557,7 +2679,7 @@ fn parse_block(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Bloc
                         };
                         stmts.push(Decl::Stmt(Box::new(Stmt::Expr(expr))));
                     }
-                    Rule::decl => stmts.push(parse_decl(inner, filename)?),
+                    Rule::decl => stmts.extend(parse_decl(inner, filename)?),
                     r => {
                         return Err(MetelError::internal(format!(
                             "block_item: unexpected rule {r:?}"
@@ -2565,7 +2687,7 @@ fn parse_block(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Bloc
                     }
                 }
             }
-            Rule::decl => stmts.push(parse_decl(p, filename)?),
+            Rule::decl => stmts.extend(parse_decl(p, filename)?),
             Rule::expr => tail = Some(Box::new(parse_expr(p, filename)?)),
             _ => {}
         }
@@ -2702,7 +2824,7 @@ fn parse_aspect_decl(
     let (visibility, name) = if first.as_rule() == Rule::pub_kw {
         let n = inner
             .next()
-            .ok_or_else(|| MetelError::internal("aspect_decl: expected name after pub"))?
+            .ok_or_else(|| MetelError::internal("aspect_decl: expected name after public"))?
             .as_str()
             .to_string();
         (Visibility::Public, n)

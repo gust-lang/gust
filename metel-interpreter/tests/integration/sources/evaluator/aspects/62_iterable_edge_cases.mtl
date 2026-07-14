@@ -10,18 +10,18 @@
 //   mutation of outer variable inside loop body.
 
 aspect Iterable<T> {
-    fun next(&mut self) -> Perhaps<T>;
+    fun next(&var self) -> Perhaps<T>;
 }
 
 // Generic counter: emits 0, 1, …, limit-1
 struct Counter { current: i64, limit: i64 }
 
-impl Counter {
+extend Counter {
     fun new(limit: i64) -> Counter { Counter { current: 0, limit: limit } }
 }
 
-impl Iterable<i64> for Counter {
-    fun next(&mut self) -> Perhaps<i64> {
+extend Counter: Iterable<i64> {
+    fun next(&var self) -> Perhaps<i64> {
         if (self.current < self.limit) {
             let v = self.current;
             self.current = self.current + 1;
@@ -35,12 +35,12 @@ impl Iterable<i64> for Counter {
 // Countdown: emits start, start-1, …, 1
 struct Countdown { current: i64 }
 
-impl Countdown {
+extend Countdown {
     fun new(start: i64) -> Countdown { Countdown { current: start } }
 }
 
-impl Iterable<i64> for Countdown {
-    fun next(&mut self) -> Perhaps<i64> {
+extend Countdown: Iterable<i64> {
+    fun next(&var self) -> Perhaps<i64> {
         if (self.current > 0) {
             let v = self.current;
             self.current = self.current - 1;
@@ -53,42 +53,42 @@ impl Iterable<i64> for Countdown {
 
 fun main() {
     // Empty iterator: body never runs
-    let mut ran = false;
-    for (let _x in Counter::new(0)) { ran = true; }
+    var ran = false;
+    for (_x in Counter::new(0)) { ran = true; }
     assert(!ran);
 
     // Single-element iterator: body runs exactly once
-    let mut count = 0;
-    for (let x in Counter::new(1)) {
+    var count = 0;
+    for (x in Counter::new(1)) {
         count += 1;
         assert(x == 0);
     }
     assert(count == 1);
 
     // Normal sum: 0+1+2+3+4 = 10
-    let mut sum = 0;
-    for (let x in Counter::new(5)) { sum += x; }
+    var sum = 0;
+    for (x in Counter::new(5)) { sum += x; }
     assert(sum == 10);
 
     // break: stop after first item ≥ 3
-    let mut break_sum = 0;
-    for (let x in Counter::new(10)) {
+    var break_sum = 0;
+    for (x in Counter::new(10)) {
         if (x >= 3) { break; }
         break_sum += x;
     }
     assert(break_sum == 3); // 0+1+2
 
     // break on first iteration: body runs 0 times after break
-    let mut first_val = -1;
-    for (let x in Counter::new(5)) {
+    var first_val = -1;
+    for (x in Counter::new(5)) {
         first_val = x;
         break;
     }
     assert(first_val == 0);
 
     // continue: sum only even numbers in [0,6)
-    let mut even_sum = 0;
-    for (let x in Counter::new(6)) {
+    var even_sum = 0;
+    for (x in Counter::new(6)) {
         let rem = x - (x / 2 * 2);
         if (rem != 0) { continue; }
         even_sum += x;
@@ -96,9 +96,9 @@ fun main() {
     assert(even_sum == 6); // 0+2+4
 
     // nested: outer 3 × inner 3 = 9 pairs, sum of products
-    let mut prod_sum = 0;
-    for (let i in Counter::new(3)) {
-        for (let j in Counter::new(3)) {
+    var prod_sum = 0;
+    for (i in Counter::new(3)) {
+        for (j in Counter::new(3)) {
             prod_sum += i * j;
         }
     }
@@ -106,23 +106,23 @@ fun main() {
     assert(prod_sum == 9);
 
     // nested break: outer breaks when inner total hits limit
-    let mut outer_iters = 0;
-    for (let _i in Counter::new(10)) {
+    var outer_iters = 0;
+    for (_i in Counter::new(10)) {
         outer_iters += 1;
-        let mut inner_sum = 0;
-        for (let j in Counter::new(5)) { inner_sum += j; }
+        var inner_sum = 0;
+        for (j in Counter::new(5)) { inner_sum += j; }
         if (outer_iters >= 3) { break; }
     }
     assert(outer_iters == 3);
 
     // countdown: 5,4,3,2,1 → sum = 15
-    let mut cd_sum = 0;
-    for (let v in Countdown::new(5)) { cd_sum += v; }
+    var cd_sum = 0;
+    for (v in Countdown::new(5)) { cd_sum += v; }
     assert(cd_sum == 15);
 
     // countdown break: first value ≤ 3
-    let mut first_leq3 = -1;
-    for (let v in Countdown::new(10)) {
+    var first_leq3 = -1;
+    for (v in Countdown::new(10)) {
         if (v <= 3) {
             first_leq3 = v;
             break;
@@ -131,12 +131,12 @@ fun main() {
     assert(first_leq3 == 3);
 
     // large count: sum 0..99 = 4950
-    let mut large_sum = 0;
-    for (let x in Counter::new(100)) { large_sum += x; }
+    var large_sum = 0;
+    for (x in Counter::new(100)) { large_sum += x; }
     assert(large_sum == 4950);
 
     // outer variable mutated inside loop: accumulate squares
-    let mut sq_sum = 0;
-    for (let x in Counter::new(5)) { sq_sum += x * x; }
+    var sq_sum = 0;
+    for (x in Counter::new(5)) { sq_sum += x * x; }
     assert(sq_sum == 30); // 0+1+4+9+16
 }

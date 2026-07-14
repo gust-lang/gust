@@ -13,7 +13,7 @@ struct Key {
     name: String,
 }
 
-impl Serializable for Key {
+extend Key: Serializable {
     fun serialize(self) -> String {
         self.name
     }

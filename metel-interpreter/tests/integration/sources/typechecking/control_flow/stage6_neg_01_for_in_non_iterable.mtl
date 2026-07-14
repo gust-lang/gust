@@ -1,4 +1,4 @@
 // for-in over a non-iterable type should fail.
 let n: i64 = 42;
-for (let x in n) { // ERROR[T0001]
+for (x in n) { // ERROR[T0001]
 }

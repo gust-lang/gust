@@ -14,7 +14,7 @@ fun main() {
     assert(computed[2] == 5);
 
     // Mutation of a sized array element.
-    let mut arr: [i64; 3] = [1, 2, 3];
+    var arr: [i64; 3] = [1, 2, 3];
     arr[1] = 99;
     assert(arr[0] == 1);
     assert(arr[1] == 99);
@@ -22,8 +22,8 @@ fun main() {
 
     // Coercion: [T; N] iterates via for-in (same as T[]).
     let sized: [i64; 4] = [10, 20, 30, 40];
-    let mut dyn_sum = 0;
-    for (let x in sized) {
+    var dyn_sum = 0;
+    for (x in sized) {
         dyn_sum += x;
     }
     assert(dyn_sum == 100);
@@ -32,8 +32,8 @@ fun main() {
     let arr1: [i64; 1] = [42];
     let rest_empty = match arr1 {
         [head, ..rest] => {
-            let mut cnt = 0;
-            for (let _ in rest) { cnt += 1; }
+            var cnt = 0;
+            for (_ in rest) { cnt += 1; }
             head + cnt
         },
     };
@@ -54,8 +54,8 @@ fun main() {
     assert(dist_sq == 25);
 
     // for-in over a repeat-constructed sized array.
-    let mut total = 0;
-    for (let v in [7; 5]) {
+    var total = 0;
+    for (v in [7; 5]) {
         total += v;
     }
     assert(total == 35);

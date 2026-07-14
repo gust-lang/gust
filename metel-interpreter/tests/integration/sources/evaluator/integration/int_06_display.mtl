@@ -22,7 +22,7 @@ aspect From<T> {
 }
 
 aspect Iterable<T> {
-    fun next(&mut self) -> Perhaps<T>;
+    fun next(&var self) -> Perhaps<T>;
 }
 
 // ── Wrapper types ──────────────────────────────────────────────────────────────
@@ -30,21 +30,21 @@ aspect Iterable<T> {
 struct Score       { points: i64 }
 struct Temperature { celsius: f64 }
 
-impl From<i64> for Score {
+extend Score: From<i64> {
     fun from(value: i64) -> Score { Score { points: value } }
 }
 
-impl From<f64> for Temperature {
+extend Temperature: From<f64> {
     fun from(value: f64) -> Temperature { Temperature { celsius: value } }
 }
 
-impl Printable for Score {
+extend Score: Printable {
     fun format(self) -> String {
         "Score(" + self.points.to_string() + ")"
     }
 }
 
-impl Printable for Temperature {
+extend Temperature: Printable {
     fun format(self) -> String {
         "Temp(" + self.celsius.to_string() + ")"
     }
@@ -54,13 +54,13 @@ impl Printable for Temperature {
 
 struct StringBag { items: String[], pos: i64 }
 
-impl StringBag {
+extend StringBag {
     fun new(items: String[]) -> StringBag { StringBag { items: items, pos: 0 } }
     fun len(self) -> i64 { self.items.len() }
 }
 
-impl Iterable<String> for StringBag {
-    fun next(&mut self) -> Perhaps<String> {
+extend StringBag: Iterable<String> {
+    fun next(&var self) -> Perhaps<String> {
         if (self.pos < self.items.len()) {
             let v = self.items[self.pos as u64];
             self.pos = self.pos + 1;
@@ -76,7 +76,7 @@ impl Iterable<String> for StringBag {
 struct FormatError { msg: String }
 struct RenderError { msg: String }
 
-impl From<FormatError> for RenderError {
+extend RenderError: From<FormatError> {
     fun from(value: FormatError) -> RenderError {
         RenderError { msg: "fmt: " + value.msg }
     }
@@ -163,16 +163,16 @@ fun main() {
     // StringBag Iterable: concatenate labels
     let bag = StringBag::new(["a", "b", "c"]);
     assert(bag.len() == 3);
-    let mut result = "";
-    for (let label in bag) {
+    var result = "";
+    for (label in bag) {
         result = result + label;
     }
     assert(result == "abc");
 
     // Empty StringBag
-    let mut empty_ran = false;
+    var empty_ran = false;
     let empty_strs: String[] = [];
-    for (let _label in StringBag::new(empty_strs)) { empty_ran = true; }
+    for (_label in StringBag::new(empty_strs)) { empty_ran = true; }
     assert(!empty_ran);
 
     // ? success path: "100" → Score(100)

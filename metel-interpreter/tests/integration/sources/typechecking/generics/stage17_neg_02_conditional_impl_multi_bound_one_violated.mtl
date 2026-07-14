@@ -4,7 +4,7 @@ aspect Printable {
     fun print(self) -> String;
 }
 
-impl Printable for i64 {
+extend i64: Printable {
     fun print(self) -> String { return "i64"; }
 }
 
@@ -17,7 +17,7 @@ struct NoPrint {
     value: i64,
 }
 
-impl<A: Printable, B: Printable> Printable for Pair<A, B> {
+extend<A: Printable, B: Printable> Pair<A, B>: Printable {
     fun print(self) -> String {
         return "pair";
     }

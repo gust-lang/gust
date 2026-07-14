@@ -17,8 +17,8 @@ fun main() {
     assert(arr[3] == 40);
 
     // For-in iteration.
-    let mut sum = 0;
-    for (let x in [1; 4]) {
+    var sum = 0;
+    for (x in [1; 4]) {
         sum += x;
     }
     assert(sum == 4);

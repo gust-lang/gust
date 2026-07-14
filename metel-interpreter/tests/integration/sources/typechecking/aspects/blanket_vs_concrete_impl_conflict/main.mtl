@@ -13,11 +13,11 @@ struct Foo<T> {
     value: T,
 }
 
-impl<T> Marker for Foo<T> {
+extend<T> Foo<T>: Marker {
     fun mark(self) -> String { return "blanket"; }
 }
 
-impl Marker for Foo<i64> { // ERROR[T0015]
+extend Foo<i64>: Marker { // ERROR[T0015]
     fun mark(self) -> String { return "concrete"; }
 }
 

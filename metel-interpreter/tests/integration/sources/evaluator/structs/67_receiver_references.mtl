@@ -2,8 +2,8 @@ struct Counter {
     value: i64,
 }
 
-impl Counter {
-    fun increment(&mut self) {
+extend Counter {
+    fun increment(&var self) {
         self.value += 1;
     }
 
@@ -13,7 +13,7 @@ impl Counter {
 }
 
 fun main() {
-    let mut counter = Counter { value: 0 };
+    var counter = Counter { value: 0 };
     counter.increment();
     counter.increment();
     assert(counter.current() == 2);

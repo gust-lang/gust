@@ -1,6 +1,6 @@
 struct Point { x: i64 }
 
-impl Point {
+extend Point {
     fun clone(self) -> Self {
         self
     }
@@ -14,7 +14,7 @@ enum Token {
     i64 { value: i64 },
 }
 
-impl Token {
+extend Token {
     fun identity(self) -> Self {
         self
     }

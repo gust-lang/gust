@@ -17,11 +17,11 @@ struct Entry {
     value: i64,
 }
 
-impl Printable for Entry {
+extend Entry: Printable {
     fun print(self) {}
 }
 
-impl Comparable for Entry {
+extend Entry: Comparable {
     fun compare(self, other: Entry) -> i64 {
         self.value - other.value
     }

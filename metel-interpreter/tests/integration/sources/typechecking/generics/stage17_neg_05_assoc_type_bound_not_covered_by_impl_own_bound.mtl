@@ -3,7 +3,7 @@ aspect Deref { type Target: Clone2; fun deref(self) -> Target; }
 aspect Clone2 { fun clone2(self) -> Self; }
 struct Wrapper<T> { value: T }
 // T only has Display bound, but Deref requires Target: Clone2
-impl<T: Display> Deref for Wrapper<T> { // ERROR[T0012]
+extend<T: Display> Wrapper<T>: Deref { // ERROR[T0012]
     type Target = T;
     fun deref(self) -> T { self.value }
 }

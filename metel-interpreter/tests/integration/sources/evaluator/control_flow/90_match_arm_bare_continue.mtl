@@ -2,8 +2,8 @@
 // return_arm/break_arm grammar exception, since that never included a
 // continue_arm; now works via the same unified expression mechanism.
 fun sum_evens(n: i64) -> i64 {
-    let mut total: i64 = 0;
-    let mut i: i64 = 0;
+    var total: i64 = 0;
+    var i: i64 = 0;
     loop {
         if (i == n) { break; }
         i = i + 1;

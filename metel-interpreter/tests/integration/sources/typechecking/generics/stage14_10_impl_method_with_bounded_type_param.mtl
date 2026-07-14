@@ -14,11 +14,11 @@ struct SortedList<T: Comparable> {
 
 struct Num { value: i64 }
 
-impl Comparable for Num {
+extend Num: Comparable {
     fun compare(self, other: Num) -> i64 { self.value - other.value }
 }
 
-impl SortedList<T> {
+extend SortedList<T> {
     fun rank(self, item: T, pivot: T) -> i64 {
         item.compare(pivot)
     }

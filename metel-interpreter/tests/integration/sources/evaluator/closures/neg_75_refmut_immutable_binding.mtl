@@ -1,7 +1,7 @@
-// &mut requires a let mut binding — taking &mut of a plain let is a type error.
+// &var requires a var binding — taking &var of a plain let is a type error.
 // TYPECHECK_ERROR[immutable binding]
 fun main() {
     let x = 10;
-    let p: &mut i64 = &mut x;
+    let p: &var i64 = &var x;
     p = 42;
 }

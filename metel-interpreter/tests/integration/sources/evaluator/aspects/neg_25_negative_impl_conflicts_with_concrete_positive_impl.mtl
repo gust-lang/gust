@@ -14,12 +14,12 @@ struct Widget {
     x: i64,
 }
 
-impl Greet for Widget {
+extend Widget: Greet {
     fun greet(&self) -> String {
         return "hi";
     }
 }
 
-impl !Greet for Widget {}
+extend Widget: !Greet;
 
 fun main() {}

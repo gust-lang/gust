@@ -18,11 +18,11 @@ struct Wrapper<T> {
     val: T,
 }
 
-impl<T: Copy2> Serialize2 for Wrapper<T> {
+extend<T: Copy2> Wrapper<T>: Serialize2 {
     fun ser(self) -> String { return "copyable"; }
 }
 
-impl<T: !Copy2> Serialize2 for Wrapper<T> {
+extend<T: !Copy2> Wrapper<T>: Serialize2 {
     fun ser(self) -> String { return "not-copyable"; }
 }
 

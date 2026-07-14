@@ -9,7 +9,7 @@ struct Box<T> {
     value: T,
 }
 
-impl Box<T> {
+extend Box<T> {
     // Plain generic method returning the struct's type param.
     fun get_or(self, fallback: T) -> T {
         self.value
@@ -28,7 +28,7 @@ enum Maybe<T> {
     Nothing,
 }
 
-impl Maybe<T> {
+extend Maybe<T> {
     // `match self` on a generic enum — the variant field type is the generic T.
     fun is_just(self) -> boolean {
         match self {

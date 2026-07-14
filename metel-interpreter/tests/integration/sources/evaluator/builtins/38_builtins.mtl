@@ -25,7 +25,7 @@ fun main() {
     assert("\${value}" == "\${value}");
     assert("$5" == "$5");
     // List<T>: new, push, len, get, pop, as_slice, from
-    let mut lst: List<i64> = List::new();
+    var lst: List<i64> = List::new();
     assert(lst.len() == 0);
     lst.push(10);
     lst.push(20);
@@ -56,8 +56,8 @@ fun main() {
     let lst2 = List::from(src);
     assert(lst2.len() == 5);
     // Building a list with a loop then converting to T[]
-    let mut built: List<i64> = List::new();
-    let mut i = 1;
+    var built: List<i64> = List::new();
+    var i = 1;
     while (i <= 5) {
         built.push(i * i);
         i += 1;
@@ -67,7 +67,7 @@ fun main() {
     assert(built_arr[0] == 1);
     assert(built_arr[4] == 25);
     // get at boundary indices
-    let mut boundary: List<i64> = List::new();
+    var boundary: List<i64> = List::new();
     boundary.push(100);
     boundary.push(200);
     boundary.push(300);
@@ -80,13 +80,13 @@ fun main() {
         None => assert(false),
     };
     // pop on empty list returns None
-    let mut empty_lst: List<i64> = List::new();
+    var empty_lst: List<i64> = List::new();
     match empty_lst.pop() {
         Perhaps::Some { value } => assert(false),
         None => assert(true),
     };
     // pop until empty, verifying each value
-    let mut drain: List<i64> = List::new();
+    var drain: List<i64> = List::new();
     drain.push(7);
     drain.push(8);
     drain.push(9);
@@ -108,7 +108,7 @@ fun main() {
     };
     assert(drain.len() == 0);
     // push after pop
-    let mut reuse: List<i64> = List::new();
+    var reuse: List<i64> = List::new();
     reuse.push(1);
     reuse.push(2);
     reuse.pop();
@@ -126,7 +126,7 @@ fun main() {
     let empty_slice = empty_lst.as_slice();
     assert(empty_slice.len() == 0);
     // List<String>
-    let mut words: List<String> = List::new();
+    var words: List<String> = List::new();
     words.push("hello");
     words.push("world");
     assert(words.len() == 2);
@@ -140,7 +140,7 @@ fun main() {
     };
     assert(words.len() == 1);
     // List<f64>
-    let mut floats: List<f64> = List::new();
+    var floats: List<f64> = List::new();
     floats.push(1.5);
     floats.push(2.5);
     floats.push(3.5);
@@ -150,7 +150,7 @@ fun main() {
         None => assert(false),
     };
     // List<boolean>
-    let mut flags: List<boolean> = List::new();
+    var flags: List<boolean> = List::new();
     flags.push(true);
     flags.push(false);
     flags.push(true);
@@ -160,12 +160,12 @@ fun main() {
         None => assert(false),
     };
     // for-in over as_slice result
-    let mut sum_lst: List<i64> = List::new();
+    var sum_lst: List<i64> = List::new();
     sum_lst.push(10);
     sum_lst.push(20);
     sum_lst.push(30);
-    let mut total = 0;
-    for (let x in sum_lst.as_slice()) {
+    var total = 0;
+    for (x in sum_lst.as_slice()) {
         total += x;
     }
     assert(total == 60);

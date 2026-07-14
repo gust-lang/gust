@@ -17,7 +17,7 @@ struct Rectangle {
     height: i64,
 }
 
-impl Circle {
+extend Circle {
     fun new(r: i64) -> Circle {
         return Circle { radius: r };
     }
@@ -26,31 +26,31 @@ impl Circle {
     }
 }
 
-impl Rectangle {
+extend Rectangle {
     fun new(w: i64, h: i64) -> Rectangle {
         return Rectangle { width: w, height: h };
     }
 }
 
-impl Describable for Circle {
+extend Circle: Describable {
     fun describe(self) -> String {
         return "Circle(r=" + self.radius.to_string() + ")";
     }
 }
 
-impl Describable for Rectangle {
+extend Rectangle: Describable {
     fun describe(self) -> String {
         return "Rect(" + self.width.to_string() + "x" + self.height.to_string() + ")";
     }
 }
 
-impl Scalable for Circle {
+extend Circle: Scalable {
     fun scale(self, factor: i64) -> i64 {
         return self.radius * factor;
     }
 }
 
-impl Scalable for Rectangle {
+extend Rectangle: Scalable {
     fun scale(self, factor: i64) -> i64 {
         return self.width * self.height * factor;
     }

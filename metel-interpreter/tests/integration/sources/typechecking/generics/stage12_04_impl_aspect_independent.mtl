@@ -8,8 +8,8 @@ aspect Printable {
 struct A { value: i64 }
 struct B { value: String }
 
-impl Printable for A { fun print(self) {} }
-impl Printable for B { fun print(self) {} }
+extend A: Printable { fun print(self) {} }
+extend B: Printable { fun print(self) {} }
 
 fun print_both(x: impl Printable, y: impl Printable) {
     x.print();

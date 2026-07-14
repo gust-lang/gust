@@ -13,7 +13,7 @@ aspect From<T> {
 }
 
 aspect Iterable<T> {
-    fun next(&mut self) -> Perhaps<T>;
+    fun next(&var self) -> Perhaps<T>;
 }
 
 // ── Error hierarchy ────────────────────────────────────────────────────────────
@@ -22,20 +22,20 @@ struct IoError     { msg: String }
 struct ParseError  { msg: String }
 struct AppError    { msg: String }
 
-impl From<IoError> for AppError {
+extend AppError: From<IoError> {
     fun from(value: IoError) -> AppError {
         AppError { msg: "io: " + value.msg }
     }
 }
 
-impl From<ParseError> for AppError {
+extend AppError: From<ParseError> {
     fun from(value: ParseError) -> AppError {
         AppError { msg: "parse: " + value.msg }
     }
 }
 
 // IoError → ParseError (for multi-level chain test)
-impl From<IoError> for ParseError {
+extend ParseError: From<IoError> {
     fun from(value: IoError) -> ParseError {
         ParseError { msg: "from_io: " + value.msg }
     }
@@ -92,12 +92,12 @@ fun multi_q(path: String) -> Result<i64, AppError> {
 
 struct Counter { current: i64, limit: i64 }
 
-impl Counter {
+extend Counter {
     fun new(limit: i64) -> Counter { Counter { current: 0, limit: limit } }
 }
 
-impl Iterable<i64> for Counter {
-    fun next(&mut self) -> Perhaps<i64> {
+extend Counter: Iterable<i64> {
+    fun next(&var self) -> Perhaps<i64> {
         if (self.current < self.limit) {
             let v = self.current;
             self.current = self.current + 1;

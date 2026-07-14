@@ -1,1 +1,1 @@
-pub struct Ast { pub value: i64 }
+public struct Ast { public value: i64 }

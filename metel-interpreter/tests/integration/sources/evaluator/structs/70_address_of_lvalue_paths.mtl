@@ -65,14 +65,14 @@ fun test_nested_tuple_address_of() {
 // ── Function reference from tuple element ────────────────────────────────────
 
 fun apply_fns(fns: Array<&() -> ()>) {
-    for (let f in fns) {
+    for (f in fns) {
         f();
     }
 }
 
 fun test_fn_ptr_from_tuple() {
-    let mut counter = 0;
-    let ptr = &mut counter;
+    var counter = 0;
+    let ptr = &var counter;
     let inc = () -> () { ptr += 1; };
     let get = () -> () { };
 

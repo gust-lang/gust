@@ -8,7 +8,7 @@ struct Config {
     name: String,
 }
 
-impl Serializable for Config {
+extend Config: Serializable {
     fun serialize(self) -> String {
         self.name
     }

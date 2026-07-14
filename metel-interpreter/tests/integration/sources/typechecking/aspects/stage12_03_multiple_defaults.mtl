@@ -16,7 +16,7 @@ aspect Ops {
     }
 }
 
-impl Ops for Value {
+extend Value: Ops {
     fun get(self) -> i64 {
         return self.n;
     }

@@ -8,7 +8,7 @@ aspect Tripler {
 	}
 }
 
-impl Tripler for i64 {}
+extend i64: Tripler {}
 
 fun main() {
 	let x = 14i64;

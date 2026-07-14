@@ -25,38 +25,38 @@ struct Celsius   { degrees: f64 }
 struct Fahrenheit{ degrees: f64 }
 
 // Meters ↔ Feet
-impl From<Meters> for Feet {
+extend Feet: From<Meters> {
     fun from(value: Meters) -> Feet {
         Feet { value: value.value * 3.28084 }
     }
 }
-impl From<Feet> for Meters {
+extend Meters: From<Feet> {
     fun from(value: Feet) -> Meters {
         Meters { value: value.value / 3.28084 }
     }
 }
 
 // Feet → Inches (chaining: Meters → Feet → Inches)
-impl From<Feet> for Inches {
+extend Inches: From<Feet> {
     fun from(value: Feet) -> Inches {
         Inches { value: value.value * 12.0 }
     }
 }
 
 // Celsius ↔ Kelvin
-impl From<Celsius> for Kelvin {
+extend Kelvin: From<Celsius> {
     fun from(value: Celsius) -> Kelvin {
         Kelvin { degrees: value.degrees + 273.15 }
     }
 }
-impl From<Kelvin> for Celsius {
+extend Celsius: From<Kelvin> {
     fun from(value: Kelvin) -> Celsius {
         Celsius { degrees: value.degrees - 273.15 }
     }
 }
 
 // Celsius ↔ Fahrenheit (multiple targets from Celsius)
-impl From<Celsius> for Fahrenheit {
+extend Fahrenheit: From<Celsius> {
     fun from(value: Celsius) -> Fahrenheit {
         Fahrenheit { degrees: value.degrees * 1.8 + 32.0 }
     }

@@ -8,13 +8,13 @@ struct Handle {
     fd: i64,
 }
 
-impl !Drop for Handle {}
+extend Handle: !Drop;
 
 aspect Greet {
     fun greet(&self) -> String;
 }
 
-impl Greet for Handle {
+extend Handle: Greet {
     fun greet(&self) -> String {
         return "handle";
     }

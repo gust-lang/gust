@@ -1,13 +1,13 @@
 // 04 — Structs and impl blocks
 // Covers: struct definition, instantiation, field access, methods (self),
-//         &mut self, associated functions (constructors), generic structs.
+//         &var self, associated functions (constructors), generic structs.
 
 struct Point {
     x: f64,
     y: f64,
 }
 
-impl Point {
+extend Point {
     fun new(x: f64, y: f64) -> Point {
         return Point { x: x, y: y };
     }
@@ -16,7 +16,7 @@ impl Point {
         return "(" + float_to_string(self.x) + ", " + float_to_string(self.y) + ")";
     }
 
-    fun translate(&mut self, dx: f64, dy: f64) {
+    fun translate(&var self, dx: f64, dy: f64) {
         self.x = self.x + dx;
         self.y = self.y + dy;
     }
@@ -35,7 +35,7 @@ struct Pair<A, B> {
     second: B,
 }
 
-impl Pair<i64, String> {
+extend Pair<i64, String> {
     fun new(a: i64, b: String) -> Pair<i64, String> {
         return Pair { first: a, second: b };
     }
@@ -49,16 +49,16 @@ struct Counter {
     value: i64,
 }
 
-impl Counter {
+extend Counter {
     fun new() -> Counter {
         return Counter { value: 0 };
     }
 
-    fun increment(&mut self) {
+    fun increment(&var self) {
         self.value += 1;
     }
 
-    fun reset(&mut self) {
+    fun reset(&var self) {
         self.value = 0;
     }
 
@@ -73,8 +73,8 @@ fun main() {
     println(p.to_string());              // (3.0, 4.0)
     println(float_to_string(p.x));      // 3.0
 
-    // --- &mut self method ---
-    let mut q = Point::new(0.0, 0.0);
+    // --- &var self method ---
+    var q = Point::new(0.0, 0.0);
     q.translate(5.0, 7.0);
     println(q.to_string());             // (5.0, 7.0)
 
@@ -86,8 +86,8 @@ fun main() {
     let pair = Pair::new(42, "hello");
     println(pair.describe());           // 42 -> hello
 
-    // --- counter with &mut self ---
-    let mut ctr = Counter::new();
+    // --- counter with &var self ---
+    var ctr = Counter::new();
     ctr.increment();
     ctr.increment();
     ctr.increment();

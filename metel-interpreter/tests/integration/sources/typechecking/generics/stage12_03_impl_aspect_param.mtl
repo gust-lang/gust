@@ -8,7 +8,7 @@ struct Label {
     text: String,
 }
 
-impl Printable for Label {
+extend Label: Printable {
     fun print(self) {}
 }
 

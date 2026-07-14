@@ -4,16 +4,16 @@
 //         positional access (.0 .1), tuple destructuring in match.
 
 fun sum(arr: i64[]) -> i64 {
-    let mut total = 0;
-    for (let n in arr) {
+    var total = 0;
+    for (n in arr) {
         total += n;
     }
     return total;
 }
 
 fun reverse(arr: i64[]) -> i64[] {
-    let mut result: i64[]  = [];
-    let mut i = array_len(arr) - 1;
+    var result: i64[]  = [];
+    var i = array_len(arr) - 1;
     while (i >= 0) {
         array_push(result, arr[i]);
         i -= 1;
@@ -22,8 +22,8 @@ fun reverse(arr: i64[]) -> i64[] {
 }
 
 fun zip_sum(a: i64[], b: i64[]) -> i64[] {
-    let mut result: i64[]  = [];
-    let mut i = 0;
+    var result: i64[]  = [];
+    var i = 0;
     let len = array_len(a);
     while (i < len) {
         array_push(result, a[i] + b[i]);
@@ -33,9 +33,9 @@ fun zip_sum(a: i64[], b: i64[]) -> i64[] {
 }
 
 fun min_max(arr: i64[]) -> (i64, i64) {
-    let mut lo = arr[0];
-    let mut hi = arr[0];
-    for (let n in arr) {
+    var lo = arr[0];
+    var hi = arr[0];
+    for (n in arr) {
         if (n < lo) { lo = n; }
         if (n > hi) { hi = n; }
     }
@@ -55,7 +55,7 @@ fun main() {
     println(int_to_string(array_len(words)));  // 3
 
     // --- array_push ---
-    let mut growing: i64[]  = [];
+    var growing: i64[]  = [];
     array_push(growing, 10);
     array_push(growing, 20);
     array_push(growing, 30);
@@ -66,7 +66,7 @@ fun main() {
     println(int_to_string(sum(nums)));          // 28
 
     let rev = reverse([1, 2, 3, 4, 5]);
-    for (let n in rev) {
+    for (n in rev) {
         print(int_to_string(n) + " ");          // 5 4 3 2 1
     }
     println("");
@@ -75,7 +75,7 @@ fun main() {
     let a: i64[] = [1, 2, 3];
     let b: i64[] = [4, 5, 6];
     let zipped = zip_sum(a, b);
-    for (let n in zipped) {
+    for (n in zipped) {
         print(int_to_string(n) + " ");          // 5 7 9
     }
     println("");

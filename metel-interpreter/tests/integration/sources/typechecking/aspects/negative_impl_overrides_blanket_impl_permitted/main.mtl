@@ -10,11 +10,11 @@ struct Foo<T> {
     value: T,
 }
 
-impl<T> Marker for Foo<T> {
+extend<T> Foo<T>: Marker {
     fun mark(self) -> String { return "blanket"; }
 }
 
-impl !Marker for Foo<i64> {}
+extend Foo<i64>: !Marker;
 
 fun needs_not_marker<U: !Marker>(x: U) {}
 

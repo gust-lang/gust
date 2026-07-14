@@ -60,7 +60,7 @@ decl = {
 }
 
 let_decl     = { "let" ~ !mut_kw ~ ident ~ (":" ~ type_expr)? ~ "=" ~ expr ~ ";" }
-let_mut_decl = { "let" ~ mut_kw ~ ident ~ (":" ~ type_expr)? ~ "=" ~ expr ~ ";" }
+let_mut_decl = { ("let" ~ mut_kw | mut_kw) ~ ident ~ (":" ~ type_expr)? ~ "=" ~ expr ~ ";" }
 
 fun_decl    = { native_attr? ~ pub_kw? ~ "fun" ~ ident ~ generic_params? ~ "(" ~ param_list? ~ ")" ~ ("->" ~ type_expr)? ~ where_clause? ~ (block | ";") }
 // Stdlib-only host-binding attribute: `native(@std.core.print) fun print(...);`
@@ -79,14 +79,16 @@ enum_decl   = { pub_kw? ~ "enum" ~ ident ~ generic_params? ~ where_clause? ~ "{"
 enum_variants = { (enum_variant ~ ",")* ~ enum_variant? }
 enum_variant  = { ident ~ ("{" ~ struct_fields ~ "}")? }
 
-// `bang?` (not a raw `"!"?`) so polarity is structurally detectable in Rust code —
-// same rule already used by `bound`, same reasoning: reusing a raw string literal
-// produces no inner pair to match on.
-impl_block     = { "impl" ~ bang? ~ generic_params? ~ (named_type ~ "for")? ~ type_expr
-                   ~ where_clause? ~ "{" ~ (assoc_type_def | fun_decl)* ~ "}" }
+// `bang?` (not a raw `"!"?`) so polarity is structurally detectable in Rust code.
+impl_block          = { extend_impl_block }
+extend_impl_block   = { "extend" ~ generic_params? ~ type_expr ~ (extend_impl_bodyless | extend_impl_braced) }
+extend_impl_bodyless = { ":" ~ extend_aspect_list ~ where_clause? ~ ";" }
+extend_impl_braced   = { (":" ~ extend_aspect)? ~ where_clause? ~ "{" ~ (assoc_type_def | fun_decl)* ~ "}" }
+extend_aspect_list   = { extend_aspect ~ ("," ~ extend_aspect)* }
+extend_aspect        = { bang? ~ named_type }
 assoc_type_def = { "type" ~ ident ~ "=" ~ type_expr ~ ";" }
 
-aspect_decl  = { pub_kw? ~ "aspect" ~ ident ~ generic_params? ~ "{" ~ (assoc_type_decl | aspect_method)* ~ "}" }
+aspect_decl  = { pub_kw? ~ "aspect" ~ ident ~ generic_params? ~ (";" | "{" ~ (assoc_type_decl | aspect_method)* ~ "}") }
 aspect_method = { "fun" ~ ident ~ generic_params? ~ "(" ~ param_list? ~ ")" ~ ("->" ~ type_expr)? ~ (block | ";") }
 assoc_type_decl = { "type" ~ ident ~ (":" ~ bound_list)? ~ ";" }
 
@@ -137,7 +139,7 @@ while_stmt = { "while" ~ "(" ~ expr ~ ")" ~ block }
 for_stmt   = { "for" ~ "(" ~ for_init ~ expr? ~ ";" ~ expr? ~ ")" ~ block }
 for_init   = { expr_stmt | let_mut_decl | let_decl | ";" }
 
-for_in_stmt  = { "for" ~ "(" ~ "let" ~ mut_kw? ~ ident ~ "in" ~ expr ~ ")" ~ block }
+for_in_stmt  = { "for" ~ "(" ~ (("let" ~ mut_kw?) | mut_kw)? ~ ident ~ "in" ~ expr ~ ")" ~ block }
 
 // ── Expressions (precedence via layering) ─────────────────────────────────────
 
@@ -321,8 +323,8 @@ bool_lit  = @{ ("true" | "false") ~ !(ASCII_ALPHANUMERIC | "_") }
 none_lit  = @{ "None" ~ !(ASCII_ALPHANUMERIC | "_") }
 unit_lit  = @{ "()" }
 
-pub_kw   = @{ "pub" ~ !(ASCII_ALPHANUMERIC | "_") }
-mut_kw   = @{ "mut" ~ !(ASCII_ALPHANUMERIC | "_") }
+pub_kw   = @{ "public" ~ !(ASCII_ALPHANUMERIC | "_") }
+mut_kw   = @{ "var" ~ !(ASCII_ALPHANUMERIC | "_") }
 root_kw  = @{ "root" ~ !(ASCII_ALPHANUMERIC | "_") }
 std_kw   = @{ "std" ~ !(ASCII_ALPHANUMERIC | "_") }
 self_kw  = @{ "self" ~ !(ASCII_ALPHANUMERIC | "_") }
@@ -333,10 +335,11 @@ ident = @{
 }
 
 keyword = @{
-    ("and" | "as" | "break" | "continue" | "else" | "enum" | "export" |
-     "false" | "for" | "fun" | "if" | "impl" | "import" | "let" | "loop" |
-     "match" | "mut" | "or" | "pub" | "return" | "root" | "self" |
-     "std" | "struct" | "super" | "aspect" | "true" |
+    ("and" | "as" | "aspect" | "break" | "continue" | "else" | "enum" |
+     "export" | "extend" | "false" | "for" | "fun" | "if" | "impl" |
+     "import" | "let" | "loop" | "match" | "mut" | "or" | "pub" |
+     "public" | "return" | "root" | "self" | "std" | "struct" | "super" |
+     "true" | "var" |
      "where" | "while")
     ~ !(ASCII_ALPHANUMERIC | "_")
 }

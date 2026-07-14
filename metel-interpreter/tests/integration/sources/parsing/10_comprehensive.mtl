@@ -10,24 +10,24 @@ struct Stack<T> {
     items: T[],
 }
 
-impl Stack<i64> {
+extend Stack<i64> {
     fun new() -> Stack<i64> {
         return Stack { items: [] };
     }
 
-    fun push(&mut self, value: i64) {
+    fun push(&var self, value: i64) {
         array_push(self.items, value);
     }
 
-    fun pop(&mut self) -> Perhaps<i64> {
+    fun pop(&var self) -> Perhaps<i64> {
         let len = array_len(self.items);
         if (len == 0) {
             return nope;
         }
         let top = self.items[len - 1];
         // rebuild without last element
-        let mut new_items: i64[]  = [];
-        let mut i = 0;
+        var new_items: i64[]  = [];
+        var i = 0;
         while (i < len - 1) {
             array_push(new_items, self.items[i]);
             i += 1;
@@ -89,12 +89,12 @@ struct Task {
     priority: Priority,
 }
 
-impl Task {
+extend Task {
     fun new(title: String, priority: Priority) -> Task {
         return Task { title: title, done: false, priority: priority };
     }
 
-    fun complete(&mut self) {
+    fun complete(&var self) {
         self.done = true;
     }
 
@@ -113,8 +113,8 @@ impl Task {
 }
 
 fun count_done(tasks: Task[]) -> i64 {
-    let mut n = 0;
-    for (let t in tasks) {
+    var n = 0;
+    for (t in tasks) {
         if (t.done) { n += 1; }
     }
     return n;
@@ -126,7 +126,7 @@ fun count_done(tasks: Task[]) -> i64 {
 
 fun main() {
     // --- Stack ---
-    let mut s = Stack::new();
+    var s = Stack::new();
     println(bool_to_string(s.is_empty()));   // true
 
     s.push(10);
@@ -167,9 +167,9 @@ fun main() {
         Token::Number { value: 5 },
     ];
 
-    let mut token_str = "";
-    let mut first = true;
-    for (let tok in tokens) {
+    var token_str = "";
+    var first = true;
+    for (tok in tokens) {
         if (!first) { token_str = token_str + " "; }
         token_str = token_str + token_to_string(tok);
         first = false;
@@ -177,7 +177,7 @@ fun main() {
     println(token_str);   // 3 * 4 + 5
 
     // --- Tasks ---
-    let mut tasks: Task[]  = [
+    var tasks: Task[]  = [
         Task::new("Write interpreter", Priority::High),
         Task::new("Write tests", Priority::High),
         Task::new("Update docs", Priority::Medium),
@@ -188,7 +188,7 @@ fun main() {
     tasks[0].complete();
     tasks[1].complete();
 
-    for (let t in tasks) {
+    for (t in tasks) {
         println(t.to_string());
     }
     // ✓ [HIGH]  Write interpreter
@@ -203,11 +203,11 @@ fun main() {
     // --- closures + arrays together ---
     let multipliers: i64[] = [1, 2, 3, 4, 5];
     let base = 7;
-    let mut products: i64[]  = [];
-    for (let m in multipliers) {
+    var products: i64[]  = [];
+    for (m in multipliers) {
         array_push(products, m * base);
     }
-    for (let p in products) {
+    for (p in products) {
         print(int_to_string(p) + " ");   // 7 14 21 28 35
     }
     println("");

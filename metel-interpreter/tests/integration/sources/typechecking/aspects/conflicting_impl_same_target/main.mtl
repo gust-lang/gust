@@ -10,13 +10,13 @@ struct Crate {
     x: i64,
 }
 
-impl Describe for Crate {
+extend Crate: Describe {
     fun describe(self) -> String {
         return "a";
     }
 }
 
-impl Describe for Crate { // ERROR[T0015]
+extend Crate: Describe { // ERROR[T0015]
     fun describe(self) -> String {
         return "b";
     }

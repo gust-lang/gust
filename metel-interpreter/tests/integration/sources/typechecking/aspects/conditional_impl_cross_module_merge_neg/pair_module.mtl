@@ -1,13 +1,13 @@
-pub struct Pair<A, B> {
-    pub first: A,
-    pub second: B,
+public struct Pair<A, B> {
+    public first: A,
+    public second: B,
 }
 
-pub aspect Greet {
+public aspect Greet {
     fun greet(&self) -> String;
 }
 
-impl<A: Display, B: Display> Greet for Pair<A, B> {
+extend<A: Display, B: Display> Pair<A, B>: Greet {
     fun greet(&self) -> String {
         return "pair";
     }

@@ -11,7 +11,7 @@ struct StrBox {
     value: String,
 }
 
-impl Container for StrBox {
+extend StrBox: Container {
     type Item = String;
     fun get(self) -> String {
         return self.value;

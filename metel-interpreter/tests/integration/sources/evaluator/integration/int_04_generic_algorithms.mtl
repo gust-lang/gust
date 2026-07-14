@@ -48,7 +48,7 @@ fun safe_div(a: i64, b: i64) -> MyResult<i64, String> {
 
 fun safe_sqrt(n: i64) -> MyResult<i64, String> {
     if (n < 0) { return MyResult::Err { error: "negative input" }; }
-    let mut i = 0;
+    var i = 0;
     while ((i + 1) * (i + 1) <= n) { i += 1; }
     MyResult::Ok { value: i }
 }
@@ -66,7 +66,7 @@ fun stack_new() -> Stack {
 }
 
 fun stack_push(s: Stack, v: i64) -> Stack {
-    let mut items_list = List::from(s.items);
+    var items_list = List::from(s.items);
     items_list.push(v);
     Stack { items: items_list.as_slice(), size: s.size + 1 }
 }
@@ -82,29 +82,29 @@ fun stack_empty(s: Stack) -> boolean {
 // ── Generic array combinators ─────────────────────────────────────────────────
 
 fun filter<T>(arr: T[], pred: (T) -> boolean) -> T[] {
-    let mut out: List<T> = List::new();
-    for (let x in arr) {
+    var out: List<T> = List::new();
+    for (x in arr) {
         if (pred(x)) { out.push(x); }
     }
     out.as_slice()
 }
 
 fun map_arr<T, U>(arr: T[], f: (T) -> U) -> U[] {
-    let mut out: List<U> = List::new();
-    for (let x in arr) { out.push(f(x)); }
+    var out: List<U> = List::new();
+    for (x in arr) { out.push(f(x)); }
     out.as_slice()
 }
 
 fun fold<T, A>(arr: T[], init: A, f: (A, T) -> A) -> A {
-    let mut acc = init;
-    for (let x in arr) { acc = f(acc, x); }
+    var acc = init;
+    for (x in arr) { acc = f(acc, x); }
     acc
 }
 
 fun zip_with<A, B, C>(a: A[], b: B[], f: (A, B) -> C) -> C[] {
-    let mut out: List<C> = List::new();
+    var out: List<C> = List::new();
     let len = if (a.len() < b.len()) a.len() else b.len();
-    let mut i = 0;
+    var i = 0;
     while (i < len) {
         out.push(f(a[i as u64], b[i as u64]));
         i += 1;
@@ -113,22 +113,22 @@ fun zip_with<A, B, C>(a: A[], b: B[], f: (A, B) -> C) -> C[] {
 }
 
 fun any<T>(arr: T[], pred: (T) -> boolean) -> boolean {
-    for (let x in arr) {
+    for (x in arr) {
         if (pred(x)) { return true; }
     }
     false
 }
 
 fun all<T>(arr: T[], pred: (T) -> boolean) -> boolean {
-    for (let x in arr) {
+    for (x in arr) {
         if (!pred(x)) { return false; }
     }
     true
 }
 
 fun take<T>(arr: T[], n: i64) -> T[] {
-    let mut out: List<T> = List::new();
-    let mut i = 0;
+    var out: List<T> = List::new();
+    var i = 0;
     while (i < n && i < arr.len()) {
         out.push(arr[i as u64]);
         i += 1;
@@ -137,8 +137,8 @@ fun take<T>(arr: T[], n: i64) -> T[] {
 }
 
 fun drop<T>(arr: T[], n: i64) -> T[] {
-    let mut out: List<T> = List::new();
-    let mut i = n;
+    var out: List<T> = List::new();
+    var i = n;
     while (i < arr.len()) {
         out.push(arr[i as u64]);
         i += 1;
@@ -152,15 +152,15 @@ fun min_int(a: i64, b: i64) -> i64 { if (a < b) a else b }
 fun max_int(a: i64, b: i64) -> i64 { if (a > b) a else b }
 
 fun array_min(arr: i64[]) -> i64 {
-    let mut m = arr[0];
-    let mut i = 1;
+    var m = arr[0];
+    var i = 1;
     while (i < arr.len()) { m = min_int(m, arr[i as u64]); i += 1; }
     m
 }
 
 fun array_max(arr: i64[]) -> i64 {
-    let mut m = arr[0];
-    let mut i = 1;
+    var m = arr[0];
+    var i = 1;
     while (i < arr.len()) { m = max_int(m, arr[i as u64]); i += 1; }
     m
 }
@@ -185,16 +185,16 @@ fun rsum(arr: i64[], i: i64) -> i64 {
 // ── Concat two int arrays ─────────────────────────────────────────────────────
 
 fun concat_int(a: i64[], b: i64[]) -> i64[] {
-    let mut out: List<i64> = List::new();
-    for (let x in a) { out.push(x); }
-    for (let x in b) { out.push(x); }
+    var out: List<i64> = List::new();
+    for (x in a) { out.push(x); }
+    for (x in b) { out.push(x); }
     out.as_slice()
 }
 
 // ── Perhaps<T> combinators ────────────────────────────────────────────────────
 
 fun find_first<T>(arr: T[], pred: (T) -> boolean) -> Perhaps<T> {
-    for (let x in arr) {
+    for (x in arr) {
         if (pred(x)) { return Perhaps::Some { value: x }; }
     }
     None

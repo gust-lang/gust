@@ -1,17 +1,14 @@
-use metel::ast::{ImportTree, PathRoot};
+use metel::ast::{Decl, ImportTree, PathRoot, Polarity};
 use metel::parser;
 
 #[test]
-fn rejects_standalone_mut_binding_syntax() {
+fn standalone_var_binding_parses() {
     let source = r#"
 fun main() {
-    mut counter = 0;
+    var counter = 0;
 }
 "#;
-    assert!(
-        parser::parse(source, "compat_mut_alias.mtl").is_err(),
-        "standalone `mut` binding syntax should be rejected"
-    );
+    parser::parse(source, "standalone_var_binding.mtl").unwrap_or_else(|e| panic!("{e}"));
 }
 
 #[test]
@@ -19,8 +16,8 @@ fn mutable_for_in_binding_parses() {
     let source = r#"
 fun main() {
     let values = [1, 2, 3];
-    let mut total = 0;
-    for (let mut item in values) {
+    var total = 0;
+    for (var item in values) {
         item += 1;
         total += item;
     }
@@ -36,8 +33,8 @@ struct Counter {
     value: i64,
 }
 
-impl Counter {
-    fun increment(&mut self) {
+extend Counter {
+    fun increment(&var self) {
         self.value += 1;
     }
 
@@ -47,14 +44,93 @@ impl Counter {
 }
 
 fun main() {
-    let mut value = 0;
-    let ptr: &mut i64 = &mut value;
+    var value = 0;
+    let ptr: &var i64 = &var value;
     ptr += 1;
     let read_only: &i64 = ptr;
     let _snapshot: i64 = read_only;
 }
 "#;
     parser::parse(source, "pointer_and_receiver_syntax.mtl").unwrap_or_else(|e| panic!("{e}"));
+}
+
+#[test]
+fn bodyless_aspect_and_multi_extend_desugar() {
+    let source = r#"
+public aspect Copy2;
+aspect Send;
+
+extend Packet: Copy2, !Send;
+"#;
+    let program = parser::parse(source, "integrated_extend_surface.mtl")
+        .unwrap_or_else(|e| panic!("{e}"));
+
+    assert_eq!(program.decls.len(), 4);
+
+    let Decl::Aspect(copy2) = &program.decls[0] else {
+        panic!("expected first decl to be aspect");
+    };
+    assert_eq!(copy2.name, "Copy2");
+    assert!(copy2.methods.is_empty());
+    assert!(copy2.assoc_types.is_empty());
+
+    let Decl::Impl(copy_impl) = &program.decls[2] else {
+        panic!("expected third decl to be impl");
+    };
+    assert_eq!(copy_impl.aspect_name.as_deref(), Some("Copy2"));
+    assert_eq!(copy_impl.polarity, Polarity::Positive);
+
+    let Decl::Impl(send_impl) = &program.decls[3] else {
+        panic!("expected fourth decl to be impl");
+    };
+    assert_eq!(send_impl.aspect_name.as_deref(), Some("Send"));
+    assert_eq!(send_impl.polarity, Polarity::Negative);
+}
+
+fn assert_rejected(source: &str, filename: &str) {
+    let err = parser::parse(source, filename).expect_err("expected parse error");
+    let msg = format!("{err}");
+    assert!(msg.contains("P0001"), "expected parse error, got: {msg}");
+}
+
+#[test]
+fn rejects_legacy_impl_block_surface() {
+    let source = r#"
+impl Counter {
+    fun bump(&var self) {}
+}
+"#;
+    assert_rejected(source, "legacy_impl_block_surface.mtl");
+}
+
+#[test]
+fn rejects_legacy_aspect_impl_surface() {
+    let source = r#"
+aspect Display {
+    fun show(&self) -> String;
+}
+
+impl Display for Counter {
+    fun show(&self) -> String { "x" }
+}
+"#;
+    assert_rejected(source, "legacy_aspect_impl_surface.mtl");
+}
+
+#[test]
+fn rejects_legacy_pub_and_mut_surface() {
+    let source = r#"
+pub struct Counter {
+    pub value: i64,
+}
+
+fun main() {
+    let mut counter = Counter { value: 0 };
+    let ptr: &mut Counter = &mut counter;
+    ptr.value += 1;
+}
+"#;
+    assert_rejected(source, "legacy_pub_and_mut_surface.mtl");
 }
 
 #[test]

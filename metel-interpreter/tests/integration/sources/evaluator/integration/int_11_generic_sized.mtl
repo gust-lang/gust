@@ -8,15 +8,15 @@ fun clamp<T>(v: T, lo: T, hi: T) -> T {
 }
 
 fun map_to_list<T, U>(src: T[], f: (T) -> U) -> List<U> {
-    let mut out: List<U> = List::new();
-    for (let x in src) {
+    var out: List<U> = List::new();
+    for (x in src) {
         out.push(f(x));
     }
     out
 }
 
 fun all_positive_i32(lst: List<i32>) -> boolean {
-    let mut i: i64 = 0;
+    var i: i64 = 0;
     let len: i64 = lst.len();
     while (i < len) {
         match lst.get(i) {
@@ -34,8 +34,8 @@ fun all_positive_i32(lst: List<i32>) -> boolean {
 
 fun zip_add_i32(a: List<i32>, b: List<i32>) -> List<i32> {
     let len: i64 = if (a.len() < b.len()) { a.len() } else { b.len() };
-    let mut out: List<i32> = List::new();
-    let mut i: i64 = 0;
+    var out: List<i32> = List::new();
+    var i: i64 = 0;
     while (i < len) {
         match a.get(i) {
             Perhaps::Some { value } => {
@@ -103,23 +103,23 @@ fun main() {
     };
 
     // all_positive_i32: polymorphic literals pushed to List<i32> now adopt i32.
-    let mut pos: List<i32> = List::new();
+    var pos: List<i32> = List::new();
     pos.push(1);
     pos.push(10);
     pos.push(100);
     assert(all_positive_i32(pos));
 
     // all_positive_i32: contains zero.
-    let mut with_zero: List<i32> = List::new();
+    var with_zero: List<i32> = List::new();
     with_zero.push(5);
     with_zero.push(0);
     with_zero.push(3);
     assert(!all_positive_i32(with_zero));
 
     // zip_add_i32.
-    let mut a: List<i32> = List::new();
+    var a: List<i32> = List::new();
     a.push(1); a.push(2); a.push(3);
-    let mut b: List<i32> = List::new();
+    var b: List<i32> = List::new();
     b.push(10); b.push(20); b.push(30);
     let zipped = zip_add_i32(a, b);
     assert(zipped.len() == 3);
@@ -133,7 +133,7 @@ fun main() {
     };
 
     // List<u16> — polymorphic literals now adopt u16.
-    let mut u16_list: List<u16> = List::new();
+    var u16_list: List<u16> = List::new();
     u16_list.push(1000);
     u16_list.push(2000);
     u16_list.push(65535);
@@ -144,7 +144,7 @@ fun main() {
     };
 
     // List<i8> — polymorphic literals adopt i8.
-    let mut i8_list: List<i8> = List::new();
+    var i8_list: List<i8> = List::new();
     i8_list.push(10);
     i8_list.push(-5);
     i8_list.push(127);
@@ -156,8 +156,8 @@ fun main() {
 
     // Cross-sized cast inside a loop: accumulate u8 values into i64.
     let bytes: u8[] = [10, 20, 30, 40, 50];
-    let mut acc: i64 = 0;
-    for (let b in bytes) {
+    var acc: i64 = 0;
+    for (b in bytes) {
         acc += b as i64;
     }
     assert(acc == 150);

@@ -1,0 +1,25 @@
+// RFC-0081: a blanket generic negative impl is part of the accepted surface,
+// not just concrete `impl !Aspect for Foo<i64> {}` cases. It must override a
+// blanket positive impl for every matching instantiation, so `Foo<boolean>`
+// fails a positive `Marker` bound here.
+
+aspect Marker {
+    fun mark(self) -> String;
+}
+
+struct Foo<T> {
+    value: T,
+}
+
+extend<T> Foo<T>: Marker {
+    fun mark(self) -> String { return "blanket"; }
+}
+
+extend<T> Foo<T>: !Marker;
+
+fun needs_marker<U: Marker>(x: U) {}
+
+fun main() {
+    let f = Foo { value: true };
+    needs_marker(f); // ERROR[T0012]
+}

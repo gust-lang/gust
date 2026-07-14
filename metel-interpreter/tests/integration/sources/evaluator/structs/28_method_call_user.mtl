@@ -1,6 +1,6 @@
 struct Point { x: i64, y: i64 }
 
-impl Point {
+extend Point {
     fun magnitude_sq(self) -> i64 {
         self.x * self.x + self.y * self.y
     }

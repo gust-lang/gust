@@ -5,7 +5,7 @@ struct Counter {
     step:  i64,
 }
 
-impl Counter {
+extend Counter {
     fun new(step: i64) -> Counter {
         Counter { value: 0, step: step }
     }
@@ -24,16 +24,16 @@ impl Counter {
         self.value > 0
     }
 
-    // &mut self: in-place mutation
-    fun tick(&mut self) {
+    // &var self: in-place mutation
+    fun tick(&var self) {
         self.value += self.step;
     }
 
-    fun reset(&mut self) {
+    fun reset(&var self) {
         self.value = 0;
     }
 
-    fun add(&mut self, n: i64) {
+    fun add(&var self, n: i64) {
         self.value += n;
     }
 }
@@ -51,7 +51,7 @@ fun test_value_receiver() {
 // ── &self is non-consuming: can be called repeatedly ─────────────────────────
 
 fun test_ref_receiver_repeated() {
-    let mut c = Counter::new(1);
+    var c = Counter::new(1);
     c.tick();
     assert(c.is_positive() == true);
     assert(c.get() == 1);
@@ -60,10 +60,10 @@ fun test_ref_receiver_repeated() {
     assert(c.get() == 1);
 }
 
-// ── &mut self accumulates state across calls ──────────────────────────────────
+// ── &var self accumulates state across calls ──────────────────────────────────
 
 fun test_mut_receiver_accumulates() {
-    let mut c = Counter::new(3);
+    var c = Counter::new(3);
     c.tick();          // 3
     c.tick();          // 6
     c.tick();          // 9
@@ -74,10 +74,10 @@ fun test_mut_receiver_accumulates() {
     assert(c.get() == 100);
 }
 
-// ── &self and &mut self interleaved ───────────────────────────────────────────
+// ── &self and &var self interleaved ───────────────────────────────────────────
 
 fun test_interleaved_receivers() {
-    let mut c = Counter::new(10);
+    var c = Counter::new(10);
     assert(c.get() == 0);
     c.tick();
     assert(c.get() == 10);
@@ -92,7 +92,7 @@ fun test_interleaved_receivers() {
 // ── Calling through a &T reference (auto-deref, &self methods) ─────────────────
 
 fun test_ref_through_pointer() {
-    let mut c = Counter::new(1);
+    var c = Counter::new(1);
     c.tick();
     c.tick();
     let p: &Counter = &c;
@@ -101,11 +101,11 @@ fun test_ref_through_pointer() {
     assert(p.is_positive() == true);
 }
 
-// ── Calling through a &mut T reference (auto-deref, &mut self methods) ─────────
+// ── Calling through a &var T reference (auto-deref, &var self methods) ─────────
 
 fun test_mut_ref_through_mut_pointer() {
-    let mut c = Counter::new(5);
-    let p: &mut Counter = &mut c;
+    var c = Counter::new(5);
+    let p: &var Counter = &var c;
     p.tick();          // 5
     p.tick();          // 10
     assert(c.get() == 10);
@@ -116,8 +116,8 @@ fun test_mut_ref_through_mut_pointer() {
 // ── Reference and direct call see the same storage ─────────────────────────────
 
 fun test_pointer_and_direct_share_storage() {
-    let mut c = Counter::new(1);
-    let p: &mut Counter = &mut c;
+    var c = Counter::new(1);
+    let p: &var Counter = &var c;
     p.tick();          // p increments through the pointer
     c.tick();          // direct call increments same counter
     assert(c.get() == 2);
@@ -132,7 +132,7 @@ struct Builder {
     label: String,
 }
 
-impl Builder {
+extend Builder {
     fun new() -> Builder {
         Builder { x: 0, y: 0, label: "" }
     }
@@ -160,10 +160,10 @@ fun test_builder_pattern() {
 // ── Multiple pointers to independent counters ────────────────────────────────
 
 fun test_independent_pointers() {
-    let mut a = Counter::new(1);
-    let mut b = Counter::new(10);
-    let pa: &mut Counter = &mut a;
-    let pb: &mut Counter = &mut b;
+    var a = Counter::new(1);
+    var b = Counter::new(10);
+    let pa: &var Counter = &var a;
+    let pb: &var Counter = &var b;
     pa.tick();
     pb.tick();
     pb.tick();

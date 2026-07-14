@@ -25,7 +25,7 @@ struct Temperature {
     celsius: f64,
 }
 
-impl Temperature {
+extend Temperature {
     fun new(c: f64) -> Temperature {
         return Temperature { celsius: c };
     }
@@ -35,13 +35,13 @@ impl Temperature {
     }
 }
 
-impl Describable for Temperature {
+extend Temperature: Describable {
     fun describe(self) -> String {
         return float_to_string(self.celsius) + "°C";
     }
 }
 
-impl Comparable for Temperature {
+extend Temperature: Comparable {
     fun compare(self, other: Temperature) -> i64 {
         if (self.celsius < other.celsius) { return -1; }
         if (self.celsius > other.celsius) { return 1; }
@@ -56,19 +56,19 @@ struct Score {
     label: String,
 }
 
-impl Score {
+extend Score {
     fun new(points: i64, label: String) -> Score {
         return Score { points: points, label: label };
     }
 }
 
-impl Describable for Score {
+extend Score: Describable {
     fun describe(self) -> String {
         return self.label + ": " + int_to_string(self.points);
     }
 }
 
-impl Comparable for Score {
+extend Score: Comparable {
     fun compare(self, other: Score) -> i64 {
         if (self.points < other.points) { return -1; }
         if (self.points > other.points) { return 1; }

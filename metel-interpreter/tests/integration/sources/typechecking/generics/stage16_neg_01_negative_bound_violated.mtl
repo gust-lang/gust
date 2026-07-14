@@ -7,7 +7,7 @@ aspect Drop {
 
 struct Resource { x: i64 }
 
-impl Drop for Resource {
+extend Resource: Drop {
     fun drop(self) {}
 }
 

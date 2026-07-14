@@ -13,8 +13,8 @@ fun sign(n: i64) -> String {
 }
 
 fun sum_to(n: i64) -> i64 {
-    let mut total = 0;
-    let mut i = 1;
+    var total = 0;
+    var i = 1;
     while (i <= n) {
         total += i;
         i += 1;
@@ -47,16 +47,16 @@ fun main() {
     println(int_to_string(sum_to(10)));   // 55
 
     // --- C-style for ---
-    let mut c_sum = 0;
-    for (let mut i = 1; i <= 5; i += 1) {
+    var c_sum = 0;
+    for (var i = 1; i <= 5; i += 1) {
         c_sum += i;
     }
     println(int_to_string(c_sum));        // 15
 
     // --- for-in over array ---
     let nums: i64[] = [10, 20, 30];
-    let mut for_in_sum = 0;
-    for (let n in nums) {
+    var for_in_sum = 0;
+    for (n in nums) {
         for_in_sum += n;
     }
     println(int_to_string(for_in_sum));   // 60
@@ -65,8 +65,8 @@ fun main() {
     println(int_to_string(first_even_above(7)));  // 8
 
     // --- continue: sum only even numbers 1..10 ---
-    let mut even_sum = 0;
-    for (let mut i = 1; i <= 10; i += 1) {
+    var even_sum = 0;
+    for (var i = 1; i <= 10; i += 1) {
         if (i % 2 != 0) {
             continue;
         }
@@ -75,8 +75,8 @@ fun main() {
     println(int_to_string(even_sum));     // 30
 
     // --- break exits loop early ---
-    let mut found = -1;
-    let mut i = 0;
+    var found = -1;
+    var i = 0;
     while (i < 100) {
         if (i * i > 50) {
             found = i;

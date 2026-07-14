@@ -1,10 +1,10 @@
 // std::env host module (METEL-164): explicit import, read-only environment
 // inspection. Deterministic — does not assume any particular variable is set.
-import std::env::{var, vars, EnvVar};
+import std::env::{get, vars, EnvVar};
 
 fun main() {
     // A name that should not exist in any test environment resolves to None.
-    assert(var("METEL_DEFINITELY_UNSET_9z8y7x").is_none());
+    assert(get("METEL_DEFINITELY_UNSET_9z8y7x").is_none());
 
     // vars() yields an EnvVar[]; List ergonomics apply after List::from, and
     // mapping preserves the element count.

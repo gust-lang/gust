@@ -22,8 +22,8 @@ fun sqrt_approx(x: f64) -> f64 {
     if (x <= 0.0) {
         0.0
     } else {
-        let mut guess = x / 2.0;
-        let mut i = 0;
+        var guess = x / 2.0;
+        var i = 0;
         while (i < 20) {
             guess = (guess + x / guess) / 2.0;
             i += 1;
@@ -40,11 +40,11 @@ fun int_max(a: i64, b: i64) -> i64 {
 
 // Bubble sort — returns a sorted copy of the input array.
 fun sort_floats(arr: f64[]) -> f64[] {
-    let mut s = List::from(arr).as_slice();
+    var s = List::from(arr).as_slice();
     let n = s.len();
-    let mut i = 0;
+    var i = 0;
     while (i < n) {
-        let mut j = 0;
+        var j = 0;
         while (j < n - i - 1) {
             let jp1 = j + 1;
             if (s[j as u64] > s[jp1 as u64]) {
@@ -64,8 +64,8 @@ fun sort_floats(arr: f64[]) -> f64[] {
 // Binary search in a sorted f64[].  Returns Perhaps<i64> with the index.
 fun binary_search(sorted: f64[], target: f64) -> Perhaps<i64> {
     if (sorted.len() == 0) { return None; }
-    let mut lo = 0;
-    let mut hi = sorted.len() - 1;
+    var lo = 0;
+    var hi = sorted.len() - 1;
     while (lo <= hi) {
         let mid = (lo + hi) / 2;
         if (float_eq(sorted[mid as u64], target)) {
@@ -90,7 +90,7 @@ struct Stats {
     max:      f64,
 }
 
-impl Stats {
+extend Stats {
     fun range(self) -> f64 {
         self.max - self.min
     }
@@ -113,10 +113,10 @@ fun compute_stats(data: f64[]) -> Result<Stats, String> {
     if (n == 0) {
         return Result::Err { error: "empty dataset" };
     }
-    let mut total = 0.0;
-    let mut mn = data[0];
-    let mut mx = data[0];
-    let mut i = 0;
+    var total = 0.0;
+    var mn = data[0];
+    var mx = data[0];
+    var i = 0;
     while (i < n) {
         let x = data[i as u64];
         total += x;
@@ -125,8 +125,8 @@ fun compute_stats(data: f64[]) -> Result<Stats, String> {
         i += 1;
     }
     let mean = total / (n as f64);
-    let mut var_sum = 0.0;
-    let mut j = 0;
+    var var_sum = 0.0;
+    var j = 0;
     while (j < n) {
         let xj = data[j as u64];
         let d  = xj - mean;
@@ -168,28 +168,28 @@ fun z_score(data: f64[], value: f64) -> Result<f64, String> {
 // ── Higher-order functions ────────────────────────────────────────────────────
 
 fun sum_floats(data: f64[]) -> f64 {
-    let mut acc = 0.0;
-    for (let x in data) { acc += x; }
+    var acc = 0.0;
+    for (x in data) { acc += x; }
     acc
 }
 
 fun count_if(data: f64[], pred: (f64) -> boolean) -> i64 {
-    let mut cnt = 0;
-    for (let x in data) {
+    var cnt = 0;
+    for (x in data) {
         if (pred(x)) { cnt += 1; }
     }
     cnt
 }
 
 fun map_floats(data: f64[], f: (f64) -> f64) -> f64[] {
-    let mut out: List<f64> = List::new();
-    for (let x in data) { out.push(f(x)); }
+    var out: List<f64> = List::new();
+    for (x in data) { out.push(f(x)); }
     out.as_slice()
 }
 
 fun filter_floats(data: f64[], pred: (f64) -> boolean) -> f64[] {
-    let mut out: List<f64> = List::new();
-    for (let x in data) {
+    var out: List<f64> = List::new();
+    for (x in data) {
         if (pred(x)) { out.push(x); }
     }
     out.as_slice()
@@ -197,9 +197,9 @@ fun filter_floats(data: f64[], pred: (f64) -> boolean) -> f64[] {
 
 // Prefix sums: out[i] = data[0] + ... + data[i].
 fun running_sums(data: f64[]) -> f64[] {
-    let mut out: List<f64> = List::new();
-    let mut acc = 0.0;
-    for (let x in data) {
+    var out: List<f64> = List::new();
+    var acc = 0.0;
+    for (x in data) {
         acc += x;
         out.push(acc);
     }
@@ -208,8 +208,8 @@ fun running_sums(data: f64[]) -> f64[] {
 
 // Build an i64[] of squares using a C-style for loop.
 fun squares_up_to(n: i64) -> i64[] {
-    let mut out: List<i64> = List::new();
-    for (let mut i = 1; i <= n; i += 1) {
+    var out: List<i64> = List::new();
+    for (var i = 1; i <= n; i += 1) {
         out.push(i * i);
     }
     out.as_slice()
@@ -356,8 +356,8 @@ fun main() {
     assert(sq5[4] == 25);
 
     // 12. Range for-in: sum 0..10 = 45.
-    let mut range_sum = 0;
-    for (let i in 0..10) { range_sum += i; }
+    var range_sum = 0;
+    for (i in 0..10) { range_sum += i; }
     assert(range_sum == 45);
 
     // 13. Closure capturing an outer variable.

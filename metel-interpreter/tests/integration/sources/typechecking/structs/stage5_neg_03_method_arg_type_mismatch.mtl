@@ -4,7 +4,7 @@ struct Counter {
     value: i64,
 }
 
-impl Counter {
+extend Counter {
     fun add(self, other: Counter) -> i64 {
         self.value + other.value
     }

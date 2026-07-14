@@ -7,10 +7,10 @@ aspect Printable {
     fun print(self) -> String;
 }
 
-impl<A: Display> Printable for Pair<A, i64> {
+extend<A: Display> Pair<A, i64>: Printable {
     fun print(self) -> String { return "a"; }
 }
 
-impl<B: Display> Printable for Pair<i64, B> {
+extend<B: Display> Pair<i64, B>: Printable {
     fun print(self) -> String { return "b"; }
 }
