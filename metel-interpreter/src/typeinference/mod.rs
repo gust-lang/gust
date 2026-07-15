@@ -2397,10 +2397,45 @@ impl InferContext {
         &self.current_type_params
     }
 
-    /// Returns the aspect names required by a type param `TypeVar` in the current function scope.
+    /// Returns the aspect names required by a type-param `TypeVar` in the current
+    /// function scope. Bounds are tracked out-of-band from the types themselves,
+    /// so after unification the active representative may differ from the `TypeVar`
+    /// the bounds were originally registered on. Merge bounds across the solved
+    /// equivalence class rooted at the cached substitution's representative.
     #[must_use]
-    pub fn bounds_for_type_var(&self, tv: TypeVar) -> Option<&Vec<String>> {
-        self.current_type_param_bounds.get(&tv)
+    pub fn bounds_for_type_var(&self, tv: TypeVar) -> Option<Vec<String>> {
+        let resolved = match self.cached_subst.apply(&InferType::Var(tv)) {
+            InferType::Var(v) => v,
+            _ => tv,
+        };
+        let mut merged = self.current_type_param_bounds.get(&tv).cloned().unwrap_or_default();
+        if resolved != tv {
+            if let Some(bounds) = self.current_type_param_bounds.get(&resolved) {
+                for bound in bounds {
+                    if !merged.contains(bound) {
+                        merged.push(bound.clone());
+                    }
+                }
+            }
+        }
+        for (candidate, bounds) in &self.current_type_param_bounds {
+            if *candidate == tv || *candidate == resolved {
+                continue;
+            }
+            let candidate_resolved = match self.cached_subst.apply(&InferType::Var(*candidate)) {
+                InferType::Var(v) => v,
+                _ => *candidate,
+            };
+            if candidate_resolved != resolved {
+                continue;
+            }
+            for bound in bounds {
+                if !merged.contains(bound) {
+                    merged.push(bound.clone());
+                }
+            }
+        }
+        if merged.is_empty() { None } else { Some(merged) }
     }
 
     /// Register an aspect bound for a type variable (for opaque return values).

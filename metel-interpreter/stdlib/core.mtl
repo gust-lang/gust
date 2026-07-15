@@ -203,10 +203,6 @@ public aspect Iterable<T> {
     fun next(&var self) -> Perhaps<T>;
 }
 
-fun __clone_array_item<T: Clone>(item: T) -> T {
-    item.clone()
-}
-
 fun __eq_array_item<T: Eq>(left: T, right: T) -> boolean {
     left.eq(&right)
 }
@@ -430,10 +426,8 @@ extend<T: Display> T[]: Display {
 extend<T: Clone> T[]: Clone {
     fun clone(&self) -> Self {
         var out: List<T> = List::new();
-        var i = 0;
-        while (i < self.len()) {
-            out.push(__clone_array_item(self[i as u64]));
-            i += 1;
+        for (item in self) {
+            out.push(item.clone());
         }
         return out.as_slice();
     }

@@ -62,7 +62,7 @@ fn ann_to_infer(te: &TypeExpr, ctx: &InferContext) -> InferType {
                 if let Some(&base_tv) = params.get(n.as_str()) {
                     if let Some(bounds) = ctx.bounds_for_type_var(base_tv) {
                         for aspect in bounds {
-                            if let Some(decls) = ctx.registry().aspect_assoc_type_decls(aspect) {
+                            if let Some(decls) = ctx.registry().aspect_assoc_type_decls(&aspect) {
                                 if decls.iter().any(|d| d.name == *assoc_name) {
                                     // Cannot mint a new var here (need &mut ctx).
                                     // Return a Named placeholder; the caller that has
@@ -2375,7 +2375,7 @@ fn infer_expr(
 
             // Slow path: TypeVar receiver — may be a bounded generic type param.
             if let InferType::Var(tv) = &recv_ty {
-                if let Some(aspect_names) = ctx.bounds_for_type_var(*tv).cloned() {
+                if let Some(aspect_names) = ctx.bounds_for_type_var(*tv) {
                     let self_generic_map: HashMap<String, TypeVar> =
                         std::iter::once(("Self".to_string(), *tv)).collect();
                     for aspect_name in &aspect_names {
