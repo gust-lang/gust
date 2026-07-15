@@ -1,0 +1,17 @@
+struct Box {
+    value: i64,
+}
+
+extend Box: Eq {
+    fun eq(&self, other: &Self) -> boolean {
+        return self.value == other.value;
+    }
+}
+
+fun main() {
+    let xs = [Box { value: 1 }, Box { value: 2 }];
+    let ys = [Box { value: 1 }, Box { value: 2 }];
+    let zs = [Box { value: 1 }, Box { value: 3 }];
+    assert(xs.eq(&ys));
+    assert(!xs.eq(&zs));
+}

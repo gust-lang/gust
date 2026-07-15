@@ -1,0 +1,14 @@
+// Negative: function values do not satisfy generic aspect bounds unless they
+// have a real impl, which Phase 1 does not provide. Expect T0012.
+
+fun show<T: Display>(x: T) -> String {
+    return x.to_string();
+}
+
+fun plus_one(x: i64) -> i64 {
+    return x + 1;
+}
+
+fun main() {
+    let _ = show(plus_one); // ERROR[T0012]
+}

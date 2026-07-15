@@ -1341,7 +1341,7 @@ fn construct_expr(
                     span,
                 ));
             }
-            let elem_ty = match typed_obj.ty() {
+            let elem_ty = match peel_type_references(typed_obj.ty()) {
                 Type::Array(elem) | Type::SizedArray(elem, _) => *elem.clone(),
                 _ => {
                     return Err(MetelError::type_error(
@@ -1561,7 +1561,7 @@ fn construct_expr(
                             span,
                         )
                     })?;
-                let receiver_type_args = vec![elem.as_ref().clone()];
+                let receiver_type_args = [elem.as_ref().clone()];
                 let mut subst = Substitution::new();
                 for (&tv, concrete) in struct_tvars.iter().zip(receiver_type_args.iter()) {
                     subst.bind(tv, type_to_infer(concrete));
@@ -2168,7 +2168,7 @@ fn builtin_pattern_method_expr(
     args: Vec<TypedExpr>,
     span: &Span,
 ) -> Option<Result<TypedExpr, MetelError>> {
-    if matches!(receiver.ty(), Type::Array(_) | Type::SizedArray(_, _))
+    if matches!(peel_type_references(receiver.ty()), Type::Array(_) | Type::SizedArray(_, _))
         && method == "len"
         && args.is_empty()
     {
@@ -3350,8 +3350,7 @@ fn check_scheme_assoc_eq(
 
 /// Check one concrete type against a set of required aspect names. Named types
 /// and primitives are checked against the aspect-impl registry; structural
-/// types (arrays, tuples, closures) have no named impls and are skipped — the
-/// runtime remains the backstop for those.
+/// types generate targeted diagnostics when no structural impl is available.
 fn check_type_satisfies_bounds(
     concrete: &Type,
     aspect_names: &[String],
@@ -3362,6 +3361,46 @@ fn check_type_satisfies_bounds(
 ) -> Result<(), MetelError> {
     let type_name = match concrete {
         Type::Named(n, _) => n.clone(),
+        Type::Array(elem) => {
+            for aspect in aspect_names {
+                if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0012,
+                        format!(
+                            "`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)\n       hint: arrays implement `{aspect}` only when their element type `{elem}` does"
+                        ),
+                        span,
+                    ));
+                }
+            }
+            return Ok(());
+        }
+        Type::Tuple(_) => {
+            for aspect in aspect_names {
+                if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0012,
+                        format!(
+                            "`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)\n       hint: tuple impls are not yet provided; use a named struct instead"
+                        ),
+                        span,
+                    ));
+                }
+            }
+            return Ok(());
+        }
+        Type::Fun(_, _) => {
+            for aspect in aspect_names {
+                if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0012,
+                        format!("`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)"),
+                        span,
+                    ));
+                }
+            }
+            return Ok(());
+        }
         other => match super::inference::primitive_type_name(other) {
             Some(n) => n,
             None => return Ok(()),

@@ -1185,6 +1185,9 @@ fn infer_impl_method(
             .cloned()
             .unwrap_or_default()
     };
+    let structural_self_type_expr = array_target_generic_name.map(|name| {
+        TypeExpr::Array(Box::new(TypeExpr::Named(name.to_string(), vec![])))
+    });
     let synth = super::registry::synth_generics_for_impl(&generic_names_for_impl, &ib.generics);
     let impl_bounds: Vec<Vec<String>> =
         super::registry::collect_type_param_bounds(&synth, ib.where_clause.as_ref());
@@ -1246,7 +1249,10 @@ fn infer_impl_method(
                 }
             }
         }
-        Ok(if generic_map.is_empty() {
+        Ok(if let Some(self_replacement) = &structural_self_type_expr {
+            let lowered = substitute_structural_self(te, self_replacement);
+            type_expr_to_infer_with_generics(&lowered, &generic_map)
+        } else if generic_map.is_empty() {
             type_expr_to_infer_with_self(te, target_name)
         } else {
             type_expr_to_infer_with_generics_and_self(te, &generic_map, target_name)
@@ -1414,6 +1420,67 @@ fn infer_impl_method(
         );
     }
     Ok(())
+}
+
+fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr {
+    match te {
+        TypeExpr::Named(name, args) if name == "Self" && args.is_empty() => replacement.clone(),
+        TypeExpr::Named(name, args) => TypeExpr::Named(
+            name.clone(),
+            args.iter()
+                .map(|arg| substitute_structural_self(arg, replacement))
+                .collect(),
+        ),
+        TypeExpr::Unit => TypeExpr::Unit,
+        TypeExpr::Tuple(items) => TypeExpr::Tuple(
+            items
+                .iter()
+                .map(|item| substitute_structural_self(item, replacement))
+                .collect(),
+        ),
+        TypeExpr::Array(inner) => TypeExpr::Array(Box::new(substitute_structural_self(
+            inner.as_ref(),
+            replacement,
+        ))),
+        TypeExpr::SizedArray(inner, len) => TypeExpr::SizedArray(
+            Box::new(substitute_structural_self(inner.as_ref(), replacement)),
+            *len,
+        ),
+        TypeExpr::Reference(inner) => TypeExpr::Reference(Box::new(substitute_structural_self(
+            inner.as_ref(),
+            replacement,
+        ))),
+        TypeExpr::MutReference(inner) => TypeExpr::MutReference(Box::new(
+            substitute_structural_self(inner.as_ref(), replacement),
+        )),
+        TypeExpr::Fun(params, ret) => TypeExpr::Fun(
+            params
+                .iter()
+                .map(|param| substitute_structural_self(param, replacement))
+                .collect(),
+            ret.as_ref().map(|ret_ty| {
+                Box::new(substitute_structural_self(ret_ty.as_ref(), replacement))
+            }),
+        ),
+        TypeExpr::ImplAspect {
+            bound,
+            source_spell,
+            span,
+        } => TypeExpr::ImplAspect {
+            bound: Box::new(substitute_structural_self(bound.as_ref(), replacement)),
+            source_spell: source_spell.clone(),
+            span: span.clone(),
+        },
+        TypeExpr::Projection {
+            base,
+            assoc_name,
+            span,
+        } => TypeExpr::Projection {
+            base: Box::new(substitute_structural_self(base.as_ref(), replacement)),
+            assoc_name: assoc_name.clone(),
+            span: span.clone(),
+        },
+    }
 }
 
 fn infer_default_aspect_method(
@@ -1967,13 +2034,19 @@ fn infer_expr(
             // Index expression type is checked in the construction pass (must be u64).
             // No inference constraint needed here; plain int literals are promoted to u64 by construction.
             let _idx_ty = infer_expr(index, ctx, fun_generalizations)?;
-            let elem_var = ctx.fresh_var();
-            ctx.add_constraint(
-                obj_ty,
-                InferType::Array(Box::new(elem_var.clone())),
-                span.clone(),
-            );
-            Ok(elem_var)
+            let resolved_obj = ctx.solve()?.apply(&obj_ty);
+            match peel_all_references(&resolved_obj) {
+                InferType::Array(elem) | InferType::SizedArray(elem, _) => Ok(*elem),
+                _ => {
+                    let elem_var = ctx.fresh_var();
+                    ctx.add_constraint(
+                        obj_ty,
+                        InferType::Array(Box::new(elem_var.clone())),
+                        span.clone(),
+                    );
+                    Ok(elem_var)
+                }
+            }
         }
         Expr::If {
             condition,
@@ -2303,6 +2376,8 @@ fn infer_expr(
             // Slow path: TypeVar receiver — may be a bounded generic type param.
             if let InferType::Var(tv) = &recv_ty {
                 if let Some(aspect_names) = ctx.bounds_for_type_var(*tv).cloned() {
+                    let self_generic_map: HashMap<String, TypeVar> =
+                        std::iter::once(("Self".to_string(), *tv)).collect();
                     for aspect_name in &aspect_names {
                         if let Some(methods) = ctx.get_aspect_method_defs(aspect_name).cloned() {
                             if let Some(method_def) = methods.iter().find(|m| m.name == *method) {
@@ -2330,7 +2405,9 @@ fn infer_expr(
                                                 n.clone(),
                                             ))
                                         }
-                                        other => type_expr_to_infer(other),
+                                        other => {
+                                            type_expr_to_infer_with_generics(other, &self_generic_map)
+                                        }
                                     },
                                 );
 
@@ -2361,13 +2438,8 @@ fn infer_expr(
 
                                 for (arg_ty, param) in arg_tys.iter().zip(declared_params.iter()) {
                                     if let Some(ann) = &param.type_ann {
-                                        // Substitute Self → TypeVar for the param's declared type.
-                                        let param_ty = match ann {
-                                            TypeExpr::Named(n, _) if n == "Self" => {
-                                                InferType::Var(*tv)
-                                            }
-                                            other => type_expr_to_infer(other),
-                                        };
+                                        let param_ty =
+                                            type_expr_to_infer_with_generics(ann, &self_generic_map);
                                         ctx.add_constraint(arg_ty.clone(), param_ty, span.clone());
                                     }
                                 }
@@ -2810,6 +2882,8 @@ fn builtin_pattern_method_type(
     arg_tys: &[InferType],
     span: &Span,
 ) -> Option<Result<InferType, MetelError>> {
+    let recv_ty = peel_all_references(recv_ty);
+    let _ = span;
     if matches!(recv_ty, InferType::Array(_) | InferType::SizedArray(_, _))
         && method == "len"
         && arg_tys.is_empty()

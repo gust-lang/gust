@@ -187,12 +187,28 @@ public aspect Display {
     fun to_string(&self) -> String;
 }
 
+public aspect Clone {
+    fun clone(&self) -> Self;
+}
+
+public aspect Eq {
+    fun eq(&self, other: &Self) -> boolean;
+}
+
 public aspect From<S> {
     fun from(x: S) -> Self;
 }
 
 public aspect Iterable<T> {
     fun next(&var self) -> Perhaps<T>;
+}
+
+fun __clone_array_item<T: Clone>(item: T) -> T {
+    item.clone()
+}
+
+fun __eq_array_item<T: Eq>(left: T, right: T) -> boolean {
+    left.eq(&right)
 }
 
 // ── List<T> ─────────────────────────────────────────────────────────────────
@@ -408,6 +424,38 @@ extend<T: Display> T[]: Display {
             first = false;
         }
         return out + "]";
+    }
+}
+
+extend<T: Clone> T[]: Clone {
+    fun clone(&self) -> Self {
+        var out: List<T> = List::new();
+        var i = 0;
+        while (i < self.len()) {
+            out.push(__clone_array_item(self[i as u64]));
+            i += 1;
+        }
+        return out.as_slice();
+    }
+}
+
+extend<T: Eq> T[]: Eq {
+    fun eq(&self, other: &Self) -> boolean {
+        var other_len = 0;
+        for (_ in other) {
+            other_len += 1;
+        }
+        if (self.len() != other_len) {
+            return false;
+        }
+        var i = 0;
+        while (i < self.len()) {
+            if (!__eq_array_item(self[i as u64], other[i as u64])) {
+                return false;
+            }
+            i += 1;
+        }
+        return true;
     }
 }
 

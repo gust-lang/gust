@@ -1486,6 +1486,7 @@ impl TypeDefinitionRegistry {
     /// nested generic type arguments. Consults `conditional_impl_bounds` (RFC-0036)
     /// in addition to the unconditional `impl_aspect_env`.
     #[must_use]
+    #[allow(clippy::too_many_lines)]
     pub fn type_satisfies_aspect(
         &self,
         current_module: &[String],

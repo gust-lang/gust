@@ -1,0 +1,21 @@
+struct Box {
+    value: i64,
+}
+
+extend Box: Display {
+    fun to_string(&self) -> String {
+        return self.value.to_string();
+    }
+}
+
+extend Box: Clone {
+    fun clone(&self) -> Self {
+        return Box { value: self.value };
+    }
+}
+
+fun main() {
+    let xs = [Box { value: 1 }, Box { value: 2 }, Box { value: 3 }];
+    let ys = xs.clone();
+    assert(ys.to_string() == "[1, 2, 3]");
+}

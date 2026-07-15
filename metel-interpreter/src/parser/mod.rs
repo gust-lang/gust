@@ -489,6 +489,7 @@ fn parse_impl_block(
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn parse_extend_impl_block(
     pair: pest::iterators::Pair<Rule>,
     filename: &str,
@@ -511,10 +512,10 @@ fn parse_extend_impl_block(
                 for inner in p.into_inner() {
                     match inner.as_rule() {
                         Rule::extend_aspect_list => {
-                            aspects = parse_extend_aspect_list(inner, filename)?
+                            aspects = parse_extend_aspect_list(inner, filename)?;
                         }
                         Rule::where_clause => {
-                            where_clause = Some(parse_where_clause(inner, filename)?)
+                            where_clause = Some(parse_where_clause(inner, filename)?);
                         }
                         _ => {}
                     }
@@ -525,10 +526,10 @@ fn parse_extend_impl_block(
                     match inner.as_rule() {
                         Rule::extend_aspect => aspects.push(parse_extend_aspect(inner, filename)?),
                         Rule::where_clause => {
-                            where_clause = Some(parse_where_clause(inner, filename)?)
+                            where_clause = Some(parse_where_clause(inner, filename)?);
                         }
                         Rule::assoc_type_def => {
-                            assoc_type_defs.push(parse_assoc_type_def(inner, filename)?)
+                            assoc_type_defs.push(parse_assoc_type_def(inner, filename)?);
                         }
                         Rule::fun_decl => methods.push(parse_fun_decl(inner, filename)?),
                         _ => {}

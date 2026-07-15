@@ -1416,7 +1416,7 @@ fn run_passes(
                 if let FunBody::Native(key) = &f.body {
                     let value = Value::Callable(crate::evaluator::builtins::native_host_impl(*key));
                     if let Some(id) = f.symbol_id {
-                        runtime.register_symbol_value(id, value)
+                        runtime.register_symbol_value(id, value);
                     } else {
                         // Ordinary top-level fn: bind by name (first-class uses) and,
                         // when it has a stable identity, also register it by SymbolId so
@@ -1443,7 +1443,7 @@ fn run_passes(
                     fun_type: None,
                 })));
                 if let Some(id) = f.symbol_id {
-                    runtime.register_symbol_value(id, value)
+                    runtime.register_symbol_value(id, value);
                 } else {
                     if let Some(id) = f.def_id {
                         runtime.register_symbol_value(id, value.clone());
@@ -1984,6 +1984,7 @@ fn range_field(
 // ── Expression evaluation ─────────────────────────────────────────────────────
 
 #[inline(never)]
+#[allow(clippy::too_many_lines)]
 fn eval_assign_expr(
     target: &crate::typed_ast::TypedPlace,
     op: &crate::ast::AssignOp,
@@ -2148,7 +2149,7 @@ fn eval_assign_expr(
 fn eval_struct_literal_expr(
     path: &[String],
     fields: &[(String, TypedExpr)],
-    type_id: &Option<SymbolId>,
+    type_id: Option<SymbolId>,
     env: &mut Environment,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
@@ -2159,7 +2160,7 @@ fn eval_struct_literal_expr(
     if path.len() == 2 {
         Ok(Signal::Value(Value::Enum {
             name: path[0].clone(),
-            type_id: *type_id,
+            type_id,
             variant: path[1].clone(),
             fields: field_vals,
         }))
@@ -2170,7 +2171,7 @@ fn eval_struct_literal_expr(
             .clone();
         Ok(Signal::Value(Value::Struct {
             name,
-            type_id: *type_id,
+            type_id,
             fields: field_vals,
         }))
     }
@@ -2292,20 +2293,20 @@ fn eval_method_call_expr(
 fn eval_call_expr(
     callee: &TypedExpr,
     args: &[TypedExpr],
-    callee_id: &Option<SymbolId>,
+    callee_id: Option<SymbolId>,
     span: &Span,
     env: &mut Environment,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
     let func_val = match callee_id {
-        Some(id) => match runtime.get_symbol_value(*id).cloned() {
+        Some(id) => match runtime.get_symbol_value(id).cloned() {
             Some(value) => value,
             None if id.0 >= crate::symbols::OVERLOAD_SYM_START => {
                 return Err(MetelError::internal(format!(
                     "no runtime value registered for overload symbol {id:?}"
                 )));
             }
-            None if runtime.is_let_mut_def_id(*id) => eval_expr(callee, env, runtime)?.into_value(),
+            None if runtime.is_let_mut_def_id(id) => eval_expr(callee, env, runtime)?.into_value(),
             None => {
                 return Err(MetelError::internal(format!(
                     "no runtime value registered for callable symbol {id:?}"
@@ -2593,6 +2594,10 @@ pub fn eval_expr(
             ..
         } => {
             let arr = eval_expr(object, env, runtime)?.into_value();
+            let arr = match deref_value(&arr, span)? {
+                Some(value) => value,
+                None => arr,
+            };
             let idx = eval_expr(index, env, runtime)?.into_value();
             let i: usize = match idx {
                 Value::U64(u) => u as usize,
@@ -2735,7 +2740,7 @@ pub fn eval_expr(
             type_id,
             span: _,
             ..
-        } => eval_struct_literal_expr(path, fields, type_id, env, runtime),
+        } => eval_struct_literal_expr(path, fields, *type_id, env, runtime),
 
         TypedExpr::FieldAccess {
             object,
@@ -2780,7 +2785,7 @@ pub fn eval_expr(
             callee_id,
             span,
             ..
-        } => eval_call_expr(callee, args, callee_id, span, env, runtime),
+        } => eval_call_expr(callee, args, *callee_id, span, env, runtime),
 
         TypedExpr::Closure {
             params, body, ty, ..

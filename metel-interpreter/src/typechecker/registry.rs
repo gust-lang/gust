@@ -795,6 +795,10 @@ fn register_array_impl_method_schemes(
     let element_tv = gen.fresh();
     let mut type_gen_map = HashMap::new();
     type_gen_map.insert(element_name.to_string(), element_tv);
+    let structural_self_type_expr = TypeExpr::Array(Box::new(TypeExpr::Named(
+        element_name.to_string(),
+        vec![],
+    )));
     let by_var: HashMap<TypeVar, Vec<String>> = std::iter::once(element_tv)
         .zip(collect_type_param_bounds(
             &ib.generics,
@@ -827,13 +831,15 @@ fn register_array_impl_method_schemes(
                 .type_ann
                 .as_ref()
                 .expect("declarations on structural array impls are fully annotated");
-            param_types.push(type_expr_to_infer_with_generics(ann, &gen_map));
+            let lowered = substitute_structural_self(ann, &structural_self_type_expr);
+            param_types.push(type_expr_to_infer_with_generics(&lowered, &gen_map));
         }
         let ret_ty = method
             .return_type
             .as_ref()
             .map_or_else(InferType::unit, |ann| {
-                type_expr_to_infer_with_generics(ann, &gen_map)
+                let lowered = substitute_structural_self(ann, &structural_self_type_expr);
+                type_expr_to_infer_with_generics(&lowered, &gen_map)
             });
         let scheme = TypeScheme {
             quantified_vars: quantified,
@@ -858,6 +864,67 @@ fn register_array_impl_method_schemes(
             vec![element_tv],
         );
         registry.register_array_method_receiver(method.name.clone(), receiver);
+    }
+}
+
+fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr {
+    match te {
+        TypeExpr::Named(name, args) if name == "Self" && args.is_empty() => replacement.clone(),
+        TypeExpr::Named(name, args) => TypeExpr::Named(
+            name.clone(),
+            args.iter()
+                .map(|arg| substitute_structural_self(arg, replacement))
+                .collect(),
+        ),
+        TypeExpr::Unit => TypeExpr::Unit,
+        TypeExpr::Tuple(items) => TypeExpr::Tuple(
+            items
+                .iter()
+                .map(|item| substitute_structural_self(item, replacement))
+                .collect(),
+        ),
+        TypeExpr::Array(inner) => TypeExpr::Array(Box::new(substitute_structural_self(
+            inner.as_ref(),
+            replacement,
+        ))),
+        TypeExpr::SizedArray(inner, len) => TypeExpr::SizedArray(
+            Box::new(substitute_structural_self(inner.as_ref(), replacement)),
+            *len,
+        ),
+        TypeExpr::Reference(inner) => TypeExpr::Reference(Box::new(substitute_structural_self(
+            inner.as_ref(),
+            replacement,
+        ))),
+        TypeExpr::MutReference(inner) => TypeExpr::MutReference(Box::new(
+            substitute_structural_self(inner.as_ref(), replacement),
+        )),
+        TypeExpr::Fun(params, ret) => TypeExpr::Fun(
+            params
+                .iter()
+                .map(|param| substitute_structural_self(param, replacement))
+                .collect(),
+            ret.as_ref().map(|ret_ty| {
+                Box::new(substitute_structural_self(ret_ty.as_ref(), replacement))
+            }),
+        ),
+        TypeExpr::ImplAspect {
+            bound,
+            source_spell,
+            span,
+        } => TypeExpr::ImplAspect {
+            bound: Box::new(substitute_structural_self(bound.as_ref(), replacement)),
+            source_spell: source_spell.clone(),
+            span: span.clone(),
+        },
+        TypeExpr::Projection {
+            base,
+            assoc_name,
+            span,
+        } => TypeExpr::Projection {
+            base: Box::new(substitute_structural_self(base.as_ref(), replacement)),
+            assoc_name: assoc_name.clone(),
+            span: span.clone(),
+        },
     }
 }
 
