@@ -118,8 +118,12 @@ fn canonicalize(names: &ResolvedNames, current_module: &[String], ty: &TypeExpr)
 /// Canonicalize an impl's target type for overlap detection: top-level unresolved
 /// names (impl-scoped type parameters like `T` in `impl<T> ... for Pair<T, T>`)
 /// are mapped to `CanonicalType::TypeParam(i)` by position, so `Pair<T, T>` and
-/// `Pair<U, U>` canonicalize identically. Non-top-level positions and resolved
-/// names use the ordinary `canonicalize` path.
+/// `Pair<U, U>` canonicalize identically. The same substitution applies to
+/// structural targets (`T[]`, tuples, `fun` types) at their own top-level
+/// positions -- RFC-0061 §2 requires structural targets to follow the ordinary
+/// overlap rules "without special cases," so `T[]` and `U[]` must canonicalize
+/// identically just like `Pair<T, T>` and `Pair<U, U>` do. Non-top-level
+/// positions and resolved names use the ordinary `canonicalize` path.
 fn canonicalize_impl_target(
     names: &ResolvedNames,
     current_module: &[String],
@@ -130,70 +134,118 @@ fn canonicalize_impl_target(
     let impl_param_names: std::collections::HashSet<&str> =
         ib.generics.iter().map(|g| g.name.as_str()).collect();
 
+    let map_arg = |i: usize, arg: &TypeExpr| -> CanonicalType {
+        if let TypeExpr::Named(n, inner_args) = arg {
+            if inner_args.is_empty() && impl_param_names.contains(n.as_str()) {
+                return CanonicalType::TypeParam(i);
+            }
+        }
+        canonicalize(names, current_module, arg)
+    };
+
     match &ib.target_type {
         TypeExpr::Named(target_name, args) if !args.is_empty() => {
             // Top-level args: map each to TypeParam(i) if it's an impl param,
             // else canonicalize normally.
-            let cargs: Vec<CanonicalType> = args
-                .iter()
-                .enumerate()
-                .map(|(i, arg)| {
-                    if let TypeExpr::Named(n, inner_args) = arg {
-                        if inner_args.is_empty() && impl_param_names.contains(n.as_str()) {
-                            return CanonicalType::TypeParam(i);
-                        }
-                    }
-                    canonicalize(names, current_module, arg)
-                })
-                .collect();
+            let cargs: Vec<CanonicalType> =
+                args.iter().enumerate().map(|(i, arg)| map_arg(i, arg)).collect();
             match resolve_id(names, current_module, target_name) {
                 Some(id) => CanonicalType::Resolved(id, cargs),
                 None => CanonicalType::Unresolved(target_name.clone(), cargs),
             }
         }
+        TypeExpr::Array(inner) => CanonicalType::Array(Box::new(map_arg(0, inner))),
+        TypeExpr::SizedArray(inner, n) => {
+            CanonicalType::SizedArray(Box::new(map_arg(0, inner)), *n)
+        }
+        TypeExpr::Tuple(items) => CanonicalType::Tuple(
+            items.iter().enumerate().map(|(i, arg)| map_arg(i, arg)).collect(),
+        ),
+        TypeExpr::Fun(params, ret) => CanonicalType::Fun(
+            params.iter().enumerate().map(|(i, arg)| map_arg(i, arg)).collect(),
+            ret.as_deref().map(|r| Box::new(map_arg(params.len(), r))),
+        ),
         _ => canonicalize(names, current_module, &ib.target_type),
     }
+}
+
+/// If `arg` is a bare `Named` type referring to one of the impl's own generic
+/// parameters, return its name. Used to identify which top-level positions of
+/// a structural or nominal target are impl-scoped type variables.
+fn name_at<'a>(
+    arg: &'a TypeExpr,
+    impl_param_names: &std::collections::HashSet<&str>,
+) -> Option<&'a str> {
+    if let TypeExpr::Named(n, _) = arg {
+        if impl_param_names.contains(n.as_str()) {
+            return Some(n.as_str());
+        }
+    }
+    None
 }
 
 /// Collect the scoped type-param bounds for an impl block, indexed by the
 /// target type's top-level argument position. Returns `(pos_bounds, neg_bounds)`
 /// where `pos_bounds[i]` is the list of positive aspect names required of the
 /// type at position `i`, and `neg_bounds[i]` is the list of negative aspect
-/// names. Both are empty vectors for unconditional impls, or for blanket/
-/// structural impls whose target type is not a named type with top-level args
-/// (e.g. `impl<T> Display for T[]`).
+/// names. Both are empty vectors for unconditional impls, or for any impl-scoped
+/// param that isn't a bare `Named` type in top-level position.
+///
+/// Structural targets (`T[]`, tuples, `fun` types) get the same positional
+/// treatment as `Named` targets: an array's element type is position 0, a
+/// tuple's elements are positions `0..n`, and a function type's parameters are
+/// positions `0..n` with the return type at position `n`. This is required by
+/// RFC-0061 §2's "no special cases" claim -- without it, `extend<T: Bound>
+/// T[]: Aspect` and `extend<T: !Bound> T[]: Aspect` would never be recognized
+/// as syntactically disjoint (RFC-0036 §3.1) and would incorrectly conflict.
 fn scoped_type_param_bounds(ib: &ImplBlock) -> (Vec<Vec<String>>, Vec<Vec<String>>) {
-    // Only Named targets with top-level args have meaningful positions.
-    let arg_count = match &ib.target_type {
-        TypeExpr::Named(_, args) => args.len(),
-        _ => return (vec![], vec![]),
-    };
-
     // Build the set of impl param names.
     let impl_param_names: std::collections::HashSet<&str> =
         ib.generics.iter().map(|g| g.name.as_str()).collect();
 
+    // Build a name → target-position map depending on the target's shape. A
+    // type param at `ib.generics` position 0 may appear at a different target
+    // position (e.g. `impl<T, U> ... for Pair<U, T>`).
+    let (arg_count, name_to_target_pos): (usize, HashMap<&str, usize>) = match &ib.target_type {
+        TypeExpr::Named(_, args) => {
+            let map = args
+                .iter()
+                .enumerate()
+                .filter_map(|(i, arg)| name_at(arg, &impl_param_names).map(|n| (n, i)))
+                .collect();
+            (args.len(), map)
+        }
+        TypeExpr::Array(inner) | TypeExpr::SizedArray(inner, _) => {
+            let map = name_at(inner, &impl_param_names)
+                .map(|n| (n, 0))
+                .into_iter()
+                .collect();
+            (1, map)
+        }
+        TypeExpr::Tuple(items) => {
+            let map = items
+                .iter()
+                .enumerate()
+                .filter_map(|(i, arg)| name_at(arg, &impl_param_names).map(|n| (n, i)))
+                .collect();
+            (items.len(), map)
+        }
+        TypeExpr::Fun(params, ret) => {
+            let mut map: HashMap<&str, usize> = params
+                .iter()
+                .enumerate()
+                .filter_map(|(i, arg)| name_at(arg, &impl_param_names).map(|n| (n, i)))
+                .collect();
+            if let Some(n) = ret.as_deref().and_then(|r| name_at(r, &impl_param_names)) {
+                map.insert(n, params.len());
+            }
+            (params.len() + usize::from(ret.is_some()), map)
+        }
+        _ => return (vec![], vec![]),
+    };
+
     let mut pos_bounds: Vec<Vec<String>> = vec![vec![]; arg_count];
     let mut neg_bounds: Vec<Vec<String>> = vec![vec![]; arg_count];
-
-    // Build a name → target-arg-position map by scanning the target type's
-    // top-level arguments. A type param at `ib.generics` position 0 may appear
-    // at target arg position 1 (e.g. `impl<T, U> ... for Pair<U, T>`).
-    let TypeExpr::Named(_, target_args) = &ib.target_type else {
-        return (vec![], vec![]);
-    };
-    let name_to_target_pos: HashMap<&str, usize> = target_args
-        .iter()
-        .enumerate()
-        .filter_map(|(i, arg)| {
-            if let TypeExpr::Named(n, _) = arg {
-                if impl_param_names.contains(n.as_str()) {
-                    return Some((n.as_str(), i));
-                }
-            }
-            None
-        })
-        .collect();
 
     // From inline bounds: `impl<T: Copy> ...` → pos_bounds for T's target position
     for gp in &ib.generics {

@@ -1,0 +1,17 @@
+// Negative: an array's conditional impl is gated on the element type, not
+// granted unconditionally to every array. `Opaque[]` does not implement
+// `Display` because `Opaque` itself does not (RFC-0061 §2-3) -- this is the
+// array counterpart to stage19_neg_01 (tuple) and stage19_neg_02 (function).
+
+struct Opaque {
+    value: i64,
+}
+
+fun show<T: Display>(x: T) -> String {
+    return x.to_string();
+}
+
+fun main() {
+    let items = [Opaque { value: 1 }, Opaque { value: 2 }];
+    let _ = show(items); // ERROR[T0012]
+}

@@ -1,0 +1,20 @@
+// Negative: function pointers do not implement `Eq` -- function equality is
+// undecidable in general (RFC-0061 §7.3). Expect T0012, the function-type
+// sibling of stage19_neg_02 (which covers `Display`) for a different aspect
+// from the "aspects function pointers do not implement" table.
+
+fun show_eq<T: Eq>(a: T, b: T) -> boolean {
+    return a.eq(&b);
+}
+
+fun plus_one(x: i64) -> i64 {
+    return x + 1;
+}
+
+fun minus_one(x: i64) -> i64 {
+    return x - 1;
+}
+
+fun main() {
+    let _ = show_eq(plus_one, minus_one); // ERROR[T0012]
+}
