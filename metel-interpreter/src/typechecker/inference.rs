@@ -1736,19 +1736,50 @@ fn infer_stmt(
                     );
                 }
                 _ => {
-                    // Look up the type name in the Iterable registry.
-                    let type_name = infer_type_name(&resolved_iter).map(ToOwned::to_owned);
-                    let elem_from_registry = type_name
-                        .as_deref()
-                        .and_then(|name| ctx.iterable_elem_type(name))
-                        .cloned();
-                    match elem_from_registry {
+                    // Prefer a per-instantiation resolution via the polymorphic
+                    // method scheme over the static Iterable registry entry: for a
+                    // generic struct implementing Iterable<T> generically (e.g.
+                    // `extend<T> Wrapper<T>: Iterable<T> { ... }`), the registry's
+                    // own recorded "type args" are the impl's still-generic
+                    // parameter names, not concrete types (registered before any
+                    // instantiation is known) -- reading them directly would bind
+                    // elem_ty to that bogus placeholder instead of the receiver's
+                    // actual instantiation.
+                    let elem_from_scheme = if let InferType::Named(name, type_args) = &resolved_iter
+                    {
+                        ctx.method_scheme_for(name, "next")
+                            .and_then(|(scheme, struct_tvars)| {
+                                let mut subst = Substitution::new();
+                                for (&tv, concrete) in struct_tvars.iter().zip(type_args.iter()) {
+                                    subst.bind(tv, concrete.clone());
+                                }
+                                match subst.apply(&scheme.ty) {
+                                    InferType::Fun(_, ret) => match *ret {
+                                        InferType::Named(n, mut args)
+                                            if n == "Perhaps" && args.len() == 1 =>
+                                        {
+                                            Some(args.remove(0))
+                                        }
+                                        _ => None,
+                                    },
+                                    _ => None,
+                                }
+                            })
+                    } else {
+                        None
+                    };
+                    // Fall back to the Iterable registry (concrete impls).
+                    let elem = elem_from_scheme.or_else(|| {
+                        let type_name = infer_type_name(&resolved_iter).map(ToOwned::to_owned);
+                        type_name
+                            .as_deref()
+                            .and_then(|name| ctx.iterable_elem_type(name))
+                            .cloned()
+                            .map(InferType::Concrete)
+                    });
+                    match elem {
                         Some(t) => {
-                            ctx.add_constraint(
-                                elem_ty.clone(),
-                                InferType::Concrete(t),
-                                fi.span.clone(),
-                            );
+                            ctx.add_constraint(elem_ty.clone(), t, fi.span.clone());
                         }
                         None => {
                             return Err(MetelError::type_error(

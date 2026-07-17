@@ -39,7 +39,14 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
         Value::Tuple(elems) => Type::Tuple(elems.iter().map(go).collect()),
         Value::Array(rc) => {
             let borrowed = rc.borrow();
-            let elem_ty = borrowed.first().map_or(Type::Unit, go);
+            // Empty: no element to sample. `Never` (not `Unit`) -- it already
+            // coerces to any type and dispatches dynamically wherever construction
+            // consults it (see construction.rs's method-call handling), so a
+            // generic method body reconstructed at call time for this empty
+            // array can still construct branches that reference the element type
+            // even though they're provably unreachable at runtime for this call
+            // (issue #271).
+            let elem_ty = borrowed.first().map_or(Type::Never, go);
             Type::Array(Box::new(elem_ty))
         }
         Value::Struct { name, fields, .. } => {

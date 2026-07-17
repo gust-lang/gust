@@ -335,9 +335,21 @@ pub(super) fn construct_generic_body(
         }
     }
 
-    // Fill any still-unresolved type vars with Unit so `infer_type_to_type` does not
-    // error during construction. The resulting typed AST may have placeholder types
-    // but evaluation correctness is unaffected — runtime dispatch goes by value kind.
+    // Fill any still-unresolved type vars with Never (not Unit) so
+    // `infer_type_to_type` does not error during construction. `unify` treats
+    // `Never` as the bottom type and no-ops instead of binding (see `unify`'s
+    // `(Never, _) | (_, Never) => Ok(Substitution::new())` arm), which is
+    // exactly why a var can still be unresolved here even after the loop above
+    // -- e.g. `value_to_type`'s own placeholder for an empty collection's
+    // element type (#271) unifies as a no-op, leaving the element TypeVar
+    // unbound. Defaulting to `Unit` here (as opposed to `Never`) would make
+    // that placeholder look like a real concrete type to everything
+    // downstream, which previously produced spurious construction errors for
+    // any dead branch that called a non-Unit method on it; `Never` coerces to
+    // any type through the rest of construction (binops, method-call
+    // receivers) and defers to the evaluator's runtime dynamic dispatch
+    // instead, matching this function's own "evaluation correctness is
+    // unaffected -- runtime dispatch goes by value kind" contract.
     let all_free: std::collections::HashSet<_> = param_infertypes
         .iter()
         .chain(std::iter::once(&*ret_infertype))
@@ -345,7 +357,7 @@ pub(super) fn construct_generic_body(
         .collect();
     for v in all_free {
         if subst.lookup(v).is_none() {
-            subst.bind(v, InferType::unit());
+            subst.bind(v, InferType::Never);
         }
     }
 
@@ -1135,20 +1147,39 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
             let elem_ty = match peel_type_references(iterable.ty()) {
                 Type::Array(elem) | Type::SizedArray(elem, _) => *elem.clone(),
                 Type::Named(name, _) if name == "Range" => Type::I64,
-                Type::Named(type_name, _) => {
+                Type::Named(type_name, type_args) => {
                     // User-defined Iterable: derive elem type from next() -> Perhaps<T>.
+                    // Concrete-impl method_env first; fall back to the polymorphic
+                    // method_scheme_env (mirrors the method-call construction path
+                    // above) for a generic struct implementing Iterable<T> generically
+                    // -- e.g. `extend<T> Wrapper<T>: Iterable<T> { ... }` -- whose
+                    // `next` is only registered there, not in method_env.
                     let next_ret = ctx
                         .method_env
                         .get(type_name.as_str())
                         .and_then(|m| m.get("next"))
                         .and_then(|ty| {
                             if let Type::Fun(_, ret) = ty {
-                                Some(ret.as_ref())
+                                Some(ret.as_ref().clone())
                             } else {
                                 None
                             }
                         })
-                        .cloned();
+                        .or_else(|| {
+                            let (scheme, struct_tvars) =
+                                ctx.registry.method_scheme_for(type_name.as_str(), "next")?;
+                            let mut subst = Substitution::new();
+                            for (&tv, concrete) in struct_tvars.iter().zip(type_args.iter()) {
+                                subst.bind(tv, type_to_infer(concrete));
+                            }
+                            match subst.apply(&scheme.ty) {
+                                InferType::Fun(_, ret) => {
+                                    let dummy = Span::new(0, 0, "");
+                                    infer_type_to_type(&ret, &dummy).ok()
+                                }
+                                _ => None,
+                            }
+                        });
                     match next_ret {
                         Some(Type::Named(n, mut args)) if n == "Perhaps" && args.len() == 1 => {
                             args.remove(0)
@@ -1672,6 +1703,28 @@ fn construct_expr(
                 });
             }
 
+            if matches!(peel_type_references(typed_receiver.ty()), Type::Never) {
+                // Receiver's type is unknowable -- e.g. `construct_generic_body`'s
+                // call-time reconstruction sampling an empty collection's element
+                // type (issue #271), or a genuinely diverging receiver expression.
+                // Either way nothing here actually runs, but construction must
+                // still produce a valid typed node: skip static method resolution
+                // and defer to runtime dynamic dispatch, which resolves by the
+                // receiver's real value/kind (see `eval_method_call_expr`), not by
+                // this placeholder type.
+                let typed_args = args
+                    .iter()
+                    .map(|a| construct_expr(a, None, ctx))
+                    .collect::<Result<_, _>>()?;
+                return Ok(TypedExpr::MethodCall {
+                    receiver: Box::new(typed_receiver),
+                    method: method.clone(),
+                    args: typed_args,
+                    ty: Type::Never,
+                    dispatch: crate::typed_ast::MethodDispatch::Dynamic,
+                    span: span.clone(),
+                });
+            }
             let (struct_name, receiver_type_args) = match peel_type_references(typed_receiver.ty())
             {
                 Type::Named(name, targs) => (name.clone(), targs.clone()),
