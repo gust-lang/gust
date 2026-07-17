@@ -976,11 +976,17 @@ pub type AssocProjectionLog = Vec<(TypeVar, String, String, TypeVar)>;
 /// One conditional impl's per-position bound requirements: `(pos_bounds, neg_bounds)`,
 /// see `TypeDefinitionRegistry::conditional_impl_bounds`.
 pub type ConditionalImplBoundEntry = (Vec<Vec<String>>, Vec<Vec<String>>);
-/// One registered method scheme variant: `(scheme, struct_tvars)`,
-/// see `TypeDefinitionRegistry::method_scheme_variants`.
-pub type MethodSchemeVariant = (TypeScheme, Vec<TypeVar>);
-/// One registered array method scheme variant: `(scheme, element_tvars)`.
-pub type ArrayMethodSchemeVariant = (TypeScheme, Vec<TypeVar>);
+/// One registered method scheme variant: `(scheme, struct_tvars, aspect_name)`.
+/// `aspect_name` is `None` for an inherent (non-aspect) method -- see
+/// `TypeDefinitionRegistry::method_scheme_variants`. Carrying the aspect name
+/// per variant (issue #272) lets a caller that picks a candidate by bound
+/// satisfaction also stamp the winning aspect onto the call site's dispatch
+/// mode, instead of leaving it `Dynamic` for a later, bound-unaware pass to
+/// mis-resolve.
+pub type MethodSchemeVariant = (TypeScheme, Vec<TypeVar>, Option<String>);
+/// One registered array method scheme variant: `(scheme, element_tvars, aspect_name)`.
+/// See `MethodSchemeVariant`'s doc for why `aspect_name` is carried here too.
+pub type ArrayMethodSchemeVariant = (TypeScheme, Vec<TypeVar>, Option<String>);
 
 #[derive(Debug, Clone)]
 pub struct TypeDefinitionRegistry {
@@ -1295,13 +1301,14 @@ impl TypeDefinitionRegistry {
         method_name: String,
         scheme: TypeScheme,
         struct_tvars: Vec<TypeVar>,
+        aspect_name: Option<String>,
     ) {
         self.method_scheme_variants
             .entry(type_name)
             .or_default()
             .entry(method_name)
             .or_default()
-            .push((scheme, struct_tvars));
+            .push((scheme, struct_tvars, aspect_name));
     }
 
     pub fn register_array_method_scheme(
@@ -1327,11 +1334,42 @@ impl TypeDefinitionRegistry {
         method_name: String,
         scheme: TypeScheme,
         element_tvars: Vec<TypeVar>,
+        aspect_name: Option<String>,
     ) {
         self.array_method_scheme_variants
             .entry(method_name)
             .or_default()
-            .push((scheme, element_tvars));
+            .push((scheme, element_tvars, aspect_name));
+    }
+
+    /// All registered schemes for `method_name` on a structural array target
+    /// (issue #272) -- unlike `array_method_scheme_for`'s single slot (last
+    /// registration wins), this returns every candidate so a caller can pick
+    /// the one whose bounds the concrete element type actually satisfies.
+    #[must_use]
+    pub fn array_method_scheme_variants_for(
+        &self,
+        method_name: &str,
+    ) -> &[ArrayMethodSchemeVariant] {
+        self.array_method_scheme_variants
+            .get(method_name)
+            .map_or(&[], Vec::as_slice)
+    }
+
+    /// All registered schemes for `(type_name, method_name)` on a generic
+    /// struct/enum target (issue #272) -- see
+    /// `array_method_scheme_variants_for`'s doc for why a caller needs the
+    /// full list rather than `method_scheme_for`'s single slot.
+    #[must_use]
+    pub fn method_scheme_variants_for(
+        &self,
+        type_name: &str,
+        method_name: &str,
+    ) -> &[MethodSchemeVariant] {
+        self.method_scheme_variants
+            .get(type_name)
+            .and_then(|m| m.get(method_name))
+            .map_or(&[], Vec::as_slice)
     }
 
     /// Register the conditional impl bounds for a `(target_id, aspect)` key (RFC-0036).
@@ -2586,9 +2624,15 @@ impl InferContext {
         method_name: String,
         scheme: TypeScheme,
         struct_tvars: Vec<TypeVar>,
+        aspect_name: Option<String>,
     ) {
-        self.registry
-            .register_method_scheme_variant(type_name, method_name, scheme, struct_tvars);
+        self.registry.register_method_scheme_variant(
+            type_name,
+            method_name,
+            scheme,
+            struct_tvars,
+            aspect_name,
+        );
     }
 
     pub fn register_array_method_scheme_variant(
@@ -2596,9 +2640,14 @@ impl InferContext {
         method_name: String,
         scheme: TypeScheme,
         element_tvars: Vec<TypeVar>,
+        aspect_name: Option<String>,
     ) {
-        self.registry
-            .register_array_method_scheme_variant(method_name, scheme, element_tvars);
+        self.registry.register_array_method_scheme_variant(
+            method_name,
+            scheme,
+            element_tvars,
+            aspect_name,
+        );
     }
 
     #[must_use]

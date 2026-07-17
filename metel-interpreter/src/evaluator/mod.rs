@@ -379,6 +379,17 @@ pub struct RuntimeRegistry {
     /// lookup — it only maps a name to an id, which then keys `types`.
     type_ids: HashMap<String, SymbolId>,
     pattern_methods: HashMap<RuntimeTypePattern, HashMap<String, RuntimeMethod>>,
+    /// Aspect-tagged methods for structural (pattern-dispatched) targets, e.g.
+    /// `impl<T: Display> Display for T[]` -- mirrors `RuntimeTypeEntry::aspect_impls`,
+    /// which only covers `Struct`/`Enum` receivers (those carry a `type_id`;
+    /// arrays/tuples/etc. don't and dispatch via `RuntimeTypePattern` instead).
+    /// Needed so that when two different aspects register the same method name
+    /// for the same pattern (issue #272), `MethodDispatch::Aspect { aspect_id }`
+    /// -- stamped by construction once it's already picked the right one via
+    /// bound satisfaction -- can look up that *specific* aspect's method
+    /// instead of falling back to `pattern_methods`' plain last-registration-
+    /// wins entry.
+    pattern_aspect_methods: HashMap<RuntimeTypePattern, Vec<RuntimeAspectImpl>>,
     /// Callables dispatched by stable `SymbolId` rather than by name — overloaded
     /// free-function definitions (METEL-180) and ordinary top-level functions
     /// (METEL-187), whose surface name cannot always identify a single definition.
@@ -552,6 +563,67 @@ impl RuntimeRegistry {
             .entry(pattern)
             .or_default()
             .insert(method_name.into(), value);
+    }
+
+    /// Register an aspect-tagged method for a structural (pattern-dispatched)
+    /// target -- see `pattern_aspect_methods`'s doc. Mirrors
+    /// `register_aspect_method`'s per-aspect grouping, just keyed by pattern
+    /// instead of type id.
+    pub fn register_pattern_aspect_method(
+        &mut self,
+        pattern: RuntimeTypePattern,
+        aspect_name: impl Into<String>,
+        aspect_id: Option<SymbolId>,
+        method_name: impl Into<String>,
+        value: RuntimeMethod,
+    ) {
+        let entries = self.pattern_aspect_methods.entry(pattern).or_default();
+        let aspect_name = aspect_name.into();
+        let method_name = method_name.into();
+        if let Some(existing) = entries
+            .iter_mut()
+            .find(|ai| ai.aspect_name == aspect_name)
+        {
+            if existing.aspect_id.is_none() {
+                existing.aspect_id = aspect_id;
+            }
+            existing.methods.insert(method_name, value);
+            return;
+        }
+        let mut methods = HashMap::new();
+        methods.insert(method_name, value);
+        entries.push(RuntimeAspectImpl {
+            aspect_name,
+            aspect_id,
+            type_args: Vec::new(),
+            methods,
+        });
+    }
+
+    /// Look up a pattern-dispatched method belonging to a specific aspect impl,
+    /// by the aspect's stable `SymbolId` -- the structural-target counterpart
+    /// to `get_aspect_method_by_id`.
+    #[must_use]
+    pub fn get_pattern_aspect_method_by_id(
+        &self,
+        pattern: &RuntimeTypePattern,
+        aspect_id: SymbolId,
+        method_name: &str,
+    ) -> Option<RuntimeMethod> {
+        self.pattern_aspect_methods
+            .get(pattern)?
+            .iter()
+            .rev()
+            .find_map(|ai| {
+                if ai.aspect_id == Some(aspect_id) {
+                    ai.methods
+                        .get(method_name)
+                        .cloned()
+                        .filter(|m| m.receiver.is_some())
+                } else {
+                    None
+                }
+            })
     }
 
     #[must_use]
@@ -1551,6 +1623,25 @@ fn run_passes(
                             body_callable,
                         );
                         if runtime_method.receiver.is_some() {
+                            // Also register aspect-tagged (issue #272), mirroring the
+                            // `TypeExpr::Named` arm above: `register_pattern_method`
+                            // alone can't distinguish two different aspects providing
+                            // the same method name for `T[]`, silently keeping only
+                            // the last one registered. Construction now stamps
+                            // `MethodDispatch::Aspect { aspect_id }` once it has
+                            // already picked the right one via bound satisfaction, so
+                            // the aspect-tagged entry is what that dispatch mode
+                            // actually looks up; `register_pattern_method` stays for
+                            // the plain-name (`Inherent`/`Dynamic`) fallback path.
+                            if let Some(aspect_name) = &impl_block.aspect_name {
+                                runtime.register_pattern_aspect_method(
+                                    RuntimeTypePattern::Array,
+                                    aspect_name,
+                                    impl_block.aspect_id,
+                                    &method.name,
+                                    runtime_method.clone(),
+                                );
+                            }
                             runtime.register_pattern_method(
                                 RuntimeTypePattern::Array,
                                 &method.name,
@@ -2198,6 +2289,13 @@ fn eval_method_call_expr(
         MethodDispatch::Aspect { aspect_id } => runtime
             .resolve_value_type_id(&recv_type_view)
             .and_then(|tid| runtime.get_aspect_method_by_id(tid, *aspect_id, method))
+            .or_else(|| {
+                // Structural receivers (arrays/tuples/etc.) have no type_id, so
+                // `resolve_value_type_id` above is always `None` for them --
+                // check the pattern-keyed aspect table instead (issue #272).
+                runtime_type_pattern(&recv_type_view)
+                    .and_then(|pattern| runtime.get_pattern_aspect_method_by_id(&pattern, *aspect_id, method))
+            })
             .or_else(|| runtime.get_method_for_value(&recv_type_view, method)),
         MethodDispatch::Inherent | MethodDispatch::Dynamic => {
             runtime.get_method_for_value(&recv_type_view, method)

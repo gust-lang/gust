@@ -7,10 +7,10 @@ use crate::ast::{
 use crate::error::{MetelError, TypeErrorCode};
 use crate::symbols::SymbolId;
 use crate::typed_ast::{
-    FunBody, TypedAspectDecl, TypedBlock, TypedBreakExpr, TypedDecl, TypedEnumDecl, TypedExpr,
-    TypedForInStmt, TypedForInit, TypedForStmt, TypedFunDecl, TypedImplBlock, TypedLetDecl,
-    TypedMatchArm, TypedMatchExpr, TypedMutDecl, TypedPlace, TypedProgram, TypedReturnExpr,
-    TypedStmt, TypedStructDecl, TypedWhileStmt,
+    FunBody, MethodDispatch, TypedAspectDecl, TypedBlock, TypedBreakExpr, TypedDecl, TypedEnumDecl,
+    TypedExpr, TypedForInStmt, TypedForInit, TypedForStmt, TypedFunDecl, TypedImplBlock,
+    TypedLetDecl, TypedMatchArm, TypedMatchExpr, TypedMutDecl, TypedPlace, TypedProgram,
+    TypedReturnExpr, TypedStmt, TypedStructDecl, TypedWhileStmt,
 };
 use crate::typeinference::{
     self, unify, EnumInfo, InferType, Substitution, TypeDefinitionRegistry, TypeScheme, TypeVar,
@@ -1581,101 +1581,24 @@ fn construct_expr(
 
             // Resolve the method's function type and construct the arguments.
             if let Type::Array(elem) = peel_type_references(typed_receiver.ty()) {
-                let (scheme, struct_tvars) = ctx
-                    .registry
-                    .array_method_scheme_for(method)
-                    .map(|(s, t)| (s.clone(), t.clone()))
-                    .ok_or_else(|| {
-                        MetelError::type_error(
-                            TypeErrorCode::T0003,
-                            format!("no method `{method}` on array type"),
-                            span,
-                        )
-                    })?;
+                let candidates = ctx.registry.array_method_scheme_variants_for(method).to_vec();
+                if candidates.is_empty() {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0003,
+                        format!("no method `{method}` on array type"),
+                        span,
+                    ));
+                }
                 let receiver_type_args = [elem.as_ref().clone()];
-                let mut subst = Substitution::new();
-                for (&tv, concrete) in struct_tvars.iter().zip(receiver_type_args.iter()) {
-                    subst.bind(tv, type_to_infer(concrete));
-                }
-                if let Some(ref explicit) = explicit_method_tys {
-                    let free: Vec<TypeVar> = {
-                        let mut fv: Vec<TypeVar> = typeinference::free_vars(&scheme.ty)
-                            .into_iter()
-                            .filter(|v| !struct_tvars.contains(v))
-                            .collect();
-                        fv.sort();
-                        fv
-                    };
-                    if explicit.len() != free.len() {
-                        return Err(MetelError::type_error(
-                            TypeErrorCode::T0004,
-                            format!(
-                                "expected {} type argument(s), got {}",
-                                free.len(),
-                                explicit.len()
-                            ),
-                            span,
-                        ));
-                    }
-                    for (tv, concrete_ty) in free.iter().zip(explicit.iter()) {
-                        subst.bind(*tv, type_to_infer(concrete_ty));
-                    }
-                }
-                let partial_params: Vec<InferType> = match subst.apply(&scheme.ty) {
-                    InferType::Fun(p, _) => p,
-                    _ => {
-                        return Err(MetelError::internal(
-                            "array method scheme is not a function type",
-                        ))
-                    }
-                };
-                let typed_args: Vec<TypedExpr> = args
-                    .iter()
-                    .enumerate()
-                    .map(|(i, a)| {
-                        let hint = partial_params
-                            .get(i + 1)
-                            .and_then(|it| infer_type_to_type(&subst.apply(it), span).ok());
-                        construct_expr(a, hint.as_ref(), ctx)
-                    })
-                    .collect::<Result<_, _>>()?;
-                for (param_it, arg) in partial_params.iter().skip(1).zip(typed_args.iter()) {
-                    let arg_it = type_to_infer(arg.ty());
-                    if let Ok(s) = typeinference::unify(&subst.apply(param_it), &arg_it) {
-                        subst = subst.compose(&s);
-                    }
-                }
-                let mut var_to_type: HashMap<TypeVar, Type> = HashMap::new();
-                for &tv in &scheme.quantified_vars {
-                    if let Ok(t) = infer_type_to_type(&subst.apply(&InferType::Var(tv)), span) {
-                        var_to_type.insert(tv, t);
-                    }
-                }
-                check_scheme_bounds(
+                let (method_fun_ty, typed_args, winning_aspect) = resolve_generic_method_call(
+                    &candidates,
+                    &receiver_type_args,
+                    explicit_method_tys.as_deref(),
+                    args,
                     method,
-                    &scheme,
-                    &var_to_type,
                     span,
-                    ctx.registry,
-                    ctx.current_module,
+                    ctx,
                 )?;
-                check_scheme_neg_bounds(
-                    method,
-                    &scheme,
-                    &var_to_type,
-                    span,
-                    ctx.registry,
-                    ctx.current_module,
-                )?;
-                check_scheme_assoc_eq(
-                    method,
-                    &scheme,
-                    &var_to_type,
-                    span,
-                    ctx.registry,
-                    ctx.current_module,
-                )?;
-                let method_fun_ty = infer_type_to_type(&subst.apply(&scheme.ty), span)?;
                 if matches!(
                     ctx.registry.array_method_receiver_kind(method),
                     Some(crate::ast::ReceiverKind::RefMut)
@@ -1693,12 +1616,13 @@ fn construct_expr(
                     Type::Fun(_, ret) => *ret,
                     _ => return Err(MetelError::internal("array method type is not a function")),
                 };
+                let dispatch = dispatch_for_resolved_method(ctx, winning_aspect.as_deref());
                 return Ok(TypedExpr::MethodCall {
                     receiver: Box::new(typed_receiver),
                     method: method.clone(),
                     args: typed_args,
                     ty: ret_ty,
-                    dispatch: crate::typed_ast::MethodDispatch::Dynamic,
+                    dispatch,
                     span: span.clone(),
                 });
             }
@@ -1741,125 +1665,50 @@ fn construct_expr(
             // Resolve the method's function type and construct the arguments.
             // Two cases: a concrete method already in method_env (fast path), or a
             // polymorphic scheme on a generic struct/enum (slow path).
-            let (method_fun_ty, typed_args): (Type, Vec<TypedExpr>) = if let Some(ty) = ctx
-                .method_env
-                .get(&struct_name)
-                .and_then(|m| m.get(method.as_str()))
-                .cloned()
-            {
-                if explicit_method_tys.is_some() {
-                    return Err(MetelError::type_error(
-                        TypeErrorCode::T0004,
-                        format!("method `{method}` on `{struct_name}` has no type parameters"),
-                        span,
-                    ));
-                }
-                let typed_args = construct_method_args(&ty, args, ctx)?;
-                (ty, typed_args)
-            } else {
-                // Slow path: method on a generic struct/enum — look up the polymorphic
-                // scheme and instantiate it using the receiver's concrete type arguments.
-                let (scheme, struct_tvars) = ctx
-                    .registry
-                    .method_scheme_for(&struct_name, method)
-                    .map(|(s, t)| (s.clone(), t.clone()))
-                    .ok_or_else(|| {
-                        MetelError::internal(format!("no method `{method}` on `{struct_name}`"))
-                    })?;
-                // Build substitution: struct_tvars[i] → receiver_type_args[i].
-                let mut subst = Substitution::new();
-                for (&tv, concrete) in struct_tvars.iter().zip(receiver_type_args.iter()) {
-                    subst.bind(tv, type_to_infer(concrete));
-                }
-                // If turbofish was supplied, also bind remaining free vars from explicit types.
-                if let Some(ref explicit) = explicit_method_tys {
-                    let free: Vec<TypeVar> = {
-                        let mut fv: Vec<TypeVar> = typeinference::free_vars(&scheme.ty)
-                            .into_iter()
-                            .filter(|v| !struct_tvars.contains(v))
-                            .collect();
-                        fv.sort();
-                        fv
-                    };
-                    if explicit.len() != free.len() {
+            let (method_fun_ty, typed_args, dispatch): (Type, Vec<TypedExpr>, MethodDispatch) =
+                if let Some(ty) = ctx
+                    .method_env
+                    .get(&struct_name)
+                    .and_then(|m| m.get(method.as_str()))
+                    .cloned()
+                {
+                    if explicit_method_tys.is_some() {
                         return Err(MetelError::type_error(
                             TypeErrorCode::T0004,
-                            format!(
-                                "expected {} type argument(s), got {}",
-                                free.len(),
-                                explicit.len()
-                            ),
+                            format!("method `{method}` on `{struct_name}` has no type parameters"),
                             span,
                         ));
                     }
-                    for (tv, concrete_ty) in free.iter().zip(explicit.iter()) {
-                        subst.bind(*tv, type_to_infer(concrete_ty));
+                    let typed_args = construct_method_args(&ty, args, ctx)?;
+                    (ty, typed_args, MethodDispatch::Dynamic)
+                } else {
+                    // Slow path: method on a generic struct/enum — look up the polymorphic
+                    // scheme(s) and instantiate against the receiver's concrete type
+                    // arguments. More than one candidate can be registered here (issue
+                    // #272: different aspects providing the same method name for the
+                    // same generic target) -- try each and use the one whose bounds the
+                    // receiver's concrete type args actually satisfy.
+                    let candidates = ctx
+                        .registry
+                        .method_scheme_variants_for(&struct_name, method)
+                        .to_vec();
+                    if candidates.is_empty() {
+                        return Err(MetelError::internal(format!(
+                            "no method `{method}` on `{struct_name}`"
+                        )));
                     }
-                }
-                // The struct's type params are now pinned, but the method's OWN
-                // generics (e.g. `U` in `fun map<U>(self, f: (T) -> U)`) may still be
-                // free. Construct the arguments first (hinting with any non-self
-                // param types that are already concrete), then recover the method-
-                // level generics by unifying each parameter type against the actual
-                // argument type. Without this, `infer_type_to_type` below would fail
-                // on the still-free `U` with a spurious T0002.
-                let partial_params: Vec<InferType> = match subst.apply(&scheme.ty) {
-                    InferType::Fun(p, _) => p,
-                    _ => return Err(MetelError::internal("method scheme is not a function type")),
+                    let (ty, typed_args, winning_aspect) = resolve_generic_method_call(
+                        &candidates,
+                        &receiver_type_args,
+                        explicit_method_tys.as_deref(),
+                        args,
+                        method,
+                        span,
+                        ctx,
+                    )?;
+                    let dispatch = dispatch_for_resolved_method(ctx, winning_aspect.as_deref());
+                    (ty, typed_args, dispatch)
                 };
-                let typed_args: Vec<TypedExpr> = args
-                    .iter()
-                    .enumerate()
-                    .map(|(i, a)| {
-                        // params[0] is self; arguments line up with params[1..].
-                        let hint = partial_params
-                            .get(i + 1)
-                            .and_then(|it| infer_type_to_type(&subst.apply(it), span).ok());
-                        construct_expr(a, hint.as_ref(), ctx)
-                    })
-                    .collect::<Result<_, _>>()?;
-                for (param_it, arg) in partial_params.iter().skip(1).zip(typed_args.iter()) {
-                    let arg_it = type_to_infer(arg.ty());
-                    if let Ok(s) = typeinference::unify(&subst.apply(param_it), &arg_it) {
-                        subst = subst.compose(&s);
-                    }
-                }
-                // RFC-0036 §2.2 use-site check: build var→concrete mapping and
-                // verify that the concrete receiver type satisfies the method
-                // scheme's conditional bounds.
-                let mut var_to_type: HashMap<TypeVar, Type> = HashMap::new();
-                for &tv in &scheme.quantified_vars {
-                    if let Ok(t) = infer_type_to_type(&subst.apply(&InferType::Var(tv)), span) {
-                        var_to_type.insert(tv, t);
-                    }
-                }
-                check_scheme_bounds(
-                    method,
-                    &scheme,
-                    &var_to_type,
-                    span,
-                    ctx.registry,
-                    ctx.current_module,
-                )?;
-                check_scheme_neg_bounds(
-                    method,
-                    &scheme,
-                    &var_to_type,
-                    span,
-                    ctx.registry,
-                    ctx.current_module,
-                )?;
-                check_scheme_assoc_eq(
-                    method,
-                    &scheme,
-                    &var_to_type,
-                    span,
-                    ctx.registry,
-                    ctx.current_module,
-                )?;
-                let method_fun_ty = infer_type_to_type(&subst.apply(&scheme.ty), span)?;
-                (method_fun_ty, typed_args)
-            };
             let ret_ty = match method_fun_ty {
                 Type::Fun(_, ret) => *ret,
                 _ => return Err(MetelError::internal("method type is not a function")),
@@ -1869,7 +1718,7 @@ fn construct_expr(
                 method: method.clone(),
                 args: typed_args,
                 ty: ret_ty,
-                dispatch: crate::typed_ast::MethodDispatch::Dynamic,
+                dispatch,
                 span: span.clone(),
             })
         }
@@ -3253,6 +3102,177 @@ fn check_fun_call_bounds(
         )?;
     }
     Ok(())
+}
+
+/// Try instantiating one candidate method scheme against the receiver's
+/// concrete type args and constructing the call's arguments against it,
+/// running the same bound/neg-bound/assoc-eq checks an ordinary single-scheme
+/// resolution would. Returns `Err` if this particular candidate doesn't apply
+/// (wrong arg count, bounds not satisfied, ...) -- the caller tries the next
+/// candidate rather than surfacing this as the final error.
+#[allow(clippy::too_many_arguments)]
+fn try_generic_method_scheme(
+    scheme: &TypeScheme,
+    struct_tvars: &[TypeVar],
+    receiver_type_args: &[Type],
+    explicit_method_tys: Option<&[Type]>,
+    args: &[Expr],
+    method: &str,
+    span: &Span,
+    ctx: &mut ConstructCtx,
+) -> Result<(Type, Vec<TypedExpr>), MetelError> {
+    let mut subst = Substitution::new();
+    for (&tv, concrete) in struct_tvars.iter().zip(receiver_type_args.iter()) {
+        subst.bind(tv, type_to_infer(concrete));
+    }
+    if let Some(explicit) = explicit_method_tys {
+        let free: Vec<TypeVar> = {
+            let mut fv: Vec<TypeVar> = typeinference::free_vars(&scheme.ty)
+                .into_iter()
+                .filter(|v| !struct_tvars.contains(v))
+                .collect();
+            fv.sort();
+            fv
+        };
+        if explicit.len() != free.len() {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0004,
+                format!(
+                    "expected {} type argument(s), got {}",
+                    free.len(),
+                    explicit.len()
+                ),
+                span,
+            ));
+        }
+        for (tv, concrete_ty) in free.iter().zip(explicit.iter()) {
+            subst.bind(*tv, type_to_infer(concrete_ty));
+        }
+    }
+    let partial_params: Vec<InferType> = match subst.apply(&scheme.ty) {
+        InferType::Fun(p, _) => p,
+        _ => return Err(MetelError::internal("method scheme is not a function type")),
+    };
+    let typed_args: Vec<TypedExpr> = args
+        .iter()
+        .enumerate()
+        .map(|(i, a)| {
+            // params[0] is self; arguments line up with params[1..].
+            let hint = partial_params
+                .get(i + 1)
+                .and_then(|it| infer_type_to_type(&subst.apply(it), span).ok());
+            construct_expr(a, hint.as_ref(), ctx)
+        })
+        .collect::<Result<_, _>>()?;
+    for (param_it, arg) in partial_params.iter().skip(1).zip(typed_args.iter()) {
+        let arg_it = type_to_infer(arg.ty());
+        if let Ok(s) = typeinference::unify(&subst.apply(param_it), &arg_it) {
+            subst = subst.compose(&s);
+        }
+    }
+    let mut var_to_type: HashMap<TypeVar, Type> = HashMap::new();
+    for &tv in &scheme.quantified_vars {
+        if let Ok(t) = infer_type_to_type(&subst.apply(&InferType::Var(tv)), span) {
+            var_to_type.insert(tv, t);
+        }
+    }
+    check_scheme_bounds(
+        method,
+        scheme,
+        &var_to_type,
+        span,
+        ctx.registry,
+        ctx.current_module,
+    )?;
+    check_scheme_neg_bounds(
+        method,
+        scheme,
+        &var_to_type,
+        span,
+        ctx.registry,
+        ctx.current_module,
+    )?;
+    check_scheme_assoc_eq(
+        method,
+        scheme,
+        &var_to_type,
+        span,
+        ctx.registry,
+        ctx.current_module,
+    )?;
+    let method_fun_ty = infer_type_to_type(&subst.apply(&scheme.ty), span)?;
+    Ok((method_fun_ty, typed_args))
+}
+
+/// Resolve a method call against every candidate scheme registered for
+/// `method` (issue #272: more than one exists when different aspects register
+/// the same method name for the same/overlapping generic or structural
+/// target -- coherence rejects that pair upfront unless their bounds are
+/// provably disjoint, so at most one candidate's bounds can ever actually be
+/// satisfied by a given concrete instantiation). Returns the first candidate
+/// whose bounds the receiver's concrete type args satisfy, along with the
+/// winning candidate's owning aspect name (if any); if none do, propagates the
+/// last candidate's error (matching plain single-candidate behavior when
+/// there's exactly one, the overwhelmingly common case).
+///
+/// The caller uses the returned aspect name to stamp the call site's
+/// `MethodDispatch` with the specific aspect that was actually selected here,
+/// rather than leaving it `Dynamic` -- a later, per-program (not per-call-
+/// site) pass would otherwise have no way to reproduce this same bound-based
+/// choice and could dispatch to the wrong candidate at runtime.
+#[allow(clippy::too_many_arguments)]
+fn resolve_generic_method_call(
+    candidates: &[(TypeScheme, Vec<TypeVar>, Option<String>)],
+    receiver_type_args: &[Type],
+    explicit_method_tys: Option<&[Type]>,
+    args: &[Expr],
+    method: &str,
+    span: &Span,
+    ctx: &mut ConstructCtx,
+) -> Result<(Type, Vec<TypedExpr>, Option<String>), MetelError> {
+    let mut last_err = None;
+    for (scheme, struct_tvars, aspect_name) in candidates {
+        match try_generic_method_scheme(
+            scheme,
+            struct_tvars,
+            receiver_type_args,
+            explicit_method_tys,
+            args,
+            method,
+            span,
+            ctx,
+        ) {
+            Ok((ty, typed_args)) => return Ok((ty, typed_args, aspect_name.clone())),
+            Err(e) => last_err = Some(e),
+        }
+    }
+    Err(last_err.expect("resolve_generic_method_call requires a non-empty candidate list"))
+}
+
+/// Resolve `aspect_name` to its stable `SymbolId`, the same lookup
+/// `construct_impl_decl` uses for `TypedImplBlock::aspect_id`. `None` if no
+/// resolver context is available (single-program path) or the name doesn't
+/// resolve -- callers fall back to `MethodDispatch::Dynamic` in that case,
+/// same as before this existed.
+fn resolve_aspect_id(ctx: &ConstructCtx, aspect_name: &str) -> Option<SymbolId> {
+    let declaring_module = ctx.registry.aspect_declaring_module(aspect_name)?;
+    ctx.symbols?
+        .get(&(declaring_module.clone(), aspect_name.to_string()))
+        .copied()
+}
+
+/// The `MethodDispatch` to stamp for a generic/structural method call once
+/// `resolve_generic_method_call` has already picked the correct candidate
+/// (issue #272): `Aspect { aspect_id }` when the winner belongs to a resolvable
+/// aspect, so the evaluator dispatches to that exact aspect impl rather than
+/// re-deriving (and potentially mis-deriving) the choice itself; `Dynamic`
+/// otherwise, unchanged from prior behavior.
+fn dispatch_for_resolved_method(ctx: &ConstructCtx, aspect_name: Option<&str>) -> MethodDispatch {
+    aspect_name
+        .and_then(|name| resolve_aspect_id(ctx, name))
+        .map_or(MethodDispatch::Dynamic, |aspect_id| {
+            MethodDispatch::Aspect { aspect_id }
+        })
 }
 
 /// Enforce the aspect bounds carried ON a scheme (`TypeScheme::bounds`,

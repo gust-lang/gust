@@ -1,0 +1,37 @@
+// Same as stage19_neg_05, for a generic nominal struct target instead of a
+// structural one (issue #272): `Wrapper<T>` implementing both `Foo: T:
+// Display` and `Bar: T: Clone` with the same method name is ambiguous for the
+// same reason -- some `T` could satisfy both bounds at once. Regression for
+// the fact that `elaborator::build_aspect_method_map` alone can't see this
+// (it only walks `TypedImplBlock.methods`, populated the same way for generic
+// impls, but has no bound-disjointness awareness at all) -- coherence must
+// catch it first.
+
+aspect Foo {
+    fun describe(&self) -> String;
+}
+
+aspect Bar {
+    fun describe(&self) -> String;
+}
+
+struct Wrapper<T> {
+    value: T,
+}
+
+extend<T: Display> Wrapper<T>: Foo {
+    fun describe(&self) -> String {
+        return "foo-wrapper";
+    }
+}
+
+extend<T: Clone> Wrapper<T>: Bar { // ERROR[T0013]
+    fun describe(&self) -> String {
+        return "bar-wrapper";
+    }
+}
+
+fun main() {
+    let w = Wrapper { value: 42 };
+    println(w.describe());
+}

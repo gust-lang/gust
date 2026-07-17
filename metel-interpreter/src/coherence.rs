@@ -360,6 +360,20 @@ struct CollectedImpl<'a> {
     /// RFC-0081/RFC-0060 §5: whether this is `impl !Aspect` or `impl Aspect`.
     polarity: Polarity,
     span: &'a Span,
+    /// Method names this impl provides -- for the cross-aspect ambiguous-
+    /// method check below (issue #272).
+    method_names: Vec<&'a str>,
+    /// Whether this impl has its own generics or a structural target. The
+    /// elaborator's `build_aspect_method_map` (post-construction) already
+    /// catches two *concrete, nominal* impls of different aspects providing
+    /// the same method name -- but it walks `TypedImplBlock.methods`, which is
+    /// empty for a generic impl (bodies are deferred to call-time
+    /// reconstruction), and its target-name extraction skips structural
+    /// targets entirely. This flag scopes the check below to exactly the
+    /// cases the elaborator's check cannot see, so the two checks stay
+    /// additive instead of double-reporting (with possibly differently
+    /// worded messages) the same concrete-nominal collision.
+    is_structural_or_generic: bool,
 }
 
 /// Whether two canonicalized targets could describe an overlapping concrete
@@ -537,6 +551,7 @@ fn impls_actually_overlap(impls: &[CollectedImpl], a: &CollectedImpl, b: &Collec
 /// # Errors
 /// Returns an error if any `impl` violates the orphan rule (T0014) or overlaps
 /// with another `impl` of the same aspect/type instantiation (T0015).
+#[allow(clippy::too_many_lines)]
 pub fn check(graph: &NormalizedModuleGraph, names: &ResolvedNames) -> Result<(), MetelError> {
     let declaring = declaring_modules(names);
 
@@ -562,6 +577,12 @@ pub fn check(graph: &NormalizedModuleGraph, names: &ResolvedNames) -> Result<(),
             // impl-scoped type variables — required for §3.1/§3.2 overlap detection.
             let canonical_target = canonicalize_impl_target(names, &module.module_path, ib);
             let scoped_bounds = scoped_type_param_bounds(ib);
+            let is_structural_or_generic = !ib.generics.is_empty()
+                || matches!(
+                    ib.target_type,
+                    TypeExpr::Array(_) | TypeExpr::SizedArray(_, _) | TypeExpr::Tuple(_)
+                        | TypeExpr::Fun(_, _)
+                );
             impls.push(CollectedImpl {
                 module: &module.module_path,
                 aspect_name,
@@ -571,6 +592,8 @@ pub fn check(graph: &NormalizedModuleGraph, names: &ResolvedNames) -> Result<(),
                 scoped_bounds,
                 polarity: ib.polarity,
                 span: &ib.span,
+                method_names: ib.methods.iter().map(|m| m.name.as_str()).collect(),
+                is_structural_or_generic,
             });
         }
     }
@@ -658,6 +681,52 @@ pub fn check(graph: &NormalizedModuleGraph, names: &ResolvedNames) -> Result<(),
                     b.span,
                 ));
             }
+        }
+    }
+
+    // Ambiguous method across two DIFFERENT aspects (T0013), generalizing
+    // `elaborator::build_aspect_method_map` to conditional/generic impls and
+    // structural targets (issue #272): if aspect A and aspect B both provide a
+    // method of the same name, and some concrete instantiation could satisfy
+    // both impls at once (the same "could this pair ever actually collide"
+    // question T0015 asks of same-aspect overlaps, via `impls_actually_overlap`
+    // /`provably_disjoint`), that's a genuine dispatch ambiguity -- reject it
+    // up front rather than let dispatch silently pick whichever candidate's
+    // bounds happen to be tried first. Skipped entirely for a pair that's both
+    // concrete-nominal, since `build_aspect_method_map` already covers that
+    // combination (see `is_structural_or_generic`'s doc).
+    for i in 0..impls.len() {
+        for j in (i + 1)..impls.len() {
+            let a = &impls[i];
+            let b = &impls[j];
+            if a.aspect_id.is_none() || b.aspect_id.is_none() || a.aspect_id == b.aspect_id {
+                continue;
+            }
+            if !a.is_structural_or_generic && !b.is_structural_or_generic {
+                continue;
+            }
+            let Some(&shared_method) = a
+                .method_names
+                .iter()
+                .find(|m| b.method_names.contains(m))
+            else {
+                continue;
+            };
+            if !canonical_types_compatible(&a.canonical_key.1, &b.canonical_key.1) {
+                continue;
+            }
+            if !impls_actually_overlap(&impls, a, b) {
+                continue;
+            }
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0013,
+                format!(
+                    "ambiguous aspect method `{shared_method}`: both `{}` and `{}` provide this \
+                     method for overlapping target types; use distinct method names or disjoint bounds",
+                    a.aspect_name, b.aspect_name,
+                ),
+                b.span,
+            ));
         }
     }
 

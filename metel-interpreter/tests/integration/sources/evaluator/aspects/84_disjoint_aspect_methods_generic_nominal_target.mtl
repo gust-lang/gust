@@ -1,0 +1,37 @@
+// Same regression as #83, for a generic nominal struct target (issue #272):
+// `Wrapper<T>` implementing both `Foo: T: Display` and `Bar: T: !Display`
+// with the same method name. Unlike the structural case, nominal dispatch
+// already had the right runtime data structure (`RuntimeAspectImpl` per
+// aspect, keyed by id) -- the missing piece was purely that construction
+// left the call site `Dynamic`, so a later, bound-unaware pass
+// (`elaborator::build_aspect_method_map`) resolved it to whichever aspect it
+// saw first, ignoring bounds entirely.
+
+aspect Foo {
+    fun describe(&self) -> String;
+}
+
+aspect Bar {
+    fun describe(&self) -> String;
+}
+
+struct Wrapper<T> {
+    value: T,
+}
+
+extend<T: Display> Wrapper<T>: Foo {
+    fun describe(&self) -> String {
+        return "foo-wrapper";
+    }
+}
+
+extend<T: !Display> Wrapper<T>: Bar {
+    fun describe(&self) -> String {
+        return "bar-wrapper";
+    }
+}
+
+fun main() {
+    let w = Wrapper { value: 42 };
+    assert(w.describe() == "foo-wrapper");
+}

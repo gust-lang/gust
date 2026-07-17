@@ -90,25 +90,40 @@ fn build_aspect_method_map(
                 else {
                     continue;
                 };
+                let is_generic = !block.generics.is_empty();
                 for method in &block.methods {
                     let key = (type_name.clone(), method.name.clone());
                     let owner = AspectDispatchOwner {
                         aspect_id: id,
                         aspect_name: aspect_name.clone(),
+                        is_generic,
                     };
                     if let Some(existing_owner) = map.get(&key) {
                         if existing_owner.aspect_id != id {
-                            return Err(MetelError::type_error(
-                                TypeErrorCode::T0013,
-                                format!(
-                                    "ambiguous aspect method `{}` on type `{}`: both `{}` and `{}` provide this method; use distinct method names or remove one impl",
-                                    method.name,
-                                    type_name,
-                                    aspect_name,
-                                    existing_owner.aspect_name,
-                                ),
-                                &method.span,
-                            ));
+                            // A conditional/generic impl on either side of this pair
+                            // was already vetted by `coherence::check`, which runs
+                            // earlier in the pipeline and -- unlike this map, a plain
+                            // "same (type, method) seen twice" check with no bound
+                            // awareness -- actually knows whether the two impls'
+                            // bounds can overlap (issue #272). Any such pair that
+                            // reached construction/elaboration at all is therefore
+                            // already proven non-overlapping; only a pair of
+                            // concrete, unconditional impls (which have no bounds to
+                            // ever be disjoint on, so always genuinely conflict) is
+                            // still an error here.
+                            if !is_generic && !existing_owner.is_generic {
+                                return Err(MetelError::type_error(
+                                    TypeErrorCode::T0013,
+                                    format!(
+                                        "ambiguous aspect method `{}` on type `{}`: both `{}` and `{}` provide this method; use distinct method names or remove one impl",
+                                        method.name,
+                                        type_name,
+                                        aspect_name,
+                                        existing_owner.aspect_name,
+                                    ),
+                                    &method.span,
+                                ));
+                            }
                         }
                     } else {
                         map.insert(key, owner);
@@ -161,6 +176,11 @@ fn receiver_type_name(ty: &Type) -> Option<String> {
 struct AspectDispatchOwner {
     aspect_id: SymbolId,
     aspect_name: String,
+    /// Whether the impl that registered this owner has its own generics
+    /// (RFC-0036 conditional impl). See the comment at the conflict check
+    /// below for why this changes whether a same-method-name collision is an
+    /// error here.
+    is_generic: bool,
 }
 
 type DispatchMap = HashMap<(String, String), AspectDispatchOwner>;
@@ -369,6 +389,7 @@ mod tests {
         AspectDispatchOwner {
             aspect_id: SYM_ASPECT_DISPLAY,
             aspect_name: "Display".to_string(),
+            is_generic: false,
         }
     }
 

@@ -1,0 +1,34 @@
+// Regression for #272: two different aspects (`Foo`, `Bar`) provide the same
+// method name (`describe`) for `T[]`, with *provably disjoint* bounds
+// (`Display` vs. `!Display`) -- coherence correctly allows this (at most one
+// bound can ever be satisfied by a given element type), but dispatch used to
+// pick whichever aspect's method was registered last regardless of which
+// bound the concrete element type actually satisfies. `i64` implements
+// `Display`, so `Foo`'s impl must be the one that actually runs -- checked
+// both declaration orders, since the bug was order-dependent (whichever impl
+// came last in the file always won, correct or not).
+
+aspect Foo {
+    fun describe(&self) -> String;
+}
+
+aspect Bar {
+    fun describe(&self) -> String;
+}
+
+extend<T: Display> T[]: Foo {
+    fun describe(&self) -> String {
+        return "foo-array";
+    }
+}
+
+extend<T: !Display> T[]: Bar {
+    fun describe(&self) -> String {
+        return "bar-array";
+    }
+}
+
+fun main() {
+    let a: i64[] = [1, 2, 3];
+    assert(a.describe() == "foo-array");
+}
