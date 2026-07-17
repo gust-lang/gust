@@ -1,0 +1,32 @@
+// RFC-0082 + RFC-0036: an aspect's associated type may be defined by a
+// *conditional/generic* impl (`extend<T: Bound> Wrapper<T>: Container { ... }`),
+// not only by an impl for a fully concrete type (every existing stage13
+// fixture uses a concrete `extend IntBox: Container { ... }`). The
+// projection resolves through the generic impl at both call sites and
+// inside the impl's own method body, so this checks it actually dispatches
+// correctly at runtime, not just that it type-checks.
+
+aspect Container {
+    type Item: Display;
+    fun get(&self) -> Item;
+}
+
+struct Wrapper<T> {
+    value: T,
+}
+
+extend<T: Display> Wrapper<T>: Container {
+    type Item = T;
+    fun get(&self) -> T {
+        return self.value;
+    }
+}
+
+fun show_item<C: Container>(c: C) -> String {
+    return c.get().to_string();
+}
+
+fun main() {
+    let w = Wrapper { value: 42 };
+    assert(show_item(w) == "42");
+}

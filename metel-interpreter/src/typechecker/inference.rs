@@ -206,8 +206,8 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                                                 return InferType::Var(
                                                     ctx.fresh_assoc_projection_var(
                                                         base_tv,
-                                                        aspect.clone(),
-                                                        assoc_name.clone(),
+                                                        aspect,
+                                                        assoc_name,
                                                     ),
                                                 );
                                             }
@@ -845,8 +845,8 @@ fn infer_fun_decl(
                     if let Some(aspect) = matching_aspects.into_iter().next() {
                         return Ok(InferType::Var(ctx.fresh_assoc_projection_var(
                             base_tv,
-                            aspect,
-                            assoc_name.clone(),
+                            &aspect,
+                            assoc_name,
                         )));
                     }
                     // Fallback: named placeholder
@@ -1241,8 +1241,8 @@ fn infer_impl_method(
                     if let Some(aspect) = matching_aspects.into_iter().next() {
                         return Ok(InferType::Var(ctx.fresh_assoc_projection_var(
                             base_tv,
-                            aspect,
-                            assoc_name.clone(),
+                            &aspect,
+                            assoc_name,
                         )));
                     }
                     return Ok(InferType::Named(format!("{n}::{assoc_name}"), vec![]));
@@ -2401,8 +2401,8 @@ fn infer_expr(
                                         {
                                             InferType::Var(ctx.fresh_assoc_projection_var(
                                                 *tv,
-                                                aspect_name.clone(),
-                                                n.clone(),
+                                                aspect_name,
+                                                n,
                                             ))
                                         }
                                         other => {

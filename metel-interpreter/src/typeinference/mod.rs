@@ -2478,13 +2478,19 @@ impl InferContext {
     /// Mint a fresh `TypeVar` for the projection `T::AssocName` where `T` is `base_tv`
     /// and the method is declared in `aspect_name`. Reuses the same placeholder if the
     /// exact same projection was already minted in the current body (memoized).
+    ///
+    /// The associated type's own declared bound (`type AssocName: Bound;`, RFC-0082
+    /// §1) is registered on the fresh placeholder so that a method call chained
+    /// directly onto the projection result (e.g. `c.get().to_string()` where `fun
+    /// get(&self) -> Item` and `type Item: Display;`) can resolve the receiver's
+    /// bound the same way an ordinary bounded generic parameter's would.
     pub fn fresh_assoc_projection_var(
         &mut self,
         base_tv: TypeVar,
-        aspect_name: String,
-        assoc_name: String,
+        aspect_name: &str,
+        assoc_name: &str,
     ) -> TypeVar {
-        let key = (base_tv, aspect_name, assoc_name.clone());
+        let key = (base_tv, aspect_name.to_string(), assoc_name.to_string());
         if let Some(&existing) = self.current_assoc_projections.get(&key) {
             return existing;
         }
@@ -2492,7 +2498,25 @@ impl InferContext {
         self.current_assoc_projections
             .insert(key.clone(), placeholder);
         self.recorded_assoc_projections
-            .push((key.0, key.1, assoc_name, placeholder));
+            .push((key.0, key.1, key.2, placeholder));
+
+        let declared_bounds: Vec<String> = self
+            .registry
+            .aspect_assoc_type_decls(aspect_name)
+            .into_iter()
+            .flatten()
+            .filter(|decl| decl.name == assoc_name)
+            .flat_map(|decl| &decl.bounds)
+            .filter(|b| b.polarity == crate::ast::Polarity::Positive)
+            .filter_map(|b| match &b.aspect {
+                crate::ast::TypeExpr::Named(n, _) => Some(n.clone()),
+                _ => None,
+            })
+            .collect();
+        for bound in declared_bounds {
+            self.register_type_var_bound(placeholder, bound);
+        }
+
         placeholder
     }
 

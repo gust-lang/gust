@@ -1,0 +1,23 @@
+// RFC-0081 + RFC-0061: a blanket negative impl on a structural target (`T[]`)
+// must override a blanket positive impl the same way it already does for a
+// named generic target (see generic_negative_impl_blocks_positive_bound) --
+// negative-impl priority over a blanket positive is a property of the
+// aspect/target pair, not something that should depend on whether the
+// target happens to be `Named` or structural.
+
+aspect Marker {
+    fun mark(self) -> String;
+}
+
+extend<T> T[]: Marker {
+    fun mark(self) -> String { return "blanket"; }
+}
+
+extend<T> T[]: !Marker;
+
+fun needs_marker<U: Marker>(x: U) {}
+
+fun main() {
+    let xs = [1, 2, 3];
+    needs_marker(xs); // ERROR[T0012]
+}
