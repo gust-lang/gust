@@ -352,6 +352,83 @@ All type and impl data is stored in a single `TypeDefinitionRegistry` (owned by 
 
 ---
 
+## Coherence, Conditional Impls, Associated Types, and Structural Bounds (v0.10.0)
+
+Five RFCs (0036, 0037, 0060's remaining scope, 0072, 0082, 0061) landed together this
+sprint and share one pipeline shape: a bound-satisfaction question asked repeatedly
+across the typechecker, resolved the same way everywhere it's asked.
+
+### Coherence pass (`src/coherence.rs`)
+
+Runs as its own stage between path normalization and typechecking (introduced in
+#238, extended here). For every `impl`/`extend` block across the module graph it
+checks, in order:
+
+1. **Orphan rule (`T0014`)** — an impl is rejected unless the aspect or the target
+   type is local to the declaring module. Structural type constructors (`T[]`,
+   tuples, `fun` types) are treated as owned by `std::core`, never locally owned by
+   a user module on their own (`outermost_id` returns `None` for them) — so a user
+   module may only implement a *locally-declared* aspect for a structural target.
+2. **Overlap detection (`T0015`)** — a pairwise scan across every impl of a given
+   aspect (not exact-key grouping, since a blanket impl and a concrete impl for the
+   same aspect never share a canonical key shape but can still conflict). Two impls
+   are allowed to coexist when they're *provably disjoint*: one requires `T: Bound`
+   and the other requires `T: !Bound` at the same target position (RFC-0036 §3.1
+   syntactic negation). This positional bound extraction
+   (`scoped_type_param_bounds`) and the `TypeParam(i)` canonicalization it depends
+   on (`canonicalize_impl_target`) apply identically to `Named` targets and to
+   structural targets (`T[]`'s element position, a tuple's element positions, a
+   `fun` type's parameter/return positions) — RFC-0061 §2 requires structural
+   targets to follow the same rules "without special cases," and the two functions
+   are written to share one code path rather than special-casing shape.
+3. **Polarity** — a negative impl (`extend Type: !Aspect;`) takes priority over a
+   *blanket* positive impl for an overlapping instantiation (not a coherence
+   conflict), but conflicts with a *concrete* positive impl for the exact same type
+   (RFC-0081 §2.2) — decided by whether the positive side's canonical target still
+   contains a `TypeParam`, not by polarity alone.
+
+### Conditional-impl bound checking at use sites
+
+`conditional_impl_bounds`/`array_impl_bounds` (and their negative-bound twins)
+store each conditional impl's per-position bound requirements, keyed by aspect and
+target. `type_satisfies_aspect` (`src/typeinference/mod.rs`) is the single
+recursive query every use site funnels through: method calls, struct/enum literal
+construction, and generic function-call bound checking (`check_type_satisfies_bounds`
+in `src/typechecker/construction.rs`) all ask this same function rather than each
+re-implementing bound satisfaction. For `Type::Array`, it recurses into the
+element type through the same function — so `T[]: Display` is satisfied
+recursively for `T[][]` without any special nested-array case.
+
+### Associated types (RFC-0082)
+
+An aspect's `type Name;` (or `type Name: Bound;`) declarations and an impl's
+`type Name = Concrete;` definitions are stored alongside the aspect/impl
+registries. `T::AssocType` projections are resolved to the concrete type at both
+call sites and inside impl method bodies (not left as an opaque placeholder past
+construction). Equality constraints (`Aspect<AssocType = Concrete>`) and impl
+completeness (every declared associated type must be defined, `T0017` otherwise)
+are checked at the same points ordinary bound satisfaction is.
+
+### Opaque return types (RFC-0037)
+
+`fun f() -> impl Aspect` carries a `TypeScheme.opaque_returns` entry rather than
+exposing the concrete return type to callers. The concrete type is checked against
+the declared bound at definition time (once, at the function's own construction);
+callers only ever see the aspect's interface, enforced by rejecting any use of the
+result that isn't sanctioned by the bound.
+
+### Structural targets
+
+`Type::Array`/`Type::Tuple`/`Type::Fun` never resolve to a `SymbolId` the way a
+named type does, so they're handled as explicit match arms wherever bound
+satisfaction or diagnostics are produced, rather than falling through a generic
+`Type::Named` path. `check_type_satisfies_bounds` emits a distinct `T0012` hint per
+shape: arrays name the element type that's missing the bound; tuples and
+functions report the concrete type since neither has a real impl to point at yet
+(RFC-0061 §6/§7).
+
+---
+
 ## Known Limitations
 
 ### `as` Cast — Via `From<S>` Aspect (v0.4)
