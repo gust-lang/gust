@@ -333,12 +333,25 @@ fn provably_disjoint(
 /// if it names one at all. Structural types (tuples, arrays, pointers,
 /// function types) have no owning module, so they can never satisfy the
 /// orphan rule's "local" half on their own — only `Named` types can.
+///
+/// `impl_generics` is the enclosing impl's own generic parameter list
+/// (RFC-0097): when `ty` is a bare `Named(name, [])` matching one of those
+/// parameters — `impl<T: Bound> Aspect for T` — the target is the impl's own
+/// type parameter, not a declared struct or enum, and target-locality is
+/// vacuously unsatisfiable for it (§2). That must be checked explicitly and
+/// first, rather than left to `resolve_id` incidentally failing to find a
+/// symbol named `T`: a generic parameter name is never registered in
+/// `names.symbols` today, so the two cases happen to produce the same `None`
+/// either way, but only this branch encodes that as a deliberate, specified
+/// rule rather than a coincidence of how name resolution happens to fail.
 fn outermost_id(
     names: &ResolvedNames,
     current_module: &[String],
+    impl_generics: &[String],
     ty: &TypeExpr,
 ) -> Option<SymbolId> {
     match ty {
+        TypeExpr::Named(name, args) if args.is_empty() && impl_generics.contains(name) => None,
         TypeExpr::Named(name, _) => resolve_id(names, current_module, name),
         _ => None,
     }
@@ -563,9 +576,16 @@ pub fn check(graph: &NormalizedModuleGraph, names: &ResolvedNames) -> Result<(),
                 continue; // inherent impl (no aspect) — nothing to check
             };
             let aspect_id = resolve_id(names, &module.module_path, aspect_name);
+            let impl_generic_names: Vec<String> =
+                ib.generics.iter().map(|g| g.name.clone()).collect();
             let target_local = is_local(
                 &declaring,
-                outermost_id(names, &module.module_path, &ib.target_type),
+                outermost_id(
+                    names,
+                    &module.module_path,
+                    &impl_generic_names,
+                    &ib.target_type,
+                ),
                 &module.module_path,
             );
             let canonical_args = ib
