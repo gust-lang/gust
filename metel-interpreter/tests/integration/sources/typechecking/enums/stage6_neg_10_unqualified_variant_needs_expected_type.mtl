@@ -1,0 +1,3 @@
+enum Colour { Red, Green, Blue }
+
+let c = Red; // ERROR[T0002]

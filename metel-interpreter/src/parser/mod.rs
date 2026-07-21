@@ -981,7 +981,6 @@ fn parse_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr,
         | Rule::string_lit
         | Rule::char_lit
         | Rule::bool_lit
-        | Rule::none_lit
         | Rule::unit_lit
         | Rule::int_lit_suffixed
         | Rule::float_lit_suffixed => parse_literal_expr(&pair, filename),
@@ -1148,7 +1147,6 @@ fn parse_literal_expr(
             Literal::Char(ch)
         }
         Rule::bool_lit => Literal::Boolean(text == "true"),
-        Rule::none_lit => Literal::None,
         Rule::unit_lit => Literal::Unit,
         r => {
             return Err(MetelError::internal(format!(

@@ -194,6 +194,10 @@ impl<'a> ConstructCtx<'a> {
         self.struct_scopes.iter().rev().find_map(|s| s.get(name))
     }
 
+    fn has_struct_named(&self, name: &str) -> bool {
+        self.get_struct_fields(name).is_some() || self.registry.raw_struct_env().contains_key(name)
+    }
+
     fn bind(&mut self, name: impl Into<String>, ty: Type) {
         self.env.last_mut().unwrap().insert(name.into(), ty);
     }
@@ -240,6 +244,10 @@ impl<'a> ConstructCtx<'a> {
             .copied()
     }
 
+    fn can_be_unqualified_variant(&self, name: &str) -> bool {
+        self.registry.has_variant_named(name)
+    }
+
     fn push_return_type(&mut self, ty: Option<Type>) -> Option<Type> {
         std::mem::replace(&mut self.current_return_ty, ty)
     }
@@ -262,6 +270,83 @@ impl<'a> ConstructCtx<'a> {
             type_expr_to_infer_with_generics(te, &self.generic_params)
         }
     }
+}
+
+fn unqualified_variant_needs_annotation_error(name: &str, span: &Span) -> MetelError {
+    MetelError::type_error(
+        TypeErrorCode::T0002,
+        format!("cannot infer type of `{name}`; add a type annotation"),
+        span,
+    )
+}
+
+fn resolve_expected_enum<'a>(
+    expected_ty: Option<&'a Type>,
+    span: &Span,
+    ctx: &'a ConstructCtx<'_>,
+) -> Result<(&'a String, &'a EnumInfo), MetelError> {
+    let expected_ty = expected_ty.ok_or_else(|| {
+        MetelError::type_error(
+            TypeErrorCode::T0002,
+            "cannot infer type; add a type annotation",
+            span,
+        )
+    })?;
+    match expected_ty {
+        Type::Named(enum_name, _) => {
+            let enum_info = ctx.registry.enum_info(enum_name).ok_or_else(|| {
+                MetelError::type_error(
+                    TypeErrorCode::T0001,
+                    format!("expected enum type, found `{expected_ty}`"),
+                    span,
+                )
+            })?;
+            Ok((enum_name, enum_info))
+        }
+        _ => Err(MetelError::type_error(
+            TypeErrorCode::T0001,
+            format!("expected enum type, found `{expected_ty}`"),
+            span,
+        )),
+    }
+}
+
+fn resolve_unqualified_variant_expr(
+    variant_name: &str,
+    expected_ty: Option<&Type>,
+    span: &Span,
+    ctx: &ConstructCtx<'_>,
+) -> Result<TypedExpr, MetelError> {
+    let expected_ty = expected_ty
+        .cloned()
+        .ok_or_else(|| unqualified_variant_needs_annotation_error(variant_name, span))?;
+    let (enum_name, enum_info) = resolve_expected_enum(Some(&expected_ty), span, ctx)?;
+    let enum_name = enum_name.clone();
+    let variant = enum_info
+        .variants
+        .iter()
+        .find(|variant| variant.name == variant_name)
+        .ok_or_else(|| {
+            MetelError::type_error(
+                TypeErrorCode::T0001,
+                format!("cannot unify `{variant_name}` with `{expected_ty}`"),
+                span,
+            )
+        })?;
+    if !variant.fields.is_empty() {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0003,
+            format!("missing fields for `{enum_name}::{variant_name}`"),
+            span,
+        ));
+    }
+    Ok(TypedExpr::StructLiteral {
+        path: vec![enum_name.clone(), variant_name.to_string()],
+        fields: vec![],
+        ty: expected_ty,
+        type_id: ctx.type_symbol_id(&enum_name),
+        span: span.clone(),
+    })
 }
 
 /// Construct a `TypedBlock` for a generic (polymorphic) function body at call time.
@@ -1241,6 +1326,9 @@ fn construct_expr(
                     });
                 }
             }
+            if ctx.can_be_unqualified_variant(name) {
+                return resolve_unqualified_variant_expr(name, expected_ty, span, ctx);
+            }
             Err(MetelError::type_error(
                 TypeErrorCode::T0003,
                 format!("undefined name `{name}`"),
@@ -1676,9 +1764,33 @@ fn construct_expr(
             symbol_id,
             span,
         } => {
+            let resolved_path =
+                if path.len() == 1
+                    && ctx.can_be_unqualified_variant(&path[0])
+                    && !ctx.has_struct_named(&path[0])
+                {
+                let expected_ty = expected_ty
+                    .ok_or_else(|| unqualified_variant_needs_annotation_error(&path[0], span))?;
+                let (enum_name, enum_info) = resolve_expected_enum(Some(expected_ty), span, ctx)?;
+                if enum_info
+                    .variants
+                    .iter()
+                    .any(|variant| variant.name == path[0])
+                {
+                    vec![enum_name.clone(), path[0].clone()]
+                } else {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0001,
+                        format!("cannot unify `{}` with `{expected_ty}`", path[0]),
+                        span,
+                    ));
+                }
+                } else {
+                    path.clone()
+                };
             // Look up field type hints from the struct definition for non-generic structs.
             // Clone to release the borrow on ctx before calling construct_expr below.
-            let type_name = path.last().map_or("", std::string::String::as_str);
+            let type_name = resolved_path.last().map_or("", std::string::String::as_str);
             let field_hints: HashMap<String, Type> = ctx
                 .get_struct_fields(type_name)
                 .map(|fs| fs.iter().map(|(n, t, _)| (n.clone(), t.clone())).collect())
@@ -1691,17 +1803,17 @@ fn construct_expr(
                 })
                 .collect::<Result<_, _>>()?;
 
-            let ty = if path.len() == 2 {
+            let ty = if resolved_path.len() == 2 {
                 construct_enum_literal_ty(
-                    &path[0],
-                    &path[1],
+                    &resolved_path[0],
+                    &resolved_path[1],
                     &typed_fields,
                     expected_ty,
                     span,
                     ctx,
                 )?
             } else {
-                let type_name = path.last().unwrap();
+                let type_name = resolved_path.last().unwrap();
                 if let Some(type_params) = ctx.registry.raw_struct_type_params().get(type_name) {
                     // Generic struct: infer type args from the typed field values.
                     let raw_fields = ctx
@@ -1796,15 +1908,15 @@ fn construct_expr(
             // same-named types); otherwise derive it from the declaring-module index
             // (struct name, or the enum name for a 2-segment `Enum::Variant` literal).
             let type_id = symbol_id.or_else(|| {
-                if path.len() == 2 {
-                    ctx.type_symbol_id(&path[0])
+                if resolved_path.len() == 2 {
+                    ctx.type_symbol_id(&resolved_path[0])
                 } else {
-                    ctx.type_symbol_id(path.last().unwrap())
+                    ctx.type_symbol_id(resolved_path.last().unwrap())
                 }
             });
 
             Ok(TypedExpr::StructLiteral {
-                path: path.clone(),
+                path: resolved_path,
                 fields: typed_fields,
                 ty,
                 type_id,
@@ -3876,17 +3988,6 @@ fn construct_literal_type(
         Literal::Boolean(_) => Ok(Type::Boolean),
         Literal::Str(_) => Ok(Type::Str),
         Literal::Unit => Ok(Type::Unit),
-        // None's type cannot be re-derived from the literal alone. Pass 2 must receive
-        // the expected type from the enclosing binding's annotation (propagated via
-        // construct_expr's expected_ty parameter). If no annotation, E0002 — but Pass 1
-        // should have already caught the unannotated case via an unresolved type var.
-        Literal::None => expected_ty.cloned().ok_or_else(|| {
-            MetelError::type_error(
-                TypeErrorCode::T0002,
-                "cannot infer type of `None`; add a type annotation",
-                span,
-            )
-        }),
     }
 }
 

@@ -1832,6 +1832,9 @@ fn infer_expr(
                     return Ok(InferType::Named(name.clone(), type_args));
                 }
             }
+            if ctx.registry().has_variant_named(name) {
+                return Ok(ctx.fresh_var());
+            }
             Err(MetelError::type_error(
                 TypeErrorCode::T0003,
                 format!("undefined name `{name}`"),
@@ -2526,6 +2529,11 @@ fn infer_expr(
                     ctx,
                     fun_generalizations,
                 )
+            } else if path.len() == 1
+                && ctx.registry().has_variant_named(&path[0])
+                && ctx.get_struct_fields(&path[0]).is_none()
+            {
+                Ok(ctx.fresh_var())
             } else {
                 let struct_name = path
                     .last()
@@ -2989,7 +2997,6 @@ fn infer_literal(lit: &Literal, ctx: &mut InferContext) -> InferType {
         Literal::Boolean(_) => InferType::bool(),
         Literal::Str(_) => InferType::str(),
         Literal::Unit => InferType::unit(),
-        Literal::None => InferType::Named("Perhaps".to_string(), vec![ctx.fresh_var()]),
     }
 }
 

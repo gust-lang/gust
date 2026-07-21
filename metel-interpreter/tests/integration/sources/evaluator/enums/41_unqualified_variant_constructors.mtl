@@ -1,0 +1,65 @@
+enum Colour { Red, Green, Blue }
+
+struct Holder {
+    colour: Colour,
+    maybe: Perhaps<i64>,
+    nothing: Perhaps<i64>,
+    ok: Result<i64, String>,
+    err: Result<i64, String>,
+}
+
+fun paint(c: Colour) -> i64 {
+    match c {
+        Red => 1,
+        Green => 2,
+        Blue => 3,
+    }
+}
+
+fun favourite() -> Colour {
+    Green
+}
+
+fun shadow(Red: i64) -> i64 {
+    return Red;
+}
+
+fun unwrap_result(r: Result<i64, String>) -> i64 {
+    match r {
+        Ok { value } => value,
+        Err { error } => -1,
+    }
+}
+
+fun main() {
+    let c: Colour = Red;
+    let c2: Colour = Red {};
+    assert(paint(c) == 1);
+    assert(paint(c2) == 1);
+    assert(paint(Blue) == 3);
+    assert(paint(favourite()) == 2);
+
+    let holder = Holder {
+        colour: Blue,
+        maybe: Some { value: 5 },
+        nothing: None,
+        ok: Ok { value: 9 },
+        err: Err { error: "bad" },
+    };
+
+    assert(paint(holder.colour) == 3);
+    assert(shadow(7) == 7);
+
+    match holder.maybe {
+        Some { value } => assert(value == 5),
+        None => assert(false),
+    }
+
+    match holder.nothing {
+        Some { value } => assert(false),
+        None => assert(true),
+    }
+
+    assert(unwrap_result(holder.ok) == 9);
+    assert(unwrap_result(holder.err) == -1);
+}

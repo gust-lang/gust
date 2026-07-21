@@ -1042,6 +1042,7 @@ pub struct TypeDefinitionRegistry {
     array_method_env: HashMap<String, InferType>,
     array_method_receiver_env: HashMap<String, ReceiverKind>,
     enum_env: HashMap<String, EnumInfo>,
+    variant_declaring_enums: HashMap<String, Vec<String>>,
     /// enum name → declaring module path.
     enum_decl_modules: HashMap<String, Vec<String>>,
     /// aspect name → ordered list of method names the aspect declares.
@@ -1137,6 +1138,7 @@ impl TypeDefinitionRegistry {
             array_method_env: HashMap::new(),
             array_method_receiver_env: HashMap::new(),
             enum_env: HashMap::new(),
+            variant_declaring_enums: HashMap::new(),
             enum_decl_modules: HashMap::new(),
             aspect_env: HashMap::new(),
             aspect_decl_modules: HashMap::new(),
@@ -1741,6 +1743,15 @@ impl TypeDefinitionRegistry {
     }
 
     pub fn register_enum(&mut self, name: String, info: EnumInfo, declaring_module: Vec<String>) {
+        for variant in &info.variants {
+            let entry = self
+                .variant_declaring_enums
+                .entry(variant.name.clone())
+                .or_default();
+            if !entry.contains(&name) {
+                entry.push(name.clone());
+            }
+        }
         self.enum_env.insert(name.clone(), info);
         self.enum_decl_modules.insert(name, declaring_module);
     }
@@ -1782,6 +1793,11 @@ impl TypeDefinitionRegistry {
     #[must_use]
     pub fn enum_info(&self, name: &str) -> Option<&EnumInfo> {
         self.enum_env.get(name)
+    }
+
+    #[must_use]
+    pub fn has_variant_named(&self, variant_name: &str) -> bool {
+        self.variant_declaring_enums.contains_key(variant_name)
     }
 
     #[must_use]
@@ -2072,6 +2088,17 @@ impl TypeDefinitionRegistry {
         }
         for (k, v) in &other.enum_env {
             self.enum_env.entry(k.clone()).or_insert_with(|| v.clone());
+        }
+        for (variant_name, enum_names) in &other.variant_declaring_enums {
+            let entry = self
+                .variant_declaring_enums
+                .entry(variant_name.clone())
+                .or_default();
+            for enum_name in enum_names {
+                if !entry.contains(enum_name) {
+                    entry.push(enum_name.clone());
+                }
+            }
         }
         for (k, v) in &other.enum_decl_modules {
             self.enum_decl_modules

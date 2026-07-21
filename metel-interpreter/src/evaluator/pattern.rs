@@ -29,11 +29,6 @@ pub(super) fn match_pattern(
             (Literal::Boolean(a), Value::Boolean(b)) => a == b,
             (Literal::Str(a), Value::Str(b)) => a == b,
             (Literal::Unit, Value::Unit) => true,
-            (Literal::None, Value::Enum { name, variant, .. })
-                if name == "Perhaps" && variant == "None" =>
-            {
-                true
-            }
             (Literal::SizedInt { value: a, kind }, v) => {
                 use crate::ast::IntKind;
                 match kind {

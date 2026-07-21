@@ -705,7 +705,6 @@ pub enum Literal {
     Char(char),
     Boolean(bool),
     Str(String),
-    None,
     Unit,
 }
 

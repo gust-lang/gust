@@ -2449,12 +2449,6 @@ pub fn eval_expr(
                 Literal::Char(c) => Value::Char(*c),
                 Literal::Boolean(b) => Value::Boolean(*b),
                 Literal::Str(s) => Value::Str(s.clone()),
-                Literal::None => Value::Enum {
-                    name: "Perhaps".into(),
-                    type_id: Some(crate::symbols::SYM_TYPE_PERHAPS),
-                    variant: "None".into(),
-                    fields: HashMap::new(),
-                },
                 Literal::Unit => Value::Unit,
             };
             Ok(Signal::Value(val))

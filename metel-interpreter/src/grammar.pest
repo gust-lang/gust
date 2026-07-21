@@ -193,7 +193,6 @@ primary_expr = {
   | string_lit
   | char_lit
   | bool_lit
-  | none_lit
   | closure_expr
   | unit_lit
   | tuple_or_paren
@@ -324,7 +323,6 @@ char_char     = _{ "\\" ~ char_escape_seq | (!("'" | "\\") ~ ANY) }
 char_escape_seq = _{ "u" ~ "{" ~ ASCII_HEX_DIGIT{1, 6} ~ "}" | "n" | "t" | "r" | "\\" | "'" }
 
 bool_lit  = @{ ("true" | "false") ~ !(ASCII_ALPHANUMERIC | "_") }
-none_lit  = @{ "None" ~ !(ASCII_ALPHANUMERIC | "_") }
 unit_lit  = @{ "()" }
 
 pub_kw   = @{ "public" ~ !(ASCII_ALPHANUMERIC | "_") }
