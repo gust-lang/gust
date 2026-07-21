@@ -1,0 +1,20 @@
+// The operator tagging must not reject operands that legitimately agree, including the
+// cases that rely on numeric-literal defaulting rather than on the two types being
+// written identically.
+fun main() {
+    assert(1 == 1);
+    assert(1u8 == 1u8);
+    assert(1.5 == 1.5);
+    assert("a" == "a");
+    assert('c' == 'c');
+    assert(true == true);
+    assert(1 + 2 == 3);
+    assert(3 - 1 == 2);
+    assert(1 < 2);
+    assert("a" < "b");
+
+    // literal defaulting against an annotated binding
+    let n: u8 = 7;
+    assert(n == 7);
+    assert(n + 1 == 8);
+}

@@ -3059,18 +3059,21 @@ fn infer_binop(
                 }
             }
             let result = ctx.fresh_var();
-            ctx.add_constraint(lhs_ty, result.clone(), span.clone());
-            ctx.add_constraint(rhs_ty, result.clone(), span.clone());
+            ctx.add_operand_constraint(lhs_ty, result.clone(), span.clone(), op.symbol());
+            ctx.add_operand_constraint(rhs_ty, result.clone(), span.clone(), op.symbol());
             Ok(result)
         }
         BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem => {
             let result = ctx.fresh_var();
-            ctx.add_constraint(lhs_ty, result.clone(), span.clone());
-            ctx.add_constraint(rhs_ty, result.clone(), span.clone());
+            ctx.add_operand_constraint(lhs_ty, result.clone(), span.clone(), op.symbol());
+            ctx.add_operand_constraint(rhs_ty, result.clone(), span.clone(), op.symbol());
             Ok(result)
         }
         BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
-            ctx.add_constraint(lhs_ty, rhs_ty, span.clone());
+            // Tagged with the operator so a mismatch names it (`operator `==` cannot be
+            // applied to `i64` and `String``) instead of the bare `cannot unify`, which
+            // never mentioned that a comparison was what required the two to agree.
+            ctx.add_operand_constraint(lhs_ty, rhs_ty, span.clone(), op.symbol());
             Ok(InferType::bool())
         }
         BinOp::And | BinOp::Or => {

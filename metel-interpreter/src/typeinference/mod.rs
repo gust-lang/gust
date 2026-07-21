@@ -399,12 +399,34 @@ pub struct Constraint {
     pub lhs: InferType,
     pub rhs: InferType,
     pub span: Span,
+    /// The binary operator this constraint came from, if any. Constraints are otherwise
+    /// anonymous, so a failure could only ever report `cannot unify X with Y` — accurate
+    /// but silent about *why* the two had to agree. Set for operand-agreement
+    /// constraints so the failure can name the operator, which is the form
+    /// `error-codes.md` documents for T0005.
+    pub operator: Option<&'static str>,
 }
 
 impl Constraint {
     #[must_use]
     pub fn new(lhs: InferType, rhs: InferType, span: Span) -> Self {
-        Self { lhs, rhs, span }
+        Self {
+            lhs,
+            rhs,
+            span,
+            operator: None,
+        }
+    }
+
+    /// A constraint that exists because a binary operator requires its operands to agree.
+    #[must_use]
+    pub fn for_operator(lhs: InferType, rhs: InferType, span: Span, op: &'static str) -> Self {
+        Self {
+            lhs,
+            rhs,
+            span,
+            operator: Some(op),
+        }
     }
 }
 
@@ -449,6 +471,46 @@ pub fn solve_constraints(
     Ok(subst)
 }
 
+/// Format a failed operand-agreement constraint. When the constraint knows which operator
+/// required the two sides to agree, report it the way `error-codes.md` documents for
+/// T0005 — naming the operator — rather than the bare `cannot unify`, which says the two
+/// types disagree but never says why they had to match in the first place.
+fn operand_mismatch_error(constraint: &Constraint, lhs: &InferType, rhs: &InferType) -> MetelError {
+    match constraint.operator {
+        Some(op) => MetelError::type_error(
+            crate::error::TypeErrorCode::T0005,
+            format!("operator `{op}` cannot be applied to `{lhs}` and `{rhs}`"),
+            &constraint.span,
+        ),
+        None => MetelError::type_error(
+            crate::error::TypeErrorCode::T0001,
+            format!("cannot unify {lhs} with {rhs}"),
+            &constraint.span,
+        ),
+    }
+}
+
+/// As `operand_mismatch_error`, for a numeric literal bound to an incompatible type.
+fn literal_mismatch_error(
+    operator: Option<&'static str>,
+    kind: &str,
+    other: &InferType,
+    span: &Span,
+) -> MetelError {
+    match operator {
+        Some(op) => MetelError::type_error(
+            crate::error::TypeErrorCode::T0005,
+            format!("operator `{op}` cannot be applied to {kind} and `{other}`"),
+            span,
+        ),
+        None => MetelError::type_error(
+            crate::error::TypeErrorCode::T0001,
+            format!("cannot unify {kind} with `{other}`"),
+            span,
+        ),
+    }
+}
+
 fn apply_constraint(
     subst: &mut Substitution,
     constraint: &Constraint,
@@ -457,15 +519,10 @@ fn apply_constraint(
 ) -> Result<(), MetelError> {
     let lhs = subst.apply(&constraint.lhs);
     let rhs = subst.apply(&constraint.rhs);
-    let solved = unify(&lhs, &rhs).map_err(|_| {
-        MetelError::type_error(
-            crate::error::TypeErrorCode::T0001,
-            format!("cannot unify {lhs} with {rhs}"),
-            &constraint.span,
-        )
-    })?;
+    let solved = unify(&lhs, &rhs).map_err(|_| operand_mismatch_error(constraint, &lhs, &rhs))?;
     subst.compose_in_place(&solved);
     validate_literal_bindings(
+        constraint.operator,
         subst,
         integer_literal_vars,
         float_literal_vars,
@@ -539,6 +596,7 @@ fn apply_constraint_with_coercion(
     };
     subst.compose_in_place(&solved);
     validate_literal_bindings(
+        constraint.operator,
         subst,
         integer_literal_vars,
         float_literal_vars,
@@ -613,6 +671,7 @@ pub(crate) fn singleton_coerce_field_ty(
 }
 
 fn validate_literal_bindings(
+    operator: Option<&'static str>,
     subst: &Substitution,
     integer_literal_vars: &HashSet<TypeVar>,
     float_literal_vars: &HashSet<TypeVar>,
@@ -622,26 +681,14 @@ fn validate_literal_bindings(
         match subst.apply(&InferType::Var(var)) {
             InferType::Var(_) | InferType::Never => {}
             InferType::Concrete(t) if is_integer_type(&t) => {}
-            other => {
-                return Err(MetelError::type_error(
-                    crate::error::TypeErrorCode::T0001,
-                    format!("cannot unify integer literal with `{other}`"),
-                    span,
-                ))
-            }
+            other => return Err(literal_mismatch_error(operator, "an integer literal", &other, span)),
         }
     }
     for &var in float_literal_vars {
         match subst.apply(&InferType::Var(var)) {
             InferType::Var(_) | InferType::Never => {}
             InferType::Concrete(t) if is_float_type(&t) => {}
-            other => {
-                return Err(MetelError::type_error(
-                    crate::error::TypeErrorCode::T0001,
-                    format!("cannot unify float literal with `{other}`"),
-                    span,
-                ))
-            }
+            other => return Err(literal_mismatch_error(operator, "a float literal", &other, span)),
         }
     }
     Ok(())
@@ -2958,6 +3005,19 @@ impl InferContext {
     /// Record that `lhs` and `rhs` must unify, tagged with its source location.
     pub fn add_constraint(&mut self, lhs: InferType, rhs: InferType, span: Span) {
         self.constraints.push(Constraint::new(lhs, rhs, span));
+    }
+
+    /// Record an operand-agreement constraint, tagged with the operator so a failure can
+    /// say which one it was instead of only which two types disagreed.
+    pub fn add_operand_constraint(
+        &mut self,
+        lhs: InferType,
+        rhs: InferType,
+        span: Span,
+        op: &'static str,
+    ) {
+        self.constraints
+            .push(Constraint::for_operator(lhs, rhs, span, op));
     }
 
     /// Solve all accumulated constraints and return the resulting substitution.

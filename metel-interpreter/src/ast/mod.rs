@@ -582,6 +582,31 @@ pub enum BinOp {
     RangeInclusive,
 }
 
+impl BinOp {
+    /// The operator as written in source, for diagnostics.
+    #[must_use]
+    pub fn symbol(&self) -> &'static str {
+        match self {
+            BinOp::Add => "+",
+            BinOp::Sub => "-",
+            BinOp::Mul => "*",
+            BinOp::Div => "/",
+            BinOp::Rem => "%",
+            BinOp::Eq => "==",
+            BinOp::Ne => "!=",
+            BinOp::Lt => "<",
+            BinOp::Le => "<=",
+            BinOp::Gt => ">",
+            BinOp::Ge => ">=",
+            BinOp::And => "and",
+            BinOp::Or => "or",
+            BinOp::Range => "..",
+            BinOp::RangeInclusive => "..=",
+        }
+    }
+}
+
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOp {
     Neg,
