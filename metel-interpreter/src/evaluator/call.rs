@@ -75,13 +75,17 @@ fn call_runtime_callable(
                             // a type variable, leaving a nested generic call in this body
                             // unresolvable. The static types were known during
                             // construction and are exact.
-                            let arg_types: Vec<_> = match static_arg_tys {
-                                Some(tys) if tys.len() == args.len() => tys.to_vec(),
-                                _ => args
-                                    .iter()
-                                    .map(|v| type_of::value_to_type(v, &type_ctx.registry, span))
-                                    .collect(),
-                            };
+                            let arg_types: Vec<_> = args
+                                .iter()
+                                .enumerate()
+                                .map(|(i, v)| {
+                                    let rt = type_of::value_to_type(v, &type_ctx.registry, span);
+                                    match static_arg_tys.and_then(|t| t.get(i)) {
+                                        Some(st) => type_of::refine_with_static(&rt, st),
+                                        None => rt,
+                                    }
+                                })
+                                .collect();
                             let tb = crate::typechecker::construct_generic_body(
                                 scheme, &closure.params, &arg_types, b, span, type_ctx
                             )?;
@@ -151,6 +155,7 @@ pub(super) fn call_method_function(
     receiver: ReceiverBinding,
     mut args: Vec<Value>,
     static_arg_tys: Option<&[crate::types::Type]>,
+    static_receiver_ty: Option<&crate::types::Type>,
     span: &Span,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
@@ -232,16 +237,17 @@ pub(super) fn call_method_function(
                             // runtime-derived: dynamic dispatch depends on the runtime
                             // type being at least as precise as the static one, which is
                             // a separate question from the arguments.
-                            let mut arg_types: Vec<_> = vec![receiver_type.clone()];
-                            match static_arg_tys {
-                                Some(tys) if tys.len() == args.len() => {
-                                    arg_types.extend(tys.iter().cloned());
+                            let mut arg_types: Vec<_> = vec![match static_receiver_ty {
+                                Some(st) => type_of::refine_with_static(&receiver_type, st),
+                                None => receiver_type.clone(),
+                            }];
+                            arg_types.extend(args.iter().enumerate().map(|(i, v)| {
+                                let rt = type_of::value_to_type(v, &type_ctx.registry, span);
+                                match static_arg_tys.and_then(|t| t.get(i)) {
+                                    Some(st) => type_of::refine_with_static(&rt, st),
+                                    None => rt,
                                 }
-                                _ => arg_types.extend(
-                                    args.iter()
-                                        .map(|v| type_of::value_to_type(v, &type_ctx.registry, span)),
-                                ),
-                            }
+                            }));
                             let tb = crate::typechecker::construct_generic_body(
                                 scheme, &closure.params, &arg_types, b, span, type_ctx
                             )?;

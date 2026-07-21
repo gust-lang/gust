@@ -2020,6 +2020,7 @@ fn eval_for_in(
             call::ReceiverBinding::Shared(Rc::clone(&iter_cell)),
             vec![],
             None,
+            None,
             span,
             runtime,
         )?
@@ -2265,6 +2266,7 @@ fn eval_method_call_expr(
     // metel-core#286: exact static argument types from the typed nodes, for a generic
     // body constructed at call time.
     let static_arg_tys: Vec<crate::types::Type> = args.iter().map(|a| a.ty().clone()).collect();
+    let static_receiver_ty = receiver.ty().clone();
 
     let recv_type_view = deref_value(&recv_val, span)?.unwrap_or_else(|| recv_val.clone());
     let method_entry = match dispatch {
@@ -2336,6 +2338,7 @@ fn eval_method_call_expr(
                 receiver_binding,
                 arg_vals,
                 Some(&static_arg_tys),
+                Some(&static_receiver_ty),
                 span,
                 runtime,
             )?;
@@ -2366,6 +2369,7 @@ fn eval_method_call_expr(
             call::ReceiverBinding::Value(recv_type_view),
             arg_vals,
             Some(&static_arg_tys),
+            Some(&static_receiver_ty),
             span,
             runtime,
         ),

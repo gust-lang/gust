@@ -103,3 +103,58 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
         }
     }
 }
+
+/// Fill in what a runtime-derived type could not know, from the type recorded at the call
+/// site (metel-core#286).
+///
+/// The runtime type stays authoritative — it is what dispatch already used, and for a
+/// value that carries more information than its static type it is the more precise of the
+/// two. The exception is where the runtime type is *missing* information rather than
+/// disagreeing: `value_to_type` samples a collection's first element to learn its element
+/// type, and an empty collection has none, so it yields `Never` there. `Never` coerces to
+/// anything without ever binding a type variable, so a generic body constructed against it
+/// cannot resolve a parameter that comes only from the element type.
+///
+/// So: keep the runtime type everywhere, except take the static type wherever the runtime
+/// one says `Never` and the static one says something concrete. Narrow by construction —
+/// no case that works today changes, because `Never` is precisely the marker of an
+/// unsampled element.
+#[must_use]
+pub fn refine_with_static(runtime: &Type, static_ty: &Type) -> Type {
+    match (runtime, static_ty) {
+        (Type::Never, other) => other.clone(),
+        (Type::Array(r), Type::Array(s)) => Type::Array(Box::new(refine_with_static(r, s))),
+        (Type::SizedArray(r, n), Type::SizedArray(s, _)) => {
+            Type::SizedArray(Box::new(refine_with_static(r, s)), *n)
+        }
+        (Type::Reference(r), Type::Reference(s)) => {
+            Type::Reference(Box::new(refine_with_static(r, s)))
+        }
+        (Type::MutReference(r), Type::MutReference(s)) => {
+            Type::MutReference(Box::new(refine_with_static(r, s)))
+        }
+        (Type::Tuple(r), Type::Tuple(s)) if r.len() == s.len() => Type::Tuple(
+            r.iter()
+                .zip(s.iter())
+                .map(|(a, b)| refine_with_static(a, b))
+                .collect(),
+        ),
+        (Type::Named(rn, ra), Type::Named(sn, sa)) if rn == sn && ra.len() == sa.len() => {
+            Type::Named(
+                rn.clone(),
+                ra.iter()
+                    .zip(sa.iter())
+                    .map(|(a, b)| refine_with_static(a, b))
+                    .collect(),
+            )
+        }
+        (Type::Fun(rp, rr), Type::Fun(sp, sr)) if rp.len() == sp.len() => Type::Fun(
+            rp.iter()
+                .zip(sp.iter())
+                .map(|(a, b)| refine_with_static(a, b))
+                .collect(),
+            Box::new(refine_with_static(rr, sr)),
+        ),
+        _ => runtime.clone(),
+    }
+}

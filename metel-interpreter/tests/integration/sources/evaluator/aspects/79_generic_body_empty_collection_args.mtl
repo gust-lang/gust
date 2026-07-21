@@ -53,4 +53,47 @@ fun main() {
     assert(!x.eq(&shorter));
     assert(!a.eq(&x));
     assert(!x.eq(&a));
+
+    no_argument_generic_method_on_empty_receiver();
+}
+
+// The receiver is the other half of metel-core#286. When a generic method takes no
+// arguments, the receiver is the *only* source of the element type, so an empty
+// collection left the body's nested generic call unresolvable even after the argument
+// side was fixed.
+//
+// The runtime receiver type stays authoritative -- it is what dispatch already used --
+// and the static type only fills in where the runtime one says `Never`, which is
+// precisely where an element could not be sampled.
+
+aspect Show {
+    fun show(&self) -> String;
+}
+
+extend B: Show {
+    fun show(&self) -> String {
+        return "b";
+    }
+}
+
+fun render<T: Show>(x: T) -> String {
+    return x.show();
+}
+
+extend<T: Show> T[]: Show {
+    fun show(&self) -> String {
+        var out = "";
+        for (e in self) {
+            out = out + render(e);
+        }
+        return out;
+    }
+}
+
+fun no_argument_generic_method_on_empty_receiver() {
+    let empty: B[] = [];
+    assert(empty.show() == "");
+
+    let filled = [B { v: 1 }, B { v: 2 }];
+    assert(filled.show() == "bb");
 }
