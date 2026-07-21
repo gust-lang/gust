@@ -1666,7 +1666,6 @@ fn shift_match_arm_span(arm: &mut MatchArm, base_start: usize, base_line: u32, b
 fn shift_pattern_span(pattern: &mut Pattern, base_start: usize, base_line: u32, base_col: u32) {
     match pattern {
         Pattern::Wildcard(span)
-        | Pattern::None(span)
         | Pattern::Binding(_, span)
         | Pattern::Literal(_, span)
         | Pattern::EnumVariant { span, .. } => shift_span(span, base_start, base_line, base_col),
@@ -2322,7 +2321,6 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
                 .ok_or_else(|| MetelError::internal("pattern: missing inner rule"))?;
             parse_pattern(inner, filename)
         }
-        Rule::none_lit => Ok(Pattern::None(Span::of(&pair, filename))),
         Rule::tuple_pattern => {
             let span = Span::of(&pair, filename);
             let pats = pair
@@ -2334,14 +2332,21 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
         }
         Rule::enum_pattern => {
             let span = Span::of(&pair, filename);
+            // Two grammar alternatives share this rule: qualified `Enum::Variant`
+            // (optionally `{ fields }`) and, per RFC-0107, bare fieldful `Variant
+            // { fields }`. They're distinguished by the presence of `::`: the
+            // qualified form's first two idents are the path, the bare form's first
+            // (and only) path ident is the variant name, resolved to its enum against
+            // the scrutinee type during type-checking (`resolve_bare_variant`).
+            let qualified = pair.as_str().contains("::");
             let idents: Vec<String> = pair
                 .into_inner()
                 .filter(|p| p.as_rule() == Rule::ident)
                 .map(|p| p.as_str().to_string())
                 .collect();
-            // First two idents are Type::Variant; rest are field bindings
-            let (path, fields) = if idents.len() > 2 {
-                let (p, f) = idents.split_at(2);
+            let path_len = if qualified { 2 } else { 1 };
+            let (path, fields) = if idents.len() > path_len {
+                let (p, f) = idents.split_at(path_len);
                 (p.to_vec(), f.to_vec())
             } else {
                 (idents, vec![])

@@ -1,0 +1,63 @@
+// RFC-0108: a `&T`/`&var T` scrutinee matches against the referent's own patterns —
+// reference layers are peeled before pattern resolution, the same way field access and
+// method dispatch already auto-dereference. Also covers composition with RFC-0107:
+// peeling happens first, so a bare variant resolves against the referent's enum.
+
+enum Colour { Red, Green, Blue }
+
+struct Point { x: i64, y: i64 }
+
+fun name_qualified(c: &Colour) -> String {
+    match c {
+        Colour::Red   => "red",
+        Colour::Green => "green",
+        Colour::Blue  => "blue",
+    }
+}
+
+fun name_bare(c: &Colour) -> String {
+    match c {
+        Red   => "red",
+        Green => "green",
+        Blue  => "blue",
+    }
+}
+
+fun name_mut(c: &var Colour) -> String {
+    match c {
+        Red   => "red",
+        Green => "green",
+        Blue  => "blue",
+    }
+}
+
+// Bindings introduced through a reference-matched pattern copy the referent.
+fun payload(v: &Perhaps<i64>) -> i64 {
+    match v {
+        Some { value } => value,
+        None           => -1,
+    }
+}
+
+fun main() {
+    let c = Colour::Green;
+    assert(name_qualified(&c) == "green");
+    assert(name_bare(&c) == "green");
+
+    var d = Colour::Blue;
+    assert(name_mut(&var d) == "blue");
+
+    let some: Perhaps<i64> = Perhaps::Some { value: 7 };
+    let none: Perhaps<i64> = Perhaps::None;
+    assert(payload(&some) == 7);
+    assert(payload(&none) == -1);
+
+    // A non-reference scrutinee is unaffected by the peel.
+    let red = Colour::Red;
+    assert(name_qualified(&red) == "red");
+
+    // Matching a reference to a struct still binds by value through the peel.
+    let p = Point { x: 1, y: 2 };
+    let r: &Point = &p;
+    assert(r.x == 1);
+}

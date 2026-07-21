@@ -1,0 +1,53 @@
+// RFC-0107: a bare variant name in a match arm resolves type-directed against the
+// scrutinee's own enum. Covers no-field variants (parsed as a binding, rewritten to
+// an EnumVariant), fieldful variants (the new bare `Variant { fields }` grammar), the
+// still-valid qualified form, and bare `None` — which no longer has a dedicated
+// Pattern::None node and instead goes through this same general mechanism.
+
+enum Colour { Red, Green, Blue }
+
+fun name(c: Colour) -> String {
+    match c {
+        Red   => "red",
+        Green => "green",
+        Blue  => "blue",
+    }
+}
+
+fun unwrap_or(v: Perhaps<i64>, d: i64) -> i64 {
+    match v {
+        Some { value } => value,
+        None           => d,
+    }
+}
+
+fun qualified_still_works(v: Perhaps<i64>) -> i64 {
+    match v {
+        Perhaps::Some { value } => value,
+        Perhaps::None => -1,
+    }
+}
+
+// A bare identifier that names no variant of the scrutinee's enum stays an ordinary
+// binding, exactly as before.
+fun binding_fallback(c: Colour) -> String {
+    match c {
+        Red => "red",
+        other => name(other),
+    }
+}
+
+fun main() {
+    assert(name(Colour::Red) == "red");
+    assert(name(Colour::Green) == "green");
+    assert(name(Colour::Blue) == "blue");
+
+    assert(unwrap_or(Perhaps::Some { value: 5 }, 0) == 5);
+    assert(unwrap_or(Perhaps::None, 9) == 9);
+
+    assert(qualified_still_works(Perhaps::Some { value: 3 }) == 3);
+    assert(qualified_still_works(Perhaps::None) == -1);
+
+    assert(binding_fallback(Colour::Red) == "red");
+    assert(binding_fallback(Colour::Blue) == "blue");
+}

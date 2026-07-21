@@ -248,7 +248,6 @@ type_path = { path_root ~ ("::" ~ ident)* }
 
 pattern = {
     ("_" ~ !(ASCII_ALPHANUMERIC | "_"))   // wildcard — must not match _foo
-  | none_lit                              // None literal (with word-boundary guard)
   | array_pattern                         // must come before tuple_pattern
   | tuple_pattern
   | enum_pattern
@@ -260,7 +259,8 @@ tuple_pattern   = { "(" ~ pattern ~ ("," ~ pattern)* ~ ")" }
 array_pattern   = { "[" ~ array_pat_body ~ "]" }
 array_pat_body  = { (pattern ~ ("," ~ pattern)* ~ ("," ~ rest_pat)? | rest_pat)? }
 rest_pat        = { ".." ~ ident }
-enum_pattern    = { ident ~ "::" ~ ident ~ ("{" ~ ident ~ ("," ~ ident)* ~ "}")? }
+enum_pattern    = { ident ~ "::" ~ ident ~ ("{" ~ ident ~ ("," ~ ident)* ~ "}")?   // qualified: Enum::Variant, optional fields
+                  | ident ~ "{" ~ ident ~ ("," ~ ident)* ~ "}" }                    // RFC-0107: bare fieldful variant (Some { value })
 literal_pattern = { float_lit_suffixed | float_lit | int_lit_suffixed | int_lit | string_lit | char_lit | bool_lit }
 bind_pattern    = { ident }
 

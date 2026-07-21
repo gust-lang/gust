@@ -546,7 +546,6 @@ pub struct MatchArm {
 #[derive(Debug, Clone)]
 pub enum Pattern {
     Wildcard(Span),
-    None(Span),
     Literal(Literal, Span),
     Binding(String, Span),
     EnumVariant {

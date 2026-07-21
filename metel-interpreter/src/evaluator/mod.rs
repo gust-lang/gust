@@ -2752,7 +2752,12 @@ pub fn eval_expr(
         },
 
         TypedExpr::Match(m) => {
-            let scrutinee = eval_expr(&m.scrutinee, env, runtime)?.into_value();
+            // RFC-0108: a reference-typed scrutinee matches against the referent's
+            // patterns — unwrap any reference layers before matching, using the same
+            // `deref_value` helper method dispatch already uses. `match_pattern` then
+            // only ever sees a plain value, exactly as before.
+            let scrutinee_raw = eval_expr(&m.scrutinee, env, runtime)?.into_value();
+            let scrutinee = deref_value(&scrutinee_raw, &m.span)?.unwrap_or(scrutinee_raw);
             for arm in &m.arms {
                 let mut bindings = HashMap::new();
                 if !pattern::match_pattern(&arm.pattern, &scrutinee, &mut bindings) {

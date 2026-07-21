@@ -416,7 +416,7 @@ impl Walker<'_, '_> {
 /// Invoke `bind` for every binding name introduced by a pattern.
 fn bind_pattern(pattern: &Pattern, bind: &mut dyn FnMut(&str)) {
     match pattern {
-        Pattern::Wildcard(_) | Pattern::None(_) | Pattern::Literal(_, _) => {}
+        Pattern::Wildcard(_) | Pattern::Literal(_, _) => {}
         Pattern::Binding(name, _) => bind(name),
         Pattern::EnumVariant { fields, .. } => {
             for f in fields {

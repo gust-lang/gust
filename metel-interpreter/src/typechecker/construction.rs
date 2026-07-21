@@ -2141,18 +2141,45 @@ fn construct_match(
     ctx: &mut ConstructCtx,
 ) -> Result<TypedExpr, MetelError> {
     let scrutinee = construct_expr(&m.scrutinee, None, ctx)?;
-    let scrutinee_ty = scrutinee.ty().clone();
+    // RFC-0108: peel `&T`/`&mut T` layers so a reference-typed scrutinee matches
+    // against `T`'s own patterns, using construction's own existing
+    // `peel_type_references` (already used for method/field receivers). Only the
+    // local copy used for pattern resolution and exhaustiveness is peeled — the
+    // typed scrutinee expression's own recorded type (`scrutinee.ty()`) is untouched.
+    let scrutinee_ty = peel_type_references(scrutinee.ty()).clone();
+    // RFC-0107: bare variant patterns (`Red`, `Some { value }`) resolve against the
+    // scrutinee's own enum. Compute the enum's variant list once from the (already
+    // reference-peeled, RFC-0108) scrutinee type; `None` here means the scrutinee
+    // isn't a known enum, so patterns are left exactly as written.
+    let scrutinee_variants: Option<(String, Vec<(String, bool)>)> = match &scrutinee_ty {
+        Type::Named(enum_name, _) => ctx.registry.enum_info(enum_name).map(|info| {
+            (
+                enum_name.clone(),
+                info.variants
+                    .iter()
+                    .map(|v| (v.name.clone(), v.fields.is_empty()))
+                    .collect(),
+            )
+        }),
+        _ => None,
+    };
     let mut typed_arms = vec![];
     for arm in &m.arms {
+        let pattern = match &scrutinee_variants {
+            Some((enum_name, variants)) => {
+                resolve_bare_variant(&arm.pattern, enum_name, variants)
+            }
+            None => arm.pattern.clone(),
+        };
         ctx.push_scope();
-        construct_pattern_bindings(&arm.pattern, &scrutinee_ty, ctx)?;
+        construct_pattern_bindings(&pattern, &scrutinee_ty, ctx)?;
         let guard = match &arm.guard {
             Some(g) => Some(construct_expr(g, None, ctx)?),
             None => None,
         };
         let body = construct_block(&arm.body, expected_ty, ctx)?;
         typed_arms.push(TypedMatchArm {
-            pattern: arm.pattern.clone(),
+            pattern,
             guard,
             body,
             span: arm.span.clone(),
@@ -2367,13 +2394,49 @@ fn is_bool_literal_pattern(pattern: &Pattern, expected: bool) -> bool {
 /// Returns true if `pattern` (unguarded) covers variant `variant_name` of enum `enum_name`.
 fn pattern_covers_variant(pattern: &Pattern, enum_name: &str, variant_name: &str) -> bool {
     match pattern {
-        // `None` covers the "None" variant of "Perhaps".
-        Pattern::None(_) => enum_name == "Perhaps" && variant_name == "None",
         Pattern::EnumVariant { path, .. } => {
             path.first().map(String::as_str) == Some(enum_name)
                 && path.get(1).map(String::as_str) == Some(variant_name)
         }
         _ => false,
+    }
+}
+
+/// RFC-0107: rewrite a bare variant match-arm pattern into its fully-qualified form
+/// when it resolves against the scrutinee's enum. `variants` is `(name, is_fieldless)`
+/// for each variant of the scrutinee enum `enum_name`. A bare no-field variant is
+/// parsed as a `Binding` (`Red`); a bare fieldful variant is parsed as a one-segment
+/// `EnumVariant` (`Some { value }`). Anything else — including a `Binding` that names
+/// no variant, which stays an ordinary binding — is returned unchanged. Resolution is
+/// top-level only: nested bare variants inside a tuple/array pattern are out of scope
+/// (they would resolve against a nested field type, not the scrutinee enum). Once
+/// rewritten, every downstream consumer sees an ordinary two-segment `EnumVariant`,
+/// so exhaustiveness, binding, and runtime matching need no changes.
+pub(super) fn resolve_bare_variant(
+    pattern: &Pattern,
+    enum_name: &str,
+    variants: &[(String, bool)],
+) -> Pattern {
+    match pattern {
+        Pattern::Binding(name, span)
+            if variants.iter().any(|(vn, fieldless)| vn == name && *fieldless) =>
+        {
+            Pattern::EnumVariant {
+                path: vec![enum_name.to_string(), name.clone()],
+                fields: vec![],
+                span: span.clone(),
+            }
+        }
+        Pattern::EnumVariant { path, fields, span }
+            if path.len() == 1 && variants.iter().any(|(vn, _)| vn == &path[0]) =>
+        {
+            Pattern::EnumVariant {
+                path: vec![enum_name.to_string(), path[0].clone()],
+                fields: fields.clone(),
+                span: span.clone(),
+            }
+        }
+        _ => pattern.clone(),
     }
 }
 
@@ -2383,7 +2446,7 @@ fn construct_pattern_bindings(
     ctx: &mut ConstructCtx,
 ) -> Result<(), MetelError> {
     match pattern {
-        Pattern::Wildcard(_) | Pattern::Literal(_, _) | Pattern::None(_) => {}
+        Pattern::Wildcard(_) | Pattern::Literal(_, _) => {}
         Pattern::Binding(name, _) => {
             ctx.bind(name, scrutinee_ty.clone());
         }

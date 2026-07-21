@@ -2707,11 +2707,44 @@ fn infer_match(
     ctx: &mut InferContext,
     fun_generalizations: &mut Vec<FunGeneralization>,
 ) -> Result<InferType, MetelError> {
-    let scrutinee_ty = infer_expr(&m.scrutinee, ctx, fun_generalizations)?;
+    let raw_scrutinee_ty = infer_expr(&m.scrutinee, ctx, fun_generalizations)?;
+    // RFC-0108: a `&T`/`&mut T` scrutinee matches against `T`'s own patterns —
+    // peel reference layers before pattern inference, the same way method-call
+    // receiver resolution already does. Applying the current substitution first
+    // resolves a scrutinee var to its reference shape where solve order allows
+    // (matching `Expr::Index`'s own peel), then peels every layer.
+    let scrutinee_ty = peel_all_references(&ctx.solve()?.apply(&raw_scrutinee_ty));
+    // RFC-0107: resolve bare variant patterns against the scrutinee's enum in Pass 1
+    // too, so a one-segment fieldful pattern (`Some { value }`) doesn't hit
+    // `infer_pattern`'s two-segment path assertion, and a bare no-field variant
+    // (`Red`) is typed as the variant rather than a spurious binding.
+    let scrutinee_enum_name = match &scrutinee_ty {
+        InferType::Named(name, _) => Some(name.clone()),
+        InferType::Concrete(Type::Named(name, _)) => Some(name.clone()),
+        _ => None,
+    };
+    let scrutinee_variants: Option<(String, Vec<(String, bool)>)> = scrutinee_enum_name
+        .and_then(|name| {
+            ctx.get_enum(&name).map(|info| {
+                (
+                    name.clone(),
+                    info.variants
+                        .iter()
+                        .map(|v| (v.name.clone(), v.fields.is_empty()))
+                        .collect(),
+                )
+            })
+        });
     let result_var = ctx.fresh_var();
     for arm in &m.arms {
+        let pattern = match &scrutinee_variants {
+            Some((enum_name, variants)) => {
+                super::construction::resolve_bare_variant(&arm.pattern, enum_name, variants)
+            }
+            None => arm.pattern.clone(),
+        };
         ctx.push_scope();
-        infer_pattern(&arm.pattern, &scrutinee_ty, ctx)?;
+        infer_pattern(&pattern, &scrutinee_ty, ctx)?;
         if let Some(guard) = &arm.guard {
             let g = infer_expr(guard, ctx, fun_generalizations)?;
             ctx.add_constraint(g, InferType::bool(), arm.span.clone());
@@ -2737,14 +2770,6 @@ fn infer_pattern(
         }
         Pattern::Binding(name, _) => {
             ctx.bind_mono(name, scrutinee_ty.clone(), false);
-        }
-        Pattern::None(_) => {
-            let fresh = ctx.fresh_var();
-            ctx.add_constraint(
-                scrutinee_ty.clone(),
-                InferType::Named("Perhaps".to_string(), vec![fresh]),
-                span.clone(),
-            );
         }
         Pattern::Tuple(pats, _) => {
             let elem_vars: Vec<InferType> = pats.iter().map(|_| ctx.fresh_var()).collect();
@@ -2818,7 +2843,6 @@ fn infer_pattern(
 fn pattern_span(pattern: &Pattern) -> &Span {
     match pattern {
         Pattern::Wildcard(s)
-        | Pattern::None(s)
         | Pattern::Binding(_, s)
         | Pattern::Literal(_, s)
         | Pattern::Tuple(_, s)

@@ -22,9 +22,6 @@ pub(super) fn match_pattern(
     match pattern {
         Pattern::Wildcard(_) => true,
 
-        Pattern::None(_) => matches!(value,
-            Value::Enum { name, variant, .. } if name == "Perhaps" && variant == "None"),
-
         Pattern::Literal(lit, _) => match (lit, value) {
             (Literal::Int(a), Value::I64(b)) => a == b,
             (Literal::Float(a), Value::F64(b)) => a == b,
