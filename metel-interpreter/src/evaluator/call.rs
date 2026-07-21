@@ -5,8 +5,8 @@ use crate::ast::Span;
 use crate::error::{MetelError, RuntimeErrorCode};
 
 use super::{
-    attach_stack, eval_block, pop_frame, profiler_enter, profiler_exit, push_frame, type_of,
-    ClosureBody, RuntimeCallable, RuntimeRegistry, Signal, Value,
+    attach_stack, eval_block, pop_frame, profiler_enter, profiler_exit, push_frame, read_path,
+    type_of, ClosureBody, RuntimeCallable, RuntimeRegistry, Signal, Value,
 };
 
 /// How the receiver is bound into the callee's environment.
@@ -106,6 +106,9 @@ pub(super) fn call_function(
     // Auto-deref: calling through a function pointer transparently unwraps one pointer layer.
     let func = match func {
         Value::Reference(rc) | Value::MutReference(rc) => rc.borrow().clone(),
+        Value::FieldReference { root, path } | Value::MutFieldReference { root, path } => {
+            read_path(&root.borrow(), &path, span)?
+        }
         other => other,
     };
     match func {

@@ -107,6 +107,12 @@ pub enum Value {
     Reference(Rc<RefCell<Value>>),
     /// Writable pointer to a named binding cell.
     MutReference(Rc<RefCell<Value>>),
+    /// Read-only fat pointer for sub-element lvalue paths.
+    /// `root` is the binding cell; `path` navigates to the leaf.
+    FieldReference {
+        root: Rc<RefCell<Value>>,
+        path: Vec<PathSegment>,
+    },
     /// Fat mutable pointer for sub-element lvalue paths (RFC-0045).
     /// `root` is the binding cell; `path` navigates to the leaf.
     MutFieldReference {
@@ -939,13 +945,17 @@ fn write_path(
 fn deref_value(value: &Value, span: &Span) -> Result<Option<Value>, MetelError> {
     let mut current = match value {
         Value::Reference(rc) | Value::MutReference(rc) => rc.borrow().clone(),
-        Value::MutFieldReference { root, path } => read_path(&root.borrow(), path, span)?,
+        Value::FieldReference { root, path } | Value::MutFieldReference { root, path } => {
+            read_path(&root.borrow(), path, span)?
+        }
         _ => return Ok(None),
     };
     loop {
         current = match &current {
             Value::Reference(rc) | Value::MutReference(rc) => rc.borrow().clone(),
-            Value::MutFieldReference { root, path } => read_path(&root.borrow(), path, span)?,
+            Value::FieldReference { root, path } | Value::MutFieldReference { root, path } => {
+                read_path(&root.borrow(), path, span)?
+            }
             _ => break,
         };
     }
@@ -2585,6 +2595,15 @@ pub fn eval_expr(
                         Value::Reference(rc) | Value::MutReference(rc) => {
                             Ok(Signal::Value(Value::Reference(rc)))
                         }
+                        // A reborrow of a *path* reference must carry the root+path
+                        // through, not re-wrap it in a cell — re-wrapping produced a
+                        // `Reference(Rc(FieldReference))` whose single-layer deref
+                        // yielded the inner reference instead of the referent.
+                        // `&var` reborrowed as `&` downgrades to shared.
+                        Value::FieldReference { root, path }
+                        | Value::MutFieldReference { root, path } => {
+                            Ok(Signal::Value(Value::FieldReference { root, path }))
+                        }
                         other => Ok(Signal::Value(Value::Reference(Rc::new(RefCell::new(other))))),
                     };
                 }
@@ -2609,8 +2628,10 @@ pub fn eval_expr(
                         .map(|rc| Signal::Value(Value::Reference(rc)))
                         .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0003, format!("undefined variable `{name}`"), span)),
                     other if is_lvalue_path_typed(other) => {
-                        let v = eval_expr(operand, env, runtime)?.into_value();
-                        Ok(Signal::Value(Value::Reference(Rc::new(RefCell::new(v)))))
+                        let (root_name, path) = build_mut_path(other, env, runtime, span)?;
+                        let root = env.get_rc(&root_name).ok_or_else(|| MetelError::panic(
+                            RuntimeErrorCode::R0003, format!("undefined variable `{root_name}`"), span))?;
+                        Ok(Signal::Value(Value::FieldReference { root, path }))
                     }
                     _ => Err(MetelError::internal("address-of requires an addressable lvalue (identifier, field access, tuple access, or array index)")),
                 },
@@ -2641,7 +2662,8 @@ pub fn eval_expr(
                     (UnaryOp::Deref, Value::Reference(rc) | Value::MutReference(rc)) => {
                         rc.borrow().clone()
                     }
-                    (UnaryOp::Deref, Value::MutFieldReference { root, path }) => {
+                    (UnaryOp::Deref, Value::FieldReference { root, path })
+                    | (UnaryOp::Deref, Value::MutFieldReference { root, path }) => {
                         read_path(&root.borrow(), &path, span)?
                     }
                     (UnaryOp::Neg, _) => return Err(MetelError::internal(

@@ -82,7 +82,7 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
         },
         Value::Reference(rc) => Type::Reference(Box::new(go(&rc.borrow()))),
         Value::MutReference(rc) => Type::MutReference(Box::new(go(&rc.borrow()))),
-        Value::MutFieldReference { root, path } => {
+        Value::FieldReference { root, path } | Value::MutFieldReference { root, path } => {
             // Approximate: read the leaf type from the current root value.
             let root_val = root.borrow();
             let mut cur_type = go(&root_val);
@@ -95,7 +95,11 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
                     _ => Type::Unit,
                 };
             }
-            Type::MutReference(Box::new(cur_type))
+            if matches!(value, Value::FieldReference { .. }) {
+                Type::Reference(Box::new(cur_type))
+            } else {
+                Type::MutReference(Box::new(cur_type))
+            }
         }
     }
 }

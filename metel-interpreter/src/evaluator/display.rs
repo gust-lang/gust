@@ -122,6 +122,7 @@ pub(super) fn format_value(val: &Value) -> String {
         }
         Value::Reference(rc) => format!("&{}", format_value(&rc.borrow())),
         Value::MutReference(rc) => format!("&mut {}", format_value(&rc.borrow())),
+        Value::FieldReference { .. } => "<& field-path>".to_string(),
         Value::MutFieldReference { .. } => "<&mut field-path>".to_string(),
     }
 }

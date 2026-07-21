@@ -4142,6 +4142,25 @@ fn construct_unaryop(
                     span,
                 ));
             }
+            // `&var *r` cannot manufacture exclusive access out of a shared `&T`.
+            // Statically determinable from the reborrowed reference's own type, so it
+            // belongs here rather than as a runtime error (same principle as
+            // metel-core#280).
+            if matches!(op, UnaryOp::RefMut) {
+                if let TypedExpr::UnaryOp(UnaryOp::Deref, inner, _, _) = &operand {
+                    if matches!(inner.ty(), Type::Reference(_)) {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0006,
+                            format!(
+                                "cannot take `&var` through a shared reference `{}`; \
+                                 a shared reference never grants write access",
+                                inner.ty()
+                            ),
+                            span,
+                        ));
+                    }
+                }
+            }
             if matches!(op, UnaryOp::RefMut) {
                 Type::MutReference(Box::new(operand.ty().clone()))
             } else {

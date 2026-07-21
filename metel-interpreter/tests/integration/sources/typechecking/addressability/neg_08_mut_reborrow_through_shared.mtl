@@ -1,0 +1,10 @@
+// `&var *r` cannot manufacture exclusive access out of a shared `&T`. Statically
+// determinable from the reborrowed reference's own type, so it is a compile-time error
+// rather than the runtime failure it used to be (same principle as metel-core#280).
+struct Point { x: i64 }
+
+fun main() {
+    var p = Point { x: 1 };
+    let r: &i64 = &p.x;
+    let rr = &var *r; // ERROR[T0006]
+}

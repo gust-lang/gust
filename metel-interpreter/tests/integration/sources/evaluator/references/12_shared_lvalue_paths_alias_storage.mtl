@@ -1,0 +1,49 @@
+struct Point { x: i64 }
+struct Outer { point: Point }
+
+fun main() {
+    var direct = Point { x: 1 };
+    let direct_ref: &i64 = &direct.x;
+    direct.x = 5;
+    assert(*direct_ref == 5);
+
+    var nested = Outer { point: Point { x: 10 } };
+    let nested_ref: &i64 = &nested.point.x;
+    nested.point.x = 12;
+    assert(*nested_ref == 12);
+
+    var xs = [3, 4, 5];
+    let array_ref: &i64 = &xs[1];
+    xs[1] = 9;
+    assert(*array_ref == 9);
+
+    var t = (7, 8);
+    let tuple_ref: &i64 = &t.0;
+    t = (11, 8);
+    assert(*tuple_ref == 11);
+
+    reborrow_of_a_path_reference();
+}
+
+// Reborrowing a path reference (`&*r`) must carry the root+path through rather than
+// re-wrapping it in a fresh cell. Re-wrapping produced a `Reference(Rc(FieldReference))`
+// whose single-layer deref yielded the inner reference instead of the referent, which
+// surfaced as an I0001 internal error at the use site. Only reachable once `&` on a path
+// started producing a path reference at all, so it is a composition of metel-core#280's
+// reborrow and metel-core#282's fix.
+struct Cell { v: i64 }
+
+fun reborrow_of_a_path_reference() {
+    var c = Cell { v: 1 };
+
+    let r: &i64 = &c.v;
+    let rr = &*r;
+    c.v = 5;
+    assert(*rr == 5);
+
+    // `&var` reborrowed as `&` downgrades to shared and still aliases.
+    let m: &var i64 = &var c.v;
+    let mr = &*m;
+    c.v = 6;
+    assert(*mr == 6);
+}
