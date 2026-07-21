@@ -1,8 +1,14 @@
 // ── Auto-deref for function pointer calls ─────────────────────────────────────
 
 // Calling &() -> T directly (no explicit ptr() needed beyond auto-deref)
+//
+// The `-> i64` here is load-bearing for a reason unrelated to what this fixture tests:
+// an unannotated closure-valued `let` is typed `()` at the call site in pass 2
+// (metel-core#281), so `ptr() == 42` would compare against `()`. That went unnoticed
+// while `==` accepted operands of any type; metel-core#279's guard exposed it. Declaring
+// the return type sidesteps #281 without weakening the guard.
 fun test_immutable_fun_ptr_call() {
-    let f = () -> { return 42; };
+    let f = () -> i64 { return 42; };
     let ptr = &f;
     assert(ptr() == 42);
 }

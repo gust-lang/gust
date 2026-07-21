@@ -1,0 +1,15 @@
+// metel-core#279: `==` on a struct previously typechecked and then aborted at run time
+// with `[I0001] internal error: binop: unsupported operand types ... (typechecker should
+// have caught this)` — `construct_binop`'s Eq/Ne arm returned `Type::Boolean` with no
+// operand check at all, beside an ordering arm that does check.
+//
+// Rejected rather than made to work: routing `==` through the `Eq` aspect is #263 /
+// RFC-0062. For references specifically, peeling would also silently settle whether two
+// references compare referents or identity, which is deliberately open.
+struct P { x: i64 }
+
+fun main() {
+    let a = P { x: 1 };
+    let b = P { x: 1 };
+    let same = a == b; // ERROR[T0005]
+}

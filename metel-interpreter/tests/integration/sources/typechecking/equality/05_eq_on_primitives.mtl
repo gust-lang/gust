@@ -1,0 +1,12 @@
+// metel-core#279: the operand types `==` does support stay working — the guard added
+// there admits exactly what the evaluator has arms for.
+fun main() {
+    assert(1 == 1);
+    assert(1 != 2);
+    assert(1u8 == 1u8);
+    assert(1.5 == 1.5);
+    assert("a" == "a");
+    assert('c' == 'c');
+    assert(true == true);
+    assert(!(true == false));
+}

@@ -1144,16 +1144,7 @@ fn lvalue_field_cell(
     Some((struct_cell, path, leaf_cell))
 }
 
-fn is_lvalue_path_typed(expr: &crate::typed_ast::TypedExpr) -> bool {
-    use crate::typed_ast::TypedExpr;
-    match expr {
-        TypedExpr::Ident(..) => true,
-        TypedExpr::FieldAccess { object, .. }
-        | TypedExpr::TupleAccess { object, .. }
-        | TypedExpr::Index { object, .. } => is_lvalue_path_typed(object),
-        _ => false,
-    }
-}
+use crate::typed_ast::is_lvalue_path as is_lvalue_path_typed;
 
 /// Recursively walk a typed lvalue path, collecting `PathSegment`s.
 /// Returns the root binding name and the full segment list (root-to-leaf order).
@@ -2583,6 +2574,36 @@ pub fn eval_expr(
 
         TypedExpr::UnaryOp(op, operand, _, span) => {
             match op {
+                // RFC-0110 §6: `&*p` is a *reborrow* — it must share the referent's
+                // storage, not snapshot it into a fresh cell the way an lvalue *path*
+                // does. Handled before the general path arm below for that reason.
+                UnaryOp::Ref
+                    if matches!(&**operand, TypedExpr::UnaryOp(UnaryOp::Deref, ..)) =>
+                {
+                    let TypedExpr::UnaryOp(_, inner, _, _) = &**operand else { unreachable!() };
+                    return match eval_expr(inner, env, runtime)?.into_value() {
+                        Value::Reference(rc) | Value::MutReference(rc) => {
+                            Ok(Signal::Value(Value::Reference(rc)))
+                        }
+                        other => Ok(Signal::Value(Value::Reference(Rc::new(RefCell::new(other))))),
+                    };
+                }
+                UnaryOp::RefMut
+                    if matches!(&**operand, TypedExpr::UnaryOp(UnaryOp::Deref, ..)) =>
+                {
+                    let TypedExpr::UnaryOp(_, inner, _, _) = &**operand else { unreachable!() };
+                    return match eval_expr(inner, env, runtime)?.into_value() {
+                        Value::MutReference(rc) => Ok(Signal::Value(Value::MutReference(rc))),
+                        Value::MutFieldReference { root, path } => {
+                            Ok(Signal::Value(Value::MutFieldReference { root, path }))
+                        }
+                        other => Err(MetelError::panic(
+                            RuntimeErrorCode::R0003,
+                            format!("cannot take `&var` through a shared reference: {other:?}"),
+                            span,
+                        )),
+                    };
+                }
                 UnaryOp::Ref => return match &**operand {
                     TypedExpr::Ident(name, _, _) => env.get_rc(name)
                         .map(|rc| Signal::Value(Value::Reference(rc)))

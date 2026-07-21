@@ -3918,7 +3918,40 @@ fn construct_binop(
             }
             Type::Boolean
         }
-        BinOp::Eq | BinOp::Ne | BinOp::And | BinOp::Or => Type::Boolean,
+        BinOp::Eq | BinOp::Ne => {
+            // metel-core#279: this arm previously returned `Type::Boolean` with no
+            // operand check at all, sitting right beside the ordering arm above that
+            // does check. Pass 1 only constrains the two operands to unify *with each
+            // other*, so mixed types were caught by unification while same-type-on-both
+            // -sides reached an evaluator that only has `==` arms for the primitive
+            // scalars — producing an I0001 internal error at run time for references,
+            // structs, enums (including `Perhaps`), arrays, tuples and unit.
+            //
+            // Deliberately *rejects* rather than peeling references: peeling would
+            // silently commit the language to referent-equality semantics, and whether
+            // two references should compare referents (Rust) or identity (Go) is an open
+            // design question (metel-core#263). Rejecting is direction-neutral, and
+            // status-quo-preserving since these already failed, just badly.
+            //
+            // The real fix is routing `==` through the `Eq` aspect (metel-core#263 /
+            // RFC-0062); this guard relaxes as that lands.
+            let t = lhs.ty();
+            if !matches!(t, Type::Str | Type::Char | Type::Boolean | Type::Never)
+                && !t.is_numeric()
+            {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0005,
+                    format!(
+                        "equality comparison requires a primitive operand (numeric, \
+                         boolean, String, or char), got `{t}`; `==` does not yet dispatch \
+                         through the `Eq` aspect — use `.eq(..)` on a type that implements it"
+                    ),
+                    span,
+                ));
+            }
+            Type::Boolean
+        }
+        BinOp::And | BinOp::Or => Type::Boolean,
         BinOp::Range | BinOp::RangeInclusive => Type::Named("Range".to_string(), vec![Type::I64]),
     };
     Ok(TypedExpr::BinOp(
@@ -4090,8 +4123,31 @@ fn construct_unaryop(
             t.clone()
         }
         UnaryOp::Not => Type::Boolean,
-        UnaryOp::Ref => Type::Reference(Box::new(operand.ty().clone())),
-        UnaryOp::RefMut => Type::MutReference(Box::new(operand.ty().clone())),
+        // metel-core#280: addressability is checked here, not at run time. The rule is
+        // purely syntactic on the typed AST, so it was always static-determinable; the
+        // evaluator used to decide it with the same predicate and raise
+        // `MetelError::internal` on failure — an internal error for a documented,
+        // user-reachable rejection (RFC-0044 §9), raised only after any side effects in
+        // the surrounding statement had already run.
+        UnaryOp::Ref | UnaryOp::RefMut => {
+            if !crate::typed_ast::is_lvalue_path(&operand) {
+                let sigil = if matches!(op, UnaryOp::RefMut) { "&var" } else { "&" };
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0005,
+                    format!(
+                        "`{sigil}` requires an addressable place — a binding, field, \
+                         tuple element, array element, dereference, or a chain of those; \
+                         bind the value to a name first"
+                    ),
+                    span,
+                ));
+            }
+            if matches!(op, UnaryOp::RefMut) {
+                Type::MutReference(Box::new(operand.ty().clone()))
+            } else {
+                Type::Reference(Box::new(operand.ty().clone()))
+            }
+        }
         UnaryOp::Deref => match operand.ty() {
             Type::Reference(inner) | Type::MutReference(inner) => *inner.clone(),
             t => {

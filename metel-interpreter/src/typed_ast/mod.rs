@@ -518,3 +518,23 @@ pub struct TypedMatchArm {
     #[allow(dead_code)] // kept for future error messages
     pub span: Span,
 }
+
+/// Is this typed expression an addressable *place* — something `&`/`&var` can take the
+/// address of, and something `*p = v` can write through?
+///
+/// Purely syntactic on the typed AST, which is why the check belongs in the typechecker
+/// (metel-core#280) rather than the evaluator, where it used to live as a runtime
+/// `MetelError::internal`. Both still call this, so the two cannot drift.
+///
+/// `UnaryOp::Deref` is a place per RFC-0110 §6: `&*p` is a reborrow, not a copy.
+#[must_use]
+pub fn is_lvalue_path(expr: &TypedExpr) -> bool {
+    match expr {
+        TypedExpr::Ident(..) => true,
+        TypedExpr::FieldAccess { object, .. }
+        | TypedExpr::TupleAccess { object, .. }
+        | TypedExpr::Index { object, .. } => is_lvalue_path(object),
+        TypedExpr::UnaryOp(crate::ast::UnaryOp::Deref, object, _, _) => is_lvalue_path(object),
+        _ => false,
+    }
+}
