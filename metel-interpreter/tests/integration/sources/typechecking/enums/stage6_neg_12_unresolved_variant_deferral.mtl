@@ -1,0 +1,9 @@
+// metel-core#285: a bare variant that never resolves must be reported, not silently
+// accepted. Pass 1 defers it (RFC-0111 §3.1) and only pass 2 resolves it against an
+// expected type -- but an uncalled closure's body is never constructed, so no expected
+// type ever arrives and nothing used to notice. Checked after the final solve instead.
+enum Colour { Red, Green }
+
+fun main() {
+    let f = () -> { Red }; // ERROR[T0002]
+}

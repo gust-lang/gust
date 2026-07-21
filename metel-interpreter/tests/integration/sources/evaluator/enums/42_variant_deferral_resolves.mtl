@@ -1,0 +1,34 @@
+// metel-core#285's check must not fire on a deferral that *does* resolve, at any of the
+// positions RFC-0111 supports, and must leave genuinely polymorphic deferrals alone.
+enum Colour { Red, Green, Blue }
+
+fun paint(c: Colour) -> i64 { return 1; }
+fun favourite() -> Colour { Green }
+
+// A closure with a declared return type gives its body an expected type, so a bare
+// variant inside it resolves normally.
+fun annotated_closure() -> Colour {
+    let f = () -> Colour { Red };
+    return f();
+}
+
+fun main() {
+    let c: Colour = Red;
+    assert(paint(c) == 1);
+    assert(paint(Blue) == 1);
+
+    let g: Colour = favourite();
+    assert(paint(g) == 1);
+
+    let p: Perhaps<i64> = Some { value: 5 };
+    let q: Perhaps<i64> = None;
+    assert(paint(annotated_closure()) == 1);
+
+    // An empty array literal is deferred too, and is *genuinely* polymorphic -- the
+    // #285 check is scoped to bare variants precisely so this keeps working.
+    let mk = () -> { [] };
+    let ints: i64[] = mk();
+    let strs: String[] = mk();
+    assert(ints.len() == 0);
+    assert(strs.len() == 0);
+}

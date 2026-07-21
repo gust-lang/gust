@@ -1833,7 +1833,14 @@ fn infer_expr(
                 }
             }
             if ctx.registry().has_variant_named(name) {
-                return Ok(ctx.fresh_var());
+                // RFC-0111 §3.1: defer to pass 2, which resolves against the expected
+                // type. Recorded so a deferral that never resolves is reported after
+                // solving instead of being silently accepted (metel-core#285).
+                let var = ctx.fresh_var();
+                if let InferType::Var(tv) = var {
+                    ctx.record_variant_deferral(span.clone(), name.clone(), tv);
+                }
+                return Ok(var);
             }
             Err(MetelError::type_error(
                 TypeErrorCode::T0003,
@@ -2533,7 +2540,11 @@ fn infer_expr(
                 && ctx.registry().has_variant_named(&path[0])
                 && ctx.get_struct_fields(&path[0]).is_none()
             {
-                Ok(ctx.fresh_var())
+                let var = ctx.fresh_var();
+                if let InferType::Var(tv) = var {
+                    ctx.record_variant_deferral(span.clone(), path[0].clone(), tv);
+                }
+                Ok(var)
             } else {
                 let struct_name = path
                     .last()

@@ -806,6 +806,21 @@ fn check_impl_with_report(
     let solved = ctx.solve()?;
     let final_solve_ns = elapsed_ns(started);
     let subst = ctx.default_literal_vars(&solved);
+    // metel-core#285: a bare variant that never resolved. Pass 2 only resolves these
+    // where an expected type exists, so one still unresolved here is a name that means
+    // nothing — reachable when it sits somewhere pass 2 never constructs, such as the
+    // body of a closure that is never called.
+    if let Some((span, name)) = ctx.unresolved_variant_deferrals(&subst).into_iter().next() {
+        return Err(MetelError::type_error(
+            crate::error::TypeErrorCode::T0002,
+            format!(
+                "cannot tell which enum `{name}` belongs to here; there is no expected \
+                 type at this position — qualify it (`Enum::{name}`) or annotate the \
+                 enclosing declaration"
+            ),
+            &span,
+        ));
+    }
     let solve_stats = ctx.solve_stats();
     let solve_ns = solve_after_inference.solve_ns + final_solve_ns;
     let inference_ns = infer_total_ns.saturating_sub(solve_after_inference.solve_ns);

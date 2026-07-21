@@ -2241,6 +2241,12 @@ pub struct InferContext {
     /// Free-function overload sets for the current module (METEL-180). Names with
     /// a single definition never appear here. Built by `typechecker::overload`.
     overloads: OverloadTable,
+    /// RFC-0111 bare-variant deferrals: (span, variant name, the fresh var standing in
+    /// for it). Pass 1 cannot resolve these — only pass 2 knows the expected type — so
+    /// each is checked after the final solve. A deferral that never resolved means the
+    /// name resolves to nothing at all, which pass 2 will never see because it only ever
+    /// runs where an expected type exists. See `unresolved_variant_deferrals`.
+    variant_deferrals: Vec<(Span, String, TypeVar)>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -2302,6 +2308,7 @@ impl InferContext {
             solved_constraint_count: 0,
             solve_stats: SolveStats::default(),
             overloads: OverloadTable::new(),
+            variant_deferrals: Vec::new(),
         };
         for (name, scheme) in imported_schemes {
             ctx.bind_poly(name, scheme.clone());
@@ -2880,6 +2887,31 @@ impl InferContext {
     /// binding), so `lookup_for_write`'s immutability check must be bypassed to inspect
     /// the raw type before deciding whether that applies. (RFC-0110 retired the
     /// write-through rule this was introduced for; kept for its other callers.)
+    /// Record a bare identifier deferred by RFC-0111's gate, so an unresolvable one can
+    /// be reported after solving rather than silently accepted.
+    pub fn record_variant_deferral(&mut self, span: Span, name: String, var: TypeVar) {
+        self.variant_deferrals.push((span, name, var));
+    }
+
+    /// Bare-variant deferrals that never resolved to a concrete enum. Reported after the
+    /// final solve. A resolved deferral is one whose stand-in variable became a named
+    /// type — pass 2 then resolves the variant against it. One that is still a variable,
+    /// or became `!`, is a name that resolves to nothing: reachable only where no
+    /// expected type ever arrived, which RFC-0111 §1.4 defines as an error.
+    #[must_use]
+    pub fn unresolved_variant_deferrals(&self, subst: &Substitution) -> Vec<(Span, String)> {
+        self.variant_deferrals
+            .iter()
+            .filter(|(_, _, var)| {
+                !matches!(
+                    subst.apply(&InferType::Var(*var)),
+                    InferType::Named(..) | InferType::Concrete(_)
+                )
+            })
+            .map(|(span, name, _)| (span.clone(), name.clone()))
+            .collect()
+    }
+
     #[must_use]
     pub fn lookup_mono_raw(&self, name: &str) -> Option<InferType> {
         self.mono_env
