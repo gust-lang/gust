@@ -3211,6 +3211,12 @@ fn constrain_with_read_copy(
     declared: InferType,
     span: Span,
 ) -> InferType {
+    // Note the `Var(_)` arm here is deliberately left inspecting the *raw* `declared`.
+    // Substituting it was tried and fixed nothing: where `declared` is still a variable
+    // — the closure's own return type while its body's tail is being constrained — the
+    // constraint that would resolve it has not been generated yet, so applying the
+    // current substitution is a no-op. That is an ordering limitation, not a missing
+    // `apply`, and it is out of scope here. See RFC-0112 §1.0.
     if matches!(
         declared,
         InferType::Reference(_) | InferType::MutReference(_) | InferType::Var(_)
@@ -3218,7 +3224,23 @@ fn constrain_with_read_copy(
         ctx.add_constraint(actual.clone(), declared, span);
         return actual;
     }
-    let mut peeled = actual.clone();
+    // Decide whether to peel against the *substituted* type, not the raw one. Without
+    // this, the decision is made before the information needed to make it exists: a call
+    // returning `&T` yields a fresh `InferType::Var` here, which matches no reference
+    // pattern below, so the peel is silently skipped and the later unification of that
+    // var against the declared referent type fails with T0001. `let n: i64 = g();` for
+    // `fun g() -> &i64` failed where the equivalent `let n: i64 = r;` succeeded — a
+    // distinction no user could predict.
+    //
+    // Same shape as `infer_match`'s scrutinee peel (RFC-0108) and `Expr::Call`'s
+    // auto-deref, both of which already solve-and-apply before inspecting. A solve
+    // failure here is not fatal: constraints can be transiently inconsistent mid-pass,
+    // and the real error surfaces from the final solve, so fall back to the raw type
+    // and let this call behave exactly as it did before.
+    let resolved_actual = ctx
+        .solve()
+        .map_or_else(|_| actual.clone(), |subst| subst.apply(&actual));
+    let mut peeled = resolved_actual;
     let mut any_peel = false;
     while let InferType::Reference(inner) | InferType::MutReference(inner) = peeled {
         peeled = *inner;
