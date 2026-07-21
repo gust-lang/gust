@@ -165,7 +165,11 @@ mul_op           = { "*" | "/" | "%" }
 cast_expr        = { asc_expr ~ (cast_op ~ type_expr)* }
 cast_op          = { "as" }
 asc_expr         = { unary_expr ~ (":" ~ type_expr)? }
-unary_expr       = { ("!" | "-" | "&" ~ mut_kw?) ~ unary_expr | postfix_expr }
+// RFC-0110: unary `*` (dereference). No ambiguity with binary `*` (`mul_op`): that only
+// ever runs *between* two already-parsed operands inside `mul_expr`'s repetition, and
+// `unary_expr` sits below `mul_expr` in the precedence chain, so a leading `*` is always
+// consumed as the prefix first. Postfix binds tighter, so `*p.field` is `*(p.field)`.
+unary_expr       = { ("!" | "-" | "*" | "&" ~ mut_kw?) ~ unary_expr | postfix_expr }
 
 postfix_expr     = { primary_expr ~ postfix* }
 postfix          = {

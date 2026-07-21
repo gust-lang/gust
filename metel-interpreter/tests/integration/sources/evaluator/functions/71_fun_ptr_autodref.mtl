@@ -11,7 +11,7 @@ fun test_immutable_fun_ptr_call() {
 fun test_mutable_fun_ptr_call() {
     var x = 0;
     let p = &var x;
-    var inc = () -> { p += 7; };
+    var inc = () -> { *p += 7; };
     let mut_ptr = &var inc;
     mut_ptr();
     assert(x == 7);
@@ -37,8 +37,8 @@ fun apply_ptrs(fns: Array<&() -> ()>) {
 fun test_array_of_fun_ptrs() {
     var total = 0;
     let ptr = &var total;
-    let add1 = () -> { ptr += 1; };
-    let add10 = () -> { ptr += 10; };
+    let add1 = () -> { *ptr += 1; };
+    let add10 = () -> { *ptr += 10; };
     apply_ptrs([&add1, &add10]);
     assert(total == 11);
 }
@@ -50,7 +50,7 @@ fun test_array_of_fun_ptrs() {
 fun test_closure_captures_fun_ptr() {
     var x = 0;
     let p = &var x;
-    let inc = () -> { p += 1; };
+    let inc = () -> { *p += 1; };
     let inc_ptr = &inc;              // type: &() -> ()
     let double_via_ptr = () -> {
         inc_ptr();                   // auto-deref: calls the captured reference
@@ -64,7 +64,7 @@ fun test_closure_captures_fun_ptr() {
 fun test_closure_captures_mut_fun_ptr() {
     var x = 0;
     let p = &var x;
-    var add5 = () -> { p += 5; };
+    var add5 = () -> { *p += 5; };
     var ptr = &var add5;
     let triple = () -> {
         ptr();
@@ -93,7 +93,7 @@ fun test_capture_by_value() {
 fun test_capture_via_pointer_propagates() {
     var x = 0;
     let ptr = &var x;
-    let f = () -> { ptr += 1; };
+    let f = () -> { *ptr += 1; };
     f();
     f();
     f();

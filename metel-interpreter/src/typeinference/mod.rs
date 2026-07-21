@@ -2211,13 +2211,6 @@ pub struct InferContext {
     /// Free-function overload sets for the current module (METEL-180). Names with
     /// a single definition never appear here. Built by `typechecker::overload`.
     overloads: OverloadTable,
-    /// Spans of `Expr::Assign` nodes resolved as RFC-0067a write-through (assigning
-    /// to a non-`mut` binding of type `&mut T` writes through the reference rather
-    /// than erroring on immutability). `ConstructCtx` has no mutability tracking of
-    /// its own (see `construction.rs`), so this is threaded through as the single
-    /// fact pass 2 needs to synthesize `TypedPlace::Deref` instead of the ordinary
-    /// identifier target for these specific assignments.
-    write_through_assigns: HashSet<Span>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -2278,7 +2271,6 @@ impl InferContext {
             solved_constraint_count: 0,
             solve_stats: SolveStats::default(),
             overloads: OverloadTable::new(),
-            write_through_assigns: HashSet::new(),
         };
         for (name, scheme) in imported_schemes {
             ctx.bind_poly(name, scheme.clone());
@@ -2855,7 +2847,8 @@ impl InferContext {
     /// Used by RFC-0067a's write-through rule: a non-`mut` binding of type `&mut T` may
     /// still be written through (the exclusivity comes from the reference, not the
     /// binding), so `lookup_for_write`'s immutability check must be bypassed to inspect
-    /// the raw type before deciding whether that applies.
+    /// the raw type before deciding whether that applies. (RFC-0110 retired the
+    /// write-through rule this was introduced for; kept for its other callers.)
     #[must_use]
     pub fn lookup_mono_raw(&self, name: &str) -> Option<InferType> {
         self.mono_env
@@ -2863,17 +2856,6 @@ impl InferContext {
             .rev()
             .find_map(|scope| scope.get(name))
             .map(|(ty, _)| ty.clone())
-    }
-
-    /// Record that the `Expr::Assign` at `span` resolved as RFC-0067a write-through.
-    pub fn mark_write_through(&mut self, span: Span) {
-        self.write_through_assigns.insert(span);
-    }
-
-    /// Spans of every `Expr::Assign` resolved as write-through, for pass 2 to consult.
-    #[must_use]
-    pub fn write_through_assigns(&self) -> &HashSet<Span> {
-        &self.write_through_assigns
     }
 
     /// Look up a name for writing (assignment). Returns the binding's type on success.

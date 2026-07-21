@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::ast::{
     AspectMethod, AssignTarget, BinOp, Block, Decl, Expr, ForInit, FunDecl, ImplBlock, Literal,
@@ -122,12 +122,6 @@ struct ConstructCtx<'a> {
     /// span → referent `SymbolId`. Used to stamp `Call::callee_id` so direct calls to
     /// top-level functions dispatch by id. `None` for the single-program path.
     references: Option<&'a HashMap<Span, SymbolId>>,
-    /// Spans of `Expr::Assign` nodes pass 1 resolved as RFC-0067a write-through
-    /// (assigning to a non-`mut` binding of type `&mut T` writes through the
-    /// reference). `ConstructCtx.env` carries no mutability info at all, so this is
-    /// threaded in from `InferContext::write_through_assigns` rather than
-    /// duplicating mutability tracking across every `bind` call site here.
-    write_through: &'a HashSet<Span>,
 }
 
 impl<'a> ConstructCtx<'a> {
@@ -141,7 +135,6 @@ impl<'a> ConstructCtx<'a> {
         overloads: &'a crate::typeinference::OverloadTable,
         current_module: &'a [String],
         references: Option<&'a HashMap<Span, SymbolId>>,
-        write_through: &'a HashSet<Span>,
     ) -> Result<Self, MetelError> {
         let concrete_struct_env = build_concrete_struct_env(registry, subst)?;
         let method_env = build_concrete_method_env(registry, subst)?;
@@ -160,7 +153,6 @@ impl<'a> ConstructCtx<'a> {
             overloads,
             current_module,
             references,
-            write_through,
         };
         // Derive concrete types for all monomorphic entries in scheme_env.
         // Both builtins and user functions are populated here — no second registration site.
@@ -369,7 +361,6 @@ pub(super) fn construct_generic_body(
     // Generic bodies are reconstructed at runtime; their inner direct calls are
     // re-resolved here without a reference table (callee_id stamping is skipped),
     // and without pass 1's write-through analysis (empty set — same limitation).
-    let empty_write_through = HashSet::new();
     let mut ctx = ConstructCtx::new(
         &subst,
         &type_ctx.scheme_env,
@@ -379,7 +370,6 @@ pub(super) fn construct_generic_body(
         &empty_overloads,
         &[],
         None,
-        &empty_write_through,
     )?;
 
     // Build name → fresh TypeVar mapping so type annotations like `T[]` in the body
@@ -420,7 +410,6 @@ pub(super) fn construct_program(
     overloads: &crate::typeinference::OverloadTable,
     current_module: &[String],
     references: Option<&HashMap<Span, SymbolId>>,
-    write_through: &HashSet<Span>,
 ) -> Result<TypedProgram, MetelError> {
     let mut ctx = ConstructCtx::new(
         subst,
@@ -431,7 +420,6 @@ pub(super) fn construct_program(
         overloads,
         current_module,
         references,
-        write_through,
     )?;
 
     let mut out = vec![];
@@ -1425,69 +1413,22 @@ fn construct_expr(
             value,
             span,
         } => {
-            // RFC-0067a write-through: assigning to a non-`mut` binding of type
-            // `&mut T` writes through the reference (pass 1 already confirmed this
-            // and recorded the span — see `InferContext::write_through_assigns`).
-            // Peels every `&mut` layer of a chain (`&mut &mut T`), matching
-            // read-copy's own chain handling for the same auto-deref guarantee.
-            let write_through = ctx.write_through.contains(span);
-            let value_hint: Option<Type> = if let AssignTarget::Ident(name, _) = target {
-                match ctx.lookup(name).cloned() {
-                    Some(Type::MutReference(inner)) if write_through => {
-                        let mut peeled = *inner;
-                        while let Type::MutReference(next) = peeled {
-                            peeled = *next;
-                        }
-                        Some(peeled)
-                    }
-                    other => other,
-                }
-            } else {
-                None
+            // RFC-0110 §4.2: bare assignment to an identifier rebinds. The value's
+            // expected type is simply the binding's own type — no peeling. Writing
+            // through is spelled `*p = v` (AssignTarget::Deref), one `*` per layer.
+            let value_hint: Option<Type> = match target {
+                AssignTarget::Ident(name, _) => ctx.lookup(name).cloned(),
+                AssignTarget::Deref { object, .. } => match construct_expr(object, None, ctx) {
+                    Ok(o) => match o.ty() {
+                        Type::MutReference(inner) => Some((**inner).clone()),
+                        _ => None,
+                    },
+                    Err(_) => None,
+                },
+                _ => None,
             };
             let typed_value = construct_expr(value, value_hint.as_ref(), ctx)?;
-            let typed_place = if write_through {
-                let AssignTarget::Ident(name, ident_span) = target else {
-                    unreachable!(
-                        "write_through is only ever recorded for AssignTarget::Ident (see \
-                         pass 1's Expr::Assign handling)"
-                    )
-                };
-                let ptr_ty = ctx.lookup(name).cloned().ok_or_else(|| {
-                    MetelError::type_error(
-                        TypeErrorCode::T0003,
-                        format!("use of undeclared variable `{name}`"),
-                        ident_span,
-                    )
-                })?;
-                // Peel all but the last `&mut` layer via explicit intermediate `Deref`
-                // expressions; the final layer is peeled by `TypedPlace::Deref` itself
-                // at assignment time (matching the evaluator's one-layer-per-node
-                // dereferencing). For the common single-layer case this loop never
-                // runs, leaving `obj_expr` the plain `Ident` exactly as before.
-                let mut obj_expr = TypedExpr::Ident(name.clone(), ptr_ty, ident_span.clone());
-                #[allow(clippy::while_let_loop)] // second break condition below the pattern match
-                loop {
-                    let Type::MutReference(inner) = obj_expr.ty().clone() else {
-                        break;
-                    };
-                    if !matches!(inner.as_ref(), Type::MutReference(_)) {
-                        break;
-                    }
-                    obj_expr = TypedExpr::UnaryOp(
-                        UnaryOp::Deref,
-                        Box::new(obj_expr),
-                        *inner,
-                        ident_span.clone(),
-                    );
-                }
-                TypedPlace::Deref {
-                    object: Box::new(obj_expr),
-                    span: ident_span.clone(),
-                }
-            } else {
-                assign_target_to_typed_place(target, ctx)?
-            };
+            let typed_place = assign_target_to_typed_place(target, ctx)?;
             Ok(TypedExpr::Assign {
                 target: typed_place,
                 op: op.clone(),
@@ -4315,6 +4256,22 @@ fn assign_target_to_typed_place(
                 index: Box::new(typed_idx),
                 span: span.clone(),
             })
+        }
+        // RFC-0110: `*p = v`. `*` must name a `&var T` — writing through a shared `&T`
+        // is not permitted, matching `&`'s read-only contract.
+        AssignTarget::Deref { object, span } => {
+            let typed_object = construct_expr(object, None, ctx)?;
+            match typed_object.ty() {
+                Type::MutReference(_) => Ok(TypedPlace::Deref {
+                    object: Box::new(typed_object),
+                    span: span.clone(),
+                }),
+                t => Err(MetelError::type_error(
+                    TypeErrorCode::T0002,
+                    format!("cannot write through `{t}`; `&var T` required"),
+                    span,
+                )),
+            }
         }
     }
 }

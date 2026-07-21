@@ -4,9 +4,9 @@
 fun main() {
     var n = 1;
     let p: &var i64 = &var n;
-    p = 4;
+    *p = 4;
     assert(n == 4);
 
-    p += 6;
+    *p += 6;
     assert(n == 10);
 }

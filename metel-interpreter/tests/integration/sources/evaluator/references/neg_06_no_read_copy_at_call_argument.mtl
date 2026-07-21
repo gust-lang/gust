@@ -1,9 +1,14 @@
 // TYPECHECK_ERROR[T0001]
-// RFC-0067a §3a: read-copy fires at let/ascription/return/break/tail-expression
-// positions but never at a plain call-argument position — there is no declared
-// type for the argument itself to compare against, so passing a reference where
-// the parameter expects the referent type is a hard type mismatch, not an
-// implicit copy.
+// RFC-0110: under the Go model, reading through a reference is implicit only at
+// selectors (field, index, method). A call argument is not a selector, so passing a
+// reference where the parameter expects the referent type is a hard mismatch — write
+// `takes_i64(*r)`.
+//
+// Note the reason RFC-0067a §3a originally gave for this — "there is no declared type
+// for the argument itself to compare against" — is factually wrong: `param_hints`
+// already threads the parameter's declared type here for monomorphic callees. The
+// behavior is right; the justification was not. See RFC-0112 §4.1, which re-examined
+// closing this gap and declined it deliberately rather than by accident.
 fun takes_i64(x: i64) {}
 
 fun main() {

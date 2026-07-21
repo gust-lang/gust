@@ -4,12 +4,12 @@ fun get_closures(ptr: &var i64) {
 
     // First closure: increments the value at ptr by 1
     let first_closure = () -> {
-        ptr += 1;  // Write through ptr, adding 1 to the value it points to
+        *ptr += 1;  // Write through ptr, adding 1 to the value it points to
     };
 
     // Second closure: increments the value at ptr by 2
     let second_closure = () -> {
-        ptr += 2;  // Write through ptr, adding 2 to the value it points to
+        *ptr += 2;  // Write through ptr, adding 2 to the value it points to
     };
 
     // Third closure: reads and returns the current value at ptr

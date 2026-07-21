@@ -399,6 +399,10 @@ impl Walker<'_, '_> {
                 self.resolve_expr(object);
                 self.resolve_expr(index);
             }
+            // RFC-0110: `*p = v` — the operand is an ordinary value expression.
+            AssignTarget::Deref { object, .. } => {
+                self.resolve_expr(object);
+            }
         }
     }
 

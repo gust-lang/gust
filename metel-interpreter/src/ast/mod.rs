@@ -616,6 +616,13 @@ pub enum AssignTarget {
         index: Box<Expr>,
         span: Span,
     },
+    /// RFC-0110: `*p = v` — write through an explicit dereference. The only spelling
+    /// that writes through a bare reference-typed binding, now that plain `p = v`
+    /// rebinds instead.
+    Deref {
+        object: Box<Expr>,
+        span: Span,
+    },
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────

@@ -1,0 +1,8 @@
+// TYPECHECK_ERROR[T0002]
+// RFC-0110 §5: `*p = v` requires `&var T`. A shared `&T` is never written through —
+// that is the whole contract of a shared reference.
+fun main() {
+    let a = 1;
+    let p: &i64 = &a;
+    *p = 5;
+}

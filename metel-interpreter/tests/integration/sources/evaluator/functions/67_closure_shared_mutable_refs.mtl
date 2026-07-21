@@ -2,11 +2,11 @@ fun get_closures() {
     var shared = 0;
     var ptr = &var shared;
     let first_closure = () -> {
-        ptr += 1;
+        *ptr += 1;
     };
 
     let second_closure = () -> {
-        ptr += 2;
+        *ptr += 2;
     };
 
     let third_closure = () -> i64 {

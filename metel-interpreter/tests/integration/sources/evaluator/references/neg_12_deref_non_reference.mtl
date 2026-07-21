@@ -1,0 +1,8 @@
+// TYPECHECK_ERROR[T0002]
+// RFC-0110 §3: applying `*` to a non-reference is a type error. Adding parser support
+// for `*` is what makes `UnaryOp::Deref`'s existing type rule reachable from surface
+// syntax for the first time.
+fun main() {
+    let a: i64 = 1;
+    let b = *a;
+}

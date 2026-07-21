@@ -7,7 +7,7 @@ fun main() {
     let p: &var i64 = &var x;
 
     let f = () -> () {
-        p = 42;
+        *p = 42;
     };
 
     f();

@@ -1544,6 +1544,10 @@ fn shift_assign_target_span(
             shift_expr_span(index, base_start, base_line, base_col);
             shift_span(span, base_start, base_line, base_col);
         }
+        AssignTarget::Deref { object, span } => {
+            shift_expr_span(object, base_start, base_line, base_col);
+            shift_span(span, base_start, base_line, base_col);
+        }
     }
 }
 
@@ -2064,6 +2068,13 @@ fn parse_unary_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result
             Box::new(parse_expr(child, filename)?),
             span,
         ))
+    } else if text.starts_with('*') {
+        // RFC-0110: explicit dereference.
+        Ok(Expr::UnaryOp(
+            UnaryOp::Deref,
+            Box::new(parse_expr(child, filename)?),
+            span,
+        ))
     } else {
         parse_expr(child, filename)
     }
@@ -2465,6 +2476,8 @@ fn parse_assign_op(s: &str) -> AssignOp {
 fn expr_to_assign_target(expr: Expr) -> Result<AssignTarget, MetelError> {
     match expr {
         Expr::Ident(name, span) => Ok(AssignTarget::Ident(name, span)),
+        // RFC-0110: `*p = v`.
+        Expr::UnaryOp(UnaryOp::Deref, object, span) => Ok(AssignTarget::Deref { object, span }),
         Expr::FieldAccess {
             object,
             field,

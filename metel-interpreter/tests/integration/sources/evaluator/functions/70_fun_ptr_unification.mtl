@@ -2,8 +2,8 @@
 fun test_inferred_array() {
     var result = 0;
     let ptr = &var result;
-    let a = () -> { ptr += 1; };
-    let b = () -> { ptr += 2; };
+    let a = () -> { *ptr += 1; };
+    let b = () -> { *ptr += 2; };
     let funs = [a, b];
     for (f in funs) {
         f();
@@ -21,8 +21,8 @@ fun apply(funs: Array<() -> ()>) {
 fun test_explicit_annotated_param() {
     var result = 0;
     let ptr = &var result;
-    let a = () -> { ptr += 10; };
-    let b = () -> { ptr += 20; };
+    let a = () -> { *ptr += 10; };
+    let b = () -> { *ptr += 20; };
     apply([a, b]);
     assert(result == 30);
 }
@@ -31,8 +31,8 @@ fun test_explicit_annotated_param() {
 fun get_pair() {
     var x = 0;
     let ptr = &var x;
-    let inc = () -> { ptr += 1; };
-    let add2 = () -> { ptr += 2; };
+    let inc = () -> { *ptr += 1; };
+    let add2 = () -> { *ptr += 2; };
     (inc, add2, x)
 }
 
@@ -46,8 +46,8 @@ fun test_tuple_closure_type() {
 
 // Test D: nested tuple — mirrors get_closure_sets pattern
 fun get_closures(ptr: &var i64) {
-    let a = () -> { ptr += 1; };
-    let b = () -> { ptr += 2; };
+    let a = () -> { *ptr += 1; };
+    let b = () -> { *ptr += 2; };
     (a, b)
 }
 
@@ -67,8 +67,8 @@ fun test_nested_tuple_into_array() {
 
 // Test E: double-nested tuple access (mirrors 69_nice_closure_abuse pattern)
 fun get_closures2(ptr: &var i64) {
-    let a = () -> { ptr += 1; };
-    let b = () -> { ptr += 2; };
+    let a = () -> { *ptr += 1; };
+    let b = () -> { *ptr += 2; };
     let read = () -> i64 { return ptr; };
     (a, b, read)
 }
@@ -96,8 +96,8 @@ fun test_double_nested_tuple() {
 
 // Test F: exact mirror of test 69 (using `return` syntax and extra unused binding)
 fun get_closures_f(ptr: &var i64) {
-    let first_closure = () -> { ptr += 1; };
-    let second_closure = () -> { ptr += 2; };
+    let first_closure = () -> { *ptr += 1; };
+    let second_closure = () -> { *ptr += 2; };
     let third_closure = () -> i64 { return ptr; };
     return (first_closure, second_closure, third_closure);
 }

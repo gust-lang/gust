@@ -1,0 +1,70 @@
+// RFC-0110: explicit `*` for reads and for writing through, auto-deref at selectors
+// only, and bare assignment to a reference-typed binding rebinding rather than writing
+// through — which is what makes repointing expressible.
+
+struct Point { x: i64, y: i64 }
+
+fun add(x: i64, y: i64) -> i64 { return x + y; }
+
+// `*` is the spelling in the positions auto-deref deliberately does not cover:
+// call arguments and binary operands.
+fun explicit_reads() {
+    let a = 3;
+    let b = 4;
+    let p: &i64 = &a;
+    let q: &i64 = &b;
+
+    assert(*p == 3);
+    assert(add(*p, *q) == 7);
+    assert(*p + *q == 7);
+    assert(*p * *q == 12);   // unary `*` and binary `*` in one expression
+}
+
+// Bare assignment rebinds; `*p = v` writes through.
+fun repoint_and_write_through() {
+    var a = 1;
+    var b = 2;
+    var p: &var i64 = &var a;
+
+    *p = 5;
+    assert(a == 5);
+
+    p = &var b;      // repoint — impossible before RFC-0110
+    *p = 9;
+    assert(a == 5);  // a is untouched by the write through the repointed p
+    assert(b == 9);
+
+    *p += 1;
+    assert(b == 10);
+}
+
+// Selectors stay implicit: no `*` needed for field, index, or method access.
+fun selectors_stay_implicit() {
+    var q = Point { x: 5, y: 7 };
+    let qp: &var Point = &var q;
+    qp.y = 99;
+    assert(qp.x == 5);
+    assert(q.y == 99);
+
+    var xs = [1, 2, 3];
+    let xp: &var i64[] = &var xs;
+    xp[0] = 9;
+    xp[1] += 10;
+    assert(xs[0] == 9);
+    assert(xs[1] == 12);
+}
+
+// `*(obj.field) = v` and `obj.field = v` are synonyms.
+fun redundant_star_on_a_field_path() {
+    var q = Point { x: 1, y: 2 };
+    let qp: &var Point = &var q;
+    qp.x = 3;
+    assert(q.x == 3);
+}
+
+fun main() {
+    explicit_reads();
+    repoint_and_write_through();
+    selectors_stay_implicit();
+    redundant_star_on_a_field_path();
+}

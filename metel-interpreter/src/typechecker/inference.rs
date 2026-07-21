@@ -2107,34 +2107,41 @@ fn infer_expr(
         } => {
             let target_ty = match target {
                 AssignTarget::Ident(name, target_span) => {
-                    // RFC-0067a write-through: assigning to a binding of type `&mut T`
-                    // writes through the reference to `T` — the exclusivity comes from
-                    // the reference, not the binding, so this applies whether or not
-                    // the binding itself is `mut` (no fixture in this corpus ever
-                    // reassigns a reference binding to a *different* reference, so
-                    // there is no competing "repoint" interpretation to preserve here).
-                    // A binding of type `&T` (shared) is never written through — that
-                    // still requires ordinary `mut` reassignment of the binding itself.
-                    // Peels every `&mut` layer of a chain (`&mut &mut T`), matching
-                    // read-copy's own chain handling for the same auto-deref guarantee.
-                    match ctx.lookup_mono_raw(name) {
-                        Some(InferType::MutReference(inner)) => {
-                            ctx.mark_write_through(span.clone());
-                            let mut peeled = *inner;
-                            while let InferType::MutReference(next) = peeled {
-                                peeled = *next;
-                            }
-                            peeled
-                        }
-                        _ => ctx.lookup_for_write(name, target_span)?,
-                    }
+                    // RFC-0110 §4.2: bare assignment to an identifier always *rebinds*,
+                    // for reference-typed bindings exactly as for every other type.
+                    // RFC-0067a's implicit whole-value write-through is retired — it was
+                    // the one auto-deref mechanism competing with a second sensible
+                    // reading of the same syntax, and it made repointing a `&var T`
+                    // unrepresentable. `*p = v` (AssignTarget::Deref) is now the spelling
+                    // that writes through.
+                    ctx.lookup_for_write(name, target_span)?
+                }
+                // RFC-0110: `*p = v` writes through to the referent. The value's type is
+                // the referent type, so peel exactly the layer `*` names.
+                AssignTarget::Deref {
+                    object,
+                    span: target_span,
+                } => {
+                    let obj_ty = infer_expr(object, ctx, fun_generalizations)?;
+                    let inner = ctx.fresh_var();
+                    ctx.add_constraint(
+                        obj_ty,
+                        InferType::MutReference(Box::new(inner.clone())),
+                        target_span.clone(),
+                    );
+                    inner
                 }
                 AssignTarget::Index {
                     object,
                     index,
                     span: target_span,
                 } => {
-                    let obj_ty = infer_expr(object, ctx, fun_generalizations)?;
+                    let raw_obj_ty = infer_expr(object, ctx, fun_generalizations)?;
+                    // RFC-0110 §4.1: an index target reaches through a reference at the
+                    // root, the same way a field target already does. Peel before
+                    // constraining, or `xs[0] = v` for `xs: &var i64[]` would try to
+                    // unify `&var i64[]` with `?t[]` and fail.
+                    let obj_ty = peel_all_references(&raw_obj_ty);
                     // Index type checked in construction pass; no inference constraint here.
                     let _idx_ty = infer_expr(index, ctx, fun_generalizations)?;
                     let elem_var = ctx.fresh_var();

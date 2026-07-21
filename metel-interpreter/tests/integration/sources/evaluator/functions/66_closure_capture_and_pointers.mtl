@@ -8,7 +8,7 @@ fun main() {
     var shared = 0;
     let ptr = &var shared;
     let bump = () -> i64 {
-        ptr += 1;
+        *ptr += 1;
         ptr
     };
 

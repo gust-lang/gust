@@ -2149,9 +2149,13 @@ fn eval_assign_expr(
         TypedPlace::Index {
             object,
             index,
-            span: _tspan,
+            span: tspan,
         } => {
-            let arr_val = lvalue::eval_typed_place_value(object, env, runtime)?;
+            let raw_arr_val = lvalue::eval_typed_place_value(object, env, runtime)?;
+            // RFC-0110 §4.1: reach through a reference at the root, matching the peel
+            // Pass 1 now performs. `Value::Array` holds an `Rc<RefCell<Vec<_>>>`, so the
+            // peeled value shares the same backing store and writes propagate.
+            let arr_val = deref_value(&raw_arr_val, tspan)?.unwrap_or(raw_arr_val);
             let idx_val = eval_expr(index, env, runtime)?.into_value();
             let i = match idx_val {
                 Value::U64(u) => u as usize,

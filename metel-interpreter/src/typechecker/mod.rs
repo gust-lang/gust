@@ -852,7 +852,6 @@ fn check_impl_with_report(
         &overloads,
         current_module_path,
         references,
-        ctx.write_through_assigns(),
     )?;
     let construction_ns = elapsed_ns(started);
 
