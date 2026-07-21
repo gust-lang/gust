@@ -2205,6 +2205,9 @@ pub struct InferContext {
     /// `TypeVars` for opaque return values (RFC-0037). These vars must NOT be bound
     /// to concrete types by the caller - they should remain abstract to enforce opacity.
     opaque_return_vars: HashSet<TypeVar>,
+    /// Inferred return type for each closure expression, keyed by the closure span.
+    /// Pass 2 reuses this so unannotated closures keep their solved return type.
+    closure_return_types: HashMap<Span, InferType>,
     cached_subst: Substitution,
     solved_constraint_count: usize,
     solve_stats: SolveStats,
@@ -2267,6 +2270,7 @@ impl InferContext {
             integer_literal_vars: HashSet::new(),
             float_literal_vars: HashSet::new(),
             opaque_return_vars: HashSet::new(),
+            closure_return_types: HashMap::new(),
             cached_subst: Substitution::new(),
             solved_constraint_count: 0,
             solve_stats: SolveStats::default(),
@@ -2929,6 +2933,15 @@ impl InferContext {
     #[must_use]
     pub fn solve_stats(&self) -> SolveStats {
         self.solve_stats
+    }
+
+    pub fn record_closure_return_type(&mut self, span: Span, ty: InferType) {
+        self.closure_return_types.insert(span, ty);
+    }
+
+    #[must_use]
+    pub fn closure_return_types(&self) -> &HashMap<Span, InferType> {
+        &self.closure_return_types
     }
 
     /// Set the expected return type for the current function, returning the previous value.

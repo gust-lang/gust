@@ -852,6 +852,7 @@ fn check_impl_with_report(
         &overloads,
         current_module_path,
         references,
+        Some(ctx.closure_return_types()),
     )?;
     let construction_ns = elapsed_ns(started);
 

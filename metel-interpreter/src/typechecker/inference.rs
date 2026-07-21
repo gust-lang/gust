@@ -2656,7 +2656,7 @@ fn infer_expr(
             params,
             return_type,
             body,
-            ..
+            span,
         } => {
             let param_types: Vec<InferType> = params
                 .iter()
@@ -2685,6 +2685,7 @@ fn infer_expr(
             constrain_with_read_copy(ctx, body_ty, ret_ty.clone(), body.span.clone());
             ctx.pop_return_type(saved_ret);
             ctx.pop_scope();
+            ctx.record_closure_return_type(span.clone(), ret_ty.clone());
             Ok(InferType::Fun(param_types, Box::new(ret_ty)))
         }
         Expr::Match(m) => infer_match(m, ctx, fun_generalizations),

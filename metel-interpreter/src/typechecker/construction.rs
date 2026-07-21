@@ -122,6 +122,8 @@ struct ConstructCtx<'a> {
     /// span → referent `SymbolId`. Used to stamp `Call::callee_id` so direct calls to
     /// top-level functions dispatch by id. `None` for the single-program path.
     references: Option<&'a HashMap<Span, SymbolId>>,
+    /// Inferred closure return types recorded during Pass 1, keyed by closure span.
+    closure_return_types: Option<&'a HashMap<Span, InferType>>,
 }
 
 impl<'a> ConstructCtx<'a> {
@@ -135,6 +137,7 @@ impl<'a> ConstructCtx<'a> {
         overloads: &'a crate::typeinference::OverloadTable,
         current_module: &'a [String],
         references: Option<&'a HashMap<Span, SymbolId>>,
+        closure_return_types: Option<&'a HashMap<Span, InferType>>,
     ) -> Result<Self, MetelError> {
         let concrete_struct_env = build_concrete_struct_env(registry, subst)?;
         let method_env = build_concrete_method_env(registry, subst)?;
@@ -153,6 +156,7 @@ impl<'a> ConstructCtx<'a> {
             overloads,
             current_module,
             references,
+            closure_return_types,
         };
         // Derive concrete types for all monomorphic entries in scheme_env.
         // Both builtins and user functions are populated here — no second registration site.
@@ -370,6 +374,7 @@ pub(super) fn construct_generic_body(
         &empty_overloads,
         &[],
         None,
+        None,
     )?;
 
     // Build name → fresh TypeVar mapping so type annotations like `T[]` in the body
@@ -410,6 +415,7 @@ pub(super) fn construct_program(
     overloads: &crate::typeinference::OverloadTable,
     current_module: &[String],
     references: Option<&HashMap<Span, SymbolId>>,
+    closure_return_types: Option<&HashMap<Span, InferType>>,
 ) -> Result<TypedProgram, MetelError> {
     let mut ctx = ConstructCtx::new(
         subst,
@@ -420,6 +426,7 @@ pub(super) fn construct_program(
         overloads,
         current_module,
         references,
+        closure_return_types,
     )?;
 
     let mut out = vec![];
@@ -1873,25 +1880,33 @@ fn construct_expr(
                     )
                 })
                 .collect::<Result<_, _>>()?;
-            let ret_ty = return_type
-                .as_ref()
-                .map(|ann| resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, span))
-                .transpose()?
-                .unwrap_or(Type::Unit);
+            let ret_ty = if let Some(inferred) = ctx
+                .closure_return_types
+                .and_then(|types| types.get(span))
+                .map(|ty| ctx.subst.apply(ty))
+            {
+                infer_type_to_type(&inferred, span)?
+            } else {
+                return_type
+                    .as_ref()
+                    .map(|ann| resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, span))
+                    .transpose()?
+                    .unwrap_or(Type::Unit)
+            };
             ctx.push_scope();
             for (p, ty) in params.iter().zip(param_types.iter()) {
                 ctx.bind(&p.name, ty.clone());
             }
             // Without this, unmentioned type params in variant literals (e.g. the
             // E in Result::Ok inside a ()->Result<T,E>) have no hint and fail T0002.
-            let body_expected = return_type.as_ref().map(|_| &ret_ty);
+            let body_expected = Some(&ret_ty);
             // Push the closure's own return type so an explicit `return` inside its
             // body (constructed via `construct_stmt`'s `Stmt::Return` arm) compares
             // against the closure's declared type, not whatever enclosing function's
             // return type happened to be in scope (RFC-0067a's read-copy relies on
             // this being correct — without it, `return`ing a reference out of a
             // closure declared to return the referent type silently skipped the copy).
-            let saved_return = ctx.push_return_type(return_type.as_ref().map(|_| ret_ty.clone()));
+            let saved_return = ctx.push_return_type(Some(ret_ty.clone()));
             let typed_body = construct_block(body, body_expected, ctx)?;
             ctx.pop_return_type(saved_return);
             ctx.pop_scope();
