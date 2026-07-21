@@ -32,6 +32,7 @@ fn receiver_type_name(ty: &crate::types::Type) -> Option<&str> {
 fn call_runtime_callable(
     callable: RuntimeCallable,
     args: &[Value],
+    static_arg_tys: Option<&[crate::types::Type]>,
     span: &Span,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
@@ -66,10 +67,21 @@ fn call_runtime_callable(
                         });
                     match scheme_and_ctx {
                         Some((scheme, type_ctx)) => {
-                            let arg_types: Vec<_> = args
-                                .iter()
-                                .map(|v| type_of::value_to_type(v, &type_ctx.registry, span))
-                                .collect();
+                            // metel-core#286: prefer the argument types recorded at the
+                            // call site. Re-deriving them from runtime values loses
+                            // whatever the value cannot carry -- an empty array has no
+                            // element to sample, so `value_to_type` yields
+                            // `Array(Never)`, and `Never` coerces without ever *pinning*
+                            // a type variable, leaving a nested generic call in this body
+                            // unresolvable. The static types were known during
+                            // construction and are exact.
+                            let arg_types: Vec<_> = match static_arg_tys {
+                                Some(tys) if tys.len() == args.len() => tys.to_vec(),
+                                _ => args
+                                    .iter()
+                                    .map(|v| type_of::value_to_type(v, &type_ctx.registry, span))
+                                    .collect(),
+                            };
                             let tb = crate::typechecker::construct_generic_body(
                                 scheme, &closure.params, &arg_types, b, span, type_ctx
                             )?;
@@ -100,6 +112,7 @@ fn call_runtime_callable(
 pub(super) fn call_function(
     func: Value,
     args: &[Value],
+    static_arg_tys: Option<&[crate::types::Type]>,
     span: &Span,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
@@ -112,7 +125,9 @@ pub(super) fn call_function(
         other => other,
     };
     match func {
-        Value::Callable(callable) => call_runtime_callable(callable, args, span, runtime),
+        Value::Callable(callable) => {
+            call_runtime_callable(callable, args, static_arg_tys, span, runtime)
+        }
 
         Value::Unit => Err(attach_stack(MetelError::panic(
             RuntimeErrorCode::R0002,
@@ -135,6 +150,7 @@ pub(super) fn call_method_function(
     func: RuntimeCallable,
     receiver: ReceiverBinding,
     mut args: Vec<Value>,
+    static_arg_tys: Option<&[crate::types::Type]>,
     span: &Span,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
@@ -212,11 +228,20 @@ pub(super) fn call_method_function(
                             // The scheme's signature includes `self`, so the arg
                             // types must lead with the receiver type to stay
                             // positionally aligned with `closure.params`.
+                            // metel-core#286, as above. The receiver stays
+                            // runtime-derived: dynamic dispatch depends on the runtime
+                            // type being at least as precise as the static one, which is
+                            // a separate question from the arguments.
                             let mut arg_types: Vec<_> = vec![receiver_type.clone()];
-                            arg_types.extend(
-                                args.iter()
-                                    .map(|v| type_of::value_to_type(v, &type_ctx.registry, span)),
-                            );
+                            match static_arg_tys {
+                                Some(tys) if tys.len() == args.len() => {
+                                    arg_types.extend(tys.iter().cloned());
+                                }
+                                _ => arg_types.extend(
+                                    args.iter()
+                                        .map(|v| type_of::value_to_type(v, &type_ctx.registry, span)),
+                                ),
+                            }
                             let tb = crate::typechecker::construct_generic_body(
                                 scheme, &closure.params, &arg_types, b, span, type_ctx
                             )?;
@@ -245,7 +270,7 @@ pub(super) fn call_method_function(
                 ReceiverBinding::Shared(cell) => cell.borrow().clone(),
             };
             args.insert(0, receiver_value);
-            call_runtime_callable(callable, &args, span, runtime)
+            call_runtime_callable(callable, &args, static_arg_tys, span, runtime)
         }
     }
 }

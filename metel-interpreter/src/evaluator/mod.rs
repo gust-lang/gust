@@ -2019,6 +2019,7 @@ fn eval_for_in(
             next_fn.body.clone(),
             call::ReceiverBinding::Shared(Rc::clone(&iter_cell)),
             vec![],
+            None,
             span,
             runtime,
         )?
@@ -2261,6 +2262,9 @@ fn eval_method_call_expr(
         .iter()
         .map(|a| eval_expr(a, env, runtime).map(Signal::into_value))
         .collect::<Result<_, _>>()?;
+    // metel-core#286: exact static argument types from the typed nodes, for a generic
+    // body constructed at call time.
+    let static_arg_tys: Vec<crate::types::Type> = args.iter().map(|a| a.ty().clone()).collect();
 
     let recv_type_view = deref_value(&recv_val, span)?.unwrap_or_else(|| recv_val.clone());
     let method_entry = match dispatch {
@@ -2327,7 +2331,14 @@ fn eval_method_call_expr(
             };
 
             let result =
-                call::call_method_function(func, receiver_binding, arg_vals, span, runtime)?;
+                call::call_method_function(
+                func,
+                receiver_binding,
+                arg_vals,
+                Some(&static_arg_tys),
+                span,
+                runtime,
+            )?;
 
             if let Some((struct_cell, path, leaf_cell)) = field_writeback {
                 let new_val = leaf_cell.borrow().clone();
@@ -2354,6 +2365,7 @@ fn eval_method_call_expr(
             func,
             call::ReceiverBinding::Value(recv_type_view),
             arg_vals,
+            Some(&static_arg_tys),
             span,
             runtime,
         ),
@@ -2395,7 +2407,12 @@ fn eval_call_expr(
         .iter()
         .map(|a| eval_expr(a, env, runtime).map(Signal::into_value))
         .collect::<Result<_, _>>()?;
-    call::call_function(func_val, &arg_vals, span, runtime)
+    // metel-core#286: the typed argument nodes already carry their exact static types.
+    // Hand them down so a generic body constructed at call time does not have to
+    // re-derive them from runtime values, which loses precision an empty collection
+    // cannot supply.
+    let static_arg_tys: Vec<crate::types::Type> = args.iter().map(|a| a.ty().clone()).collect();
+    call::call_function(func_val, &arg_vals, Some(&static_arg_tys), span, runtime)
 }
 
 #[allow(clippy::too_many_lines)]
@@ -2665,7 +2682,7 @@ pub fn eval_expr(
                 let from_fn = runtime_type_name(&v)
                     .and_then(|source| runtime.get_from_method(target_name, source));
                 if let Some(f) = from_fn {
-                    return call::call_function(Value::Callable(f.body), &[v], span, runtime);
+                    return call::call_function(Value::Callable(f.body), &[v], None, span, runtime);
                 }
             }
             // Identity cast fallback (same type, no from registered).

@@ -1,0 +1,56 @@
+// metel-core#286: a generic body constructed at call time must use the argument types
+// recorded at the *call site*, not types re-derived from the runtime values.
+//
+// `value_to_type` samples an array's first element to get the element type; an empty
+// array has none, so it yields `Array(Never)` (deliberate, from #271, so unreachable
+// branches still construct). But `Never` coerces without ever *pinning* a type variable
+// -- `unify(Var, Never)` returns an empty substitution -- so a nested generic call inside
+// the body whose parameter comes only from element types was left unresolved and reported
+// T0002, pointing inside stdlib. Only when *every* array argument was empty: any
+// non-empty one supplied a real element and pinned the parameter, which is why the mixed
+// cases below always passed.
+
+struct B { v: i64 }
+
+extend B: Eq {
+    fun eq(&self, other: &Self) -> boolean {
+        return self.v == other.v;
+    }
+}
+
+fun mk_empty() -> B[] {
+    return [];
+}
+
+fun through_bound<T: Eq>(xs: T[]) -> boolean {
+    return xs.eq(&xs);
+}
+
+fun main() {
+    // Both operands empty -- the failing case.
+    let a: B[] = [];
+    let b: B[] = [];
+    assert(a.eq(&b));
+
+    // Same value on both sides, still empty.
+    assert(a.eq(&a));
+
+    // Empty arriving via a call rather than a literal.
+    let m = mk_empty();
+    let n = mk_empty();
+    assert(m.eq(&n));
+
+    // Reached through a further generic bound.
+    assert(through_bound(a));
+
+    // The cases that already worked must keep working.
+    let x = [B { v: 1 }, B { v: 2 }];
+    let y = [B { v: 1 }, B { v: 2 }];
+    assert(x.eq(&y));
+    let differing = [B { v: 1 }, B { v: 9 }];
+    let shorter = [B { v: 1 }];
+    assert(!x.eq(&differing));
+    assert(!x.eq(&shorter));
+    assert(!a.eq(&x));
+    assert(!x.eq(&a));
+}
