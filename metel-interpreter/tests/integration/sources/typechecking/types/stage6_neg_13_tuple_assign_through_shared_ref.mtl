@@ -1,0 +1,7 @@
+// metel-core#283: a shared `&` reference grants no write access to a tuple element,
+// exactly as for struct fields and array elements.
+struct Holder { pair: (i64, i64) }
+
+fun set(h: &Holder) {
+    h.pair.0 = 9; // ERROR[T0006]
+}

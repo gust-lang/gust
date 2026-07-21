@@ -611,6 +611,11 @@ pub enum AssignTarget {
         field: String,
         span: Span,
     },
+    TupleAccess {
+        object: Box<Expr>,
+        index: usize,
+        span: Span,
+    },
     Index {
         object: Box<Expr>,
         index: Box<Expr>,

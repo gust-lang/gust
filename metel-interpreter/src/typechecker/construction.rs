@@ -1936,9 +1936,22 @@ fn construct_expr(
             let typed_obj = construct_expr(object, None, ctx)?;
             let ty = match typed_obj.ty() {
                 Type::Tuple(elems) => elems.get(*index).cloned().ok_or_else(|| {
-                    MetelError::internal(format!("tuple index {index} out of bounds"))
+                    MetelError::type_error(
+                        TypeErrorCode::T0003,
+                        format!(
+                            "tuple index {index} out of bounds (tuple has {} elements)",
+                            elems.len()
+                        ),
+                        span,
+                    )
                 })?,
-                _ => return Err(MetelError::internal("tuple access on non-tuple")),
+                _ => {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0002,
+                        "cannot infer tuple type for index access; add a type annotation",
+                        span,
+                    ))
+                }
             };
             Ok(TypedExpr::TupleAccess {
                 object: Box::new(typed_obj),
@@ -4310,6 +4323,40 @@ fn assign_target_to_typed_place(
             field: field.clone(),
             span: span.clone(),
         }),
+        AssignTarget::TupleAccess {
+            object,
+            index,
+            span,
+        } => {
+            let typed_object = expr_to_typed_place(object, ctx)?;
+            let raw_object_ty = typed_place_ty(&typed_object, ctx, span)?;
+            // Reach through a reference at the root, matching field/index paths.
+            let object_ty = peel_type_references(&raw_object_ty).clone();
+            match object_ty {
+                Type::Tuple(elems) => {
+                    if *index >= elems.len() {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0003,
+                            format!(
+                                "tuple index {index} out of bounds (tuple has {} elements)",
+                                elems.len()
+                            ),
+                            span,
+                        ));
+                    }
+                    Ok(TypedPlace::Tuple {
+                        object: Box::new(typed_object),
+                        index: *index,
+                        span: span.clone(),
+                    })
+                }
+                _ => Err(MetelError::type_error(
+                    TypeErrorCode::T0002,
+                    "cannot infer tuple type for assignment; add a type annotation",
+                    span,
+                )),
+            }
+        }
         AssignTarget::Index {
             object,
             index,
@@ -4363,6 +4410,40 @@ fn expr_to_typed_place(expr: &Expr, ctx: &mut ConstructCtx<'_>) -> Result<TypedP
             field: field.clone(),
             span: span.clone(),
         }),
+        Expr::TupleAccess {
+            object,
+            index,
+            span,
+        } => {
+            let typed_object = expr_to_typed_place(object, ctx)?;
+            let raw_object_ty = typed_place_ty(&typed_object, ctx, span)?;
+            // Reach through a reference at the root, matching field/index paths.
+            let object_ty = peel_type_references(&raw_object_ty).clone();
+            match object_ty {
+                Type::Tuple(elems) => {
+                    if *index >= elems.len() {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0003,
+                            format!(
+                                "tuple index {index} out of bounds (tuple has {} elements)",
+                                elems.len()
+                            ),
+                            span,
+                        ));
+                    }
+                    Ok(TypedPlace::Tuple {
+                        object: Box::new(typed_object),
+                        index: *index,
+                        span: span.clone(),
+                    })
+                }
+                _ => Err(MetelError::type_error(
+                    TypeErrorCode::T0002,
+                    "cannot infer tuple type for assignment; add a type annotation",
+                    span,
+                )),
+            }
+        }
         Expr::Index {
             object,
             index,
@@ -4392,5 +4473,93 @@ fn expr_to_typed_place(expr: &Expr, ctx: &mut ConstructCtx<'_>) -> Result<TypedP
         _ => Err(MetelError::internal(
             "invalid sub-expression in assignment target",
         )),
+    }
+}
+
+fn typed_place_ty(
+    place: &TypedPlace,
+    ctx: &mut ConstructCtx<'_>,
+    span: &Span,
+) -> Result<Type, MetelError> {
+    match place {
+        TypedPlace::Ident(name, ident_span) => ctx.lookup(name).cloned().ok_or_else(|| {
+            MetelError::type_error(
+                TypeErrorCode::T0003,
+                format!("use of undeclared variable `{name}`"),
+                ident_span,
+            )
+        }),
+        TypedPlace::Deref { object, .. } => match object.ty() {
+            Type::MutReference(inner) => Ok((**inner).clone()),
+            t => Err(MetelError::type_error(
+                TypeErrorCode::T0002,
+                format!("cannot write through `{t}`; `&var T` required"),
+                span,
+            )),
+        },
+        TypedPlace::Field {
+            object,
+            field,
+            span: field_span,
+        } => {
+            // Reach through a reference at any step of the path, not just the root:
+            // `s.t.0 = v` for `s: &var S` resolves `s.t` through this arm.
+            let object_ty = peel_type_references(&typed_place_ty(object, ctx, field_span)?).clone();
+            match object_ty {
+                Type::Named(struct_name, _type_args) => {
+                    let fields = ctx.get_struct_fields(&struct_name).ok_or_else(|| {
+                        MetelError::type_error(
+                            TypeErrorCode::T0003,
+                            format!("unknown type `{struct_name}`"),
+                            field_span,
+                        )
+                    })?;
+                    let field_entry = fields.iter().find(|entry| entry.0 == *field).ok_or_else(|| {
+                        MetelError::type_error(
+                            TypeErrorCode::T0003,
+                            format!("no field `{field}` on `{struct_name}`"),
+                            field_span,
+                        )
+                    })?;
+                    Ok(field_entry.1.clone())
+                }
+                _ => Err(MetelError::type_error(
+                    TypeErrorCode::T0002,
+                    "cannot infer struct type for field assignment; add a type annotation",
+                    field_span,
+                )),
+            }
+        }
+        TypedPlace::Tuple { object, index, span } => {
+            let object_ty = peel_type_references(&typed_place_ty(object, ctx, span)?).clone();
+            match object_ty {
+                Type::Tuple(elems) => elems.get(*index).cloned().ok_or_else(|| {
+                    MetelError::type_error(
+                        TypeErrorCode::T0003,
+                        format!(
+                            "tuple index {index} out of bounds (tuple has {} elements)",
+                            elems.len()
+                        ),
+                        span,
+                    )
+                }),
+                _ => Err(MetelError::type_error(
+                    TypeErrorCode::T0002,
+                    "cannot infer tuple type for assignment; add a type annotation",
+                    span,
+                )),
+            }
+        }
+        TypedPlace::Index { object, .. } => {
+            let object_ty = peel_type_references(&typed_place_ty(object, ctx, span)?).clone();
+            match object_ty {
+                Type::Array(elem) => Ok((*elem).clone()),
+                _ => Err(MetelError::type_error(
+                    TypeErrorCode::T0002,
+                    "cannot infer array type for assignment; add a type annotation",
+                    span,
+                )),
+            }
+        }
     }
 }

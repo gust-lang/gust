@@ -395,6 +395,9 @@ impl Walker<'_, '_> {
             AssignTarget::FieldAccess { object, .. } => {
                 self.resolve_expr(object);
             }
+            AssignTarget::TupleAccess { object, .. } => {
+                self.resolve_expr(object);
+            }
             AssignTarget::Index { object, index, .. } => {
                 self.resolve_expr(object);
                 self.resolve_expr(index);

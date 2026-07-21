@@ -295,6 +295,11 @@ pub enum TypedPlace {
         field: String,
         span: Span,
     },
+    Tuple {
+        object: Box<TypedPlace>,
+        index: usize,
+        span: Span,
+    },
     Index {
         object: Box<TypedPlace>,
         index: Box<TypedExpr>,

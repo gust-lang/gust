@@ -4,25 +4,24 @@ use crate::ast::{BinOp, Span};
 use crate::error::{MetelError, RuntimeErrorCode};
 use crate::typed_ast::TypedPlace;
 
-use super::{eval_expr, Environment, RuntimeRegistry, Signal, Value};
+use super::{eval_expr, Environment, PathSegment, RuntimeRegistry, Signal, Value};
 
-/// Resolve the root `Rc<RefCell<Value>>` for a field-assign target and collect
-/// the full field path (including `final_field`) to navigate within it.
+/// Resolve the root `Rc<RefCell<Value>>` for a projected assign target and collect
+/// the full `PathSegment` sequence to navigate within it.
 ///
 /// Handles three root forms:
 /// - `Ident(x)` — looks up `x` in the environment; auto-derefs one `&mut` level.
 /// - `Deref(ptr_expr)` — evaluates `ptr_expr` and extracts the `MutReference` inner Rc.
-/// - `Field { object, field }` — recurses into `object`, then appends `field`.
-pub(super) fn resolve_field_assign_root<'a>(
-    place: &'a TypedPlace,
-    final_field: &'a str,
+/// - Projections (`Field`, `Tuple`) recurse into `object`, then append a path segment.
+pub(super) fn resolve_place_assign_root(
+    place: &TypedPlace,
     env: &mut Environment,
     runtime: &RuntimeRegistry,
     span: &Span,
-) -> Result<(std::rc::Rc<std::cell::RefCell<Value>>, Vec<&'a str>), MetelError> {
-    fn walk<'a>(
-        place: &'a TypedPlace,
-        path: &mut Vec<&'a str>,
+) -> Result<(std::rc::Rc<std::cell::RefCell<Value>>, Vec<PathSegment>), MetelError> {
+    fn walk(
+        place: &TypedPlace,
+        path: &mut Vec<PathSegment>,
         env: &mut Environment,
         runtime: &RuntimeRegistry,
         span: &Span,
@@ -56,26 +55,30 @@ pub(super) fn resolve_field_assign_root<'a>(
                     Value::MutReference(inner_rc) => Ok(inner_rc),
                     _ => Err(MetelError::panic(
                         RuntimeErrorCode::R0003,
-                        "field assign: not a &mut reference",
+                        "assign: not a &mut reference",
                         tspan,
                     )),
                 }
             }
             TypedPlace::Field { object, field, .. } => {
                 let root_rc = walk(object, path, env, runtime, span)?;
-                path.push(field.as_str());
+                path.push(PathSegment::Field(field.clone()));
+                Ok(root_rc)
+            }
+            TypedPlace::Tuple { object, index, .. } => {
+                let root_rc = walk(object, path, env, runtime, span)?;
+                path.push(PathSegment::TupleIndex(*index));
                 Ok(root_rc)
             }
             TypedPlace::Index { .. } => Err(MetelError::panic(
                 RuntimeErrorCode::R0003,
-                "field assign: unsupported receiver form",
+                "assign: unsupported receiver form",
                 span,
             )),
         }
     }
     let mut path = Vec::new();
     let root_rc = walk(place, &mut path, env, runtime, span)?;
-    path.push(final_field);
     Ok((root_rc, path))
 }
 
@@ -127,6 +130,25 @@ pub(super) fn eval_typed_place_value(
                 }
                 _ => Err(MetelError::internal(format!(
                     "field `{field}`: receiver is not a struct/enum"
+                ))),
+            }
+        }
+        TypedPlace::Tuple {
+            object,
+            index,
+            span: tspan,
+        } => {
+            let parent = eval_typed_place_value(object, env, runtime)?;
+            match parent {
+                Value::Tuple(elems) => elems.get(*index).cloned().ok_or_else(|| {
+                    MetelError::panic(
+                        RuntimeErrorCode::R0005,
+                        format!("tuple index {index} out of bounds"),
+                        tspan,
+                    )
+                }),
+                _ => Err(MetelError::internal(format!(
+                    "tuple `{index}`: receiver is not a tuple"
                 ))),
             }
         }

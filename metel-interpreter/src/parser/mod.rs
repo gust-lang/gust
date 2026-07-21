@@ -1535,6 +1535,10 @@ fn shift_assign_target_span(
             shift_expr_span(object, base_start, base_line, base_col);
             shift_span(span, base_start, base_line, base_col);
         }
+        AssignTarget::TupleAccess { object, span, .. } => {
+            shift_expr_span(object, base_start, base_line, base_col);
+            shift_span(span, base_start, base_line, base_col);
+        }
         AssignTarget::Index {
             object,
             index,
@@ -2487,6 +2491,15 @@ fn expr_to_assign_target(expr: Expr) -> Result<AssignTarget, MetelError> {
             field,
             span,
         }),
+        Expr::TupleAccess {
+            object,
+            index,
+            span,
+        } => Ok(AssignTarget::TupleAccess {
+            object,
+            index,
+            span,
+        }),
         Expr::Index {
             object,
             index,
@@ -2497,7 +2510,7 @@ fn expr_to_assign_target(expr: Expr) -> Result<AssignTarget, MetelError> {
             span,
         }),
         _ => Err(MetelError::internal(
-            "assign target must be an identifier, field access, or index expression",
+            "assign target must be an identifier, field access, tuple access, or index expression",
         )),
     }
 }

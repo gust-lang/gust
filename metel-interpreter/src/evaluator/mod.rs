@@ -2192,50 +2192,23 @@ fn eval_assign_expr(
         }
 
         TypedPlace::Field {
-            object,
-            field,
+            object: _,
+            field: _,
+            span: tspan,
+        }
+        | TypedPlace::Tuple {
+            object: _,
+            index: _,
             span: tspan,
         } => {
-            let (rc, path) = lvalue::resolve_field_assign_root(object, field, env, runtime, tspan)?;
-            let mut borrowed = rc.borrow_mut();
-            let mut cur: &mut Value = &mut borrowed;
-            for segment in &path[..path.len() - 1] {
-                cur = match cur {
-                    Value::Struct { fields, .. } | Value::Enum { fields, .. } => {
-                        fields.get_mut(*segment).ok_or_else(|| {
-                            MetelError::panic(
-                                RuntimeErrorCode::R0008,
-                                format!("field assign: no field `{segment}`"),
-                                tspan,
-                            )
-                        })?
-                    }
-                    _ => {
-                        return Err(MetelError::internal(format!(
-                            "field assign: `{segment}` is not a struct/enum"
-                        )))
-                    }
-                };
-            }
-            let (Value::Struct { fields, .. } | Value::Enum { fields, .. }) = cur else {
-                return Err(MetelError::internal(
-                    "field assign: receiver is not a struct/enum (typechecker should have caught this)",
-                ));
-            };
-            let leaf = path.last().expect("path is non-empty");
+            let (rc, path) = lvalue::resolve_place_assign_root(target, env, runtime, tspan)?;
             let new_val = if matches!(op, crate::ast::AssignOp::Assign) {
                 rhs
             } else {
-                let cur = fields.get(*leaf).cloned().ok_or_else(|| {
-                    MetelError::panic(
-                        RuntimeErrorCode::R0008,
-                        format!("field assign: no field `{leaf}`"),
-                        tspan,
-                    )
-                })?;
+                let cur = read_path(&rc.borrow(), &path, tspan)?;
                 lvalue::apply_assign_op(op, cur, rhs, span)?
             };
-            fields.insert((*leaf).to_string(), new_val);
+            write_path(&mut rc.borrow_mut(), &path, new_val, tspan)?;
             Ok(Signal::Value(Value::Unit))
         }
     }

@@ -2157,6 +2157,13 @@ fn infer_expr(
                     field,
                     span: target_span,
                 } => infer_field_assign_type(object, field, target_span, ctx, fun_generalizations)?,
+                AssignTarget::TupleAccess {
+                    object,
+                    index,
+                    span: target_span,
+                } => {
+                    infer_tuple_assign_type(object, *index, target_span, ctx, fun_generalizations)?
+                }
             };
             let value_ty = infer_expr(value, ctx, fun_generalizations)?;
             match op {
@@ -3418,7 +3425,9 @@ fn infer_struct_literal(
 fn root_binding_for_write(expr: &Expr) -> Option<(&str, &Span)> {
     match expr {
         Expr::Ident(name, span) => Some((name.as_str(), span)),
-        Expr::FieldAccess { object, .. } | Expr::Index { object, .. } => {
+        Expr::FieldAccess { object, .. }
+        | Expr::TupleAccess { object, .. }
+        | Expr::Index { object, .. } => {
             root_binding_for_write(object)
         }
         _ => None,
@@ -3506,6 +3515,47 @@ fn infer_field_assign_type(
         Ok(remap.apply(&raw_ty))
     } else {
         Ok(raw_ty)
+    }
+}
+
+fn infer_tuple_assign_type(
+    object: &Expr,
+    index: usize,
+    target_span: &Span,
+    ctx: &mut InferContext,
+    fun_generalizations: &mut Vec<FunGeneralization>,
+) -> Result<InferType, MetelError> {
+    let obj_ty = infer_expr(object, ctx, fun_generalizations)?;
+    let obj_ty = ctx.solve()?.apply(&obj_ty);
+    let is_through_mut_ptr = matches!(&obj_ty, InferType::MutReference(_))
+        || matches!(
+            root_binding_for_write(object).and_then(|(name, _)| ctx.lookup_mono_raw(name)),
+            Some(InferType::MutReference(_))
+        );
+    if !is_through_mut_ptr {
+        if let Some((name, span)) = root_binding_for_write(object) {
+            let _ = ctx.lookup_for_write(name, span)?;
+        }
+    }
+    // Reach through a reference at the root, the way field- and index-path assignment
+    // already do (`s.x = v` and `xs[0] = v` both work for a `&var` receiver). Peeled
+    // *after* the `is_through_mut_ptr` check above, which needs the unpeeled shape.
+    match peel_all_references(&obj_ty) {
+        InferType::Tuple(elems) => elems.get(index).cloned().ok_or_else(|| {
+            MetelError::type_error(
+                TypeErrorCode::T0003,
+                format!(
+                    "tuple index {index} out of bounds (tuple has {} elements)",
+                    elems.len()
+                ),
+                target_span,
+            )
+        }),
+        _ => Err(MetelError::type_error(
+            TypeErrorCode::T0002,
+            "cannot infer tuple type for assignment; add a type annotation",
+            target_span,
+        )),
     }
 }
 
