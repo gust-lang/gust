@@ -254,6 +254,20 @@ fn populate_schemes_from_embedded_core(
     }
 }
 
+fn type_expr_to_infer_for_registry(
+    te: &TypeExpr,
+    generics: &HashMap<String, TypeVar>,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+) -> InferType {
+    let assoc_ctx = AssocResolveCtx {
+        registry,
+        current_module,
+        current_aspect: None,
+    };
+    type_expr_to_infer_with_assoc_ctx(te, generics, None, &assoc_ctx)
+}
+
 fn register_builtin_aspect_impls(registry: &mut TypeDefinitionRegistry) {
     use crate::symbols::{SYM_TYPE_RANGE, SYM_TYPE_RANGE_INCLUSIVE};
     use crate::types::Type;
@@ -325,12 +339,18 @@ fn register_program_decls(
     for decl in decls {
         match decl {
             Decl::Struct(sd) if sd.generics.is_empty() => {
+                let empty_generics = HashMap::new();
                 let fields: Vec<FieldEntry> = sd
                     .fields
                     .iter()
                     .map(|f| FieldEntry {
                         name: f.name.clone(),
-                        ty: type_expr_to_infer(&f.type_ann),
+                        ty: type_expr_to_infer_for_registry(
+                            &f.type_ann,
+                            &empty_generics,
+                            registry,
+                            current_module_path,
+                        ),
                         span: f.span.clone(),
                         visibility: f.visibility.clone(),
                     })
@@ -354,7 +374,12 @@ fn register_program_decls(
                     .iter()
                     .map(|f| FieldEntry {
                         name: f.name.clone(),
-                        ty: type_expr_to_infer_with_generics(&f.type_ann, &gen_map),
+                        ty: type_expr_to_infer_for_registry(
+                            &f.type_ann,
+                            &gen_map,
+                            registry,
+                            current_module_path,
+                        ),
                         span: f.span.clone(),
                         visibility: f.visibility.clone(),
                     })
@@ -481,8 +506,12 @@ fn register_program_decls(
                         .aspect_type_args
                         .iter()
                         .filter_map(|te| {
-                            use super::conversions::type_expr_to_infer;
-                            match type_expr_to_infer(te) {
+                            match type_expr_to_infer_for_registry(
+                                te,
+                                &HashMap::new(),
+                                registry,
+                                current_module_path,
+                            ) {
                                 InferType::Concrete(t) => Some(t),
                                 InferType::Named(n, _) => {
                                     Some(crate::types::Type::Named(n, vec![]))

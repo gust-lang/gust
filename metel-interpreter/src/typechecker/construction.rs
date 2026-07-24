@@ -19,8 +19,8 @@ use crate::typeinference::{
 use crate::types::Type;
 
 use super::conversions::{
-    infer_type_to_type, resolved_to_type, type_expr_to_infer, type_expr_to_infer_with_generics,
-    type_expr_to_infer_with_self, type_to_infer,
+    infer_type_to_type, resolved_to_type, type_expr_to_infer_with_assoc_ctx,
+    type_expr_to_infer_with_self, type_to_infer, AssocResolveCtx,
 };
 use super::SchemeEnv;
 
@@ -264,11 +264,12 @@ impl<'a> ConstructCtx<'a> {
     /// Convert a type expression to an `InferType`, substituting generic param names
     /// to their `TypeVars` when `self.generic_params` is populated (construction-at-call-time).
     fn type_expr_to_infer_ctx(&self, te: &TypeExpr) -> InferType {
-        if self.generic_params.is_empty() {
-            type_expr_to_infer(te)
-        } else {
-            type_expr_to_infer_with_generics(te, &self.generic_params)
-        }
+        let assoc_ctx = AssocResolveCtx {
+            registry: self.registry,
+            current_module: self.current_module,
+            current_aspect: None,
+        };
+        type_expr_to_infer_with_assoc_ctx(te, &self.generic_params, None, &assoc_ctx)
     }
 }
 
@@ -1656,7 +1657,7 @@ fn construct_expr(
                 Some(
                     type_args
                         .iter()
-                        .map(|te| infer_type_to_type(&type_expr_to_infer(te), span))
+                        .map(|te| infer_type_to_type(&ctx.type_expr_to_infer_ctx(te), span))
                         .collect::<Result<_, _>>()?,
                 )
             };
@@ -3006,7 +3007,7 @@ fn construct_call(
         Some(
             type_args
                 .iter()
-                .map(|te| infer_type_to_type(&type_expr_to_infer(te), span))
+                .map(|te| infer_type_to_type(&ctx.type_expr_to_infer_ctx(te), span))
                 .collect::<Result<_, _>>()?,
         )
     };

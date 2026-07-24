@@ -1073,6 +1073,12 @@ pub type MethodSchemeVariant = (TypeScheme, Vec<TypeVar>, Option<String>);
 /// See `MethodSchemeVariant`'s doc for why `aspect_name` is carried here too.
 pub type ArrayMethodSchemeVariant = (TypeScheme, Vec<TypeVar>, Option<String>);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum VisibleTypeKind {
+    Struct,
+    Enum,
+}
+
 #[derive(Debug, Clone)]
 pub struct TypeDefinitionRegistry {
     /// struct name → fields with declaration spans.
@@ -1201,6 +1207,74 @@ pub struct TypeDefinitionRegistry {
 }
 
 impl TypeDefinitionRegistry {
+    fn split_qualified_type_name(name: &str) -> Option<(Vec<String>, &str)> {
+        let (module_path, short_name) = name.rsplit_once("::")?;
+        Some((
+            module_path
+                .split("::")
+                .map(std::string::ToString::to_string)
+                .collect(),
+            short_name,
+        ))
+    }
+
+    fn resolve_struct_name_from_projection(
+        &self,
+        current_module: &[String],
+        type_name: &str,
+    ) -> Option<String> {
+        if self.struct_env.contains_key(type_name)
+            && (self.resolve_type_position_id(current_module, type_name).is_some()
+                || self.struct_decl_modules.contains_key(type_name))
+        {
+            return Some(type_name.to_string());
+        }
+        let (module_path, short_name) = Self::split_qualified_type_name(type_name)?;
+        self.struct_decl_modules
+            .get(short_name)
+            .filter(|declaring_module| **declaring_module == module_path)
+            .map(|_| short_name.to_string())
+    }
+
+    pub(crate) fn visible_type_kind(
+        &self,
+        current_module: &[String],
+        type_name: &str,
+    ) -> Option<VisibleTypeKind> {
+        if self
+            .resolve_struct_name_from_projection(current_module, type_name)
+            .is_some()
+        {
+            return Some(VisibleTypeKind::Struct);
+        }
+        if self.enum_env.contains_key(type_name)
+            && (self.resolve_type_position_id(current_module, type_name).is_some()
+                || self.enum_decl_modules.contains_key(type_name))
+        {
+            return Some(VisibleTypeKind::Enum);
+        }
+        let (module_path, short_name) = Self::split_qualified_type_name(type_name)?;
+        if self
+            .enum_decl_modules
+            .get(short_name)
+            .is_some_and(|declaring_module| *declaring_module == module_path)
+        {
+            return Some(VisibleTypeKind::Enum);
+        }
+        None
+    }
+
+    pub(crate) fn projection_struct_fields(
+        &self,
+        current_module: &[String],
+        type_name: &str,
+    ) -> Option<(&str, &Vec<FieldEntry>)> {
+        let resolved_name = self.resolve_struct_name_from_projection(current_module, type_name)?;
+        self.struct_env
+            .get_key_value(&resolved_name)
+            .map(|(name, fields)| (name.as_str(), fields))
+    }
+
     #[must_use]
     pub fn new() -> Self {
         Self {

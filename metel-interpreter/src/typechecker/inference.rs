@@ -13,10 +13,24 @@ use crate::typeinference::{
 use crate::types::Type;
 
 use super::conversions::{
-    infer_type_to_type, type_expr_to_infer, type_expr_to_infer_with_generics,
-    type_expr_to_infer_with_generics_and_self, type_expr_to_infer_with_self, type_to_infer,
+    infer_type_to_type, type_expr_to_infer, type_expr_to_infer_with_assoc_ctx,
+    type_expr_to_infer_with_generics, type_expr_to_infer_with_generics_and_self,
+    type_expr_to_infer_with_self, type_to_infer, AssocResolveCtx,
 };
 use super::FunGeneralization;
+
+fn type_expr_to_infer_with_ctx(
+    te: &TypeExpr,
+    generics: &HashMap<String, TypeVar>,
+    ctx: &InferContext,
+) -> InferType {
+    let assoc_ctx = AssocResolveCtx {
+        registry: ctx.registry(),
+        current_module: ctx.current_module_path(),
+        current_aspect: None,
+    };
+    type_expr_to_infer_with_assoc_ctx(te, generics, None, &assoc_ctx)
+}
 
 /// Build the per-quantified-var `assoc_projections` map from the body's recorded
 /// projection log and the post-solve substitution. Each entry
@@ -48,9 +62,7 @@ fn build_assoc_projection_map(
 /// bodies; bare `type_expr_to_infer` ignores the param map.
 fn ann_to_infer(te: &TypeExpr, ctx: &InferContext) -> InferType {
     let params = ctx.type_params();
-    if params.is_empty() {
-        type_expr_to_infer(te)
-    } else {
+    if !params.is_empty() {
         // Check for abstract-case projection first.
         if let TypeExpr::Projection {
             base,
@@ -76,8 +88,8 @@ fn ann_to_infer(te: &TypeExpr, ctx: &InferContext) -> InferType {
                 }
             }
         }
-        type_expr_to_infer_with_generics(te, params)
     }
+    type_expr_to_infer_with_ctx(te, params, ctx)
 }
 
 /// Register the names of all direct `FunDecl`s in `decls` with fresh type
@@ -100,13 +112,7 @@ fn native_fun_ty(fun: &FunDecl, ctx: &mut InferContext) -> Result<NativeFunTyRes
     let bounds_by_var = collect_fun_type_var_bounds(fun, &generic_map);
     let neg_bounds_by_var = collect_negative_fun_type_var_bounds(fun, &generic_map);
     let assoc_eq_by_var = collect_fun_assoc_eq_constraints(fun, &generic_map);
-    let te_to_infer = |te: &TypeExpr| -> InferType {
-        if generic_map.is_empty() {
-            type_expr_to_infer(te)
-        } else {
-            type_expr_to_infer_with_generics(te, &generic_map)
-        }
-    };
+    let te_to_infer = |te: &TypeExpr| -> InferType { type_expr_to_infer_with_ctx(te, &generic_map, ctx) };
     let mut param_types = Vec::with_capacity(fun.params.len());
     for p in &fun.params {
         let ann = p.type_ann.as_ref().ok_or_else(|| {
@@ -904,11 +910,7 @@ fn infer_fun_decl(
                 }
             }
         }
-        Ok(if generic_map.is_empty() {
-            type_expr_to_infer(te)
-        } else {
-            type_expr_to_infer_with_generics(te, &generic_map)
-        })
+        Ok(type_expr_to_infer_with_ctx(te, &generic_map, ctx))
     };
 
     let param_types: Vec<InferType> = fun
@@ -2713,7 +2715,7 @@ fn infer_expr(
             span,
         } => {
             let source_ty = infer_expr(expr, ctx, fun_generalizations)?;
-            let target_ty = type_expr_to_infer(target_type);
+            let target_ty = ann_to_infer(target_type, ctx);
             let solved = ctx.solve()?;
             let subst = ctx.default_literal_vars(&solved);
             let source_resolved = subst.apply(&source_ty);

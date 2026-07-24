@@ -1,6 +1,8 @@
 use crate::ast::{Span, TypeExpr};
 use crate::error::{MetelError, TypeErrorCode};
-use crate::typeinference::{InferType, Substitution, TypeDefinitionRegistry, TypeVar};
+use crate::typeinference::{
+    InferType, Substitution, TypeDefinitionRegistry, TypeVar, VisibleTypeKind,
+};
 use crate::types::Type;
 use std::collections::HashMap;
 
@@ -13,6 +15,60 @@ pub(super) struct AssocResolveCtx<'a> {
     /// Set when converting an ASPECT's own method signature (§1.2 bare-name sugar):
     /// the aspect currently being processed, so `Item` alone resolves as `Self::Item`.
     pub current_aspect: Option<&'a str>,
+}
+
+fn invalid_record_projection_type(reason: String) -> InferType {
+    InferType::Named(reason, vec![])
+}
+
+fn resolve_record_projection_type(
+    path: &[String],
+    fields: &[String],
+    assoc_ctx: Option<&AssocResolveCtx<'_>>,
+) -> InferType {
+    let display_name = path.join("::");
+    let Some(ctx) = assoc_ctx else {
+        return invalid_record_projection_type(format!(
+            "unresolved record projection type `{display_name}.{{ {} }}`",
+            fields.join(", ")
+        ));
+    };
+    let Some((struct_name, raw_fields)) = ctx
+        .registry
+        .projection_struct_fields(ctx.current_module, &display_name)
+    else {
+        return match ctx
+            .registry
+            .visible_type_kind(ctx.current_module, &display_name)
+        {
+            Some(VisibleTypeKind::Enum) => invalid_record_projection_type(format!(
+                "record projection target `{display_name}` is not a struct"
+            )),
+            Some(VisibleTypeKind::Struct) => invalid_record_projection_type(format!(
+                "record projection target `{display_name}` is not available here"
+            )),
+            None if matches!(display_name.as_str(), "i64" | "f64" | "boolean" | "Char" | "String"
+                | "Never" | "i8" | "i16" | "i32" | "u8" | "u16" | "u32" | "u64" | "f32"
+                | "Array") =>
+            {
+                invalid_record_projection_type(format!(
+                    "record projection target `{display_name}` is not a struct"
+                ))
+            }
+            None => invalid_record_projection_type(format!("unknown type `{display_name}`")),
+        };
+    };
+
+    let mut projected = Vec::with_capacity(fields.len());
+    for field_name in fields {
+        let Some(entry) = raw_fields.iter().find(|entry| entry.name == *field_name) else {
+            return invalid_record_projection_type(format!(
+                "record projection target `{struct_name}` has no field `{field_name}`"
+            ));
+        };
+        projected.push((field_name.clone(), entry.ty.clone()));
+    }
+    InferType::Record(projected)
 }
 
 // Exhaustive match over every TypeExpr variant; splitting it up would scatter
@@ -193,22 +249,7 @@ fn type_expr_to_infer_in_context(
             InferType::Named(format!("{base_name_str}::{assoc_name}"), vec![])
         }
         TypeExpr::RecordProjection { path, fields, .. } => {
-            let type_name = path.last().cloned().unwrap_or_default();
-            if let Some(raw_fields) = assoc_ctx.and_then(|ctx| ctx.registry.raw_struct_env().get(&type_name)) {
-                InferType::Record(
-                    fields
-                        .iter()
-                        .filter_map(|field_name| {
-                            raw_fields
-                                .iter()
-                                .find(|entry| entry.name == *field_name)
-                                .map(|entry| (field_name.clone(), entry.ty.clone()))
-                        })
-                        .collect(),
-                )
-            } else {
-                InferType::Named(format!("{} .{{ {} }}", path.join("::"), fields.join(", ")), vec![])
-            }
+            resolve_record_projection_type(path, fields, assoc_ctx)
         }
     }
 }

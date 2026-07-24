@@ -790,7 +790,7 @@ fn check_impl_with_report(
     // hoist function names. The overload table must be installed before hoisting
     // so hoisting can skip overloaded names (they are dispatched by SymbolId).
     registry::register_primitive_type_bindings(&mut ctx, std_prelude);
-    let overloads = overload::build_overload_table(&program.decls)?;
+    let overloads = overload::build_overload_table(&program.decls, ctx.registry(), current_module_path)?;
     ctx.set_overloads(overloads.clone());
     inference::hoist_fun_decls(&program.decls, &mut ctx);
     let registry_ns = elapsed_ns(started);

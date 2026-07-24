@@ -21,10 +21,10 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use crate::ast::{Decl, Expr, FunDecl, Span};
 use crate::error::{MetelError, TypeErrorCode};
 use crate::symbols::SymbolId;
-use crate::typeinference::{OverloadEntry, OverloadTable};
+use crate::typeinference::{OverloadEntry, OverloadTable, TypeDefinitionRegistry, TypeVar};
 use crate::types::Type;
 
-use super::conversions::{infer_type_to_type, type_expr_to_infer};
+use super::conversions::{infer_type_to_type, type_expr_to_infer, type_expr_to_infer_with_assoc_ctx, AssocResolveCtx};
 
 /// Process-global allocator for overload-definition `SymbolIds`. Overload tables
 /// are built per module; the global counter keeps ids unique across the whole
@@ -43,7 +43,7 @@ pub(super) fn core_overload_table() -> &'static OverloadTable {
     use std::sync::OnceLock;
     static CORE: OnceLock<OverloadTable> = OnceLock::new();
     CORE.get_or_init(|| {
-        build_table_from_decls(&crate::stdlib::core_program().decls)
+        build_table_from_decls(&crate::stdlib::core_program().decls, None)
             .expect("embedded std::core overloads must validate; they are compiled in")
     })
 }
@@ -64,8 +64,12 @@ pub(crate) fn core_native_symbol(fun: &FunDecl) -> Option<SymbolId> {
 /// A module group whose signatures exactly match a `std::core` group (i.e. the
 /// `std::core` module checking its own decls) reuses the canonical core entries
 /// so the `SymbolIds` agree across the whole graph.
-pub(super) fn build_overload_table(decls: &[Decl]) -> Result<OverloadTable, MetelError> {
-    let mut table = build_table_from_decls(decls)?;
+pub(super) fn build_overload_table(
+    decls: &[Decl],
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+) -> Result<OverloadTable, MetelError> {
+    let mut table = build_table_from_decls(decls, Some((registry, current_module)))?;
     let core = core_overload_table();
 
     for (name, entries) in &mut table {
@@ -100,7 +104,10 @@ pub(super) fn build_overload_table(decls: &[Decl]) -> Result<OverloadTable, Mete
 ///
 /// Errors if an overloaded function is generic, has an unannotated parameter, or
 /// collides with another overload on identical parameter types.
-fn build_table_from_decls(decls: &[Decl]) -> Result<OverloadTable, MetelError> {
+fn build_table_from_decls(
+    decls: &[Decl],
+    assoc_ctx: Option<(&TypeDefinitionRegistry, &[String])>,
+) -> Result<OverloadTable, MetelError> {
     let mut groups: HashMap<&str, Vec<&FunDecl>> = HashMap::new();
     for decl in decls {
         if let Decl::Fun(f) = decl {
@@ -122,9 +129,9 @@ fn build_table_from_decls(decls: &[Decl]) -> Result<OverloadTable, MetelError> {
                     &f.span,
                 ));
             }
-            let params = fun_param_types(f)?;
+            let params = fun_param_types(f, assoc_ctx)?;
             let ret = match &f.return_type {
-                Some(te) => infer_type_to_type(&type_expr_to_infer(te), &f.span)?,
+                Some(te) => infer_type_to_type(&type_expr_to_infer_for_overload(te, assoc_ctx), &f.span)?,
                 None => Type::Unit,
             };
             if entries.iter().any(|e| e.params == params) {
@@ -150,7 +157,25 @@ fn build_table_from_decls(decls: &[Decl]) -> Result<OverloadTable, MetelError> {
 
 /// Concrete parameter types of a function declaration. Every parameter must be
 /// annotated (overloaded functions require this).
-fn fun_param_types(fun: &FunDecl) -> Result<Vec<Type>, MetelError> {
+fn type_expr_to_infer_for_overload(
+    te: &crate::ast::TypeExpr,
+    assoc_ctx: Option<(&TypeDefinitionRegistry, &[String])>,
+) -> crate::typeinference::InferType {
+    let Some((registry, current_module)) = assoc_ctx else {
+        return type_expr_to_infer(te);
+    };
+    let assoc_ctx = AssocResolveCtx {
+        registry,
+        current_module,
+        current_aspect: None,
+    };
+    type_expr_to_infer_with_assoc_ctx(te, &HashMap::<String, TypeVar>::new(), None, &assoc_ctx)
+}
+
+fn fun_param_types(
+    fun: &FunDecl,
+    assoc_ctx: Option<(&TypeDefinitionRegistry, &[String])>,
+) -> Result<Vec<Type>, MetelError> {
     fun.params
         .iter()
         .map(|p| {
@@ -164,7 +189,7 @@ fn fun_param_types(fun: &FunDecl) -> Result<Vec<Type>, MetelError> {
                     &p.span,
                 )
             })?;
-            infer_type_to_type(&type_expr_to_infer(ann), &p.span)
+            infer_type_to_type(&type_expr_to_infer_for_overload(ann, assoc_ctx), &p.span)
         })
         .collect()
 }
@@ -177,7 +202,7 @@ pub(super) fn entry_for_decl<'a>(
     fun: &FunDecl,
 ) -> Option<&'a OverloadEntry> {
     let entries = table.get(fun.name.as_str())?;
-    let params = fun_param_types(fun).ok()?;
+    let params = fun_param_types(fun, None).ok()?;
     entries.iter().find(|e| e.params == params)
 }
 
