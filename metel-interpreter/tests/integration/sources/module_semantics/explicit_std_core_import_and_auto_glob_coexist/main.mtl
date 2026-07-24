@@ -1,6 +1,6 @@
 import std::core::Perhaps;         
 fun main() {         
-    let p = Perhaps::Some { value= 42 };         
+    let p = Perhaps::Some { value = 42 };         
     match p {         
         Perhaps::Some { value } => assert(value == 42),         
         None => assert(false),         

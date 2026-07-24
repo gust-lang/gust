@@ -2,7 +2,7 @@ fun maybe_head<T>(items: T[]) {
     if (items.len() == 0) {
         return None : Perhaps<T>;
     }
-    return Perhaps::Some { value= items[0] };
+    return Perhaps::Some { value = items[0] };
 }
 
 fun main() {

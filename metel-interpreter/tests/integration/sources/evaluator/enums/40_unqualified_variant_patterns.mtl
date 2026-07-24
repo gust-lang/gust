@@ -42,10 +42,10 @@ fun main() {
     assert(name(Colour::Green) == "green");
     assert(name(Colour::Blue) == "blue");
 
-    assert(unwrap_or(Perhaps::Some { value= 5 }, 0) == 5);
+    assert(unwrap_or(Perhaps::Some { value = 5 }, 0) == 5);
     assert(unwrap_or(Perhaps::None, 9) == 9);
 
-    assert(qualified_still_works(Perhaps::Some { value= 3 }) == 3);
+    assert(qualified_still_works(Perhaps::Some { value = 3 }) == 3);
     assert(qualified_still_works(Perhaps::None) == -1);
 
     assert(binding_fallback(Colour::Red) == "red");

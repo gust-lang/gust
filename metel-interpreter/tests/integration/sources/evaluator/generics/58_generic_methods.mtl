@@ -16,7 +16,7 @@ extend Box<T> {
     }
     // Method-level generic `U` recovered from the closure argument.
     fun map<U>(self, f: (T) -> U) -> Box<U> {
-        Box { value= f(self.value) }
+        Box { value = f(self.value) }
     }
     fun get(self) -> T {
         self.value
@@ -44,7 +44,7 @@ extend Maybe<T> {
     }
     fun map<U>(self, f: (T) -> U) -> Maybe<U> {
         match self {
-            Maybe::Just { value } => Maybe::Just { value= f(value) },
+            Maybe::Just { value } => Maybe::Just { value = f(value) },
             _ => Maybe::Nothing,
         }
     }
@@ -52,7 +52,7 @@ extend Maybe<T> {
 
 fun main() {
     // Generic struct methods.
-    let b = Box { value= 21 };
+    let b = Box { value = 21 };
     assert(b.get_or(0) == 21);
     let doubled = b.map((x: i64) -> i64 { x * 2 });
     assert(doubled.get() == 42);
@@ -61,7 +61,7 @@ fun main() {
     assert(labelled.get() == "n");
 
     // Generic enum methods, including match-on-self and chaining.
-    let j = Maybe::Just { value= 10 };
+    let j = Maybe::Just { value = 10 };
     assert(j.is_just());
     assert(j.or_else(0) == 10);
     let n: Maybe<i64> = Maybe::Nothing;

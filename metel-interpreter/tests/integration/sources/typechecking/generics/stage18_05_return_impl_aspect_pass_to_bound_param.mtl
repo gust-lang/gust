@@ -17,7 +17,7 @@ extend MyInt: Display {
 
 // Function returning impl Display
 fun make_int() -> impl Display {
-	MyInt { value= 42 }
+	MyInt { value = 42 }
 }
 
 // Function that takes impl Display parameter

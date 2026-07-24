@@ -3,7 +3,7 @@
 
 fun main() {
     // ── Perhaps ──────────────────────────────────────────────────────────────
-    let some = Perhaps::Some { value= 21 };
+    let some = Perhaps::Some { value = 21 };
     let none: Perhaps<i64> = Perhaps::None;
 
     assert(some.is_some());
@@ -18,7 +18,7 @@ fun main() {
     assert(some.map((x: i64) -> String { "v" }).unwrap_or("none") == "v");
 
     // and_then chains a Perhaps-returning function
-    assert(some.and_then((x: i64) -> Perhaps<i64> { Perhaps::Some { value= x + 1 } }).unwrap_or(0) == 22);
+    assert(some.and_then((x: i64) -> Perhaps<i64> { Perhaps::Some { value = x + 1 } }).unwrap_or(0) == 22);
     assert(some.and_then((x: i64) -> Perhaps<i64> { Perhaps::None }).is_none());
 
     // unwrap_or / unwrap_or_else
@@ -28,8 +28,8 @@ fun main() {
     assert(some.unwrap_or_else(() -> i64 { 9 }) == 21);
 
     // ── Result ───────────────────────────────────────────────────────────────
-    let ok: Result<i64, String> = Result::Ok { value= 10 };
-    let err: Result<i64, String> = Result::Err { error= "boom" };
+    let ok: Result<i64, String> = Result::Ok { value = 10 };
+    let err: Result<i64, String> = Result::Err { error = "boom" };
 
     assert(ok.is_ok());
     assert(!ok.is_err());
@@ -41,8 +41,8 @@ fun main() {
     // map preserves the Err payload
     assert(err.map((x: i64) -> i64 { x + 5 }).is_err());
 
-    assert(ok.and_then((x: i64) -> Result<i64, String> { Result::Ok { value= x * 3 } }).unwrap_or(0) == 30);
-    assert(ok.and_then((x: i64) -> Result<i64, String> { Result::Err { error= "no" } }).is_err());
+    assert(ok.and_then((x: i64) -> Result<i64, String> { Result::Ok { value = x * 3 } }).unwrap_or(0) == 30);
+    assert(ok.and_then((x: i64) -> Result<i64, String> { Result::Err { error = "no" } }).is_err());
 
     assert(ok.unwrap_or(0) == 10);
     assert(err.unwrap_or(3) == 3);

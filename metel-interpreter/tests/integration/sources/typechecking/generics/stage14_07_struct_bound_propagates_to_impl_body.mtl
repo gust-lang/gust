@@ -25,6 +25,6 @@ fun use_list<T: Comparable>(list: SortedList<T>, item: T) -> i64 {
 }
 
 fun run(n: Num) -> i64 {
-    let list = SortedList { items= [n] };
+    let list = SortedList { items = [n] };
     use_list(list, n)
 }

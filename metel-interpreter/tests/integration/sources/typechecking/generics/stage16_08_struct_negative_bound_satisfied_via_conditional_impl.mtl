@@ -10,7 +10,7 @@ struct Resource { x: i64 }
 // This should work: Arena<Resource> is valid because Pair<Resource, Resource> doesn't
 // implement Drop (its Drop impl requires both A and B to be Drop, but Resource doesn't implement Drop)
 fun good(r: Resource) -> Arena<Pair<Resource, Resource>> {
-    Arena { items= [Pair { first= r, second= r }] }
+    Arena { items = [Pair { first = r, second = r }] }
 }
 
 fun main() {}

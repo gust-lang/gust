@@ -3,7 +3,7 @@ import shower::Shower;
 import debugger::Debugger;
 
 fun main() {
-    let p = Point { x= 1, y= 2 };
+    let p = Point { x = 1, y = 2 };
     assert(p.show() == "point");
     assert(p.dbg() == "point-debug");
 }

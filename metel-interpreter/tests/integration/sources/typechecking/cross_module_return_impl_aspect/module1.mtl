@@ -15,5 +15,5 @@ extend MyInt: Display {
 }
 
 public fun make_public_int() -> impl Display {
-	MyInt { value= 42 }
+	MyInt { value = 42 }
 }

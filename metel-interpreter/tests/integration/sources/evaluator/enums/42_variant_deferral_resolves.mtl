@@ -20,7 +20,7 @@ fun main() {
     let g: Colour = favourite();
     assert(paint(g) == 1);
 
-    let p: Perhaps<i64> = Some { value= 5 };
+    let p: Perhaps<i64> = Some { value = 5 };
     let q: Perhaps<i64> = None;
     assert(paint(annotated_closure()) == 1);
 

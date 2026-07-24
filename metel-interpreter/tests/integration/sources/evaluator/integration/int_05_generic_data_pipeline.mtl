@@ -16,7 +16,7 @@ enum Maybe<T> {
 
 fun maybe_map<T, U>(m: Maybe<T>, f: (T) -> U) -> Maybe<U> {
     match m {
-        Maybe::Just { val } => Maybe::Just { val= f(val) },
+        Maybe::Just { val } => Maybe::Just { val = f(val) },
         _                   => Maybe::Nothing,
     }
 }
@@ -50,11 +50,11 @@ struct Record<K, V> {
 }
 
 fun record_map_val<K, V, W>(r: Record<K, V>, f: (V) -> W) -> Record<K, W> {
-    Record { key= r.key, value= f(r.value) }
+    Record { key = r.key, value = f(r.value) }
 }
 
 fun record_swap<K, V>(r: Record<K, V>) -> Record<V, K> {
-    Record { key= r.value, value= r.key }
+    Record { key = r.value, value = r.key }
 }
 
 // ── Generic pipeline combinators ──────────────────────────────────────────────
@@ -141,7 +141,7 @@ fun student_grade_letter(s: Student) -> String {
 
 fun main() {
     // ── Maybe<i64> basics ─────────────────────────────────────────────────────
-    let j10: Maybe<i64>  = Maybe::Just { val= 10 };
+    let j10: Maybe<i64>  = Maybe::Just { val = 10 };
     let none_i: Maybe<i64> = Maybe::Nothing;
 
     assert(maybe_is_just(j10));
@@ -158,22 +158,22 @@ fun main() {
 
     // flat_map
     let flat = maybe_flat_map(j10, (x: i64) -> Maybe<i64> {
-        if (x > 5) Maybe::Just { val= x - 5 } else Maybe::Nothing
+        if (x > 5) Maybe::Just { val = x - 5 } else Maybe::Nothing
     });
     assert(maybe_get_or(flat, 0) == 5);
 
     let flat_miss = maybe_flat_map(j10, (x: i64) -> Maybe<i64> {
-        if (x > 100) Maybe::Just { val= x } else Maybe::Nothing
+        if (x > 100) Maybe::Just { val = x } else Maybe::Nothing
     });
     assert(!maybe_is_just(flat_miss));
 
     // ── Maybe<String> ─────────────────────────────────────────────────────────
-    let j_str: Maybe<String> = Maybe::Just { val= "hello" };
+    let j_str: Maybe<String> = Maybe::Just { val = "hello" };
     let len_m = maybe_map(j_str, (s: String) -> i64 { s.len() });
     assert(maybe_get_or(len_m, 0) == 5);
 
     // ── Record<String, i64> ───────────────────────────────────────────────────
-    let r1: Record<String, i64> = Record { key= "score", value= 75 };
+    let r1: Record<String, i64> = Record { key = "score", value = 75 };
     assert(r1.key   == "score");
     assert(r1.value == 75);
 
@@ -188,7 +188,7 @@ fun main() {
     assert(r3.value == "score");
 
     // ── Record<String, boolean> ──────────────────────────────────────────────────
-    let flag_rec: Record<String, boolean> = Record { key= "enabled", value= true };
+    let flag_rec: Record<String, boolean> = Record { key = "enabled", value = true };
     let toggled = record_map_val(flag_rec, (b: boolean) -> boolean { !b });
     assert(!toggled.value);
 
@@ -255,11 +255,11 @@ fun main() {
 
     // ── Student pipeline ──────────────────────────────────────────────────────
     let students: Student[] = [
-        Student { name= "Alice",   grade= 92 },
-        Student { name= "Bob",     grade= 55 },
-        Student { name= "Charlie", grade= 78 },
-        Student { name= "Diana",   grade= 88 },
-        Student { name= "Eve",     grade= 45 },
+        Student { name = "Alice",   grade = 92 },
+        Student { name = "Bob",     grade = 55 },
+        Student { name = "Charlie", grade = 78 },
+        Student { name = "Diana",   grade = 88 },
+        Student { name = "Eve",     grade = 45 },
     ];
 
     let passing = filter_array(students, (s: Student) -> boolean { student_passing(s) });
@@ -287,7 +287,7 @@ fun main() {
     assert(same_s.grade == 92);
 
     // ── Compose: nested Maybe over Records ────────────────────────────────────
-    let maybe_rec: Maybe<Record<String, i64>> = Maybe::Just { val= Record { key= "x", value= 7 } };
+    let maybe_rec: Maybe<Record<String, i64>> = Maybe::Just { val = Record { key = "x", value = 7 } };
     let val_m = maybe_map(maybe_rec, (r: Record<String, i64>) -> i64 { r.value });
     assert(maybe_get_or(val_m, 0) == 7);
 }

@@ -15,5 +15,5 @@ extend MyString: Display {
 }
 
 public fun make_string() -> impl Display {
-	MyString { value= "hello".to_string() }
+	MyString { value = "hello".to_string() }
 }
