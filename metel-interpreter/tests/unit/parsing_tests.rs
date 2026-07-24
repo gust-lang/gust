@@ -125,7 +125,7 @@ pub struct Counter {
 }
 
 fun main() {
-    let mut counter = Counter { value: 0 };
+    let mut counter = Counter { value= 0 };
     let ptr: &mut Counter = &mut counter;
     ptr.value += 1;
 }

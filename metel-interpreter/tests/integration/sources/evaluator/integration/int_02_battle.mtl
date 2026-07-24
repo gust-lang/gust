@@ -38,11 +38,11 @@ extend Fighter {
         let dmg     = if (reduced > 1) { reduced } else { 1 };
         let new_hp  = if (self.hp - dmg > 0) { self.hp - dmg } else { 0 };
         Fighter {
-            name:    self.name,
-            hp:      new_hp,
-            max_hp:  self.max_hp,
-            attack:  self.attack,
-            defense: self.defense,
+            name=    self.name,
+            hp=      new_hp,
+            max_hp=  self.max_hp,
+            attack=  self.attack,
+            defense= self.defense,
         }
     }
 
@@ -54,22 +54,22 @@ extend Fighter {
             self.max_hp
         };
         Fighter {
-            name:    self.name,
-            hp:      new_hp,
-            max_hp:  self.max_hp,
-            attack:  self.attack,
-            defense: self.defense,
+            name=    self.name,
+            hp=      new_hp,
+            max_hp=  self.max_hp,
+            attack=  self.attack,
+            defense= self.defense,
         }
     }
 
     // Raises defense by `bonus`.
     fun add_defense(self, bonus: i64) -> Fighter {
         Fighter {
-            name:    self.name,
-            hp:      self.hp,
-            max_hp:  self.max_hp,
-            attack:  self.attack,
-            defense: self.defense + bonus,
+            name=    self.name,
+            hp=      self.hp,
+            max_hp=  self.max_hp,
+            attack=  self.attack,
+            defense= self.defense + bonus,
         }
     }
 
@@ -125,7 +125,7 @@ fun always_attack(actor: Fighter, target: Fighter) -> Action {
 // Heals when below half HP, otherwise attacks.
 fun smart_healer(actor: Fighter, target: Fighter) -> Action {
     if (actor.hp * 2 < actor.max_hp) {
-        Action::Heal { amount: 20 }
+        Action::Heal { amount= 20 }
     } else {
         Action::Attack
     }
@@ -166,7 +166,7 @@ fun best_attacker_idx(party: Fighter[]) -> Perhaps<i64> {
             best = i;
         }
     }
-    Perhaps::Some { value: best }
+    Perhaps::Some { value= best }
 }
 
 // Apply `action_fn` for `n` rounds (f1 always acts, f2 never).
@@ -212,7 +212,7 @@ fun battle(
         f1 = r1.0;
         f2 = r1.1;
         if (!f2.is_alive()) {
-            return Perhaps::Some { value: f1.name };
+            return Perhaps::Some { value= f1.name };
         }
         // Fighter 2 acts.
         let a2 = s2(f2, f1);
@@ -220,7 +220,7 @@ fun battle(
         f2 = r2.0;
         f1 = r2.1;
         if (!f1.is_alive()) {
-            return Perhaps::Some { value: f2.name };
+            return Perhaps::Some { value= f2.name };
         }
         round += 1;
     }
@@ -230,10 +230,10 @@ fun battle(
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 fun main() {
-    let knight = Fighter { name: "Knight", hp: 100, max_hp: 100, attack: 25, defense: 5 };
-    let goblin  = Fighter { name: "Goblin",  hp: 30,  max_hp: 30,  attack: 8,  defense: 2 };
-    let mage    = Fighter { name: "Mage",    hp: 60,  max_hp: 60,  attack: 30, defense: 1 };
-    let healer  = Fighter { name: "Healer",  hp: 50,  max_hp: 50,  attack: 5,  defense: 3 };
+    let knight = Fighter { name= "Knight", hp= 100, max_hp= 100, attack= 25, defense= 5 };
+    let goblin  = Fighter { name= "Goblin",  hp= 30,  max_hp= 30,  attack= 8,  defense= 2 };
+    let mage    = Fighter { name= "Mage",    hp= 60,  max_hp= 60,  attack= 30, defense= 1 };
+    let healer  = Fighter { name= "Healer",  hp= 50,  max_hp= 50,  attack= 5,  defense= 3 };
 
     // 1. take_damage: net = raw - defense (minimum 1).
     // Knight takes 8 raw: 8-5=3 net → hp=97.
@@ -248,7 +248,7 @@ fun main() {
     assert(!dead.is_alive());
 
     // 2. heal: capped at max_hp.
-    let injured = Fighter { name: "Test", hp: 40, max_hp: 50, attack: 10, defense: 5 };
+    let injured = Fighter { name= "Test", hp= 40, max_hp= 50, attack= 10, defense= 5 };
     let full    = injured.heal(20);  // 40+20=60 > 50 → 50
     let partial = injured.heal(5);   // 40+5=45 < 50 → 45
     assert(full.hp    == 50);
@@ -270,8 +270,8 @@ fun main() {
     assert(r_atk.1.hp == 7);
 
     // 6. resolve Heal: actor healed, target unchanged.
-    let half_hp = Fighter { name: "Half", hp: 25, max_hp: 50, attack: 10, defense: 5 };
-    let r_heal  = resolve(Action::Heal { amount: 15 }, half_hp, goblin);
+    let half_hp = Fighter { name= "Half", hp= 25, max_hp= 50, attack= 10, defense= 5 };
+    let r_heal  = resolve(Action::Heal { amount= 15 }, half_hp, goblin);
     assert(r_heal.0.hp == 40);
     assert(r_heal.1.hp == 30);
 
@@ -283,7 +283,7 @@ fun main() {
     // 8. describe_action — match-with-blocks on enum with fields.
     let desc_atk  = describe_action(Action::Attack);
     let desc_def  = describe_action(Action::Defend);
-    let desc_heal = describe_action(Action::Heal { amount: 15 });
+    let desc_heal = describe_action(Action::Heal { amount= 15 });
     assert(desc_atk.len()  > 0);
     assert(desc_def.len()  > 0);
     assert(desc_heal.len() > 0);
@@ -297,14 +297,14 @@ fun main() {
     };
 
     // 10. smart_healer: heals when below half HP, attacks when ok.
-    let low_hp     = Fighter { name: "Low", hp: 10, max_hp: 50, attack: 10, defense: 5 };
+    let low_hp     = Fighter { name= "Low", hp= 10, max_hp= 50, attack= 10, defense= 5 };
     let heal_choice = smart_healer(low_hp, goblin);  // 10*2=20 < 50 → Heal
     match heal_choice {
         Action::Heal { amount } => assert(amount == 20),
         Action::Attack          => assert(false, "expected Heal"),
         Action::Defend          => assert(false, "expected Heal"),
     };
-    let ok_hp      = Fighter { name: "Ok", hp: 40, max_hp: 50, attack: 10, defense: 5 };
+    let ok_hp      = Fighter { name= "Ok", hp= 40, max_hp= 50, attack= 10, defense= 5 };
     let atk_choice  = smart_healer(ok_hp, goblin);  // 40*2=80 > 50 → Attack
     match atk_choice {
         Action::Attack          => (),
@@ -363,7 +363,7 @@ fun main() {
     let hp_threshold = 25;
     let threshold_healer = (actor: Fighter, target: Fighter) -> Action {
         if (actor.hp < hp_threshold) {
-            Action::Heal { amount: 10 }
+            Action::Heal { amount= 10 }
         } else {
             Action::Attack
         }
@@ -381,9 +381,9 @@ fun main() {
 
     // 18. Array of fighters: total HP and best attacker index.
     let party: Fighter[] = [
-        Fighter { name: "A", hp: 80,  max_hp: 80,  attack: 15, defense: 8 },
-        Fighter { name: "B", hp: 60,  max_hp: 60,  attack: 20, defense: 3 },
-        Fighter { name: "C", hp: 100, max_hp: 100, attack: 10, defense: 12 },
+        Fighter { name= "A", hp= 80,  max_hp= 80,  attack= 15, defense= 8 },
+        Fighter { name= "B", hp= 60,  max_hp= 60,  attack= 20, defense= 3 },
+        Fighter { name= "C", hp= 100, max_hp= 100, attack= 10, defense= 12 },
     ];
     let total_hp = total_party_hp(party);
     assert(total_hp == 240);

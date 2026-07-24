@@ -38,12 +38,12 @@ struct ParseError { msg: String }
 struct AppError { msg: String }
 
 fun parse() -> Result<i64, ParseError> {
-    Result::Err { error: ParseError { msg: "bad" } }
+    Result::Err { error= ParseError { msg= "bad" } }
 }
 
 fun load() -> Result<i64, AppError> {
     let value = parse()?;
-    Result::Ok { value: value }
+    Result::Ok { value= value }
 }
 "#;
     match check_source(source) {
@@ -73,7 +73,7 @@ extend Counter {
 }
 
 fun main() {
-    let counter = Counter { value: 0 };
+    let counter = Counter { value= 0 };
     counter.increment();
 }
 "#;

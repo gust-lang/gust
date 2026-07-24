@@ -17,7 +17,7 @@ extend MyInt: Display {
 
 // Basic function returning impl Display - no method calls yet
 fun make_pair() -> impl Display {
-	MyInt { value: 42 }
+	MyInt { value= 42 }
 }
 
 fun main() {

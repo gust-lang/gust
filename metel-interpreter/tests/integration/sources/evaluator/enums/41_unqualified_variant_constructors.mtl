@@ -40,11 +40,11 @@ fun main() {
     assert(paint(favourite()) == 2);
 
     let holder = Holder {
-        colour: Blue,
-        maybe: Some { value: 5 },
-        nothing: None,
-        ok: Ok { value: 9 },
-        err: Err { error: "bad" },
+        colour= Blue,
+        maybe= Some { value= 5 },
+        nothing= None,
+        ok= Ok { value= 9 },
+        err= Err { error= "bad" },
     };
 
     assert(paint(holder.colour) == 3);

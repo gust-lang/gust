@@ -6,5 +6,5 @@ struct Box<T> {
 }
 
 fun bad() -> Box<i64> { // ERROR[T0001]
-    Box { value: true }
+    Box { value= true }
 }

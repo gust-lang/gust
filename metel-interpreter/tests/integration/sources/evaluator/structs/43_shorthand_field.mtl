@@ -1,4 +1,4 @@
-// Shorthand field initialisation: `Point { x, y }` desugars to `Point { x: x, y: y }`.
+// Shorthand field initialisation: `Point { x, y }` desugars to `Point { x = x, y = y }`.
 
 struct Point { x: i64, y: i64 }
 
@@ -18,7 +18,7 @@ fun main() {
 
     // Mixed: shorthand and explicit.
     let x2 = 10;
-    let p2 = Point { x: x2, y: 20 };
+    let p2 = Point { x= x2, y= 20 };
     assert(p2.x == 10);
     assert(p2.y == 20);
 

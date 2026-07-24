@@ -18,7 +18,7 @@ extend MyFloat: Display {
 }
 
 public fun make_float() -> impl Display {
-	MyFloat { value: 3.14 }
+	MyFloat { value= 3.14 }
 }
 
 fun main() {

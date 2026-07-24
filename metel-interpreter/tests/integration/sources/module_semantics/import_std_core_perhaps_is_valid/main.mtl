@@ -1,2 +1,2 @@
 import std::core::Perhaps;
-fun main() { let x = Perhaps::Some { value: 1 }; }
+fun main() { let x = Perhaps::Some { value= 1 }; }
