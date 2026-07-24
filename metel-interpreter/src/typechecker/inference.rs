@@ -502,6 +502,40 @@ fn infer_decl(
         }
         Decl::Struct(_) | Decl::Enum(_) | Decl::Aspect(_) => Ok(InferType::unit()),
         Decl::Impl(ib) => {
+            if matches!(
+                &ib.target_type,
+                TypeExpr::Record(_) | TypeExpr::RecordProjection { .. }
+            ) {
+                if ib.aspect_name.is_none() {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0001,
+                        "anonymous records cannot have inherent methods; declare a `struct` if you need methods",
+                        &ib.span,
+                    ));
+                }
+                if let Some(aspect_name) = &ib.aspect_name {
+                    if aspect_name == "Drop" {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0001,
+                            "anonymous records cannot implement `Drop`; teardown logic requires a nominal type",
+                            &ib.span,
+                        ));
+                    }
+                    if ctx
+                        .registry()
+                        .aspect_declaring_module(aspect_name)
+                        .is_some_and(|module| module.as_slice() != ctx.current_module_path())
+                    {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0014,
+                            format!(
+                                "`{aspect_name}` is not local to this module and cannot be implemented for an anonymous record; declare a `struct` and implement it there"
+                            ),
+                            &ib.span,
+                        ));
+                    }
+                }
+            }
             // Structural blanket impl targets (`T[]`) have no nominal head. As in
             // construction, keep a nominal target name only when one exists; generic
             // structural impl bodies are inferred against their own type-parameter map.
@@ -674,6 +708,9 @@ fn type_expr_contains_impl_aspect(te: &TypeExpr) -> bool {
         TypeExpr::ImplAspect { .. } => true,
         TypeExpr::Named(_, args) => args.iter().any(type_expr_contains_impl_aspect),
         TypeExpr::Tuple(elems) => elems.iter().any(type_expr_contains_impl_aspect),
+        TypeExpr::Record(fields) => fields
+            .iter()
+            .any(|(_, ty)| type_expr_contains_impl_aspect(ty)),
         TypeExpr::Array(elem)
         | TypeExpr::SizedArray(elem, _)
         | TypeExpr::Reference(elem)
@@ -684,7 +721,7 @@ fn type_expr_contains_impl_aspect(te: &TypeExpr) -> bool {
                     .as_ref()
                     .is_some_and(|r| type_expr_contains_impl_aspect(r))
         }
-        TypeExpr::Unit | TypeExpr::Projection { .. } => false,
+        TypeExpr::Unit | TypeExpr::Projection { .. } | TypeExpr::RecordProjection { .. } => false,
     }
 }
 
@@ -719,6 +756,17 @@ fn rewrite_impl_aspect_returns(
                 .map(|e| rewrite_impl_aspect_returns(e, counter, replacements))
                 .collect(),
         ),
+        TypeExpr::Record(fields) => TypeExpr::Record(
+            fields
+                .iter()
+                .map(|(name, ty)| {
+                    (
+                        name.clone(),
+                        rewrite_impl_aspect_returns(ty, counter, replacements),
+                    )
+                })
+                .collect(),
+        ),
         TypeExpr::Array(elem) => TypeExpr::Array(Box::new(rewrite_impl_aspect_returns(
             elem,
             counter,
@@ -744,7 +792,9 @@ fn rewrite_impl_aspect_returns(
             ret.as_ref()
                 .map(|r| Box::new(rewrite_impl_aspect_returns(r, counter, replacements))),
         ),
-        TypeExpr::Unit | TypeExpr::Projection { .. } => te.clone(),
+        TypeExpr::Unit | TypeExpr::Projection { .. } | TypeExpr::RecordProjection { .. } => {
+            te.clone()
+        }
     }
 }
 
@@ -1440,6 +1490,17 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
                 .map(|item| substitute_structural_self(item, replacement))
                 .collect(),
         ),
+        TypeExpr::Record(fields) => TypeExpr::Record(
+            fields
+                .iter()
+                .map(|(name, ty)| {
+                    (
+                        name.clone(),
+                        substitute_structural_self(ty, replacement),
+                    )
+                })
+                .collect(),
+        ),
         TypeExpr::Array(inner) => TypeExpr::Array(Box::new(substitute_structural_self(
             inner.as_ref(),
             replacement,
@@ -1480,6 +1541,11 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
         } => TypeExpr::Projection {
             base: Box::new(substitute_structural_self(base.as_ref(), replacement)),
             assoc_name: assoc_name.clone(),
+            span: span.clone(),
+        },
+        TypeExpr::RecordProjection { path, fields, span } => TypeExpr::RecordProjection {
+            path: path.clone(),
+            fields: fields.clone(),
             span: span.clone(),
         },
     }
@@ -1878,6 +1944,13 @@ fn infer_expr(
                 .collect::<Result<_, _>>()?;
             Ok(InferType::Tuple(elem_tys))
         }
+        Expr::RecordLiteral { fields, .. } => {
+            let mut inferred_fields = Vec::with_capacity(fields.len());
+            for (name, expr) in fields {
+                inferred_fields.push((name.clone(), infer_expr(expr, ctx, fun_generalizations)?));
+            }
+            Ok(InferType::Record(inferred_fields))
+        }
         Expr::Array(elems, span) => {
             if elems.is_empty() {
                 return Ok(InferType::Array(Box::new(ctx.fresh_var())));
@@ -2199,6 +2272,20 @@ fn infer_expr(
         } => {
             let obj_ty = infer_expr(object, ctx, fun_generalizations)?;
             let obj_ty = ctx.solve()?.apply(&obj_ty);
+            let peeled = peel_all_references(&obj_ty);
+            if let InferType::Record(fields) = &peeled {
+                return fields
+                    .iter()
+                    .find(|(name, _)| name == field)
+                    .map(|(_, ty)| ty.clone())
+                    .ok_or_else(|| {
+                        MetelError::type_error(
+                            TypeErrorCode::T0003,
+                            format!("no field `{field}` on {peeled}"),
+                            span,
+                        )
+                    });
+            }
             let struct_name = named_type_name(&obj_ty).ok_or_else(|| {
                 MetelError::type_error(
                     TypeErrorCode::T0002,
@@ -2553,6 +2640,62 @@ fn infer_expr(
                 infer_struct_literal(struct_name, fields, span, ctx, fun_generalizations)
             }
         }
+        Expr::RecordProjection { path, fields, span } => {
+            let base_expr = record_projection_base_expr(path, span);
+            let base_ty = infer_expr(&base_expr, ctx, fun_generalizations)?;
+            let base_ty = ctx.solve()?.apply(&base_ty);
+            let struct_name = named_type_name(&base_ty).ok_or_else(|| {
+                MetelError::type_error(
+                    TypeErrorCode::T0002,
+                    "record projection requires a nominal struct value",
+                    span,
+                )
+            })?;
+            let type_args = match &base_ty {
+                InferType::Named(_, args) => args.clone(),
+                InferType::Reference(inner) | InferType::MutReference(inner) => match inner.as_ref() {
+                    InferType::Named(_, args) => args.clone(),
+                    _ => vec![],
+                },
+                _ => vec![],
+            };
+            let declared_fields = ctx
+                .get_struct_fields(&struct_name)
+                .ok_or_else(|| {
+                    MetelError::type_error(
+                        TypeErrorCode::T0003,
+                        format!("unknown type `{struct_name}`"),
+                        span,
+                    )
+                })?
+                .clone();
+            let mut projected = Vec::with_capacity(fields.len());
+            for field in fields {
+                let field_entry = declared_fields
+                    .iter()
+                    .find(|entry| entry.name == *field)
+                    .ok_or_else(|| {
+                        MetelError::type_error(
+                            TypeErrorCode::T0003,
+                            format!("no field `{field}` on `{struct_name}`"),
+                            span,
+                        )
+                    })?;
+                let raw_ty = field_entry.ty.clone();
+                let ty = if let Some(type_params) = ctx.get_struct_type_params(&struct_name).cloned()
+                {
+                    let mut remap = Substitution::new();
+                    for (&tp, arg) in type_params.iter().zip(type_args.iter()) {
+                        remap.bind(tp, arg.clone());
+                    }
+                    remap.apply(&raw_ty)
+                } else {
+                    raw_ty
+                };
+                projected.push((field.clone(), ty));
+            }
+            Ok(InferType::Record(projected))
+        }
         Expr::Ascribe { expr, ann, span } => {
             let inner_ty = infer_expr(expr, ctx, fun_generalizations)?;
             let ascribed_ty = ann_to_infer(ann, ctx);
@@ -2837,6 +2980,23 @@ fn infer_pattern(
                 ctx,
             )?;
         }
+        Pattern::Record {
+            fields,
+            span: pat_span,
+        } => {
+            let field_vars: Vec<(String, InferType)> = fields
+                .iter()
+                .map(|name| (name.clone(), ctx.fresh_var()))
+                .collect();
+            ctx.add_constraint(
+                scrutinee_ty.clone(),
+                InferType::Record(field_vars.clone()),
+                pat_span.clone(),
+            );
+            for (name, ty) in field_vars {
+                ctx.bind_mono(&name, ty, false);
+            }
+        }
         Pattern::Array {
             elems,
             rest,
@@ -2881,6 +3041,7 @@ fn pattern_span(pattern: &Pattern) -> &Span {
         | Pattern::Literal(_, s)
         | Pattern::Tuple(_, s)
         | Pattern::EnumVariant { span: s, .. }
+        | Pattern::Record { span: s, .. }
         | Pattern::Array { span: s, .. } => s,
     }
 }
@@ -2891,6 +3052,14 @@ fn named_type_name(ty: &InferType) -> Option<String> {
         InferType::Reference(inner) | InferType::MutReference(inner) => named_type_name(inner),
         InferType::Concrete(c) => primitive_type_name(c),
         _ => None,
+    }
+}
+
+fn record_projection_base_expr(path: &[String], span: &Span) -> Expr {
+    if path.len() == 1 {
+        Expr::Ident(path[0].clone(), span.clone())
+    } else {
+        Expr::Path(path.to_vec(), span.clone())
     }
 }
 
@@ -3507,6 +3676,20 @@ fn infer_field_assign_type(
             let _ = ctx.lookup_for_write(name, span)?;
         }
     }
+    let peeled = peel_all_references(&obj_ty);
+    if let InferType::Record(fields) = &peeled {
+        return fields
+            .iter()
+            .find(|(name, _)| name == field)
+            .map(|(_, ty)| ty.clone())
+            .ok_or_else(|| {
+                MetelError::type_error(
+                    TypeErrorCode::T0003,
+                    format!("no field `{field}` on {peeled}"),
+                    target_span,
+                )
+            });
+    }
     let struct_name = named_type_name(&obj_ty).ok_or_else(|| {
         MetelError::type_error(
             TypeErrorCode::T0002,
@@ -4089,6 +4272,10 @@ fn lower_projections_in_expr(expr: &Expr, generics: &std::collections::HashSet<S
         }),
         Expr::Tuple(es, s) => Expr::Tuple(es.iter().map(go).collect(), s.clone()),
         Expr::Array(es, s) => Expr::Array(es.iter().map(go).collect(), s.clone()),
+        Expr::RecordLiteral { fields, span } => Expr::RecordLiteral {
+            fields: fields.iter().map(|(name, expr)| (name.clone(), go(expr))).collect(),
+            span: span.clone(),
+        },
         Expr::RepeatArray(e, n, s) => Expr::RepeatArray(Box::new(go(e)), *n, s.clone()),
         Expr::BinOp(l, op, r, s) => {
             Expr::BinOp(Box::new(go(l)), op.clone(), Box::new(go(r)), s.clone())
@@ -4161,6 +4348,11 @@ fn lower_projections_in_expr(expr: &Expr, generics: &std::collections::HashSet<S
             symbol_id: *symbol_id,
             span: span.clone(),
         },
+        Expr::RecordProjection { path, fields, span } => Expr::RecordProjection {
+            path: path.clone(),
+            fields: fields.clone(),
+            span: span.clone(),
+        },
     }
 }
 
@@ -4186,6 +4378,12 @@ fn lower_projections_in_type(
         TypeExpr::Named(name, args) => TypeExpr::Named(name.clone(), args.iter().map(go).collect()),
         TypeExpr::Unit => TypeExpr::Unit,
         TypeExpr::Tuple(items) => TypeExpr::Tuple(items.iter().map(go).collect()),
+        TypeExpr::Record(fields) => TypeExpr::Record(
+            fields
+                .iter()
+                .map(|(name, ty)| (name.clone(), go(ty)))
+                .collect(),
+        ),
         TypeExpr::Array(inner) => TypeExpr::Array(Box::new(go(inner))),
         TypeExpr::SizedArray(inner, n) => TypeExpr::SizedArray(Box::new(go(inner)), *n),
         TypeExpr::Reference(inner) => TypeExpr::Reference(Box::new(go(inner))),
@@ -4204,7 +4402,7 @@ fn lower_projections_in_type(
             span: span.clone(),
         },
         // Already a projection (e.g. re-run on already-lowered input) — nothing to do.
-        TypeExpr::Projection { .. } => te.clone(),
+        TypeExpr::Projection { .. } | TypeExpr::RecordProjection { .. } => te.clone(),
     }
 }
 

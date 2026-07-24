@@ -27,6 +27,7 @@ pub(super) fn value_to_display_string(v: &Value) -> Option<String> {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub(super) fn format_value(val: &Value) -> String {
     match val {
         Value::I64(n) => n.to_string(),
@@ -59,6 +60,16 @@ pub(super) fn format_value(val: &Value) -> String {
                 .collect::<Vec<_>>()
                 .join(", ");
             format!("[{inner}]")
+        }
+        Value::Record { fields } => {
+            let mut pairs: Vec<_> = fields.iter().collect();
+            pairs.sort_by_key(|(k, _)| k.as_str());
+            let inner = pairs
+                .iter()
+                .map(|(k, v)| format!("{k}: {}", format_value(v)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{{ {inner} }}")
         }
         Value::Struct { name, fields, .. } => {
             let mut pairs: Vec<_> = fields.iter().collect();

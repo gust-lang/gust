@@ -1107,6 +1107,16 @@ fn construct_block(
     }
     let tail = match &block.tail {
         Some(e) => {
+            if matches!(expected_tail_ty, Some(Type::Record(_)))
+                && matches!(&**e, Expr::Ident(_, _) | Expr::Assign { .. })
+            {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0001,
+                    "this `{ … }` is being parsed as a block, not a record. To write a record here, wrap it in parentheses: `({ x })`."
+                        .to_string(),
+                    e.span(),
+                ));
+            }
             let constructed = construct_expr(e, expected_tail_ty, ctx)?;
             let constructed = match expected_tail_ty {
                 Some(t) => {
@@ -1373,6 +1383,38 @@ fn construct_expr(
             let ty = Type::Tuple(typed.iter().map(|e| e.ty().clone()).collect());
             Ok(TypedExpr::Tuple(typed, ty, span.clone()))
         }
+        Expr::RecordLiteral { fields, span } => {
+            let expected_record = match expected_ty {
+                Some(Type::Record(fields)) => Some(fields),
+                _ => None,
+            };
+            let mut typed_fields = Vec::with_capacity(fields.len());
+            for (name, expr) in fields {
+                let hint = expected_record.and_then(|expected_fields| {
+                    expected_fields
+                        .iter()
+                        .find(|(expected_name, _)| expected_name == name)
+                        .map(|(_, ty)| ty)
+                });
+                typed_fields.push((name.clone(), construct_expr(expr, hint, ctx)?));
+            }
+            let ty = expected_record.map_or_else(
+                || {
+                    Type::Record(
+                        typed_fields
+                            .iter()
+                            .map(|(name, expr)| (name.clone(), expr.ty().clone()))
+                            .collect(),
+                    )
+                },
+                |expected_fields| Type::Record(expected_fields.clone()),
+            );
+            Ok(TypedExpr::RecordLiteral {
+                fields: typed_fields,
+                ty,
+                span: span.clone(),
+            })
+        }
         Expr::Array(elems, span) => {
             if elems.is_empty() {
                 let ty = expected_ty.cloned().ok_or_else(|| {
@@ -1538,7 +1580,21 @@ fn construct_expr(
             span,
         } => {
             let typed_obj = construct_expr(object, None, ctx)?;
-            let (struct_name, type_args) = match peel_type_references(typed_obj.ty()) {
+            let peeled = peel_type_references(typed_obj.ty());
+            if let Type::Record(fields) = peeled {
+                let field_ty = fields
+                    .iter()
+                    .find(|(name, _)| name == field)
+                    .map(|(_, ty)| ty.clone())
+                    .ok_or_else(|| MetelError::internal(format!("no field `{field}` on {peeled}")))?;
+                return Ok(TypedExpr::FieldAccess {
+                    object: Box::new(typed_obj),
+                    field: field.clone(),
+                    ty: field_ty,
+                    span: span.clone(),
+                });
+            }
+            let (struct_name, type_args) = match peeled {
                 Type::Named(name, args) => (name.clone(), args.clone()),
                 t => {
                     return Err(MetelError::internal(format!(
@@ -1920,6 +1976,83 @@ fn construct_expr(
                 fields: typed_fields,
                 ty,
                 type_id,
+                span: span.clone(),
+            })
+        }
+        Expr::RecordProjection { path, fields, span } => {
+            let base_expr = if path.len() == 1 {
+                Expr::Ident(path[0].clone(), span.clone())
+            } else {
+                Expr::Path(path.clone(), span.clone())
+            };
+            let typed_base = construct_expr(&base_expr, None, ctx)?;
+            let (struct_name, type_args) = match peel_type_references(typed_base.ty()) {
+                Type::Named(name, args) => (name.clone(), args.clone()),
+                other => {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0002,
+                        format!("record projection requires a nominal struct value, got {other}"),
+                        span,
+                    ))
+                }
+            };
+            let mut projected_fields = Vec::with_capacity(fields.len());
+            let mut record_ty = Vec::with_capacity(fields.len());
+            for field in fields {
+                let field_ty = if let Some(type_params) =
+                    ctx.registry.raw_struct_type_params().get(&struct_name)
+                {
+                    let raw_fields =
+                        ctx.registry
+                            .raw_struct_env()
+                            .get(&struct_name)
+                            .ok_or_else(|| {
+                                MetelError::internal(format!(
+                                    "missing raw fields for `{struct_name}`"
+                                ))
+                            })?;
+                    let raw_ty = raw_fields
+                        .iter()
+                        .find(|entry| entry.name == *field)
+                        .map(|entry| entry.ty.clone())
+                        .ok_or_else(|| {
+                            MetelError::type_error(
+                                TypeErrorCode::T0003,
+                                format!("no field `{field}` on `{struct_name}`"),
+                                span,
+                            )
+                        })?;
+                    let mut remap = Substitution::new();
+                    for (&tp, arg) in type_params.iter().zip(type_args.iter()) {
+                        remap.bind(tp, type_to_infer(arg));
+                    }
+                    infer_type_to_type(&remap.apply(&raw_ty), span)?
+                } else {
+                    ctx.get_struct_fields(&struct_name)
+                        .and_then(|entries| entries.iter().find(|(name, _, _)| name == field))
+                        .map(|(_, ty, _)| ty.clone())
+                        .ok_or_else(|| {
+                            MetelError::type_error(
+                                TypeErrorCode::T0003,
+                                format!("no field `{field}` on `{struct_name}`"),
+                                span,
+                            )
+                        })?
+                };
+                record_ty.push((field.clone(), field_ty.clone()));
+                projected_fields.push((
+                    field.clone(),
+                    TypedExpr::FieldAccess {
+                        object: Box::new(typed_base.clone()),
+                        field: field.clone(),
+                        ty: field_ty,
+                        span: span.clone(),
+                    },
+                ));
+            }
+            Ok(TypedExpr::RecordLiteral {
+                fields: projected_fields,
+                ty: Type::Record(record_ty),
                 span: span.clone(),
             })
         }
@@ -2455,7 +2588,7 @@ fn check_match_exhaustiveness(
 
 fn is_catch_all_pattern(pattern: &Pattern) -> bool {
     match pattern {
-        Pattern::Wildcard(_) | Pattern::Binding(_, _) => true,
+        Pattern::Wildcard(_) | Pattern::Binding(_, _) | Pattern::Record { .. } => true,
         // A tuple pattern is irrefutable when every element is also irrefutable.
         Pattern::Tuple(pats, _) => pats.iter().all(is_catch_all_pattern),
         // An array pattern with a rest binding is irrefutable if all explicit elems are.
@@ -2546,6 +2679,19 @@ fn construct_pattern_bindings(
             };
             let _ = span;
             bind_enum_variant_fields(enum_name, variant_name, fields, scrutinee_ty, ctx)?;
+        }
+        Pattern::Record { fields, .. } => {
+            let Type::Record(record_fields) = scrutinee_ty else {
+                return Err(MetelError::internal("record pattern on non-record type"));
+            };
+            for field in fields {
+                let field_ty = record_fields
+                    .iter()
+                    .find(|(name, _)| name == field)
+                    .map(|(_, ty)| ty.clone())
+                    .ok_or_else(|| MetelError::internal(format!("missing record field `{field}`")))?;
+                ctx.bind(field, field_ty);
+            }
         }
         Pattern::Array {
             elems,
@@ -4111,6 +4257,12 @@ fn type_to_type_expr(ty: &Type) -> TypeExpr {
         Type::U64 => named("u64"),
         Type::F32 => named("f32"),
         Type::Tuple(items) => TypeExpr::Tuple(items.iter().map(type_to_type_expr).collect()),
+        Type::Record(fields) => TypeExpr::Record(
+            fields
+                .iter()
+                .map(|(name, ty)| (name.clone(), type_to_type_expr(ty)))
+                .collect(),
+        ),
         Type::Array(item) => TypeExpr::Array(Box::new(type_to_type_expr(item))),
         Type::SizedArray(item, n) => TypeExpr::SizedArray(Box::new(type_to_type_expr(item)), *n),
         Type::Reference(item) => TypeExpr::Reference(Box::new(type_to_type_expr(item))),

@@ -327,7 +327,7 @@ fn elaborate_expr(expr: &mut TypedExpr, map: &DispatchMap) {
             elaborate_block(body, map);
         }
         TypedExpr::Match(m) => elaborate_match(m, map),
-        TypedExpr::StructLiteral { fields, .. } => {
+        TypedExpr::StructLiteral { fields, .. } | TypedExpr::RecordLiteral { fields, .. } => {
             for (_, e) in fields.iter_mut() {
                 elaborate_expr(e, map);
             }

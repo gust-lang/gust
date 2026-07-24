@@ -220,6 +220,12 @@ fn normalize_expr(
             }
             Ok(())
         }
+        Expr::RecordLiteral { fields, .. } => {
+            for (_, expr) in fields {
+                normalize_expr(expr, scope, module_names, symbols)?;
+            }
+            Ok(())
+        }
         Expr::RepeatArray(elem, _, _) => normalize_expr(elem, scope, module_names, symbols),
         Expr::BinOp(lhs, _, rhs, _) => {
             normalize_expr(lhs, scope, module_names, symbols)?;
@@ -288,6 +294,14 @@ fn normalize_expr(
             }
             for (_, v) in fields {
                 normalize_expr(v, scope, module_names, symbols)?;
+            }
+            Ok(())
+        }
+        Expr::RecordProjection { path, .. } => {
+            if let Some((resolved, _symbol_id)) =
+                try_resolve_path(path, scope, module_names, symbols)
+            {
+                *path = vec![resolved];
             }
             Ok(())
         }

@@ -84,6 +84,9 @@ pub enum Value {
     // ── Compound types ────────────────────────────────────────────────────────
     Tuple(Vec<Value>),
     Array(Rc<RefCell<Vec<Value>>>),
+    Record {
+        fields: HashMap<String, Value>,
+    },
     Struct {
         name: String,
         /// Stable identity of the struct's declaration (METEL-185 / ADR-0041). Lets
@@ -816,6 +819,12 @@ fn deep_clone_value(v: Value) -> Value {
             Value::Array(Rc::new(RefCell::new(cloned)))
         }
         Value::Tuple(items) => Value::Tuple(items.into_iter().map(deep_clone_value).collect()),
+        Value::Record { fields } => Value::Record {
+            fields: fields
+                .into_iter()
+                .map(|(k, v)| (k, deep_clone_value(v)))
+                .collect(),
+        },
         Value::Struct {
             name,
             type_id,
@@ -851,7 +860,12 @@ fn read_path(root: &Value, path: &[PathSegment], span: &Span) -> Result<Value, M
     let mut cur = root.clone();
     for seg in path {
         cur = match (seg, cur) {
-            (PathSegment::Field(f), Value::Struct { fields, .. } | Value::Enum { fields, .. }) => {
+            (
+                PathSegment::Field(f),
+                Value::Record { fields }
+                | Value::Struct { fields, .. }
+                | Value::Enum { fields, .. },
+            ) => {
                 fields.get(f.as_str()).cloned().ok_or_else(|| {
                     MetelError::panic(
                         RuntimeErrorCode::R0008,
@@ -900,7 +914,10 @@ fn write_path(
         return Ok(());
     }
     match (&path[0], root) {
-        (PathSegment::Field(f), Value::Struct { fields, .. } | Value::Enum { fields, .. }) => {
+        (
+            PathSegment::Field(f),
+            Value::Record { fields } | Value::Struct { fields, .. } | Value::Enum { fields, .. },
+        ) => {
             let child = fields.get_mut(f.as_str()).ok_or_else(|| {
                 MetelError::panic(
                     RuntimeErrorCode::R0008,
@@ -1028,6 +1045,14 @@ fn runtime_type_key(ty: &TypeExpr) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+        TypeExpr::Record(fields) => format!(
+            "{{ {} }}",
+            fields
+                .iter()
+                .map(|(name, ty)| format!("{name}: {}", runtime_type_key(ty)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         TypeExpr::Array(inner) => format!("{}[]", runtime_type_key(inner)),
         TypeExpr::SizedArray(inner, size) => format!("[{}; {}]", runtime_type_key(inner), size),
         TypeExpr::Reference(inner) => format!("&{}", runtime_type_key(inner)),
@@ -1048,6 +1073,9 @@ fn runtime_type_key(ty: &TypeExpr) -> String {
             base, assoc_name, ..
         } => {
             format!("{}::{assoc_name}", runtime_type_key(base))
+        }
+        TypeExpr::RecordProjection { path, fields, .. } => {
+            format!("{} .{{ {} }}", path.join("::"), fields.join(", "))
         }
     }
 }
@@ -2536,6 +2564,14 @@ pub fn eval_expr(
             Ok(Signal::Value(Value::Array(Rc::new(RefCell::new(vals)))))
         }
 
+        TypedExpr::RecordLiteral { fields, .. } => {
+            let mut values = HashMap::with_capacity(fields.len());
+            for (name, expr) in fields {
+                values.insert(name.clone(), eval_expr(expr, env, runtime)?.into_value());
+            }
+            Ok(Signal::Value(Value::Record { fields: values }))
+        }
+
         TypedExpr::RepeatArray(elem, n, _, _) => {
             let val = eval_expr(elem, env, runtime)?.into_value();
             let vals = (0..*n).map(|_| val.clone()).collect::<Vec<_>>();
@@ -2650,8 +2686,9 @@ pub fn eval_expr(
                     (UnaryOp::Deref, Value::Reference(rc) | Value::MutReference(rc)) => {
                         rc.borrow().clone()
                     }
-                    (UnaryOp::Deref, Value::FieldReference { root, path })
-                    | (UnaryOp::Deref, Value::MutFieldReference { root, path }) => {
+                    (UnaryOp::Deref,
+Value::FieldReference { root, path } | Value::MutFieldReference { root, path
+}) => {
                         read_path(&root.borrow(), &path, span)?
                     }
                     (UnaryOp::Neg, _) => return Err(MetelError::internal(
@@ -2890,9 +2927,12 @@ pub fn eval_expr(
             if let Some(deref) = deref_value(&val, span)? {
                 val = deref;
             }
-            let (Value::Struct { fields, .. } | Value::Enum { fields, .. }) = &val else {
+            let (Value::Record { fields }
+            | Value::Struct { fields, .. }
+            | Value::Enum { fields, .. }) = &val
+            else {
                 return Err(MetelError::internal(
-                    "field access on non-struct/enum (typechecker should have caught this)",
+                    "field access on non-record/struct/enum (typechecker should have caught this)",
                 ));
             };
             fields

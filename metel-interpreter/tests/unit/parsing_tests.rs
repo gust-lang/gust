@@ -1,4 +1,4 @@
-use metel::ast::{Decl, ImportTree, PathRoot, Polarity};
+use metel::ast::{Decl, Expr, ImportTree, PathRoot, Polarity, TypeExpr};
 use metel::parser;
 
 #[test]
@@ -219,6 +219,45 @@ fun main() { }
             alias: None
         }
     );
+}
+
+#[test]
+fn anonymous_record_surface_parses_and_canonicalizes_labels() {
+    let source = r#"
+fun take(p: { y: i64, x: i64 }) -> { y: i64, x: i64 } {
+    ({ y = p.y, x = p.x })
+}
+
+fun main() {
+    let point = { y = 2, x = 1 };
+    let narrow = point.{ y, x };
+    let sum = match point { { y, x } => x + y, };
+}
+"#;
+    let program = parser::parse(source, "anonymous_record_surface.mtl")
+        .unwrap_or_else(|e| panic!("{e}"));
+
+    let Decl::Fun(take) = &program.decls[0] else {
+        panic!("expected first decl to be function");
+    };
+    let param_ty = take.params[0].type_ann.as_ref().expect("param type");
+    let TypeExpr::Record(fields) = param_ty else {
+        panic!("expected record parameter type");
+    };
+    assert_eq!(fields[0].0, "x");
+    assert_eq!(fields[1].0, "y");
+
+    let Decl::Fun(main_fun) = &program.decls[1] else {
+        panic!("expected second decl to be function");
+    };
+    let Decl::Let(point_decl) = &main_fun.body.stmts[0] else {
+        panic!("expected first stmt to be let");
+    };
+    let Expr::RecordLiteral { fields, .. } = &point_decl.value else {
+        panic!("expected record literal");
+    };
+    assert_eq!(fields[0].0, "x");
+    assert_eq!(fields[1].0, "y");
 }
 
 fn parse_error_message(filename: &str) -> String {

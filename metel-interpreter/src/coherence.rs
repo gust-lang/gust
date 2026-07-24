@@ -74,6 +74,7 @@ enum CanonicalType {
     Unresolved(String, Vec<CanonicalType>),
     Unit,
     Tuple(Vec<CanonicalType>),
+    Record(Vec<(String, CanonicalType)>),
     Array(Box<CanonicalType>),
     SizedArray(Box<CanonicalType>, u64),
     Reference(Box<CanonicalType>),
@@ -101,6 +102,12 @@ fn canonicalize(names: &ResolvedNames, current_module: &[String], ty: &TypeExpr)
         }
         TypeExpr::Unit => CanonicalType::Unit,
         TypeExpr::Tuple(items) => CanonicalType::Tuple(items.iter().map(go).collect()),
+        TypeExpr::Record(fields) => CanonicalType::Record(
+            fields
+                .iter()
+                .map(|(name, ty)| (name.clone(), go(ty)))
+                .collect(),
+        ),
         TypeExpr::Array(inner) => CanonicalType::Array(Box::new(go(inner))),
         TypeExpr::SizedArray(inner, n) => CanonicalType::SizedArray(Box::new(go(inner)), *n),
         TypeExpr::Reference(inner) => CanonicalType::Reference(Box::new(go(inner))),
@@ -111,7 +118,9 @@ fn canonicalize(names: &ResolvedNames, current_module: &[String], ty: &TypeExpr)
         ),
         // `T::AssocType` (RFC-0082) isn't resolved to a concrete type at this pass
         // either — both stay opaque until issue #242 does that resolution for real.
-        TypeExpr::ImplAspect { .. } | TypeExpr::Projection { .. } => CanonicalType::Opaque,
+        TypeExpr::ImplAspect { .. }
+        | TypeExpr::Projection { .. }
+        | TypeExpr::RecordProjection { .. } => CanonicalType::Opaque,
     }
 }
 
@@ -160,6 +169,12 @@ fn canonicalize_impl_target(
         }
         TypeExpr::Tuple(items) => CanonicalType::Tuple(
             items.iter().enumerate().map(|(i, arg)| map_arg(i, arg)).collect(),
+        ),
+        TypeExpr::Record(fields) => CanonicalType::Record(
+            fields
+                .iter()
+                .map(|(name, ty)| (name.clone(), canonicalize(names, current_module, ty)))
+                .collect(),
         ),
         TypeExpr::Fun(params, ret) => CanonicalType::Fun(
             params.iter().enumerate().map(|(i, arg)| map_arg(i, arg)).collect(),
@@ -465,6 +480,7 @@ fn contains_type_param(ct: &CanonicalType) -> bool {
             args.iter().any(contains_type_param)
         }
         CanonicalType::Tuple(items) => items.iter().any(contains_type_param),
+        CanonicalType::Record(fields) => fields.iter().any(|(_, ty)| contains_type_param(ty)),
         CanonicalType::Array(inner)
         | CanonicalType::SizedArray(inner, _)
         | CanonicalType::Reference(inner)

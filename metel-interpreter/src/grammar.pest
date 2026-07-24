@@ -204,6 +204,8 @@ primary_expr = {
   | return_expr
   | break_expr
   | continue_expr
+  | record_projection_expr
+  | record_lit
   | struct_literal
   | path_expr
 }
@@ -242,6 +244,8 @@ loop_expr   = { "loop" ~ block }
 closure_expr = { "(" ~ param_list? ~ ")" ~ "->" ~ type_expr? ~ block }
 
 struct_literal = { type_path ~ "{" ~ (field_init ~ ("," ~ field_init)* ~ ","?)? ~ "}" }
+record_lit = { "{" ~ (field_init ~ ("," ~ field_init)* ~ ","?)? ~ "}" }
+record_projection_expr = { type_path ~ ".{" ~ ident ~ ("," ~ ident)* ~ ","? ~ "}" }
 field_init     = { ident ~ ("=" ~ expr)? }
 
 path_expr = { path_root ~ ("::" ~ ident)* }
@@ -253,6 +257,7 @@ pattern = {
     ("_" ~ !(ASCII_ALPHANUMERIC | "_"))   // wildcard — must not match _foo
   | array_pattern                         // must come before tuple_pattern
   | tuple_pattern
+  | record_pattern
   | enum_pattern
   | literal_pattern
   | bind_pattern
@@ -262,6 +267,7 @@ tuple_pattern   = { "(" ~ pattern ~ ("," ~ pattern)* ~ ")" }
 array_pattern   = { "[" ~ array_pat_body ~ "]" }
 array_pat_body  = { (pattern ~ ("," ~ pattern)* ~ ("," ~ rest_pat)? | rest_pat)? }
 rest_pat        = { ".." ~ ident }
+record_pattern  = { "{" ~ ident ~ ("," ~ ident)* ~ ","? ~ "}" }
 enum_pattern    = { ident ~ "::" ~ ident ~ ("{" ~ ident ~ ("," ~ ident)* ~ "}")?   // qualified: Enum::Variant, optional fields
                   | ident ~ "{" ~ ident ~ ("," ~ ident)* ~ "}" }                    // RFC-0107: bare fieldful variant (Some { value })
 literal_pattern = { float_lit_suffixed | float_lit | int_lit_suffixed | int_lit | string_lit | char_lit | bool_lit }
@@ -277,6 +283,8 @@ type_expr = {
   | array_type        // atom "[]" — must precede the unit/tuple/named atoms it wraps
   | unit_type
   | tuple_type
+  | record_projection_type
+  | record_type
   | impl_type
   | never_type
   | named_type
@@ -292,6 +300,9 @@ impl_type = { "impl" ~ type_expr }
 
 unit_type  = { "()" }
 tuple_type = { "(" ~ type_expr ~ ("," ~ type_expr)+ ~ ")" }
+record_type = { "{" ~ (record_type_field ~ ("," ~ record_type_field)* ~ ","?)? ~ "}" }
+record_type_field = { ident ~ ":" ~ type_expr }
+record_projection_type = { type_path ~ ".{" ~ ident ~ ("," ~ ident)* ~ ","? ~ "}" }
 fun_type   = { "(" ~ type_list? ~ ")" ~ "->" ~ type_expr }
 reference_type = { "&" ~ type_expr }
 mut_reference_type = { "&" ~ mut_kw ~ type_expr }
@@ -299,7 +310,7 @@ sized_array_type = { "[" ~ type_expr ~ ";" ~ decimal_int ~ "]" }
 array_type = { array_atom ~ "[]" }
 // The element of a postfix `[]` array: a unit, tuple, or named type. Silent so
 // the matched inner rule flattens into `array_type` and the parser is unchanged.
-array_atom = _{ unit_type | tuple_type | named_type }
+array_atom = _{ unit_type | tuple_type | record_projection_type | record_type | named_type }
 named_type = { type_path ~ ("<" ~ type_args ~ ">")? }
 type_args  = { type_expr ~ ("," ~ type_expr)* }
 type_list  = { type_expr ~ ("," ~ type_expr)* }

@@ -93,6 +93,26 @@ pub(super) fn match_pattern(
             }
         }
 
+        Pattern::Record { fields, .. } => match value {
+            Value::Record {
+                fields: record_fields,
+            } => {
+                if record_fields.len() != fields.len() {
+                    return false;
+                }
+                for field_name in fields {
+                    match record_fields.get(field_name) {
+                        Some(v) => {
+                            out.insert(field_name.clone(), v.clone());
+                        }
+                        None => return false,
+                    }
+                }
+                true
+            }
+            _ => false,
+        },
+
         Pattern::Array { elems, rest, .. } => {
             match value {
                 Value::Array(rc) => {

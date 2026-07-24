@@ -92,6 +92,17 @@ fn type_expr_to_infer_in_context(
                 .map(|t| type_expr_to_infer_in_context(t, generics, self_ty_name, assoc_ctx))
                 .collect(),
         ),
+        TypeExpr::Record(fields) => InferType::Record(
+            fields
+                .iter()
+                .map(|(name, ty)| {
+                    (
+                        name.clone(),
+                        type_expr_to_infer_in_context(ty, generics, self_ty_name, assoc_ctx),
+                    )
+                })
+                .collect(),
+        ),
         TypeExpr::Array(t) => InferType::Array(Box::new(type_expr_to_infer_in_context(
             t,
             generics,
@@ -181,6 +192,24 @@ fn type_expr_to_infer_in_context(
             };
             InferType::Named(format!("{base_name_str}::{assoc_name}"), vec![])
         }
+        TypeExpr::RecordProjection { path, fields, .. } => {
+            let type_name = path.last().cloned().unwrap_or_default();
+            if let Some(raw_fields) = assoc_ctx.and_then(|ctx| ctx.registry.raw_struct_env().get(&type_name)) {
+                InferType::Record(
+                    fields
+                        .iter()
+                        .filter_map(|field_name| {
+                            raw_fields
+                                .iter()
+                                .find(|entry| entry.name == *field_name)
+                                .map(|entry| (field_name.clone(), entry.ty.clone()))
+                        })
+                        .collect(),
+                )
+            } else {
+                InferType::Named(format!("{} .{{ {} }}", path.join("::"), fields.join(", ")), vec![])
+            }
+        }
     }
 }
 
@@ -242,6 +271,12 @@ pub(super) fn infer_type_to_type(ty: &InferType, span: &Span) -> Result<Type, Me
             let t: Result<Vec<_>, _> = ts.iter().map(|t| infer_type_to_type(t, span)).collect();
             Ok(Type::Tuple(t?))
         }
+        InferType::Record(fields) => Ok(Type::Record(
+            fields
+                .iter()
+                .map(|(name, ty)| Ok((name.clone(), infer_type_to_type(ty, span)?)))
+                .collect::<Result<Vec<_>, MetelError>>()?,
+        )),
         InferType::Array(t) => Ok(Type::Array(Box::new(infer_type_to_type(t, span)?))),
         InferType::SizedArray(t, n) => {
             Ok(Type::SizedArray(Box::new(infer_type_to_type(t, span)?), *n))
@@ -272,6 +307,12 @@ pub(super) fn type_to_infer(ty: &Type) -> InferType {
         Type::Array(t) => InferType::Array(Box::new(type_to_infer(t))),
         Type::SizedArray(t, n) => InferType::SizedArray(Box::new(type_to_infer(t)), *n),
         Type::Tuple(ts) => InferType::Tuple(ts.iter().map(type_to_infer).collect()),
+        Type::Record(fields) => InferType::Record(
+            fields
+                .iter()
+                .map(|(name, ty)| (name.clone(), type_to_infer(ty)))
+                .collect(),
+        ),
         Type::Reference(t) => InferType::Reference(Box::new(type_to_infer(t))),
         Type::MutReference(t) => InferType::MutReference(Box::new(type_to_infer(t))),
         Type::Fun(ps, ret) => InferType::Fun(

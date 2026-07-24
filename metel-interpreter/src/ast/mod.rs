@@ -402,6 +402,10 @@ pub enum Expr {
     },
     Tuple(Vec<Expr>, Span),
     Array(Vec<Expr>, Span),
+    RecordLiteral {
+        fields: Vec<(String, Expr)>,
+        span: Span,
+    },
     RepeatArray(Box<Expr>, u64, Span),
     BinOp(Box<Expr>, BinOp, Box<Expr>, Span),
     UnaryOp(UnaryOp, Box<Expr>, Span),
@@ -478,6 +482,11 @@ pub enum Expr {
         symbol_id: Option<SymbolId>,
         span: Span,
     },
+    RecordProjection {
+        path: Vec<String>,
+        fields: Vec<String>,
+        span: Span,
+    },
     PropagateError {
         expr: Box<Expr>,
         span: Span,
@@ -500,6 +509,7 @@ impl Expr {
             | Expr::ResolvedPath { span: s, .. }
             | Expr::Tuple(_, s)
             | Expr::Array(_, s)
+            | Expr::RecordLiteral { span: s, .. }
             | Expr::RepeatArray(_, _, s)
             | Expr::BinOp(_, _, _, s)
             | Expr::UnaryOp(_, _, s)
@@ -515,6 +525,7 @@ impl Expr {
             | Expr::Loop { span: s, .. }
             | Expr::Closure { span: s, .. }
             | Expr::StructLiteral { span: s, .. }
+            | Expr::RecordProjection { span: s, .. }
             | Expr::PropagateError { span: s, .. }
             | Expr::Continue(s) => s,
             Expr::Return(r) => &r.span,
@@ -550,6 +561,10 @@ pub enum Pattern {
     Binding(String, Span),
     EnumVariant {
         path: Vec<String>,
+        fields: Vec<String>,
+        span: Span,
+    },
+    Record {
         fields: Vec<String>,
         span: Span,
     },
@@ -662,6 +677,7 @@ pub enum TypeExpr {
     Named(String, Vec<TypeExpr>),
     Unit,
     Tuple(Vec<TypeExpr>),
+    Record(Vec<(String, TypeExpr)>),
     Array(Box<TypeExpr>),
     SizedArray(Box<TypeExpr>, u64),
     Reference(Box<TypeExpr>),
@@ -688,6 +704,11 @@ pub enum TypeExpr {
         base: Box<TypeExpr>,
         assoc_name: String,
         #[allow(dead_code)] // not yet consumed; will back diagnostics once resolved
+        span: Span,
+    },
+    RecordProjection {
+        path: Vec<String>,
+        fields: Vec<String>,
         span: Span,
     },
 }

@@ -23,6 +23,7 @@ pub enum Type {
     F64,
     // ─────────────────────────────────────────────────────────────────────────
     Tuple(Vec<Type>),
+    Record(Vec<(String, Type)>),
     Array(Box<Type>),
     SizedArray(Box<Type>, u64),
     Reference(Box<Type>),
@@ -89,6 +90,16 @@ impl std::fmt::Display for Type {
                     write!(f, "{t}")?;
                 }
                 write!(f, ")")
+            }
+            Type::Record(fields) => {
+                write!(f, "{{ ")?;
+                for (i, (name, ty)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{name}: {ty}")?;
+                }
+                write!(f, " }}")
             }
             Type::Array(t) => write!(f, "{t}[]"),
             Type::SizedArray(t, n) => write!(f, "[{t}; {n}]"),

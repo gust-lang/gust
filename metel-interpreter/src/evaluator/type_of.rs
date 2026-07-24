@@ -37,6 +37,12 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
         Value::U64(_) => Type::U64,
         Value::F32(_) => Type::F32,
         Value::Tuple(elems) => Type::Tuple(elems.iter().map(go).collect()),
+        Value::Record { fields } => {
+            let mut items: Vec<(String, Type)> =
+                fields.iter().map(|(k, v)| (k.clone(), go(v))).collect();
+            items.sort_by(|(left, _), (right, _)| left.cmp(right));
+            Type::Record(items)
+        }
         Value::Array(rc) => {
             let borrowed = rc.borrow();
             // Empty: no element to sample. `Never` (not `Unit`) -- it already
@@ -91,6 +97,10 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
                     (super::PathSegment::Field(f), Type::Named(name, _)) => {
                         Type::Named(format!("{name}.{f}"), vec![])
                     }
+                    (super::PathSegment::Field(f), Type::Record(fields)) => fields
+                        .into_iter()
+                        .find(|(name, _)| name == f)
+                        .map_or(Type::Unit, |(_, ty)| ty),
                     (super::PathSegment::TupleIndex(_) | super::PathSegment::ArrayIndex(_), t) => t,
                     _ => Type::Unit,
                 };

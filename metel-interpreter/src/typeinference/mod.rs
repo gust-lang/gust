@@ -95,6 +95,8 @@ pub enum InferType {
     Fun(Vec<InferType>, Box<InferType>),
     /// A tuple type.
     Tuple(Vec<InferType>),
+    /// A closed anonymous record type with lexicographically sorted labels.
+    Record(Vec<(String, InferType)>),
     /// A homogeneous array type.
     Array(Box<InferType>),
     /// A fixed-size array type `[T; N]`.
@@ -164,6 +166,16 @@ impl std::fmt::Display for InferType {
                     write!(f, "{t}")?;
                 }
                 write!(f, ")")
+            }
+            InferType::Record(fields) => {
+                write!(f, "{{ ")?;
+                for (i, (name, ty)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{name}: {ty}")?;
+                }
+                write!(f, " }}")
             }
             InferType::Array(t) => write!(f, "{t}[]"),
             InferType::SizedArray(t, n) => write!(f, "[{t}; {n}]"),
@@ -237,6 +249,12 @@ impl Substitution {
                 Box::new(self.apply(ret)),
             ),
             InferType::Tuple(ts) => InferType::Tuple(ts.iter().map(|t| self.apply(t)).collect()),
+            InferType::Record(fields) => InferType::Record(
+                fields
+                    .iter()
+                    .map(|(name, ty)| (name.clone(), self.apply(ty)))
+                    .collect(),
+            ),
             InferType::Array(t) => InferType::Array(Box::new(self.apply(t))),
             InferType::SizedArray(t, n) => InferType::SizedArray(Box::new(self.apply(t)), *n),
             InferType::Reference(t) => InferType::Reference(Box::new(self.apply(t))),
@@ -295,6 +313,7 @@ fn occurs_in(var: TypeVar, ty: &InferType) -> bool {
             params.iter().any(|p| occurs_in(var, p)) || occurs_in(var, ret)
         }
         InferType::Tuple(ts) => ts.iter().any(|t| occurs_in(var, t)),
+        InferType::Record(fields) => fields.iter().any(|(_, ty)| occurs_in(var, ty)),
         InferType::Array(t)
         | InferType::SizedArray(t, _)
         | InferType::Reference(t)
@@ -358,6 +377,20 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             let mut subst = Substitution::new();
             for (t1, t2) in ts1.iter().zip(ts2.iter()) {
                 let s = unify(&subst.apply(t1), &subst.apply(t2))?;
+                subst.compose_in_place(&s);
+            }
+            Ok(subst)
+        }
+        (InferType::Record(fields1), InferType::Record(fields2)) => {
+            if fields1.len() != fields2.len() {
+                return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
+            }
+            let mut subst = Substitution::new();
+            for ((name1, ty1), (name2, ty2)) in fields1.iter().zip(fields2.iter()) {
+                if name1 != name2 {
+                    return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
+                }
+                let s = unify(&subst.apply(ty1), &subst.apply(ty2))?;
                 subst.compose_in_place(&s);
             }
             Ok(subst)
@@ -712,6 +745,11 @@ fn collect_free_vars(ty: &InferType, vars: &mut HashSet<TypeVar>) {
         InferType::Tuple(ts) | InferType::Named(_, ts) => {
             for t in ts {
                 collect_free_vars(t, vars);
+            }
+        }
+        InferType::Record(fields) => {
+            for (_, ty) in fields {
+                collect_free_vars(ty, vars);
             }
         }
         InferType::Array(t)
@@ -1605,6 +1643,14 @@ impl TypeDefinitionRegistry {
             }
         }
         match ty {
+            Type::Record(fields) => {
+                if aspect_name == "Send" || aspect_name == "Sync" {
+                    return fields
+                        .iter()
+                        .all(|(_, field_ty)| self.type_satisfies_aspect(current_module, field_ty, aspect_name));
+                }
+                false
+            }
             Type::Array(elem) => {
                 let inner_args = std::slice::from_ref(elem.as_ref());
                 if let Some(entries) = self.array_neg_impl_bounds.get(aspect_name) {

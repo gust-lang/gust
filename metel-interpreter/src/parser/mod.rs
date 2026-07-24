@@ -995,6 +995,8 @@ fn parse_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr,
         Rule::break_expr => Ok(Expr::Break(parse_break_expr(pair, filename)?)),
         Rule::continue_expr => Ok(Expr::Continue(Span::of(&pair, filename))),
         Rule::closure_expr => parse_closure_expr(pair, filename),
+        Rule::record_lit => parse_record_literal(pair, filename),
+        Rule::record_projection_expr => parse_record_projection_expr(pair, filename),
         Rule::struct_literal => parse_struct_literal(pair, filename),
         r => Err(MetelError::internal(format!(
             "parse_expr: unexpected rule {r:?}"
@@ -1415,6 +1417,7 @@ fn shift_expr_span(expr: &mut Expr, base_start: usize, base_line: u32, base_col:
         | Expr::BinOp(_, _, _, span)
         | Expr::UnaryOp(_, _, span)
         | Expr::PropagateError { span, .. }
+        | Expr::RecordProjection { span, .. }
         | Expr::ResolvedPath { span, .. } => {
             shift_span(span, base_start, base_line, base_col);
         }
@@ -1499,7 +1502,7 @@ fn shift_expr_span(expr: &mut Expr, base_start: usize, base_line: u32, base_col:
             shift_block_span(body, base_start, base_line, base_col);
             shift_span(span, base_start, base_line, base_col);
         }
-        Expr::StructLiteral { fields, span, .. } => {
+        Expr::StructLiteral { fields, span, .. } | Expr::RecordLiteral { fields, span } => {
             for (_, expr) in fields {
                 shift_expr_span(expr, base_start, base_line, base_col);
             }
@@ -1674,7 +1677,8 @@ fn shift_pattern_span(pattern: &mut Pattern, base_start: usize, base_line: u32, 
         Pattern::Wildcard(span)
         | Pattern::Binding(_, span)
         | Pattern::Literal(_, span)
-        | Pattern::EnumVariant { span, .. } => shift_span(span, base_start, base_line, base_col),
+        | Pattern::EnumVariant { span, .. }
+        | Pattern::Record { span, .. } => shift_span(span, base_start, base_line, base_col),
         Pattern::Tuple(items, span) => {
             for item in items {
                 shift_pattern_span(item, base_start, base_line, base_col);
@@ -1900,6 +1904,46 @@ fn parse_struct_literal(
         symbol_id: None,
         span,
     })
+}
+
+fn parse_record_literal(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<Expr, MetelError> {
+    let span = Span::of(&pair, filename);
+    let mut fields = vec![];
+    for p in pair.into_inner() {
+        if p.as_rule() == Rule::field_init {
+            let field_span = Span::of(&p, filename);
+            let mut it = p.into_inner();
+            let name_pair = it
+                .next()
+                .ok_or_else(|| MetelError::internal("record_lit: expected field name"))?;
+            let name = name_pair.as_str().to_string();
+            let value = match it.next() {
+                Some(expr_pair) => parse_expr(expr_pair, filename)?,
+                None => Expr::Ident(name.clone(), field_span),
+            };
+            fields.push((name, value));
+        }
+    }
+    sort_record_fields(&mut fields, filename, &span)?;
+    Ok(Expr::RecordLiteral { fields, span })
+}
+
+fn parse_record_projection_expr(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<Expr, MetelError> {
+    let span = Span::of(&pair, filename);
+    let mut inner = pair.into_inner();
+    let path_pair = inner
+        .next()
+        .ok_or_else(|| MetelError::internal("record_projection_expr: expected path"))?;
+    let path = collect_path_components(path_pair)?;
+    let mut fields: Vec<String> = inner.map(|p| p.as_str().to_string()).collect();
+    sort_record_labels(&mut fields, filename, &span, "record projection")?;
+    Ok(Expr::RecordProjection { path, fields, span })
 }
 
 fn collect_path_components(pair: pest::iterators::Pair<Rule>) -> Result<Vec<String>, MetelError> {
@@ -2343,6 +2387,12 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
                 .collect::<Result<_, _>>()?;
             Ok(Pattern::Tuple(pats, span))
         }
+        Rule::record_pattern => {
+            let span = Span::of(&pair, filename);
+            let mut fields: Vec<String> = pair.into_inner().map(|p| p.as_str().to_string()).collect();
+            sort_record_labels(&mut fields, filename, &span, "record pattern")?;
+            Ok(Pattern::Record { fields, span })
+        }
         Rule::enum_pattern => {
             let span = Span::of(&pair, filename);
             // Two grammar alternatives share this rule: qualified `Enum::Variant`
@@ -2542,6 +2592,30 @@ fn parse_type_expr(
                 .collect::<Result<_, _>>()?;
             Ok(TypeExpr::Tuple(elems))
         }
+        Rule::record_type => {
+            let span = Span::of(&pair, filename);
+            let mut fields = vec![];
+            for field_pair in pair.into_inner() {
+                if field_pair.as_rule() != Rule::record_type_field {
+                    continue;
+                }
+                let mut inner = field_pair.into_inner();
+                let name = inner
+                    .next()
+                    .ok_or_else(|| MetelError::internal("record_type: expected field name"))?
+                    .as_str()
+                    .to_string();
+                let ty = parse_type_expr(
+                    inner
+                        .next()
+                        .ok_or_else(|| MetelError::internal("record_type: expected field type"))?,
+                    filename,
+                )?;
+                fields.push((name, ty));
+            }
+            sort_type_record_fields(&mut fields, filename, &span)?;
+            Ok(TypeExpr::Record(fields))
+        }
         Rule::reference_type => {
             let elem = parse_type_expr(
                 pair.into_inner().next().ok_or_else(|| {
@@ -2626,6 +2700,17 @@ fn parse_type_expr(
             }
             Ok(TypeExpr::Named(name, args))
         }
+        Rule::record_projection_type => {
+            let span = Span::of(&pair, filename);
+            let mut inner = pair.into_inner();
+            let path_pair = inner
+                .next()
+                .ok_or_else(|| MetelError::internal("record_projection_type: expected path"))?;
+            let path = collect_path_components(path_pair)?;
+            let mut fields: Vec<String> = inner.map(|p| p.as_str().to_string()).collect();
+            sort_record_labels(&mut fields, filename, &span, "record projection")?;
+            Ok(TypeExpr::RecordProjection { path, fields, span })
+        }
         Rule::impl_type => {
             let span = Span::of(&pair, filename);
             let source_spell = pair.as_str().to_string();
@@ -2644,6 +2729,72 @@ fn parse_type_expr(
             "type_expr: unexpected rule {r:?}"
         ))),
     }
+}
+
+fn sort_record_fields(
+    fields: &mut [(String, Expr)],
+    filename: &str,
+    span: &Span,
+) -> Result<(), MetelError> {
+    fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+    for pair in fields.windows(2) {
+        if pair[0].0 == pair[1].0 {
+            return Err(record_duplicate_label_error(
+                &pair[0].0,
+                filename,
+                span,
+                "record literal",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn sort_type_record_fields(
+    fields: &mut [(String, TypeExpr)],
+    filename: &str,
+    span: &Span,
+) -> Result<(), MetelError> {
+    fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+    for pair in fields.windows(2) {
+        if pair[0].0 == pair[1].0 {
+            return Err(record_duplicate_label_error(
+                &pair[0].0,
+                filename,
+                span,
+                "record type",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn sort_record_labels(
+    fields: &mut [String],
+    filename: &str,
+    span: &Span,
+    context: &str,
+) -> Result<(), MetelError> {
+    fields.sort();
+    for pair in fields.windows(2) {
+        if pair[0] == pair[1] {
+            return Err(record_duplicate_label_error(&pair[0], filename, span, context));
+        }
+    }
+    Ok(())
+}
+
+fn record_duplicate_label_error(
+    label: &str,
+    _filename: &str,
+    span: &Span,
+    context: &str,
+) -> MetelError {
+    MetelError::parse(
+        ParseErrorCode::P0001,
+        format!("duplicate label `{label}` in {context}"),
+        span,
+    )
 }
 
 fn parse_for_in_stmt(

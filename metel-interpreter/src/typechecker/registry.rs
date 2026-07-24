@@ -885,6 +885,17 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
                 .map(|item| substitute_structural_self(item, replacement))
                 .collect(),
         ),
+        TypeExpr::Record(fields) => TypeExpr::Record(
+            fields
+                .iter()
+                .map(|(name, ty)| {
+                    (
+                        name.clone(),
+                        substitute_structural_self(ty, replacement),
+                    )
+                })
+                .collect(),
+        ),
         TypeExpr::Array(inner) => TypeExpr::Array(Box::new(substitute_structural_self(
             inner.as_ref(),
             replacement,
@@ -925,6 +936,11 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
         } => TypeExpr::Projection {
             base: Box::new(substitute_structural_self(base.as_ref(), replacement)),
             assoc_name: assoc_name.clone(),
+            span: span.clone(),
+        },
+        TypeExpr::RecordProjection { path, fields, span } => TypeExpr::RecordProjection {
+            path: path.clone(),
+            fields: fields.clone(),
             span: span.clone(),
         },
     }
