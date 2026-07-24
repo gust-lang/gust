@@ -253,8 +253,9 @@ fn elaborate_place(place: &mut TypedPlace, map: &DispatchMap) {
     match place {
         TypedPlace::Ident(..) => {}
         TypedPlace::Deref { object, .. } => elaborate_expr(object, map),
-        TypedPlace::Field { object, .. } => elaborate_place(object, map),
-        TypedPlace::Tuple { object, .. } => elaborate_place(object, map),
+        TypedPlace::Field { object, .. } | TypedPlace::Tuple { object, .. } => {
+            elaborate_place(object, map);
+        }
         TypedPlace::Index { object, index, .. } => {
             elaborate_place(object, map);
             elaborate_expr(index, map);

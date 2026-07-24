@@ -1532,11 +1532,9 @@ fn shift_assign_target_span(
 ) {
     match target {
         AssignTarget::Ident(_, span) => shift_span(span, base_start, base_line, base_col),
-        AssignTarget::FieldAccess { object, span, .. } => {
-            shift_expr_span(object, base_start, base_line, base_col);
-            shift_span(span, base_start, base_line, base_col);
-        }
-        AssignTarget::TupleAccess { object, span, .. } => {
+        AssignTarget::FieldAccess { object, span, .. }
+        | AssignTarget::TupleAccess { object, span, .. }
+        | AssignTarget::Deref { object, span } => {
             shift_expr_span(object, base_start, base_line, base_col);
             shift_span(span, base_start, base_line, base_col);
         }
@@ -1547,10 +1545,6 @@ fn shift_assign_target_span(
         } => {
             shift_expr_span(object, base_start, base_line, base_col);
             shift_expr_span(index, base_start, base_line, base_col);
-            shift_span(span, base_start, base_line, base_col);
-        }
-        AssignTarget::Deref { object, span } => {
-            shift_expr_span(object, base_start, base_line, base_col);
             shift_span(span, base_start, base_line, base_col);
         }
     }

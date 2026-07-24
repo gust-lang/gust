@@ -2896,8 +2896,9 @@ fn infer_match(
     // `infer_pattern`'s two-segment path assertion, and a bare no-field variant
     // (`Red`) is typed as the variant rather than a spurious binding.
     let scrutinee_enum_name = match &scrutinee_ty {
-        InferType::Named(name, _) => Some(name.clone()),
-        InferType::Concrete(Type::Named(name, _)) => Some(name.clone()),
+        InferType::Named(name, _) | InferType::Concrete(Type::Named(name, _)) => {
+            Some(name.clone())
+        }
         _ => None,
     };
     let scrutinee_variants: Option<(String, Vec<(String, bool)>)> = scrutinee_enum_name

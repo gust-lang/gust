@@ -85,6 +85,8 @@ pub(super) fn resolve_place_assign_root(
 /// Evaluate a `TypedPlace` to the `Value` it currently holds.
 /// For arrays the returned `Value::Array(rc)` shares the same `Rc` as the binding,
 /// so callers can mutate through it without a round-trip through the environment.
+// Keep this as one dispatch table so the assign-place cases stay visibly aligned.
+#[allow(clippy::too_many_lines)]
 pub(super) fn eval_typed_place_value(
     place: &TypedPlace,
     env: &mut Environment,

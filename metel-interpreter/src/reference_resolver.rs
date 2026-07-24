@@ -393,10 +393,9 @@ impl Walker<'_, '_> {
             // A bare assignment target names a place (local or mutable binding); it is
             // not a value reference to a top-level declaration, so do not record it.
             AssignTarget::Ident(_, _) => {}
-            AssignTarget::FieldAccess { object, .. } => {
-                self.resolve_expr(object);
-            }
-            AssignTarget::TupleAccess { object, .. } => {
+            AssignTarget::FieldAccess { object, .. }
+            | AssignTarget::TupleAccess { object, .. }
+            | AssignTarget::Deref { object, .. } => {
                 self.resolve_expr(object);
             }
             AssignTarget::Index { object, index, .. } => {
@@ -404,9 +403,6 @@ impl Walker<'_, '_> {
                 self.resolve_expr(index);
             }
             // RFC-0110: `*p = v` — the operand is an ordinary value expression.
-            AssignTarget::Deref { object, .. } => {
-                self.resolve_expr(object);
-            }
         }
     }
 

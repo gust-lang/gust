@@ -2276,6 +2276,8 @@ fn eval_struct_literal_expr(
     }
 }
 
+// Keep this as one dispatch table so receiver-mode handling stays in one place.
+#[allow(clippy::too_many_lines)]
 #[inline(never)]
 fn eval_method_call_expr(
     receiver: &TypedExpr,

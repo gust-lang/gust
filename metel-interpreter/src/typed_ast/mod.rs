@@ -545,8 +545,8 @@ pub fn is_lvalue_path(expr: &TypedExpr) -> bool {
         TypedExpr::Ident(..) => true,
         TypedExpr::FieldAccess { object, .. }
         | TypedExpr::TupleAccess { object, .. }
-        | TypedExpr::Index { object, .. } => is_lvalue_path(object),
-        TypedExpr::UnaryOp(crate::ast::UnaryOp::Deref, object, _, _) => is_lvalue_path(object),
+        | TypedExpr::Index { object, .. }
+        | TypedExpr::UnaryOp(crate::ast::UnaryOp::Deref, object, _, _) => is_lvalue_path(object),
         _ => false,
     }
 }
