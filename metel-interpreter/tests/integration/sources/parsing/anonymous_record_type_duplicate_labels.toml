@@ -1,0 +1,4 @@
+[expect]
+status = "parse_error"
+code = "P0001"
+contains = "duplicate label `x` in record type"

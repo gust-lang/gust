@@ -1107,16 +1107,6 @@ fn construct_block(
     }
     let tail = match &block.tail {
         Some(e) => {
-            if matches!(expected_tail_ty, Some(Type::Record(_)))
-                && matches!(&**e, Expr::Ident(_, _) | Expr::Assign { .. })
-            {
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0001,
-                    "this `{ … }` is being parsed as a block, not a record. To write a record here, wrap it in parentheses: `({ x })`."
-                        .to_string(),
-                    e.span(),
-                ));
-            }
             let constructed = construct_expr(e, expected_tail_ty, ctx)?;
             let constructed = match expected_tail_ty {
                 Some(t) => {

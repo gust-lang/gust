@@ -1,0 +1,4 @@
+// Negative: anonymous records cannot carry custom teardown logic.
+extend { x: i64 }: Drop {
+    fun drop(&self) {}
+}
