@@ -1924,6 +1924,36 @@ impl TypeDefinitionRegistry {
                 }
                 false
             }
+            Type::SizedArray(elem, _) => {
+                if aspect_name == "Copy" {
+                    // #299: fixed-size-array `Copy` stays hardcoded here until const generics
+                    // exist and the stdlib can express `[T; N]: Copy` directly.
+                    return self.type_satisfies_aspect(current_module, elem, "Copy");
+                }
+                false
+            }
+            Type::Tuple(items) => {
+                if aspect_name == "Copy" {
+                    // #299: tuple `Copy` stays hardcoded here until tuple impl targets stop
+                    // being checker-only and can move into the stdlib.
+                    return items
+                        .iter()
+                        .all(|item| self.type_satisfies_aspect(current_module, item, "Copy"));
+                }
+                false
+            }
+            Type::Reference(_) => {
+                if aspect_name == "Copy" {
+                    return true;
+                }
+                false
+            }
+            Type::MutReference(_) => {
+                if aspect_name == "Copy" {
+                    return false;
+                }
+                false
+            }
             Type::Array(elem) => {
                 let inner_args = std::slice::from_ref(elem.as_ref());
                 if let Some(entries) = self.array_neg_impl_bounds.get(aspect_name) {

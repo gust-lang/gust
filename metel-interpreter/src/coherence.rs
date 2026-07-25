@@ -654,6 +654,18 @@ pub fn check(graph: &NormalizedModuleGraph, names: &ResolvedNames) -> Result<(),
     // typechecker will report on its own (T0003), and layering a coherence
     // error on top of it would only obscure the real problem.
     for imp in &impls {
+        if imp.aspect_name == "Drop"
+            && matches!(
+                imp.canonical_key.1,
+                CanonicalType::Record(_)
+            )
+        {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0001,
+                "anonymous records cannot implement `Drop`; teardown logic requires a nominal type",
+                imp.span,
+            ));
+        }
         let Some(aspect_id) = imp.aspect_id else {
             continue;
         };

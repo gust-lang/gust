@@ -1,0 +1,9 @@
+fun need_copy<T: Copy>(x: T) -> T {
+    x
+}
+
+fun main() {
+    var n = 1;
+    let shared: &var i64 = &var n;
+    let bad = need_copy(shared);
+}

@@ -1,0 +1,4 @@
+[expect]
+status = "typecheck_error"
+code = "T0012"
+contains = "fixed-size arrays implement `Copy` only when their element type `String` does"

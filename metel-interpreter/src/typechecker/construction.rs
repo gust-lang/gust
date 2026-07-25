@@ -3914,6 +3914,7 @@ fn check_negative_row_bound(
 /// Check one concrete type against a set of required bounds. Aspect bounds are
 /// checked against the impl registry; row bounds are handled structurally.
 #[allow(clippy::too_many_arguments)] // threads registry + module + generic map through bound checking
+#[allow(clippy::too_many_lines)] // structural/reference Copy diagnostics extend the central bound checker
 fn check_type_satisfies_bounds(
     concrete: &Type,
     bounds: &[GenericBound],
@@ -3964,21 +3965,39 @@ fn check_type_satisfies_bounds(
             }
             return Ok(());
         }
-        Type::Tuple(_) => {
+        Type::SizedArray(elem, _) => {
             for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
                 if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
-                    return Err(MetelError::type_error(
-                        TypeErrorCode::T0012,
+                    let message = if aspect == "Copy" {
                         format!(
-                            "`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)\n       hint: tuple impls are not yet provided; use a named struct instead"
-                        ),
-                        span,
-                    ));
+                            "`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)\n       hint: fixed-size arrays implement `{aspect}` only when their element type `{elem}` does"
+                        )
+                    } else {
+                        format!("`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)")
+                    };
+                    return Err(MetelError::type_error(TypeErrorCode::T0012, message, span));
                 }
             }
             return Ok(());
         }
-        Type::Fun(_, _) => {
+        Type::Tuple(_) => {
+            for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
+                if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
+                    let message = if aspect == "Copy" {
+                        format!(
+                            "`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)\n       hint: tuples implement `{aspect}` only when every element does"
+                        )
+                    } else {
+                        format!(
+                            "`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)\n       hint: tuple impls are not yet provided; use a named struct instead"
+                        )
+                    };
+                    return Err(MetelError::type_error(TypeErrorCode::T0012, message, span));
+                }
+            }
+            return Ok(());
+        }
+        Type::Reference(_) | Type::MutReference(_) | Type::Fun(_, _) => {
             for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
                 if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
                     return Err(MetelError::type_error(

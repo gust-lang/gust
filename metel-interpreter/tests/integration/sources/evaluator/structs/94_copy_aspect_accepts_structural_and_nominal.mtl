@@ -1,0 +1,54 @@
+struct Pair {
+    left: i64,
+    right: boolean,
+}
+
+extend Pair: Copy;
+
+enum MaybeInt {
+    Some { value: i64 },
+    None,
+}
+
+extend MaybeInt: Copy;
+
+fun id_copy<T: Copy>(x: T) -> T {
+    x
+}
+
+fun main() {
+    let si: i8 = id_copy(7i8);
+    let ui: u16 = id_copy(9u16);
+    let ff: f32 = id_copy(1.5f32);
+    let bb: boolean = id_copy(true);
+    let cc: Char = id_copy('Q');
+    assert(si == 7i8);
+    assert(ui == 9u16);
+    assert(ff == 1.5f32);
+    assert(bb);
+    assert(cc == 'Q');
+
+    let tuple = id_copy((1, true));
+    assert(tuple.0 == 1);
+    assert(tuple.1);
+
+    let seed: [i64; 3] = [1, 2, 3];
+    let fixed = id_copy(seed);
+    assert(fixed[0] == 1);
+    assert(fixed[2] == 3);
+
+    let pair = id_copy(Pair { left = 4, right = false });
+    assert(pair.left == 4);
+    assert(!pair.right);
+
+    let maybe = id_copy(MaybeInt::Some { value = 8 });
+    match maybe {
+        MaybeInt::Some { value } => assert(value == 8),
+        MaybeInt::None => assert(false),
+    }
+
+    let n = 12;
+    let shared: &i64 = &n;
+    let shared2 = id_copy(shared);
+    assert((shared2: i64) == 12);
+}

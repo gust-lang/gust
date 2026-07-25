@@ -1,0 +1,9 @@
+struct Handle {
+    fd: u64,
+}
+
+extend Handle: Copy;
+
+extend Handle: Drop {
+    fun drop(self) {}
+}

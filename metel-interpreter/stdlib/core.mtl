@@ -191,6 +191,13 @@ public aspect Clone {
     fun clone(&self) -> Self;
 }
 
+public aspect Copy {
+}
+
+public aspect Drop {
+    fun drop(self);
+}
+
 public aspect Eq {
     fun eq(&self, other: &Self) -> boolean;
 }
@@ -202,6 +209,19 @@ public aspect From<S> {
 public aspect Iterable<T> {
     fun next(&var self) -> Perhaps<T>;
 }
+
+extend i8: Copy;
+extend i16: Copy;
+extend i32: Copy;
+extend i64: Copy;
+extend u8: Copy;
+extend u16: Copy;
+extend u32: Copy;
+extend u64: Copy;
+extend f32: Copy;
+extend f64: Copy;
+extend boolean: Copy;
+extend Char: Copy;
 
 fun __eq_array_item<T: Eq>(left: T, right: T) -> boolean {
     left.eq(&right)

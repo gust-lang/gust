@@ -142,6 +142,204 @@ fn native_fun_ty(fun: &FunDecl, ctx: &mut InferContext) -> Result<NativeFunTyRes
     })
 }
 
+fn impl_copy_bound_names(ib: &ImplBlock) -> std::collections::HashSet<String> {
+    let mut names = std::collections::HashSet::new();
+    for param in &ib.generics {
+        if param
+            .bounds
+            .iter()
+            .any(|bound| bound.polarity == Polarity::Positive && bound.aspect_name() == Some("Copy"))
+        {
+            names.insert(param.name.clone());
+        }
+    }
+    if let Some(where_clause) = &ib.where_clause {
+        for constraint in &where_clause.constraints {
+            if constraint
+                .bounds
+                .iter()
+                .any(|bound| bound.polarity == Polarity::Positive && bound.aspect_name() == Some("Copy"))
+            {
+                names.insert(constraint.name.clone());
+            }
+        }
+    }
+    names
+}
+
+fn infer_type_to_concrete_if_closed(ty: &InferType) -> Option<Type> {
+    match ty {
+        InferType::Concrete(concrete) => Some(concrete.clone()),
+        InferType::Tuple(items) => items
+            .iter()
+            .map(infer_type_to_concrete_if_closed)
+            .collect::<Option<Vec<_>>>()
+            .map(Type::Tuple),
+        InferType::Array(item) => infer_type_to_concrete_if_closed(item)
+            .map(|item| Type::Array(Box::new(item))),
+        InferType::SizedArray(item, size) => infer_type_to_concrete_if_closed(item)
+            .map(|item| Type::SizedArray(Box::new(item), *size)),
+        InferType::Reference(item) => infer_type_to_concrete_if_closed(item)
+            .map(|item| Type::Reference(Box::new(item))),
+        InferType::MutReference(item) => infer_type_to_concrete_if_closed(item)
+            .map(|item| Type::MutReference(Box::new(item))),
+        InferType::Named(name, args) => args
+            .iter()
+            .map(infer_type_to_concrete_if_closed)
+            .collect::<Option<Vec<_>>>()
+            .map(|args| Type::Named(name.clone(), args)),
+        InferType::Never | InferType::Var(_) | InferType::Fun(_, _) | InferType::Record(_) => None,
+    }
+}
+
+fn type_expr_guarantees_copy(
+    ty: &TypeExpr,
+    copy_bound_names: &std::collections::HashSet<String>,
+    registry: &crate::typeinference::TypeDefinitionRegistry,
+    current_module: &[String],
+) -> bool {
+    match ty {
+        TypeExpr::Named(name, args) => {
+            if args.is_empty() && copy_bound_names.contains(name) {
+                return true;
+            }
+            if let Some(prim) = primitive_type_from_name(name) {
+                return args.is_empty() && registry.type_satisfies_aspect(current_module, &prim, "Copy");
+            }
+            let infer = type_expr_to_infer(ty);
+            infer_type_to_concrete_if_closed(&infer)
+                .is_some_and(|concrete| registry.type_satisfies_aspect(current_module, &concrete, "Copy"))
+        }
+        TypeExpr::Tuple(items) => items
+            .iter()
+            .all(|item| type_expr_guarantees_copy(item, copy_bound_names, registry, current_module)),
+        TypeExpr::SizedArray(item, _) => {
+            type_expr_guarantees_copy(item, copy_bound_names, registry, current_module)
+        }
+        TypeExpr::Reference(_) => true,
+        TypeExpr::MutReference(_)
+        | TypeExpr::Array(_)
+        | TypeExpr::Unit
+        | TypeExpr::Record(_)
+        | TypeExpr::Fun(_, _)
+        | TypeExpr::ImplAspect { .. }
+        | TypeExpr::Projection { .. }
+        | TypeExpr::RecordProjection { .. } => false,
+    }
+}
+
+fn infer_type_guarantees_copy(
+    ty: &InferType,
+    type_param_args: &HashMap<TypeVar, &TypeExpr>,
+    copy_bound_names: &std::collections::HashSet<String>,
+    registry: &crate::typeinference::TypeDefinitionRegistry,
+    current_module: &[String],
+) -> bool {
+    match ty {
+        InferType::Concrete(concrete) => registry.type_satisfies_aspect(current_module, concrete, "Copy"),
+        InferType::Var(var) => type_param_args.get(var).is_some_and(|arg| {
+            type_expr_guarantees_copy(arg, copy_bound_names, registry, current_module)
+        }),
+        InferType::Tuple(items) => items.iter().all(|item| {
+            infer_type_guarantees_copy(item, type_param_args, copy_bound_names, registry, current_module)
+        }),
+        InferType::SizedArray(item, _) => {
+            infer_type_guarantees_copy(item, type_param_args, copy_bound_names, registry, current_module)
+        }
+        InferType::Reference(_) => true,
+        InferType::MutReference(_)
+        | InferType::Array(_)
+        | InferType::Never
+        | InferType::Fun(_, _)
+        | InferType::Record(_) => false,
+        InferType::Named(_, _) => infer_type_to_concrete_if_closed(ty).is_some_and(|concrete| {
+            registry.type_satisfies_aspect(current_module, &concrete, "Copy")
+        }),
+    }
+}
+
+fn check_copy_impl_eligibility(
+    ib: &ImplBlock,
+    target_name: &str,
+    ctx: &InferContext,
+) -> Result<(), MetelError> {
+    let copy_bound_names = impl_copy_bound_names(ib);
+    let mut type_param_args: HashMap<TypeVar, &TypeExpr> = HashMap::new();
+    if let TypeExpr::Named(_, target_args) = &ib.target_type {
+        if let Some(struct_params) = ctx.registry().raw_struct_type_params().get(target_name) {
+            for (param, arg) in struct_params.iter().zip(target_args.iter()) {
+                type_param_args.insert(*param, arg);
+            }
+        } else if let Some(enum_info) = ctx.registry().enum_info(target_name) {
+            for (param, arg) in enum_info.type_params.iter().zip(target_args.iter()) {
+                type_param_args.insert(*param, arg);
+            }
+        }
+    }
+
+    if let Some(fields) = ctx.get_struct_fields(target_name) {
+        for field in fields {
+            if !infer_type_guarantees_copy(
+                &field.ty,
+                &type_param_args,
+                &copy_bound_names,
+                ctx.registry(),
+                ctx.current_module_path(),
+            ) {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0001,
+                    format!(
+                        "cannot implement `Copy` for `{target_name}`: field `{}` has type `{}` which is not `Copy`",
+                        field.name, field.ty
+                    ),
+                    &field.span,
+                ));
+            }
+        }
+    } else if let Some(enum_info) = ctx.get_enum(target_name) {
+        for variant in &enum_info.variants {
+            for field in &variant.fields {
+                if !infer_type_guarantees_copy(
+                    &field.ty,
+                    &type_param_args,
+                    &copy_bound_names,
+                    ctx.registry(),
+                    ctx.current_module_path(),
+                ) {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0001,
+                        format!(
+                            "cannot implement `Copy` for `{target_name}`: payload `{}` of variant `{}::{}` has type `{}` which is not `Copy`",
+                            field.name, target_name, variant.name, field.ty
+                        ),
+                        &field.span,
+                    ));
+                }
+            }
+        }
+    }
+
+    let concrete_target = if let TypeExpr::Named(_, _) = &ib.target_type {
+        infer_type_to_concrete_if_closed(&type_expr_to_infer_with_self(&ib.target_type, target_name))
+    } else {
+        None
+    };
+    if let Some(concrete_target) = concrete_target {
+        if ctx
+            .registry()
+            .type_satisfies_aspect(ctx.current_module_path(), &concrete_target, "Drop")
+        {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0001,
+                format!("`{target_name}` cannot implement both `Copy` and `Drop`"),
+                &ib.span,
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 #[allow(clippy::too_many_lines)]
 pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
     for decl in decls {
@@ -565,6 +763,37 @@ fn infer_decl(
                     ))
                 }
             };
+            if ib.polarity == Polarity::Positive {
+                if let Some(aspect_name) = &ib.aspect_name {
+                    if aspect_name == "Copy" {
+                        check_copy_impl_eligibility(ib, &target_name, ctx)?;
+                    } else if aspect_name == "Drop" {
+                        let concrete_target = if let TypeExpr::Named(_, _) = &ib.target_type {
+                            infer_type_to_concrete_if_closed(&type_expr_to_infer_with_self(
+                                &ib.target_type,
+                                &target_name,
+                            ))
+                        } else {
+                            None
+                        };
+                        if let Some(concrete_target) = concrete_target {
+                            if ctx.registry().type_satisfies_aspect(
+                                ctx.current_module_path(),
+                                &concrete_target,
+                                "Copy",
+                            ) {
+                                return Err(MetelError::type_error(
+                                    TypeErrorCode::T0001,
+                                    format!(
+                                        "`{target_name}` cannot implement both `Copy` and `Drop`"
+                                    ),
+                                    &ib.span,
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
             let mut inherited_defaults = vec![];
             // A negative impl (RFC-0081, issue #264) is a declaration of
             // non-implementation, not a real impl with missing overrides — it must

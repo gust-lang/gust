@@ -1,29 +1,39 @@
-// Positive: Copy-implies-!Drop override (RFC-0072 §2.3). A struct
-// implements both a locally-declared `aspect Copy {}` and `aspect Drop {}`
-// (neither is built-in — see RFC-0071), and `fun needs_no_drop<T: !Drop>`
-// succeeds because Copy implies !Drop.
-
-aspect Copy {
-    // Marker aspect; no methods needed for this test.
-}
-
-aspect Drop {
-    fun drop(self);
-}
+// Positive: a `Copy` type satisfies a `!Drop` bound, concretely and through a
+// `T: Copy` generic.
+//
+// NOTE ON WHAT THIS CAN AND CANNOT ASSERT. RFC-0072 §2.3 frames this as an
+// *implication* — `T: Copy` derives `T: !Drop` — and before `Copy`/`Drop` were real
+// aspects this fixture tested it by giving one type both, then relying on the
+// override. That program is now rejected outright: RFC-0071 §4's mutual exclusion is
+// enforced at the declaration site (see stage5_neg_33).
+//
+// So the implication is now *structurally guaranteed* rather than derived, and no
+// positive test can isolate it: "a `Copy` type satisfies `!Drop`" and "a type with no
+// `Drop` impl satisfies `!Drop`" have become the same fact. This fixture therefore
+// guards the outcome, not the mechanism — it would still catch a regression where a
+// `Copy` type failed a `!Drop` bound. The mechanism's other half is stage5_neg_33.
 
 struct Both {
     x: i64,
 }
 
-extend Both: Copy {}
-extend Both: Drop {
-    fun drop(self) {}
-}
+extend Both: Copy;
 
 fun needs_no_drop<T: !Drop>(x: T) -> T {
     return x;
 }
 
-fun run(b: Both) {
-    needs_no_drop(b)
+// Forwarding through a `T: Copy` parameter: at instantiation `T` is `Both`, which
+// cannot implement `Drop`, so the `!Drop` bound holds.
+fun via_copy<T: Copy>(x: T) -> T {
+    return needs_no_drop(x);
+}
+
+fun main() {
+    let b = Both { x = 1 };
+    let direct = needs_no_drop(b);
+    assert(direct.x == 1);
+
+    let through_generic = via_copy(b);
+    assert(through_generic.x == 1);
 }
