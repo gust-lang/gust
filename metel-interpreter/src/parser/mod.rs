@@ -2949,9 +2949,27 @@ fn parse_bound(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Boun
             _ => {}
         }
     }
+    let head = head.ok_or_else(|| MetelError::internal("bound: expected bound_head"))?;
+
+    // RFC-0118 §2: a negative row bound takes no `..` — absence has no rest to quantify
+    // over. The grammar cannot express that (polarity and the row are separate pairs), and
+    // the checker ignores `open` on the negative path, so without this the `..` would be
+    // silently accepted as a no-op.
+    if polarity == Polarity::Negative {
+        if let BoundHead::Row(row) = &head {
+            if row.open {
+                return Err(MetelError::parse(
+                    ParseErrorCode::P0001,
+                    "a negative row bound takes no `..`: it names labels that must be absent, and absence has no rest to quantify over".to_string(),
+                    &span,
+                ));
+            }
+        }
+    }
+
     Ok(Bound {
         polarity,
-        head: head.ok_or_else(|| MetelError::internal("bound: expected bound_head"))?,
+        head,
         assoc_bindings,
         span,
     })

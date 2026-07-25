@@ -1,0 +1,4 @@
+[expect]
+status = "parse_error"
+code = "P0001"
+contains = "negative row bound takes no"
