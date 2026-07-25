@@ -1,0 +1,8 @@
+// Negative: the projection is wrong, but nothing exercises it — `bad` is never called and
+// its body never touches the field. The dedicated projection pass catches it anyway,
+// rather than waiting for unification to stumble over a stand-in type.
+struct Handle { fd: i64, tag: i64 }
+
+fun bad(h: Handle.{ nope }) -> i64 { 0 }
+
+fun main() { }

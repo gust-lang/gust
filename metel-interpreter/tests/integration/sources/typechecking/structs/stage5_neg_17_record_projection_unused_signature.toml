@@ -1,4 +1,4 @@
 [expect]
 status = "typecheck_error"
 code = "T0003"
-contains = "only structs have a row to project"
+contains = "has no field `nope`"

@@ -20,6 +20,7 @@ mod construction;
 mod conversions;
 mod inference;
 mod overload;
+mod projections;
 pub(crate) use overload::core_native_symbol;
 mod registry;
 
@@ -783,6 +784,10 @@ fn check_impl_with_report(
     let mut reg = registry::build_registry(program, &mut gen, current_module_path, symbols, scopes);
     // Merge dependency type definitions so cross-module struct/enum refs resolve.
     reg.merge_from(base_registry);
+    // Diagnose bad record projections (RFC-0116 §4) now that the registry is complete:
+    // the conversion path is infallible and can only leave a stand-in behind, so precise
+    // "unknown type / not a struct / no such field" reporting has to happen here.
+    projections::check(program, &reg, current_module_path)?;
     let mut ctx = InferContext::new(reg, gen, imported_schemes, current_module_path.to_vec());
     ctx.seed_glob_conflicts(deferred_conflicts);
 
