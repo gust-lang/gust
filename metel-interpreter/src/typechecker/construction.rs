@@ -3755,6 +3755,25 @@ fn check_type_satisfies_bounds(
             }
             return Ok(());
         }
+        // RFC-0116 §3: an anonymous record has no nominal owner, so it can implement no
+        // non-local aspect — only the auto-derived `Send`/`Sync` compose field-wise. Must
+        // be checked explicitly: falling through to the primitive lookup below returns
+        // `Ok(())`, which made a record vacuously satisfy *every* bound and then fail at
+        // run time as an internal error inside method dispatch.
+        Type::Record(_) => {
+            for aspect in aspect_names {
+                if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0012,
+                        format!(
+                            "`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)\n       hint: an anonymous record satisfies only the auto-derived aspects, field-wise; anything impl-based needs a nominal type — declare a `struct` and implement `{aspect}` there"
+                        ),
+                        span,
+                    ));
+                }
+            }
+            return Ok(());
+        }
         other => match super::inference::primitive_type_name(other) {
             Some(n) => n,
             None => return Ok(()),

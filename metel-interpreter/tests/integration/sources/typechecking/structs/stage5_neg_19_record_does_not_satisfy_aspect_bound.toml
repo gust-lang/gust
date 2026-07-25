@@ -1,0 +1,4 @@
+[expect]
+status = "typecheck_error"
+code = "T0012"
+contains = "anything impl-based needs a nominal type"
