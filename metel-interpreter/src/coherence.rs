@@ -19,6 +19,7 @@ use crate::error::{MetelError, TypeErrorCode};
 use crate::name_resolver::{GlobTier, ResolvedNames};
 use crate::path_normalizer::NormalizedModuleGraph;
 use crate::symbols::SymbolId;
+use crate::typeinference::GenericBound;
 
 /// Resolve a bare type- or aspect-position name to its declaring `SymbolId`,
 /// from the perspective of `current_module`. Mirrors the precedence used by
@@ -213,7 +214,7 @@ fn name_at<'a>(
 /// RFC-0061 §2's "no special cases" claim -- without it, `extend<T: Bound>
 /// T[]: Aspect` and `extend<T: !Bound> T[]: Aspect` would never be recognized
 /// as syntactically disjoint (RFC-0036 §3.1) and would incorrectly conflict.
-fn scoped_type_param_bounds(ib: &ImplBlock) -> (Vec<Vec<String>>, Vec<Vec<String>>) {
+fn scoped_type_param_bounds(ib: &ImplBlock) -> (Vec<Vec<GenericBound>>, Vec<Vec<GenericBound>>) {
     // Build the set of impl param names.
     let impl_param_names: std::collections::HashSet<&str> =
         ib.generics.iter().map(|g| g.name.as_str()).collect();
@@ -259,19 +260,19 @@ fn scoped_type_param_bounds(ib: &ImplBlock) -> (Vec<Vec<String>>, Vec<Vec<String
         _ => return (vec![], vec![]),
     };
 
-    let mut pos_bounds: Vec<Vec<String>> = vec![vec![]; arg_count];
-    let mut neg_bounds: Vec<Vec<String>> = vec![vec![]; arg_count];
+    let mut pos_bounds: Vec<Vec<GenericBound>> = vec![vec![]; arg_count];
+    let mut neg_bounds: Vec<Vec<GenericBound>> = vec![vec![]; arg_count];
 
     // From inline bounds: `impl<T: Copy> ...` → pos_bounds for T's target position
     for gp in &ib.generics {
         if let Some(&pos) = name_to_target_pos.get(gp.name.as_str()) {
             for bound in &gp.bounds {
                 if bound.polarity == crate::ast::Polarity::Positive {
-                    if let TypeExpr::Named(aspect, _) = &bound.aspect {
-                        pos_bounds[pos].push(aspect.clone());
+                    if let Some(aspect) = GenericBound::from_ast(bound) {
+                        pos_bounds[pos].push(aspect);
                     }
-                } else if let TypeExpr::Named(aspect, _) = &bound.aspect {
-                    neg_bounds[pos].push(aspect.clone());
+                } else if let Some(aspect) = GenericBound::from_ast(bound) {
+                    neg_bounds[pos].push(aspect);
                 }
             }
         }
@@ -296,21 +297,21 @@ fn merge_where_clause_bounds(
     wc: &WhereClause,
     name_to_pos: &HashMap<&str, usize>,
     impl_param_names: &std::collections::HashSet<&str>,
-    pos_bounds: &mut [Vec<String>],
-    neg_bounds: &mut [Vec<String>],
+    pos_bounds: &mut [Vec<GenericBound>],
+    neg_bounds: &mut [Vec<GenericBound>],
 ) {
-    for (type_param_name, bounds) in &wc.constraints {
-        if !impl_param_names.contains(type_param_name.as_str()) {
+    for constraint in &wc.constraints {
+        if !impl_param_names.contains(constraint.name.as_str()) {
             continue;
         }
-        if let Some(&pos) = name_to_pos.get(type_param_name.as_str()) {
-            for bound in bounds {
+        if let Some(&pos) = name_to_pos.get(constraint.name.as_str()) {
+            for bound in &constraint.bounds {
                 if bound.polarity == crate::ast::Polarity::Positive {
-                    if let TypeExpr::Named(aspect, _) = &bound.aspect {
-                        pos_bounds[pos].push(aspect.clone());
+                    if let Some(aspect) = GenericBound::from_ast(bound) {
+                        pos_bounds[pos].push(aspect);
                     }
-                } else if let TypeExpr::Named(aspect, _) = &bound.aspect {
-                    neg_bounds[pos].push(aspect.clone());
+                } else if let Some(aspect) = GenericBound::from_ast(bound) {
+                    neg_bounds[pos].push(aspect);
                 }
             }
         }
@@ -323,21 +324,29 @@ fn merge_where_clause_bounds(
 /// disjointness criterion: `impl<T: Copy> ...` and `impl<T: !Copy> ...` have
 /// `Copy` in pos[0] of the first and `Copy` in neg[0] of the second.
 fn provably_disjoint(
-    (a_pos, a_neg): &(Vec<Vec<String>>, Vec<Vec<String>>),
-    (b_pos, b_neg): &(Vec<Vec<String>>, Vec<Vec<String>>),
+    (a_pos, a_neg): &(Vec<Vec<GenericBound>>, Vec<Vec<GenericBound>>),
+    (b_pos, b_neg): &(Vec<Vec<GenericBound>>, Vec<Vec<GenericBound>>),
 ) -> bool {
     let len = a_pos.len().max(b_pos.len());
     for i in 0..len {
-        let a_p = a_pos.get(i).map_or(&[] as &[String], |v| v);
-        let a_n = a_neg.get(i).map_or(&[] as &[String], |v| v);
-        let b_p = b_pos.get(i).map_or(&[] as &[String], |v| v);
-        let b_n = b_neg.get(i).map_or(&[] as &[String], |v| v);
+        let a_p = a_pos.get(i).map_or(&[] as &[GenericBound], |v| v);
+        let a_n = a_neg.get(i).map_or(&[] as &[GenericBound], |v| v);
+        let b_p = b_pos.get(i).map_or(&[] as &[GenericBound], |v| v);
+        let b_n = b_neg.get(i).map_or(&[] as &[GenericBound], |v| v);
         // a's positive intersects b's negative → disjoint
-        if a_p.iter().any(|a| b_n.contains(a)) {
+        if a_p.iter().filter_map(GenericBound::aspect_name).any(|a| {
+            b_n.iter()
+                .filter_map(GenericBound::aspect_name)
+                .any(|b| a == b)
+        }) {
             return true;
         }
         // b's positive intersects a's negative → disjoint
-        if b_p.iter().any(|b| a_n.contains(b)) {
+        if b_p.iter().filter_map(GenericBound::aspect_name).any(|b| {
+            a_n.iter()
+                .filter_map(GenericBound::aspect_name)
+                .any(|a| b == a)
+        }) {
             return true;
         }
     }
@@ -384,7 +393,7 @@ struct CollectedImpl<'a> {
     /// type alone.
     canonical_key: (Vec<CanonicalType>, CanonicalType),
     /// Scoped type-param bounds for §3.1/§3.2 overlap checks.
-    scoped_bounds: (Vec<Vec<String>>, Vec<Vec<String>>),
+    scoped_bounds: (Vec<Vec<GenericBound>>, Vec<Vec<GenericBound>>),
     /// RFC-0081/RFC-0060 §5: whether this is `impl !Aspect` or `impl Aspect`.
     polarity: Polarity,
     span: &'a Span,
@@ -514,8 +523,8 @@ fn is_local(
 fn concrete_satisfies_bounds(
     impls: &[CollectedImpl],
     concrete: &CanonicalType,
-    pos_required: &[String],
-    neg_required: &[String],
+    pos_required: &[GenericBound],
+    neg_required: &[GenericBound],
 ) -> bool {
     let has_direct_impl = |aspect: &str| {
         impls.iter().any(|imp| {
@@ -524,8 +533,14 @@ fn concrete_satisfies_bounds(
                 && &imp.canonical_key.1 == concrete
         })
     };
-    pos_required.iter().all(|a| has_direct_impl(a))
-        && !neg_required.iter().any(|a| has_direct_impl(a))
+    pos_required
+        .iter()
+        .filter_map(GenericBound::aspect_name)
+        .all(has_direct_impl)
+        && !neg_required
+            .iter()
+            .filter_map(GenericBound::aspect_name)
+            .any(has_direct_impl)
 }
 
 /// Whether two shape-compatible impls of the same aspect actually overlap —
@@ -554,8 +569,8 @@ fn impls_actually_overlap(impls: &[CollectedImpl], a: &CollectedImpl, b: &Collec
         if matches!(a_pos, CanonicalType::TypeParam(_))
             && !matches!(b_pos, CanonicalType::TypeParam(_))
         {
-            let pos = a.scoped_bounds.0.get(i).map_or(&[] as &[String], |v| v);
-            let neg = a.scoped_bounds.1.get(i).map_or(&[] as &[String], |v| v);
+            let pos = a.scoped_bounds.0.get(i).map_or(&[] as &[GenericBound], |v| v);
+            let neg = a.scoped_bounds.1.get(i).map_or(&[] as &[GenericBound], |v| v);
             if !concrete_satisfies_bounds(impls, b_pos, pos, neg) {
                 return false;
             }
@@ -563,8 +578,8 @@ fn impls_actually_overlap(impls: &[CollectedImpl], a: &CollectedImpl, b: &Collec
         if matches!(b_pos, CanonicalType::TypeParam(_))
             && !matches!(a_pos, CanonicalType::TypeParam(_))
         {
-            let pos = b.scoped_bounds.0.get(i).map_or(&[] as &[String], |v| v);
-            let neg = b.scoped_bounds.1.get(i).map_or(&[] as &[String], |v| v);
+            let pos = b.scoped_bounds.0.get(i).map_or(&[] as &[GenericBound], |v| v);
+            let neg = b.scoped_bounds.1.get(i).map_or(&[] as &[GenericBound], |v| v);
             if !concrete_satisfies_bounds(impls, a_pos, pos, neg) {
                 return false;
             }

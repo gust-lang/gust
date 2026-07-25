@@ -12,8 +12,8 @@ use crate::path_normalizer::NormalizedModuleGraph;
 use crate::symbols::SymbolId;
 use crate::typed_ast::{ResolvedImportRef, TypedDecl, TypedModule, TypedModuleGraph};
 use crate::typeinference::{
-    generalize_with_names, unify, InferContext, InferType, Substitution, TypeDefinitionRegistry,
-    TypeScheme, TypeVar, TypeVarGenerator,
+    generalize_with_names, unify, GenericBound, InferContext, InferType, Substitution,
+    TypeDefinitionRegistry, TypeScheme, TypeVar, TypeVarGenerator,
 };
 
 mod construction;
@@ -83,9 +83,11 @@ struct FunGeneralization {
     name_map: HashMap<TypeVar, String>,
     /// Maps `TypeVar` ID → aspect bounds, attached to the re-generalized scheme
     /// so bounds survive prelude/export scheme propagation.
-    bounds: HashMap<TypeVar, Vec<String>>,
+    bounds: HashMap<TypeVar, Vec<GenericBound>>,
     /// Maps `TypeVar` ID → negative aspect bounds (RFC-0072, issue #243).
-    neg_bounds: HashMap<TypeVar, Vec<String>>,
+    neg_bounds: HashMap<TypeVar, Vec<GenericBound>>,
+    /// Maps `TypeVar` ID → whether the parameter is record-kinded.
+    record_kinds: HashMap<TypeVar, bool>,
     /// Maps final (post-solve) `TypeVar` ID → associated-type projection metadata
     /// (RFC-0082, issue #242), attached to the re-generalized scheme so a function
     /// returning `T::AssocType` still resolves correctly when called through the
@@ -196,6 +198,7 @@ fn refresh_scheme_for_export(scheme: &TypeScheme, gen: &mut TypeVarGenerator) ->
         // Order is preserved by the renaming, so positional bounds stay valid.
         bounds: scheme.bounds.clone(),
         neg_bounds: scheme.neg_bounds.clone(),
+        record_kinds: scheme.record_kinds.clone(),
         assoc_projections: vec![],
         assoc_eq_constraints: vec![],
         // RFC-0037 opaque-return metadata is positional (index-aligned with
@@ -841,6 +844,7 @@ fn check_impl_with_report(
         let scheme = generalize_with_names(fg.fun_ty, &fg.env_fvs, &fg.name_map)
             .with_bounds(&fg.bounds)
             .with_neg_bounds(&fg.neg_bounds)
+            .with_record_kinds(&fg.record_kinds)
             .with_assoc_projections(&fg.assoc_projections)
             .with_assoc_eq_constraints(&fg.assoc_eq)
             .with_opaque_returns(&fg.opaque_returns);

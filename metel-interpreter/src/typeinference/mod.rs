@@ -3,12 +3,13 @@
 //! Implements Hindley-Milner type inference with let-polymorphism.
 //! See `docs/internal/typechecker.md` for theory background and implementation notes.
 
-use crate::ast::{AspectMethod, AssocTypeDecl, ReceiverKind, Span, Visibility};
+use crate::ast::{AspectMethod, AssocTypeDecl, ReceiverKind, RowBound, Span, TypeExpr, Visibility};
 use crate::error::MetelError;
 use crate::name_resolver::{GlobTier, ModuleScope};
 use crate::symbols::SymbolId;
 use crate::types::Type;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -774,20 +775,20 @@ pub fn free_vars(ty: &InferType) -> HashSet<TypeVar> {
 /// `param_names` optionally holds the source-level names of each quantified variable,
 /// in the same sorted order as `quantified_vars`. Used during construction-at-call-time
 /// to resolve type annotations like `T[]` inside generic function bodies.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct TypeScheme {
     pub quantified_vars: Vec<TypeVar>,
     /// Source-level names for quantified vars (same order). Empty for builtins.
     pub param_names: Vec<String>,
-    /// Aspect bounds per quantified var (same order; empty Vec = unbounded).
+    /// Positive bounds per quantified var (same order; empty Vec = unbounded).
     /// Bounds travel WITH the scheme so they survive prelude derivation and
     /// the export alpha-renaming, unlike the TypeVar-keyed `fun_bounds`
     /// registry (which only works within the defining module).
-    pub bounds: Vec<Vec<String>>,
-    /// Negative aspect bounds per quantified var (same order as `quantified_vars`).
-    /// `T: !Aspect` means the type must NOT implement `Aspect`. Checked by
-    /// inverting the `impl_aspect_env_has` query (RFC-0072, issue #243).
-    pub neg_bounds: Vec<Vec<String>>,
+    pub bounds: Vec<Vec<GenericBound>>,
+    /// Negative bounds per quantified var (same order as `quantified_vars`).
+    pub neg_bounds: Vec<Vec<GenericBound>>,
+    /// Record-kinded flags per quantified var (same order as `quantified_vars`).
+    pub record_kinds: Vec<bool>,
     /// Per-quantified-var projection metadata (RFC-0082). Index-aligned with
     /// `quantified_vars`. `Some((position, aspect_name, assoc_name, placeholder_tv))` means the
     /// i-th quantified var has a projection `T::AssocName` through `aspect_name`.
@@ -821,6 +822,7 @@ impl TypeScheme {
             param_names: vec![],
             bounds: vec![],
             neg_bounds: vec![],
+            record_kinds: vec![],
             assoc_projections: vec![],
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
@@ -831,7 +833,10 @@ impl TypeScheme {
     /// Attach per-var aspect bounds, given a `TypeVar` → bounds map. Robust to
     /// quantifier ordering: each quantified var looks up its own entry.
     #[must_use]
-    pub fn with_bounds(mut self, by_var: &std::collections::HashMap<TypeVar, Vec<String>>) -> Self {
+    pub fn with_bounds(
+        mut self,
+        by_var: &std::collections::HashMap<TypeVar, Vec<GenericBound>>,
+    ) -> Self {
         if by_var.values().all(std::vec::Vec::is_empty) {
             return self;
         }
@@ -847,7 +852,7 @@ impl TypeScheme {
     #[must_use]
     pub fn with_neg_bounds(
         mut self,
-        by_var: &std::collections::HashMap<TypeVar, Vec<String>>,
+        by_var: &std::collections::HashMap<TypeVar, Vec<GenericBound>>,
     ) -> Self {
         if by_var.values().all(std::vec::Vec::is_empty) {
             return self;
@@ -856,6 +861,22 @@ impl TypeScheme {
             .quantified_vars
             .iter()
             .map(|v| by_var.get(v).cloned().unwrap_or_default())
+            .collect();
+        self
+    }
+
+    #[must_use]
+    pub fn with_record_kinds(
+        mut self,
+        by_var: &std::collections::HashMap<TypeVar, bool>,
+    ) -> Self {
+        if by_var.values().all(|flag| !*flag) {
+            return self;
+        }
+        self.record_kinds = self
+            .quantified_vars
+            .iter()
+            .map(|v| by_var.get(v).copied().unwrap_or(false))
             .collect();
         self
     }
@@ -954,6 +975,7 @@ pub fn generalize(ty: InferType, env_free_vars: &HashSet<TypeVar>) -> TypeScheme
         param_names: vec![],
         bounds: vec![],
         neg_bounds: vec![],
+        record_kinds: vec![],
         assoc_projections: vec![],
         assoc_eq_constraints: vec![],
         opaque_returns: vec![],
@@ -1052,6 +1074,176 @@ pub struct EnumInfo {
 /// RFC-0082 §4 equality constraints for one generic function/type var: a list
 /// of `(aspect, assoc_name, expected_type)` triples.
 pub type AssocEqConstraints = HashMap<TypeVar, Vec<(String, String, InferType)>>;
+#[derive(Debug, Clone)]
+pub enum GenericBound {
+    Aspect(String),
+    Row(RowConstraint),
+}
+
+#[derive(Debug, Clone)]
+pub struct RowConstraint {
+    pub fields: Vec<RowConstraintField>,
+    pub open: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct RowConstraintField {
+    pub label: String,
+    pub ty: Option<TypeExpr>,
+}
+
+impl From<&RowBound> for RowConstraint {
+    fn from(value: &RowBound) -> Self {
+        Self {
+            fields: value
+                .fields
+                .iter()
+                .map(|field| RowConstraintField {
+                    label: field.label.clone(),
+                    ty: field.ty.clone(),
+                })
+                .collect(),
+            open: value.open,
+        }
+    }
+}
+
+impl GenericBound {
+    #[must_use]
+    pub fn from_ast(bound: &crate::ast::Bound) -> Option<Self> {
+        if let Some(row) = bound.row_bound() {
+            return Some(Self::Row(RowConstraint::from(row)));
+        }
+        match &bound.head {
+            crate::ast::BoundHead::Aspect(TypeExpr::Named(name, _)) => Some(Self::Aspect(name.clone())),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub fn aspect_name(&self) -> Option<&str> {
+        match self {
+            Self::Aspect(name) => Some(name.as_str()),
+            Self::Row(_) => None,
+        }
+    }
+}
+
+impl fmt::Display for GenericBound {
+    // One dispatch table over TypeExpr so a bound prints exactly as written.
+    #[allow(clippy::too_many_lines)]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fn write_type_expr(f: &mut fmt::Formatter<'_>, ty: &TypeExpr) -> fmt::Result {
+            match ty {
+                TypeExpr::Named(name, args) => {
+                    f.write_str(name)?;
+                    if !args.is_empty() {
+                        f.write_str("<")?;
+                        for (index, arg) in args.iter().enumerate() {
+                            if index > 0 {
+                                f.write_str(", ")?;
+                            }
+                            write_type_expr(f, arg)?;
+                        }
+                        f.write_str(">")?;
+                    }
+                    Ok(())
+                }
+                TypeExpr::Unit => f.write_str("unit"),
+                TypeExpr::Tuple(items) => {
+                    f.write_str("(")?;
+                    for (index, item) in items.iter().enumerate() {
+                        if index > 0 {
+                            f.write_str(", ")?;
+                        }
+                        write_type_expr(f, item)?;
+                    }
+                    f.write_str(")")
+                }
+                TypeExpr::Record(fields) => {
+                    f.write_str("{ ")?;
+                    for (index, (label, item_ty)) in fields.iter().enumerate() {
+                        if index > 0 {
+                            f.write_str(", ")?;
+                        }
+                        f.write_str(label)?;
+                        f.write_str(": ")?;
+                        write_type_expr(f, item_ty)?;
+                    }
+                    f.write_str(" }")
+                }
+                TypeExpr::Array(inner) => {
+                    write_type_expr(f, inner)?;
+                    f.write_str("[]")
+                }
+                TypeExpr::SizedArray(inner, size) => {
+                    write_type_expr(f, inner)?;
+                    write!(f, "[{size}]")
+                }
+                TypeExpr::Reference(inner) => {
+                    f.write_str("&")?;
+                    write_type_expr(f, inner)
+                }
+                TypeExpr::MutReference(inner) => {
+                    f.write_str("&mut ")?;
+                    write_type_expr(f, inner)
+                }
+                TypeExpr::Fun(params, ret) => {
+                    f.write_str("fun(")?;
+                    for (index, param) in params.iter().enumerate() {
+                        if index > 0 {
+                            f.write_str(", ")?;
+                        }
+                        write_type_expr(f, param)?;
+                    }
+                    f.write_str(")")?;
+                    if let Some(ret) = ret {
+                        f.write_str(" -> ")?;
+                        write_type_expr(f, ret)?;
+                    }
+                    Ok(())
+                }
+                TypeExpr::ImplAspect { bound, .. } => {
+                    f.write_str("impl ")?;
+                    write_type_expr(f, bound)
+                }
+                TypeExpr::Projection {
+                    base, assoc_name, ..
+                } => {
+                    write_type_expr(f, base)?;
+                    write!(f, "::{assoc_name}")
+                }
+                TypeExpr::RecordProjection { path, fields, .. } => {
+                    write!(f, "{}.{{ {} }}", path.join("::"), fields.join(", "))
+                }
+            }
+        }
+
+        match self {
+            Self::Aspect(name) => f.write_str(name),
+            Self::Row(row) => {
+                f.write_str("{ ")?;
+                for (index, field) in row.fields.iter().enumerate() {
+                    if index > 0 {
+                        f.write_str(", ")?;
+                    }
+                    f.write_str(&field.label)?;
+                    if let Some(ty) = &field.ty {
+                        f.write_str(": ")?;
+                        write_type_expr(f, ty)?;
+                    }
+                }
+                if row.open {
+                    if !row.fields.is_empty() {
+                        f.write_str(", ")?;
+                    }
+                    f.write_str("..")?;
+                }
+                f.write_str(" }")
+            }
+        }
+    }
+}
 /// Memo table for `InferContext::fresh_assoc_projection_var`: `(base_tv, aspect,
 /// assoc_name)` -> the placeholder `TypeVar` already minted for that projection.
 pub type AssocProjectionMemo = HashMap<(TypeVar, String, String), TypeVar>;
@@ -1060,7 +1252,7 @@ pub type AssocProjectionMemo = HashMap<(TypeVar, String, String), TypeVar>;
 pub type AssocProjectionLog = Vec<(TypeVar, String, String, TypeVar)>;
 /// One conditional impl's per-position bound requirements: `(pos_bounds, neg_bounds)`,
 /// see `TypeDefinitionRegistry::conditional_impl_bounds`.
-pub type ConditionalImplBoundEntry = (Vec<Vec<String>>, Vec<Vec<String>>);
+pub type ConditionalImplBoundEntry = (Vec<Vec<GenericBound>>, Vec<Vec<GenericBound>>);
 /// One registered method scheme variant: `(scheme, struct_tvars, aspect_name)`.
 /// `aspect_name` is `None` for an inherent (non-aspect) method -- see
 /// `TypeDefinitionRegistry::method_scheme_variants`. Carrying the aspect name
@@ -1109,18 +1301,23 @@ pub struct TypeDefinitionRegistry {
     /// Per-type-param aspect bounds for generic structs and enums.
     /// Key: type name. Value: one Vec<String> per type param (same order as `struct_type_params`),
     /// each containing the aspect names that param must satisfy.
-    type_param_bounds: HashMap<String, Vec<Vec<String>>>,
+    type_param_bounds: HashMap<String, Vec<Vec<GenericBound>>>,
     /// Negative per-type-param aspect bounds (`T: !Aspect`) for generic structs and enums.
     /// Key: type name. Value: one Vec<String> per type param, each containing the
     /// aspect names that param must NOT satisfy (RFC-0072, issue #243).
-    neg_type_param_bounds: HashMap<String, Vec<Vec<String>>>,
+    neg_type_param_bounds: HashMap<String, Vec<Vec<GenericBound>>>,
+    /// Record-kinded flags for generic struct/enum params, keyed by type name and ordered
+    /// to match `struct_type_params`.
+    type_param_record_kinds: HashMap<String, Vec<bool>>,
     /// Aspect bounds per generic function. Key: function name.
     /// Value: map from each quantified `TypeVar` to the list of required aspect names.
-    fun_bounds: HashMap<String, HashMap<TypeVar, Vec<String>>>,
+    fun_bounds: HashMap<String, HashMap<TypeVar, Vec<GenericBound>>>,
     /// Negative aspect bounds per generic function (`T: !Aspect`). Key: function name.
     /// Value: map from each quantified `TypeVar` to the list of negated aspect names
     /// (RFC-0072, issue #243).
-    neg_fun_bounds: HashMap<String, HashMap<TypeVar, Vec<String>>>,
+    neg_fun_bounds: HashMap<String, HashMap<TypeVar, Vec<GenericBound>>>,
+    /// Record-kinded flags per generic function/type var.
+    fun_record_kinds: HashMap<String, HashMap<TypeVar, bool>>,
     /// RFC-0082 §4: associated-type equality constraints per generic function.
     /// Key: function name. Value: map from each quantified `TypeVar` to the list of
     /// `(aspect, assoc_name, expected_type)` equality constraints.
@@ -1288,8 +1485,10 @@ impl TypeDefinitionRegistry {
             array_method_scheme_variants: HashMap::new(),
             type_param_bounds: HashMap::new(),
             neg_type_param_bounds: HashMap::new(),
+            type_param_record_kinds: HashMap::new(),
             fun_bounds: HashMap::new(),
             neg_fun_bounds: HashMap::new(),
+            fun_record_kinds: HashMap::new(),
             fun_assoc_eq_constraints: HashMap::new(),
             struct_scope_stack: Vec::new(),
             method_env: HashMap::new(),
@@ -1539,8 +1738,8 @@ impl TypeDefinitionRegistry {
         current_module: &[String],
         target: &str,
         aspect: &str,
-        pos_bounds: Vec<Vec<String>>,
-        neg_bounds: Vec<Vec<String>>,
+        pos_bounds: Vec<Vec<GenericBound>>,
+        neg_bounds: Vec<Vec<GenericBound>>,
     ) {
         let Some(target_id) = self.resolve_type_position_id(current_module, target) else {
             return;
@@ -1560,8 +1759,8 @@ impl TypeDefinitionRegistry {
         current_module: &[String],
         target: &str,
         aspect: &str,
-        pos_bounds: Vec<Vec<String>>,
-        neg_bounds: Vec<Vec<String>>,
+        pos_bounds: Vec<Vec<GenericBound>>,
+        neg_bounds: Vec<Vec<GenericBound>>,
     ) {
         let Some(target_id) = self.resolve_type_position_id(current_module, target) else {
             return;
@@ -1575,8 +1774,8 @@ impl TypeDefinitionRegistry {
     pub fn register_bare_impl_bounds(
         &mut self,
         aspect: &str,
-        pos_bounds: Vec<Vec<String>>,
-        neg_bounds: Vec<Vec<String>>,
+        pos_bounds: Vec<Vec<GenericBound>>,
+        neg_bounds: Vec<Vec<GenericBound>>,
     ) {
         self.bare_impl_bounds
             .entry(aspect.to_string())
@@ -1587,8 +1786,8 @@ impl TypeDefinitionRegistry {
     pub fn register_array_impl_bounds(
         &mut self,
         aspect: &str,
-        pos_bounds: Vec<Vec<String>>,
-        neg_bounds: Vec<Vec<String>>,
+        pos_bounds: Vec<Vec<GenericBound>>,
+        neg_bounds: Vec<Vec<GenericBound>>,
     ) {
         self.array_impl_bounds
             .entry(aspect.to_string())
@@ -1599,8 +1798,8 @@ impl TypeDefinitionRegistry {
     pub fn register_neg_bare_impl_bounds(
         &mut self,
         aspect: &str,
-        pos_bounds: Vec<Vec<String>>,
-        neg_bounds: Vec<Vec<String>>,
+        pos_bounds: Vec<Vec<GenericBound>>,
+        neg_bounds: Vec<Vec<GenericBound>>,
     ) {
         self.bare_neg_impl_bounds
             .entry(aspect.to_string())
@@ -1611,8 +1810,8 @@ impl TypeDefinitionRegistry {
     pub fn register_neg_array_impl_bounds(
         &mut self,
         aspect: &str,
-        pos_bounds: Vec<Vec<String>>,
-        neg_bounds: Vec<Vec<String>>,
+        pos_bounds: Vec<Vec<GenericBound>>,
+        neg_bounds: Vec<Vec<GenericBound>>,
     ) {
         self.array_neg_impl_bounds
             .entry(aspect.to_string())
@@ -1659,19 +1858,19 @@ impl TypeDefinitionRegistry {
         &self,
         current_module: &[String],
         type_args: &[Type],
-        pos_bounds: &[Vec<String>],
-        neg_bounds: &[Vec<String>],
+        pos_bounds: &[Vec<GenericBound>],
+        neg_bounds: &[Vec<GenericBound>],
     ) -> bool {
         for (i, arg) in type_args.iter().enumerate() {
             if let Some(required) = pos_bounds.get(i) {
-                for aspect in required {
+                for aspect in required.iter().filter_map(GenericBound::aspect_name) {
                     if !self.type_satisfies_aspect(current_module, arg, aspect) {
                         return false;
                     }
                 }
             }
             if let Some(forbidden) = neg_bounds.get(i) {
-                for aspect in forbidden {
+                for aspect in forbidden.iter().filter_map(GenericBound::aspect_name) {
                     if self.type_satisfies_aspect(current_module, arg, aspect) {
                         return false;
                     }
@@ -1836,21 +2035,34 @@ impl TypeDefinitionRegistry {
         }
     }
 
-    pub fn register_type_param_bounds(&mut self, name: String, bounds: Vec<Vec<String>>) {
+    pub fn register_type_param_bounds(&mut self, name: String, bounds: Vec<Vec<GenericBound>>) {
         self.type_param_bounds.insert(name, bounds);
     }
 
+    pub fn register_type_param_record_kinds(&mut self, name: String, record_kinds: Vec<bool>) {
+        self.type_param_record_kinds.insert(name, record_kinds);
+    }
+
     #[must_use]
-    pub fn type_param_bounds_for(&self, name: &str) -> Option<&Vec<Vec<String>>> {
+    pub fn type_param_bounds_for(&self, name: &str) -> Option<&Vec<Vec<GenericBound>>> {
         self.type_param_bounds.get(name)
     }
 
-    pub fn register_neg_type_param_bounds(&mut self, name: String, bounds: Vec<Vec<String>>) {
+    #[must_use]
+    pub fn type_param_record_kinds_for(&self, name: &str) -> Option<&Vec<bool>> {
+        self.type_param_record_kinds.get(name)
+    }
+
+    pub fn register_neg_type_param_bounds(
+        &mut self,
+        name: String,
+        bounds: Vec<Vec<GenericBound>>,
+    ) {
         self.neg_type_param_bounds.insert(name, bounds);
     }
 
     #[must_use]
-    pub fn neg_type_param_bounds_for(&self, name: &str) -> Option<&Vec<Vec<String>>> {
+    pub fn neg_type_param_bounds_for(&self, name: &str) -> Option<&Vec<Vec<GenericBound>>> {
         self.neg_type_param_bounds.get(name)
     }
 
@@ -1872,25 +2084,47 @@ impl TypeDefinitionRegistry {
             .contains_key(&(type_id, aspect_name.to_string()))
     }
 
-    pub fn register_fun_bounds(&mut self, name: String, bounds: HashMap<TypeVar, Vec<String>>) {
+    pub fn register_fun_bounds(
+        &mut self,
+        name: String,
+        bounds: HashMap<TypeVar, Vec<GenericBound>>,
+    ) {
         if !bounds.is_empty() {
             self.fun_bounds.insert(name, bounds);
         }
     }
 
     #[must_use]
-    pub fn fun_bounds_for(&self, name: &str) -> Option<&HashMap<TypeVar, Vec<String>>> {
+    pub fn fun_bounds_for(&self, name: &str) -> Option<&HashMap<TypeVar, Vec<GenericBound>>> {
         self.fun_bounds.get(name)
     }
 
-    pub fn register_neg_fun_bounds(&mut self, name: String, bounds: HashMap<TypeVar, Vec<String>>) {
+    pub fn register_fun_record_kinds(&mut self, name: String, record_kinds: HashMap<TypeVar, bool>) {
+        if record_kinds.values().any(|flag| *flag) {
+            self.fun_record_kinds.insert(name, record_kinds);
+        }
+    }
+
+    #[must_use]
+    pub fn fun_record_kinds_for(&self, name: &str) -> Option<&HashMap<TypeVar, bool>> {
+        self.fun_record_kinds.get(name)
+    }
+
+    pub fn register_neg_fun_bounds(
+        &mut self,
+        name: String,
+        bounds: HashMap<TypeVar, Vec<GenericBound>>,
+    ) {
         if !bounds.is_empty() {
             self.neg_fun_bounds.insert(name, bounds);
         }
     }
 
     #[must_use]
-    pub fn neg_fun_bounds_for(&self, name: &str) -> Option<&HashMap<TypeVar, Vec<String>>> {
+    pub fn neg_fun_bounds_for(
+        &self,
+        name: &str,
+    ) -> Option<&HashMap<TypeVar, Vec<GenericBound>>> {
         self.neg_fun_bounds.get(name)
     }
 
@@ -2378,7 +2612,7 @@ pub struct InferContext {
     current_type_params: HashMap<String, TypeVar>,
     /// `TypeVar` → aspect names for the current generic function's bounded type params.
     /// Parallel to `current_type_params`; swapped in/out alongside it.
-    current_type_param_bounds: HashMap<TypeVar, Vec<String>>,
+    current_type_param_bounds: HashMap<TypeVar, Vec<GenericBound>>,
     /// Memo + accumulator for symbolic associated-type projections minted while inferring
     /// the CURRENT function/method body. Key: (`base_tv`, `aspect_name`, `assoc_name`) so the
     /// same projection requested twice gets the same placeholder. Reset (swapped, like
@@ -2622,8 +2856,8 @@ impl InferContext {
 
     pub fn swap_type_param_bounds(
         &mut self,
-        bounds: HashMap<TypeVar, Vec<String>>,
-    ) -> HashMap<TypeVar, Vec<String>> {
+        bounds: HashMap<TypeVar, Vec<GenericBound>>,
+    ) -> HashMap<TypeVar, Vec<GenericBound>> {
         std::mem::replace(&mut self.current_type_param_bounds, bounds)
     }
 
@@ -2638,7 +2872,7 @@ impl InferContext {
     /// the bounds were originally registered on. Merge bounds across the solved
     /// equivalence class rooted at the cached substitution's representative.
     #[must_use]
-    pub fn bounds_for_type_var(&self, tv: TypeVar) -> Option<Vec<String>> {
+    pub fn bounds_for_type_var(&self, tv: TypeVar) -> Option<Vec<GenericBound>> {
         let resolved = match self.cached_subst.apply(&InferType::Var(tv)) {
             InferType::Var(v) => v,
             _ => tv,
@@ -2647,7 +2881,10 @@ impl InferContext {
         if resolved != tv {
             if let Some(bounds) = self.current_type_param_bounds.get(&resolved) {
                 for bound in bounds {
-                    if !merged.contains(bound) {
+                    if !merged.iter().any(|existing| match (existing, bound) {
+                        (GenericBound::Aspect(left), GenericBound::Aspect(right)) => left == right,
+                        _ => false,
+                    }) {
                         merged.push(bound.clone());
                     }
                 }
@@ -2665,7 +2902,10 @@ impl InferContext {
                 continue;
             }
             for bound in bounds {
-                if !merged.contains(bound) {
+                if !merged.iter().any(|existing| match (existing, bound) {
+                    (GenericBound::Aspect(left), GenericBound::Aspect(right)) => left == right,
+                    _ => false,
+                }) {
                     merged.push(bound.clone());
                 }
             }
@@ -2678,7 +2918,7 @@ impl InferContext {
         self.current_type_param_bounds
             .entry(tv)
             .or_default()
-            .push(aspect);
+            .push(GenericBound::Aspect(aspect));
     }
 
     /// Mark a type variable as an opaque return that should not be bound to concrete types.
@@ -2689,7 +2929,7 @@ impl InferContext {
     /// Read-only view of all type-param bounds in the current scope (for debug assertions).
     #[must_use]
     #[allow(dead_code)]
-    pub fn type_param_bounds(&self) -> &HashMap<TypeVar, Vec<String>> {
+    pub fn type_param_bounds(&self) -> &HashMap<TypeVar, Vec<GenericBound>> {
         &self.current_type_param_bounds
     }
 
@@ -2743,10 +2983,7 @@ impl InferContext {
             .filter(|decl| decl.name == assoc_name)
             .flat_map(|decl| &decl.bounds)
             .filter(|b| b.polarity == crate::ast::Polarity::Positive)
-            .filter_map(|b| match &b.aspect {
-                crate::ast::TypeExpr::Named(n, _) => Some(n.clone()),
-                _ => None,
-            })
+            .filter_map(|b| b.aspect_name().map(ToOwned::to_owned))
             .collect();
         for bound in declared_bounds {
             self.register_type_var_bound(placeholder, bound);
@@ -2767,11 +3004,23 @@ impl InferContext {
         self.registry.aspect_method_defs(aspect)
     }
 
-    pub fn register_fun_bounds(&mut self, name: String, bounds: HashMap<TypeVar, Vec<String>>) {
+    pub fn register_fun_bounds(
+        &mut self,
+        name: String,
+        bounds: HashMap<TypeVar, Vec<GenericBound>>,
+    ) {
         self.registry.register_fun_bounds(name, bounds);
     }
 
-    pub fn register_neg_fun_bounds(&mut self, name: String, bounds: HashMap<TypeVar, Vec<String>>) {
+    pub fn register_fun_record_kinds(&mut self, name: String, record_kinds: HashMap<TypeVar, bool>) {
+        self.registry.register_fun_record_kinds(name, record_kinds);
+    }
+
+    pub fn register_neg_fun_bounds(
+        &mut self,
+        name: String,
+        bounds: HashMap<TypeVar, Vec<GenericBound>>,
+    ) {
         self.registry.register_neg_fun_bounds(name, bounds);
     }
 
@@ -2790,8 +3039,13 @@ impl InferContext {
     }
 
     #[must_use]
-    pub fn get_type_param_bounds(&self, name: &str) -> Option<&Vec<Vec<String>>> {
+    pub fn get_type_param_bounds(&self, name: &str) -> Option<&Vec<Vec<GenericBound>>> {
         self.registry.type_param_bounds_for(name)
+    }
+
+    #[must_use]
+    pub fn get_type_param_record_kinds(&self, name: &str) -> Option<&Vec<bool>> {
+        self.registry.type_param_record_kinds_for(name)
     }
 
     pub fn register_method_scheme(

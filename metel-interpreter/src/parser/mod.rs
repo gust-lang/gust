@@ -4,11 +4,11 @@ use pest_derive::Parser;
 
 use crate::ast::{
     AspectDecl, AspectMethod, AssignOp, AssignTarget, AssocTypeDecl, AssocTypeDef, BinOp, Block,
-    Bound, BreakExpr, Decl, EnumDecl, ExportDecl, Expr, FieldDef, ForInStmt, ForInit, ForStmt,
-    FunDecl, GenericParam, ImplBlock, ImportDecl, ImportPath, ImportTree, LetDecl, Literal,
-    MatchArm, MatchExpr, MutDecl, NativeBinding, Param, PathRoot, Pattern, Polarity, Program,
-    ReceiverKind, ReturnExpr, Span, Stmt, StructDecl, TypeExpr, UnaryOp, VariantDef, Visibility,
-    WhereClause, WhileStmt,
+    Bound, BoundHead, BreakExpr, Decl, EnumDecl, ExportDecl, Expr, FieldDef, ForInStmt, ForInit,
+    ForStmt, FunDecl, GenericParam, ImplBlock, ImportDecl, ImportPath, ImportTree, LetDecl,
+    Literal, MatchArm, MatchExpr, MutDecl, NativeBinding, Param, PathRoot, Pattern, Polarity,
+    Program, ReceiverKind, ReturnExpr, RowBound, RowBoundField, Span, Stmt, StructDecl, TypeExpr,
+    UnaryOp, VariantDef, Visibility, WhereClause, WhereConstraint, WhileStmt,
 };
 use crate::error::{MetelError, ParseErrorCode};
 
@@ -2889,60 +2889,110 @@ fn parse_bound_list(
 fn parse_bound(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Bound, MetelError> {
     let span = Span::of(&pair, filename);
     let mut polarity = Polarity::Positive;
-    let mut aspect = None;
+    let mut head = None;
     let mut assoc_bindings = vec![];
     for p in pair.into_inner() {
         match p.as_rule() {
             Rule::bang => polarity = Polarity::Negative,
             Rule::bound_head => {
                 let mut inner = p.into_inner();
-                let path_pair = inner
+                let first = inner
                     .next()
-                    .ok_or_else(|| MetelError::internal("bound_head: expected name"))?;
-                let name = collect_path_components(path_pair)?.join("::");
-                let mut args = vec![];
-                for arg in inner.filter(|q| q.as_rule() == Rule::bound_arg) {
-                    let inner_arg = arg
-                        .into_inner()
-                        .next()
-                        .ok_or_else(|| MetelError::internal("bound_arg: expected content"))?;
-                    match inner_arg.as_rule() {
-                        Rule::assoc_binding => {
-                            let mut it = inner_arg.into_inner();
-                            let assoc_name = it
+                    .ok_or_else(|| MetelError::internal("bound_head: expected content"))?;
+                match first.as_rule() {
+                    Rule::row_bound => {
+                        head = Some(BoundHead::Row(parse_row_bound(first, filename)?));
+                    }
+                    Rule::type_path => {
+                        let name = collect_path_components(first)?.join("::");
+                        let mut args = vec![];
+                        for arg in inner.filter(|q| q.as_rule() == Rule::bound_arg) {
+                            let inner_arg = arg
+                                .into_inner()
                                 .next()
-                                .ok_or_else(|| {
-                                    MetelError::internal("assoc_binding: expected name")
-                                })?
-                                .as_str()
-                                .to_string();
-                            let ty = parse_type_expr(
-                                it.next().ok_or_else(|| {
-                                    MetelError::internal("assoc_binding: expected type")
-                                })?,
-                                filename,
-                            )?;
-                            assoc_bindings.push((assoc_name, ty));
+                                .ok_or_else(|| MetelError::internal("bound_arg: expected content"))?;
+                            match inner_arg.as_rule() {
+                                Rule::assoc_binding => {
+                                    let mut it = inner_arg.into_inner();
+                                    let assoc_name = it
+                                        .next()
+                                        .ok_or_else(|| {
+                                            MetelError::internal("assoc_binding: expected name")
+                                        })?
+                                        .as_str()
+                                        .to_string();
+                                    let ty = parse_type_expr(
+                                        it.next().ok_or_else(|| {
+                                            MetelError::internal("assoc_binding: expected type")
+                                        })?,
+                                        filename,
+                                    )?;
+                                    assoc_bindings.push((assoc_name, ty));
+                                }
+                                Rule::type_expr => args.push(parse_type_expr(inner_arg, filename)?),
+                                r => {
+                                    return Err(MetelError::internal(format!(
+                                        "bound_arg: unexpected rule {r:?}"
+                                    )))
+                                }
+                            }
                         }
-                        Rule::type_expr => args.push(parse_type_expr(inner_arg, filename)?),
-                        r => {
-                            return Err(MetelError::internal(format!(
-                                "bound_arg: unexpected rule {r:?}"
-                            )))
-                        }
+                        head = Some(BoundHead::Aspect(TypeExpr::Named(name, args)));
+                    }
+                    r => {
+                        return Err(MetelError::internal(format!(
+                            "bound_head: unexpected rule {r:?}"
+                        )))
                     }
                 }
-                aspect = Some(TypeExpr::Named(name, args));
             }
             _ => {}
         }
     }
     Ok(Bound {
         polarity,
-        aspect: aspect.ok_or_else(|| MetelError::internal("bound: expected bound_head"))?,
+        head: head.ok_or_else(|| MetelError::internal("bound: expected bound_head"))?,
         assoc_bindings,
         span,
     })
+}
+
+fn parse_row_bound(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<RowBound, MetelError> {
+    let span = Span::of(&pair, filename);
+    let mut fields = Vec::new();
+    let open = pair.as_str().contains("..");
+    for p in pair.into_inner() {
+        // The only other thing `row_bound` can yield is the trailing `..`, which is
+        // already captured in `open` above.
+        if p.as_rule() == Rule::row_field {
+            let mut inner = p.into_inner();
+            let label = inner
+                .next()
+                .ok_or_else(|| MetelError::internal("row_field: expected label"))?
+                .as_str()
+                .to_string();
+            let ty = inner
+                .next()
+                .map(|te| parse_type_expr(te, filename))
+                .transpose()?;
+            fields.push(RowBoundField { label, ty });
+        }
+    }
+    fields.sort_by(|a, b| a.label.cmp(&b.label));
+    for pair in fields.windows(2) {
+        if pair[0].label == pair[1].label {
+            return Err(record_duplicate_label_error(
+                &pair[0].label,
+                filename,
+                &span,
+                "row bound",
+            ));
+        }
+    }
+    Ok(RowBound { fields, open })
 }
 
 fn parse_where_clause(
@@ -2953,17 +3003,28 @@ fn parse_where_clause(
     for p in pair.into_inner() {
         if p.as_rule() == Rule::where_constraint {
             let mut it = p.into_inner();
-            let name = it
+            let mut is_record = false;
+            let first = it
                 .next()
-                .ok_or_else(|| MetelError::internal("where_constraint: expected param name"))?
-                .as_str()
-                .to_string();
+                .ok_or_else(|| MetelError::internal("where_constraint: expected param name"))?;
+            let name_pair = if first.as_rule() == Rule::record_kw {
+                is_record = true;
+                it.next()
+                    .ok_or_else(|| MetelError::internal("where_constraint: expected param name"))?
+            } else {
+                first
+            };
+            let name = name_pair.as_str().to_string();
             let bounds = it
                 .next()
                 .map(|bl| parse_bound_list(bl, filename))
                 .transpose()?
                 .unwrap_or_default();
-            constraints.push((name, bounds));
+            constraints.push(WhereConstraint {
+                name,
+                is_record,
+                bounds,
+            });
         }
     }
     Ok(WhereClause { constraints })
@@ -2977,17 +3038,28 @@ fn parse_generic_params(
     for p in pair.into_inner() {
         if p.as_rule() == Rule::generic_param {
             let mut it = p.into_inner();
-            let name = it
+            let mut is_record = false;
+            let first = it
                 .next()
-                .ok_or_else(|| MetelError::internal("generic_param: expected name"))?
-                .as_str()
-                .to_string();
+                .ok_or_else(|| MetelError::internal("generic_param: expected name"))?;
+            let name_pair = if first.as_rule() == Rule::record_kw {
+                is_record = true;
+                it.next()
+                    .ok_or_else(|| MetelError::internal("generic_param: expected name"))?
+            } else {
+                first
+            };
+            let name = name_pair.as_str().to_string();
             let bounds = it
                 .next()
                 .map(|bl| parse_bound_list(bl, filename))
                 .transpose()?
                 .unwrap_or_default();
-            params.push(GenericParam { name, bounds });
+            params.push(GenericParam {
+                name,
+                is_record,
+                bounds,
+            });
         }
     }
     Ok(params)

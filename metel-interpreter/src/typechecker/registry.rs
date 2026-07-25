@@ -11,8 +11,8 @@ use crate::ast::{
 use crate::name_resolver::ModuleScope;
 use crate::symbols::SymbolId;
 use crate::typeinference::{
-    EnumInfo, FieldEntry, InferContext, InferType, TypeDefinitionRegistry, TypeScheme, TypeVar,
-    TypeVarGenerator, VariantInfo,
+    EnumInfo, FieldEntry, GenericBound, InferContext, InferType, TypeDefinitionRegistry,
+    TypeScheme, TypeVar, TypeVarGenerator, VariantInfo,
 };
 
 /// Collect merged aspect-name bounds per type param from inline bounds + where clause.
@@ -21,33 +21,31 @@ use crate::typeinference::{
 pub(super) fn collect_type_param_bounds(
     generics: &[GenericParam],
     where_clause: Option<&WhereClause>,
-) -> Vec<Vec<String>> {
+) -> Vec<Vec<GenericBound>> {
     generics
         .iter()
         .map(|gp| {
             // Negative bounds (`T: !Drop`) are dropped from this positive aspect-name
             // list for now — their satisfaction checking is issue #243's job.
-            let mut names: Vec<String> = gp
+            let mut names: Vec<GenericBound> = gp
                 .bounds
                 .iter()
                 .filter(|b| b.polarity == Polarity::Positive)
-                .filter_map(|b| {
-                    if let TypeExpr::Named(n, _) = &b.aspect {
-                        Some(n.clone())
-                    } else {
-                        None
-                    }
-                })
+                .filter_map(GenericBound::from_ast)
                 .collect();
             if let Some(wc) = where_clause {
-                for (param_name, bounds) in &wc.constraints {
-                    if param_name != &gp.name {
+                for constraint in &wc.constraints {
+                    if constraint.name != gp.name {
                         continue;
                     }
-                    for b in bounds.iter().filter(|b| b.polarity == Polarity::Positive) {
-                        if let TypeExpr::Named(n, _) = &b.aspect {
-                            if !names.contains(n) {
-                                names.push(n.clone());
+                    for b in constraint
+                        .bounds
+                        .iter()
+                        .filter(|b| b.polarity == Polarity::Positive)
+                    {
+                        if let Some(n) = GenericBound::from_ast(b) {
+                            if !names.iter().any(|existing| matches!((existing, &n), (GenericBound::Aspect(a), GenericBound::Aspect(b)) if a == b)) {
+                                names.push(n);
                             }
                         }
                     }
@@ -63,37 +61,50 @@ pub(super) fn collect_type_param_bounds(
 pub(super) fn collect_negative_type_param_bounds(
     generics: &[GenericParam],
     where_clause: Option<&WhereClause>,
-) -> Vec<Vec<String>> {
+) -> Vec<Vec<GenericBound>> {
     generics
         .iter()
         .map(|gp| {
-            let mut names: Vec<String> = gp
+            let mut names: Vec<GenericBound> = gp
                 .bounds
                 .iter()
                 .filter(|b| b.polarity == Polarity::Negative)
-                .filter_map(|b| {
-                    if let TypeExpr::Named(n, _) = &b.aspect {
-                        Some(n.clone())
-                    } else {
-                        None
-                    }
-                })
+                .filter_map(GenericBound::from_ast)
                 .collect();
             if let Some(wc) = where_clause {
-                for (param_name, bounds) in &wc.constraints {
-                    if param_name != &gp.name {
+                for constraint in &wc.constraints {
+                    if constraint.name != gp.name {
                         continue;
                     }
-                    for b in bounds.iter().filter(|b| b.polarity == Polarity::Negative) {
-                        if let TypeExpr::Named(n, _) = &b.aspect {
-                            if !names.contains(n) {
-                                names.push(n.clone());
+                    for b in constraint
+                        .bounds
+                        .iter()
+                        .filter(|b| b.polarity == Polarity::Negative)
+                    {
+                        if let Some(n) = GenericBound::from_ast(b) {
+                            if !names.iter().any(|existing| matches!((existing, &n), (GenericBound::Aspect(a), GenericBound::Aspect(b)) if a == b)) {
+                                names.push(n);
                             }
                         }
                     }
                 }
             }
             names
+        })
+        .collect()
+}
+
+pub(super) fn collect_type_param_record_kinds(
+    generics: &[GenericParam],
+    where_clause: Option<&WhereClause>,
+) -> Vec<bool> {
+    generics
+        .iter()
+        .map(|gp| {
+            gp.is_record
+                || where_clause
+                    .and_then(|wc| wc.constraint_for(&gp.name))
+                    .is_some_and(|constraint| constraint.is_record)
         })
         .collect()
 }
@@ -110,6 +121,10 @@ pub(super) fn synth_generics_for_impl(
         .iter()
         .map(|n| GenericParam {
             name: n.clone(),
+            is_record: ib_generics
+                .iter()
+                .find(|g| &g.name == n)
+                .is_some_and(|g| g.is_record),
             bounds: ib_generics
                 .iter()
                 .find(|g| &g.name == n)
@@ -394,6 +409,11 @@ fn register_program_decls(
                     sd.name.clone(),
                     sd.generics.iter().map(|g| g.name.clone()).collect(),
                 );
+                let record_kinds =
+                    collect_type_param_record_kinds(&sd.generics, sd.where_clause.as_ref());
+                if record_kinds.iter().any(|flag| *flag) {
+                    registry.register_type_param_record_kinds(sd.name.clone(), record_kinds);
+                }
                 let bounds = collect_type_param_bounds(&sd.generics, sd.where_clause.as_ref());
                 if bounds.iter().any(|b| !b.is_empty()) {
                     registry.register_type_param_bounds(sd.name.clone(), bounds);
@@ -433,6 +453,8 @@ fn register_program_decls(
                     ed.name.clone(),
                     ed.generics.iter().map(|g| g.name.clone()).collect(),
                 );
+                let record_kinds =
+                    collect_type_param_record_kinds(&ed.generics, ed.where_clause.as_ref());
                 let bounds = collect_type_param_bounds(&ed.generics, ed.where_clause.as_ref());
                 registry.register_enum(
                     ed.name.clone(),
@@ -442,6 +464,9 @@ fn register_program_decls(
                     },
                     current_module_path.to_vec(),
                 );
+                if record_kinds.iter().any(|flag| *flag) {
+                    registry.register_type_param_record_kinds(ed.name.clone(), record_kinds);
+                }
                 if bounds.iter().any(|b| !b.is_empty()) {
                     registry.register_type_param_bounds(ed.name.clone(), bounds);
                 }
@@ -737,13 +762,13 @@ fn register_generic_impl_method_schemes(
     let synth = synth_generics_for_impl(&generic_names, &ib.generics);
     let impl_bounds = collect_type_param_bounds(&synth, ib.where_clause.as_ref());
     let impl_neg_bounds = collect_negative_type_param_bounds(&synth, ib.where_clause.as_ref());
-    let by_var: HashMap<TypeVar, Vec<String>> = type_params
+    let by_var: HashMap<TypeVar, Vec<GenericBound>> = type_params
         .iter()
         .zip(impl_bounds.iter())
         .filter(|(_, b)| !b.is_empty())
         .map(|(&tv, b)| (tv, b.clone()))
         .collect();
-    let by_neg_var: HashMap<TypeVar, Vec<String>> = type_params
+    let by_neg_var: HashMap<TypeVar, Vec<GenericBound>> = type_params
         .iter()
         .zip(impl_neg_bounds.iter())
         .filter(|(_, b)| !b.is_empty())
@@ -787,6 +812,7 @@ fn register_generic_impl_method_schemes(
             param_names: vec![],
             bounds: vec![],
             neg_bounds: vec![],
+            record_kinds: vec![],
             assoc_projections: vec![],
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
@@ -829,14 +855,14 @@ fn register_array_impl_method_schemes(
         element_name.to_string(),
         vec![],
     )));
-    let by_var: HashMap<TypeVar, Vec<String>> = std::iter::once(element_tv)
+    let by_var: HashMap<TypeVar, Vec<GenericBound>> = std::iter::once(element_tv)
         .zip(collect_type_param_bounds(
             &ib.generics,
             ib.where_clause.as_ref(),
         ))
         .filter(|(_, b)| !b.is_empty())
         .collect();
-    let by_neg_var: HashMap<TypeVar, Vec<String>> = std::iter::once(element_tv)
+    let by_neg_var: HashMap<TypeVar, Vec<GenericBound>> = std::iter::once(element_tv)
         .zip(collect_negative_type_param_bounds(
             &ib.generics,
             ib.where_clause.as_ref(),
@@ -876,6 +902,7 @@ fn register_array_impl_method_schemes(
             param_names: vec![],
             bounds: vec![],
             neg_bounds: vec![],
+            record_kinds: vec![],
             assoc_projections: vec![],
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],

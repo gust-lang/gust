@@ -1,0 +1,4 @@
+[expect]
+status = "typecheck_error"
+code = "T0012"
+contains = "label `x` to have type `f64`"

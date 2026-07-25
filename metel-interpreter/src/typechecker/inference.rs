@@ -7,8 +7,8 @@ use crate::ast::{
 };
 use crate::error::{MetelError, TypeErrorCode};
 use crate::typeinference::{
-    free_vars, generalize, EnumInfo, FieldEntry, InferContext, InferType, Substitution, TypeScheme,
-    TypeVar, VariantInfo,
+    free_vars, generalize, EnumInfo, FieldEntry, GenericBound, InferContext, InferType,
+    Substitution, TypeScheme, TypeVar, VariantInfo,
 };
 use crate::types::Type;
 
@@ -73,8 +73,8 @@ fn ann_to_infer(te: &TypeExpr, ctx: &InferContext) -> InferType {
             if let TypeExpr::Named(ref n, _) = **base {
                 if let Some(&base_tv) = params.get(n.as_str()) {
                     if let Some(bounds) = ctx.bounds_for_type_var(base_tv) {
-                        for aspect in bounds {
-                            if let Some(decls) = ctx.registry().aspect_assoc_type_decls(&aspect) {
+                        for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
+                            if let Some(decls) = ctx.registry().aspect_assoc_type_decls(aspect) {
                                 if decls.iter().any(|d| d.name == *assoc_name) {
                                     // Cannot mint a new var here (need &mut ctx).
                                     // Return a Named placeholder; the caller that has
@@ -99,8 +99,9 @@ fn ann_to_infer(te: &TypeExpr, ctx: &InferContext) -> InferType {
 /// the caller can attach them to the generalized scheme).
 struct NativeFunTyResult {
     fun_ty: InferType,
-    bounds: HashMap<TypeVar, Vec<String>>,
-    neg_bounds: HashMap<TypeVar, Vec<String>>,
+    bounds: HashMap<TypeVar, Vec<GenericBound>>,
+    neg_bounds: HashMap<TypeVar, Vec<GenericBound>>,
+    record_kinds: HashMap<TypeVar, bool>,
     assoc_eq: HashMap<TypeVar, Vec<(String, String, InferType)>>,
 }
 
@@ -111,6 +112,7 @@ fn native_fun_ty(fun: &FunDecl, ctx: &mut InferContext) -> Result<NativeFunTyRes
     let generic_map = fun_generic_map(fun, ctx);
     let bounds_by_var = collect_fun_type_var_bounds(fun, &generic_map);
     let neg_bounds_by_var = collect_negative_fun_type_var_bounds(fun, &generic_map);
+    let record_kinds_by_var = collect_fun_type_var_record_kinds(fun, &generic_map);
     let assoc_eq_by_var = collect_fun_assoc_eq_constraints(fun, &generic_map);
     let te_to_infer = |te: &TypeExpr| -> InferType { type_expr_to_infer_with_ctx(te, &generic_map, ctx) };
     let mut param_types = Vec::with_capacity(fun.params.len());
@@ -135,6 +137,7 @@ fn native_fun_ty(fun: &FunDecl, ctx: &mut InferContext) -> Result<NativeFunTyRes
         fun_ty: InferType::Fun(param_types, Box::new(ret_ty)),
         bounds: bounds_by_var,
         neg_bounds: neg_bounds_by_var,
+        record_kinds: record_kinds_by_var,
         assoc_eq: assoc_eq_by_var,
     })
 }
@@ -204,7 +207,8 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                                 // stale, unresolved `Named("T::Item", [])` that then fails to unify
                                 // with the correctly-resolved type computed later.
                                 if let Some(bounds) = type_var_bounds.get(&base_tv) {
-                                    for aspect in bounds {
+                                    for aspect in bounds.iter().filter_map(GenericBound::aspect_name)
+                                    {
                                         if let Some(decls) =
                                             ctx.registry().aspect_assoc_type_decls(aspect)
                                         {
@@ -282,11 +286,11 @@ fn fun_generic_map(fun: &FunDecl, ctx: &mut InferContext) -> HashMap<String, Typ
 pub(super) fn collect_fun_type_var_bounds(
     fun: &FunDecl,
     generic_map: &HashMap<String, TypeVar>,
-) -> HashMap<TypeVar, Vec<String>> {
-    let mut map: HashMap<TypeVar, Vec<String>> = HashMap::new();
+) -> HashMap<TypeVar, Vec<GenericBound>> {
+    let mut map: HashMap<TypeVar, Vec<GenericBound>> = HashMap::new();
     for gp in &fun.generics {
         if let Some(&tv) = generic_map.get(&gp.name) {
-            let names: Vec<String> = gp
+            let names: Vec<GenericBound> = gp
                 .bounds
                 .iter()
                 .filter_map(|b| {
@@ -296,11 +300,7 @@ pub(super) fn collect_fun_type_var_bounds(
                     if b.polarity != crate::ast::Polarity::Positive {
                         return None;
                     }
-                    if let TypeExpr::Named(n, _) = &b.aspect {
-                        Some(n.clone())
-                    } else {
-                        None
-                    }
+                    GenericBound::from_ast(b)
                 })
                 .collect();
             if !names.is_empty() {
@@ -309,22 +309,17 @@ pub(super) fn collect_fun_type_var_bounds(
         }
     }
     if let Some(wc) = &fun.where_clause {
-        for (param_name, bounds) in &wc.constraints {
-            if let Some(&tv) = generic_map.get(param_name.as_str()) {
-                let names: Vec<String> = bounds
+        for constraint in &wc.constraints {
+            if let Some(&tv) = generic_map.get(constraint.name.as_str()) {
+                let names: Vec<GenericBound> = constraint
+                    .bounds
                     .iter()
                     .filter(|b| b.polarity == Polarity::Positive)
-                    .filter_map(|b| {
-                        if let TypeExpr::Named(n, _) = &b.aspect {
-                            Some(n.clone())
-                        } else {
-                            None
-                        }
-                    })
+                    .filter_map(GenericBound::from_ast)
                     .collect();
                 for name in names {
                     let entry = map.entry(tv).or_default();
-                    if !entry.contains(&name) {
+                    if !entry.iter().any(|existing| matches!((existing, &name), (GenericBound::Aspect(a), GenericBound::Aspect(b)) if a == b)) {
                         entry.push(name);
                     }
                 }
@@ -340,22 +335,18 @@ pub(super) fn collect_fun_type_var_bounds(
 pub(super) fn collect_negative_fun_type_var_bounds(
     fun: &FunDecl,
     generic_map: &HashMap<String, TypeVar>,
-) -> HashMap<TypeVar, Vec<String>> {
-    let mut map: HashMap<TypeVar, Vec<String>> = HashMap::new();
+) -> HashMap<TypeVar, Vec<GenericBound>> {
+    let mut map: HashMap<TypeVar, Vec<GenericBound>> = HashMap::new();
     for gp in &fun.generics {
         if let Some(&tv) = generic_map.get(&gp.name) {
-            let names: Vec<String> = gp
+            let names: Vec<GenericBound> = gp
                 .bounds
                 .iter()
                 .filter_map(|b| {
                     if b.polarity != crate::ast::Polarity::Negative {
                         return None;
                     }
-                    if let TypeExpr::Named(n, _) = &b.aspect {
-                        Some(n.clone())
-                    } else {
-                        None
-                    }
+                    GenericBound::from_ast(b)
                 })
                 .collect();
             if !names.is_empty() {
@@ -364,24 +355,43 @@ pub(super) fn collect_negative_fun_type_var_bounds(
         }
     }
     if let Some(wc) = &fun.where_clause {
-        for (param_name, bounds) in &wc.constraints {
-            if let Some(&tv) = generic_map.get(param_name.as_str()) {
-                let names: Vec<String> = bounds
+        for constraint in &wc.constraints {
+            if let Some(&tv) = generic_map.get(constraint.name.as_str()) {
+                let names: Vec<GenericBound> = constraint
+                    .bounds
                     .iter()
                     .filter(|b| b.polarity == Polarity::Negative)
-                    .filter_map(|b| {
-                        if let TypeExpr::Named(n, _) = &b.aspect {
-                            Some(n.clone())
-                        } else {
-                            None
-                        }
-                    })
+                    .filter_map(GenericBound::from_ast)
                     .collect();
                 for name in names {
                     let entry = map.entry(tv).or_default();
-                    if !entry.contains(&name) {
+                    if !entry.iter().any(|existing| matches!((existing, &name), (GenericBound::Aspect(a), GenericBound::Aspect(b)) if a == b)) {
                         entry.push(name);
                     }
+                }
+            }
+        }
+    }
+    map
+}
+
+pub(super) fn collect_fun_type_var_record_kinds(
+    fun: &FunDecl,
+    generic_map: &HashMap<String, TypeVar>,
+) -> HashMap<TypeVar, bool> {
+    let mut map: HashMap<TypeVar, bool> = HashMap::new();
+    for gp in &fun.generics {
+        if gp.is_record {
+            if let Some(&tv) = generic_map.get(&gp.name) {
+                map.insert(tv, true);
+            }
+        }
+    }
+    if let Some(wc) = &fun.where_clause {
+        for constraint in &wc.constraints {
+            if constraint.is_record {
+                if let Some(&tv) = generic_map.get(constraint.name.as_str()) {
+                    map.insert(tv, true);
                 }
             }
         }
@@ -406,13 +416,13 @@ pub(super) fn collect_fun_assoc_eq_constraints(
             if b.polarity != Polarity::Positive || b.assoc_bindings.is_empty() {
                 continue;
             }
-            let TypeExpr::Named(aspect_name, _) = &b.aspect else {
+            let Some(aspect_name) = b.aspect_name() else {
                 continue;
             };
             for (assoc_name, assoc_ty) in &b.assoc_bindings {
                 let expected = type_expr_to_infer_with_generics(assoc_ty, generic_map);
                 map.entry(tv).or_default().push((
-                    aspect_name.clone(),
+                    aspect_name.to_string(),
                     assoc_name.clone(),
                     expected,
                 ));
@@ -425,9 +435,9 @@ pub(super) fn collect_fun_assoc_eq_constraints(
         }
     }
     if let Some(wc) = &fun.where_clause {
-        for (param_name, bounds) in &wc.constraints {
-            if let Some(&tv) = generic_map.get(param_name.as_str()) {
-                collect_from_bounds(tv, bounds);
+        for constraint in &wc.constraints {
+            if let Some(&tv) = generic_map.get(constraint.name.as_str()) {
+                collect_from_bounds(tv, &constraint.bounds);
             }
         }
     }
@@ -481,6 +491,7 @@ fn infer_decl(
                         name_map: HashMap::new(),
                         bounds: HashMap::new(),
                         neg_bounds: HashMap::new(),
+                        record_kinds: HashMap::new(),
                         assoc_projections: HashMap::new(),
                         assoc_eq: HashMap::new(),
                         opaque_returns: HashMap::new(),
@@ -601,7 +612,7 @@ fn infer_decl(
                                 // §1.1: if the declaration has a bound, check the
                                 // concrete binding satisfies it.
                                 for bound in &decl.bounds {
-                                    if let TypeExpr::Named(bound_aspect, _) = &bound.aspect {
+                                    if let Some(bound_aspect) = bound.aspect_name() {
                                         if bound.polarity == Polarity::Positive {
                                             let concrete_infer = type_expr_to_infer_with_self(
                                                 concrete_ty_expr,
@@ -629,16 +640,12 @@ fn infer_decl(
                                                             b.polarity == Polarity::Positive
                                                         })
                                                         .filter_map(|b| {
-                                                            if let TypeExpr::Named(n, _) = &b.aspect
-                                                            {
-                                                                Some(n.clone())
-                                                            } else {
-                                                                None
-                                                            }
+                                                            b.aspect_name().map(ToOwned::to_owned)
                                                         })
                                                         .collect::<Vec<_>>();
 
-                                                    if param_bounds.contains(bound_aspect) {
+                                                    if param_bounds.contains(&bound_aspect.to_string())
+                                                    {
                                                         // The bound is satisfied by the impl's own parameter bounds
                                                         continue;
                                                     }
@@ -820,6 +827,7 @@ fn infer_fun_decl(
             fun_ty,
             bounds,
             neg_bounds,
+            record_kinds,
             assoc_eq,
         } = native_fun_ty(fun, ctx)?;
         // Overloaded native definitions (std::core's assert pair) are
@@ -833,6 +841,7 @@ fn infer_fun_decl(
             generalize(fun_ty.clone(), &env_fvs)
                 .with_bounds(&bounds)
                 .with_neg_bounds(&neg_bounds)
+                .with_record_kinds(&record_kinds)
                 .with_assoc_eq_constraints(&assoc_eq),
         );
         fun_generalizations.push(FunGeneralization {
@@ -842,6 +851,7 @@ fn infer_fun_decl(
             name_map: HashMap::new(),
             bounds,
             neg_bounds,
+            record_kinds,
             assoc_projections: HashMap::new(),
             assoc_eq,
             opaque_returns: HashMap::new(),
@@ -856,6 +866,10 @@ fn infer_fun_decl(
     let type_var_bounds = collect_fun_type_var_bounds(fun, &generic_map);
     if !type_var_bounds.is_empty() {
         ctx.register_fun_bounds(fun.name.clone(), type_var_bounds.clone());
+    }
+    let type_var_record_kinds = collect_fun_type_var_record_kinds(fun, &generic_map);
+    if !type_var_record_kinds.is_empty() {
+        ctx.register_fun_record_kinds(fun.name.clone(), type_var_record_kinds.clone());
     }
     let neg_type_var_bounds = collect_negative_fun_type_var_bounds(fun, &generic_map);
     if !neg_type_var_bounds.is_empty() {
@@ -880,10 +894,10 @@ fn infer_fun_decl(
                     // Find the aspect(s) that declare this assoc type.
                     let mut matching_aspects: Vec<String> = Vec::new();
                     if let Some(bounds) = type_var_bounds.get(&base_tv) {
-                        for aspect in bounds {
+                        for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
                             if let Some(decls) = ctx.registry().aspect_assoc_type_decls(aspect) {
                                 if decls.iter().any(|d| d.name == *assoc_name) {
-                                    matching_aspects.push(aspect.clone());
+                                    matching_aspects.push(aspect.to_string());
                                 }
                             }
                         }
@@ -1094,6 +1108,7 @@ fn infer_fun_decl(
     } else {
         scheme.with_opaque_returns(&opaque_map)
     };
+    let scheme = scheme.with_record_kinds(&type_var_record_kinds);
     ctx.bind_poly(fun.name.clone(), scheme);
 
     // After solving, the original TypeVars may have been unified with others.
@@ -1108,7 +1123,7 @@ fn infer_fun_decl(
             }
         })
         .collect();
-    let bounds: HashMap<TypeVar, Vec<String>> = type_var_bounds
+    let bounds: HashMap<TypeVar, Vec<GenericBound>> = type_var_bounds
         .iter()
         .filter_map(
             |(orig_tv, b)| match partial_subst.apply(&InferType::Var(*orig_tv)) {
@@ -1117,11 +1132,20 @@ fn infer_fun_decl(
             },
         )
         .collect();
-    let neg_bounds: HashMap<TypeVar, Vec<String>> = neg_type_var_bounds
+    let neg_bounds: HashMap<TypeVar, Vec<GenericBound>> = neg_type_var_bounds
         .iter()
         .filter_map(
             |(orig_tv, b)| match partial_subst.apply(&InferType::Var(*orig_tv)) {
                 InferType::Var(final_tv) => Some((final_tv, b.clone())),
+                _ => None,
+            },
+        )
+        .collect();
+    let record_kinds: HashMap<TypeVar, bool> = type_var_record_kinds
+        .iter()
+        .filter_map(
+            |(orig_tv, is_record)| match partial_subst.apply(&InferType::Var(*orig_tv)) {
+                InferType::Var(final_tv) => Some((final_tv, *is_record)),
                 _ => None,
             },
         )
@@ -1158,6 +1182,7 @@ fn infer_fun_decl(
         name_map,
         bounds,
         neg_bounds,
+        record_kinds,
         assoc_projections: proj_map,
         assoc_eq,
         opaque_returns: opaque_map,
@@ -1197,11 +1222,11 @@ fn infer_impl_method(
     // Seed with the target struct/enum's generic params so that type annotations
     // referencing e.g. `T` in `impl SortedList<T>` resolve to TypeVars and
     // aspect methods on bounded params are available in the body.
-    let mut struct_bounds: HashMap<TypeVar, Vec<String>> = HashMap::new();
+    let mut struct_bounds: HashMap<TypeVar, Vec<GenericBound>> = HashMap::new();
     // Ordered TypeVars for the struct's generic params (same order as struct type args).
     let mut struct_tvars_ordered: Vec<TypeVar> = Vec::new();
     if let Some(names) = ctx.struct_generic_names_for(target_name).cloned() {
-        let bounds_by_pos: Option<Vec<Vec<String>>> =
+        let bounds_by_pos: Option<Vec<Vec<GenericBound>>> =
             ctx.get_type_param_bounds(target_name).cloned();
         for (i, name) in names.iter().enumerate() {
             if !generic_map.contains_key(name) {
@@ -1241,9 +1266,9 @@ fn infer_impl_method(
         TypeExpr::Array(Box::new(TypeExpr::Named(name.to_string(), vec![])))
     });
     let synth = super::registry::synth_generics_for_impl(&generic_names_for_impl, &ib.generics);
-    let impl_bounds: Vec<Vec<String>> =
+    let impl_bounds: Vec<Vec<GenericBound>> =
         super::registry::collect_type_param_bounds(&synth, ib.where_clause.as_ref());
-    let impl_neg_bounds: Vec<Vec<String>> =
+    let impl_neg_bounds: Vec<Vec<GenericBound>> =
         super::registry::collect_negative_type_param_bounds(&synth, ib.where_clause.as_ref());
 
     // Merge impl-level bounds into struct_bounds (union: keep any existing
@@ -1272,10 +1297,10 @@ fn infer_impl_method(
                 if let Some(&base_tv) = generic_map.get(n.as_str()) {
                     let mut matching_aspects: Vec<String> = Vec::new();
                     if let Some(bounds) = struct_bounds.get(&base_tv) {
-                        for aspect in bounds {
+                        for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
                             if let Some(decls) = ctx.registry().aspect_assoc_type_decls(aspect) {
                                 if decls.iter().any(|d| d.name == *assoc_name) {
-                                    matching_aspects.push(aspect.clone());
+                                    matching_aspects.push(aspect.to_string());
                                 }
                             }
                         }
@@ -1408,7 +1433,7 @@ fn infer_impl_method(
         let mut scheme = generalize(resolved_fun_ty, &std::collections::HashSet::new());
         // RFC-0036 §2.2: attach impl-level bounds keyed by resolved tvars so
         // use-site checking can verify the concrete receiver satisfies them.
-        let by_var: std::collections::HashMap<TypeVar, Vec<String>> = impl_bounds
+        let by_var: std::collections::HashMap<TypeVar, Vec<GenericBound>> = impl_bounds
             .iter()
             .enumerate()
             .filter_map(|(i, bounds)| {
@@ -1419,7 +1444,7 @@ fn infer_impl_method(
                 Some((*resolved_tv, bounds.clone()))
             })
             .collect();
-        let by_neg_var: std::collections::HashMap<TypeVar, Vec<String>> = impl_neg_bounds
+        let by_neg_var: std::collections::HashMap<TypeVar, Vec<GenericBound>> = impl_neg_bounds
             .iter()
             .enumerate()
             .filter_map(|(i, bounds)| {
@@ -2524,7 +2549,7 @@ fn infer_expr(
                 if let Some(aspect_names) = ctx.bounds_for_type_var(*tv) {
                     let self_generic_map: HashMap<String, TypeVar> =
                         std::iter::once(("Self".to_string(), *tv)).collect();
-                    for aspect_name in &aspect_names {
+                    for aspect_name in aspect_names.iter().filter_map(GenericBound::aspect_name) {
                         if let Some(methods) = ctx.get_aspect_method_defs(aspect_name).cloned() {
                             if let Some(method_def) = methods.iter().find(|m| m.name == *method) {
                                 // Resolve return type: Self → the TypeVar itself. A bare
@@ -2600,7 +2625,11 @@ fn infer_expr(
                         TypeErrorCode::T0003,
                         format!(
                             "no method `{method}` on type parameter (bounds: {})",
-                            aspect_names.join(" + ")
+                            aspect_names
+                                .iter()
+                                .map(ToString::to_string)
+                                .collect::<Vec<_>>()
+                                .join(" + ")
                         ),
                         span,
                     ));
@@ -3922,9 +3951,10 @@ pub(super) fn lower_impl_aspect(fun: &FunDecl, counter: &mut usize) -> FunDecl {
                     *counter += 1;
                     extra_generics.push(GenericParam {
                         name: anon_name.clone(),
+                        is_record: false,
                         bounds: vec![Bound {
                             polarity: Polarity::Positive,
-                            aspect: *bound.clone(),
+                            head: crate::ast::BoundHead::Aspect(*bound.clone()),
                             assoc_bindings: vec![],
                             span: p.span.clone(),
                         }],

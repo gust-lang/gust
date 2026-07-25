@@ -13,8 +13,8 @@ use crate::typed_ast::{
     TypedReturnExpr, TypedStmt, TypedStructDecl, TypedWhileStmt,
 };
 use crate::typeinference::{
-    self, unify, EnumInfo, InferType, Substitution, TypeDefinitionRegistry, TypeScheme, TypeVar,
-    TypeVarGenerator, VariantInfo,
+    self, unify, EnumInfo, GenericBound, InferType, RowConstraint, Substitution,
+    TypeDefinitionRegistry, TypeScheme, TypeVar, TypeVarGenerator, VariantInfo,
 };
 use crate::types::Type;
 
@@ -188,6 +188,10 @@ impl<'a> ConstructCtx<'a> {
 
     fn register_local_struct(&mut self, name: String, fields: Vec<(String, Type, Span)>) {
         self.struct_scopes.last_mut().unwrap().insert(name, fields);
+    }
+
+    fn get_type_param_record_kinds(&self, name: &str) -> Option<&Vec<bool>> {
+        self.registry.type_param_record_kinds_for(name)
     }
 
     fn get_struct_fields(&self, name: &str) -> Option<&Vec<(String, Type, Span)>> {
@@ -696,6 +700,7 @@ fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl
             param_names: vec![],
             bounds: vec![],
             neg_bounds: vec![],
+            record_kinds: vec![],
             assoc_projections: vec![],
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
@@ -1892,28 +1897,37 @@ fn construct_expr(
                         })
                         .collect::<Result<_, _>>()?;
                     // T0012: check each resolved type arg satisfies the declared bounds.
+                    let generic_types_by_name: HashMap<String, Type> = ctx
+                        .registry
+                        .struct_generic_names_for(type_name)
+                        .into_iter()
+                        .flatten()
+                        .cloned()
+                        .zip(type_args.iter().cloned())
+                        .collect();
+                    let record_kinds = ctx
+                        .get_type_param_record_kinds(type_name)
+                        .cloned()
+                        .unwrap_or_else(|| vec![false; type_args.len()]);
                     if let Some(param_bounds) = ctx.registry.type_param_bounds_for(type_name) {
                         for (i, bounds) in param_bounds.iter().enumerate() {
-                            if bounds.is_empty() {
+                            let record_kind = record_kinds.get(i).copied().unwrap_or(false);
+                            if bounds.is_empty() && !record_kind {
                                 continue;
                             }
                             let Some(arg) = type_args.get(i) else {
                                 continue;
                             };
-                            let concrete_arg = match arg {
-                                Type::Named(_, _) => arg.clone(),
-                                _ => continue,
-                            };
-                            for aspect in bounds {
-                                check_type_satisfies_bounds(
-                                    &concrete_arg,
-                                    std::slice::from_ref(aspect),
-                                    type_name,
-                                    span,
-                                    ctx.registry,
-                                    ctx.current_module,
-                                )?;
-                            }
+                            check_type_satisfies_bounds(
+                                arg,
+                                bounds,
+                                record_kind,
+                                type_name,
+                                span,
+                                ctx.registry,
+                                ctx.current_module,
+                                &generic_types_by_name,
+                            )?;
                         }
                     }
                     // T0012 negative bounds: check each resolved type arg does NOT
@@ -1922,26 +1936,23 @@ fn construct_expr(
                         ctx.registry.neg_type_param_bounds_for(type_name)
                     {
                         for (i, neg_bounds) in neg_param_bounds.iter().enumerate() {
-                            if neg_bounds.is_empty() {
+                            let record_kind = record_kinds.get(i).copied().unwrap_or(false);
+                            if neg_bounds.is_empty() && !record_kind {
                                 continue;
                             }
                             let Some(arg) = type_args.get(i) else {
                                 continue;
                             };
-                            let concrete_arg = match arg {
-                                Type::Named(_, _) => arg.clone(),
-                                _ => continue,
-                            };
-                            for aspect in neg_bounds {
-                                check_type_does_not_satisfy_bound(
-                                    &concrete_arg,
-                                    std::slice::from_ref(aspect),
-                                    type_name,
-                                    span,
-                                    ctx.registry,
-                                    ctx.current_module,
-                                )?;
-                            }
+                            check_type_does_not_satisfy_bound(
+                                arg,
+                                neg_bounds,
+                                record_kind,
+                                type_name,
+                                span,
+                                ctx.registry,
+                                ctx.current_module,
+                                &generic_types_by_name,
+                            )?;
                         }
                     }
                     Type::Named(type_name.clone(), type_args)
@@ -2818,48 +2829,60 @@ fn construct_enum_literal_ty(
         .collect::<Result<_, _>>()?;
 
     // T0012: check each resolved type arg satisfies the enum's declared bounds.
+    let generic_types_by_name: HashMap<String, Type> = ctx
+        .registry
+        .struct_generic_names_for(enum_name)
+        .into_iter()
+        .flatten()
+        .cloned()
+        .zip(concrete_args.iter().cloned())
+        .collect();
+    let record_kinds = ctx
+        .get_type_param_record_kinds(enum_name)
+        .cloned()
+        .unwrap_or_else(|| vec![false; concrete_args.len()]);
     if let Some(param_bounds) = ctx.registry.type_param_bounds_for(enum_name) {
         for (i, bounds) in param_bounds.iter().enumerate() {
-            if bounds.is_empty() {
+            let record_kind = record_kinds.get(i).copied().unwrap_or(false);
+            if bounds.is_empty() && !record_kind {
                 continue;
             }
-            let concrete_arg = match concrete_args.get(i) {
-                Some(t @ Type::Named(_, _)) => t.clone(),
-                _ => continue,
+            let Some(concrete_arg) = concrete_args.get(i) else {
+                continue;
             };
-            for aspect in bounds {
-                check_type_satisfies_bounds(
-                    &concrete_arg,
-                    std::slice::from_ref(aspect),
-                    enum_name,
-                    span,
-                    ctx.registry,
-                    ctx.current_module,
-                )?;
-            }
+            check_type_satisfies_bounds(
+                concrete_arg,
+                bounds,
+                record_kind,
+                enum_name,
+                span,
+                ctx.registry,
+                ctx.current_module,
+                &generic_types_by_name,
+            )?;
         }
     }
     // T0012 negative bounds: check each resolved type arg does NOT implement
     // the declared negative bounds (RFC-0072, issue #243).
     if let Some(neg_param_bounds) = ctx.registry.neg_type_param_bounds_for(enum_name) {
         for (i, neg_bounds) in neg_param_bounds.iter().enumerate() {
-            if neg_bounds.is_empty() {
+            let record_kind = record_kinds.get(i).copied().unwrap_or(false);
+            if neg_bounds.is_empty() && !record_kind {
                 continue;
             }
-            let concrete_arg = match concrete_args.get(i) {
-                Some(t @ Type::Named(_, _)) => t.clone(),
-                _ => continue,
+            let Some(concrete_arg) = concrete_args.get(i) else {
+                continue;
             };
-            for aspect in neg_bounds {
-                check_type_does_not_satisfy_bound(
-                    &concrete_arg,
-                    std::slice::from_ref(aspect),
-                    enum_name,
-                    span,
-                    ctx.registry,
-                    ctx.current_module,
-                )?;
-            }
+            check_type_does_not_satisfy_bound(
+                concrete_arg,
+                neg_bounds,
+                record_kind,
+                enum_name,
+                span,
+                ctx.registry,
+                ctx.current_module,
+                &generic_types_by_name,
+            )?;
         }
     }
 
@@ -3366,20 +3389,24 @@ fn check_fun_call_bounds(
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
 ) -> Result<(), MetelError> {
-    let Some(bounds_map) = registry.fun_bounds_for(fun_name) else {
-        return Ok(());
-    };
-    for (tv, aspect_names) in bounds_map {
-        let Some(concrete) = var_to_type.get(tv) else {
+    let bounds_map = registry.fun_bounds_for(fun_name);
+    let record_kinds = registry.fun_record_kinds_for(fun_name);
+    let generic_types_by_name: HashMap<String, Type> = HashMap::new();
+    for (tv, concrete) in var_to_type {
+        let bounds = bounds_map.and_then(|map| map.get(tv)).map_or(&[][..], Vec::as_slice);
+        let record_kind = record_kinds.and_then(|map| map.get(tv)).copied().unwrap_or(false);
+        if bounds.is_empty() && !record_kind {
             continue;
-        };
+        }
         check_type_satisfies_bounds(
             concrete,
-            aspect_names,
+            bounds,
+            record_kind,
             fun_name,
             span,
             registry,
             current_module,
+            &generic_types_by_name,
         )?;
     }
     Ok(())
@@ -3568,11 +3595,16 @@ fn check_scheme_bounds(
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
 ) -> Result<(), MetelError> {
-    if scheme.bounds.is_empty() {
-        return Ok(());
-    }
-    for (tv, aspect_names) in scheme.quantified_vars.iter().zip(&scheme.bounds) {
-        if aspect_names.is_empty() {
+    let generic_types_by_name: HashMap<String, Type> = scheme
+        .quantified_vars
+        .iter()
+        .zip(&scheme.param_names)
+        .filter_map(|(tv, name)| var_to_type.get(tv).cloned().map(|ty| (name.clone(), ty)))
+        .collect();
+    for (index, tv) in scheme.quantified_vars.iter().enumerate() {
+        let bounds = scheme.bounds.get(index).map_or(&[][..], Vec::as_slice);
+        let record_kind = scheme.record_kinds.get(index).copied().unwrap_or(false);
+        if bounds.is_empty() && !record_kind {
             continue;
         }
         let Some(concrete) = var_to_type.get(tv) else {
@@ -3580,11 +3612,13 @@ fn check_scheme_bounds(
         };
         check_type_satisfies_bounds(
             concrete,
-            aspect_names,
+            bounds,
+            record_kind,
             fun_name,
             span,
             registry,
             current_module,
+            &generic_types_by_name,
         )?;
     }
     Ok(())
@@ -3702,21 +3736,222 @@ fn check_scheme_assoc_eq(
     Ok(())
 }
 
-/// Check one concrete type against a set of required aspect names. Named types
-/// and primitives are checked against the aspect-impl registry; structural
-/// types generate targeted diagnostics when no structural impl is available.
-fn check_type_satisfies_bounds(
+fn resolve_row_field_type(
+    ty: &TypeExpr,
+    generic_types_by_name: &HashMap<String, Type>,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+) -> Result<Type, MetelError> {
+    let mut generic_map = HashMap::new();
+    let mut subst = Substitution::new();
+    for (index, (name, concrete)) in generic_types_by_name.iter().enumerate() {
+        let tv = TypeVar(index.try_into().expect("generic map index fits in u32"));
+        generic_map.insert(name.clone(), tv);
+        subst.bind(tv, type_to_infer(concrete));
+    }
+    let assoc_ctx = AssocResolveCtx {
+        registry,
+        current_module,
+        current_aspect: None,
+    };
+    let inferred = type_expr_to_infer_with_assoc_ctx(ty, &generic_map, None, &assoc_ctx);
+    infer_type_to_type(&subst.apply(&inferred), span)
+}
+
+fn row_bound_error_prefix(bound: &GenericBound) -> String {
+    match bound {
+        GenericBound::Row(_) => format!("row bound `{bound}`"),
+        GenericBound::Aspect(name) => format!("bound `{name}`"),
+    }
+}
+
+fn check_record_kind_requirement(
     concrete: &Type,
-    aspect_names: &[String],
+    bounds: &[GenericBound],
+    record_kind: bool,
     fun_name: &str,
     span: &Span,
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
 ) -> Result<(), MetelError> {
+    let has_row_bound = bounds.iter().any(|bound| matches!(bound, GenericBound::Row(_)));
+    if has_row_bound && !record_kind {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0012,
+            format!(
+                "row bound requires a record-kinded type parameter in `{fun_name}`; add `record` before the type parameter"
+            ),
+            span,
+        ));
+    }
+    if !record_kind {
+        return Ok(());
+    }
+    match concrete {
+        Type::Record(_) => Ok(()),
+        Type::Named(name, _) => {
+            let message = match registry.visible_type_kind(current_module, name) {
+                Some(crate::typeinference::VisibleTypeKind::Struct) => format!(
+                    "`{name}` is a struct, but a struct never satisfies a row bound; conversion to a record is not available in this release"
+                ),
+                _ => format!("`{name}` is not a record, and only records satisfy a `record` type parameter"),
+            };
+            Err(MetelError::type_error(TypeErrorCode::T0012, message, span))
+        }
+        other => Err(MetelError::type_error(
+            TypeErrorCode::T0012,
+            format!("`{other}` is not a record, and only records satisfy a `record` type parameter"),
+            span,
+        )),
+    }
+}
+
+fn check_positive_row_bound(
+    record_fields: &[(String, Type)],
+    row: &RowConstraint,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+    generic_types_by_name: &HashMap<String, Type>,
+) -> Result<(), MetelError> {
+    let bound = GenericBound::Row(row.clone());
+    let actual_labels: Vec<&str> = record_fields.iter().map(|(label, _)| label.as_str()).collect();
+    if !row.open && record_fields.len() != row.fields.len() {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0012,
+            format!(
+                "{} requires exactly these labels, but the record has: {}",
+                row_bound_error_prefix(&bound),
+                actual_labels.join(", ")
+            ),
+            span,
+        ));
+    }
+    for required in &row.fields {
+        let Ok(index) = record_fields
+            .binary_search_by(|(label, _)| label.as_str().cmp(required.label.as_str()))
+        else {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0012,
+                format!(
+                    "{} requires label `{}`, but the record has: {}",
+                    row_bound_error_prefix(&bound),
+                    required.label,
+                    actual_labels.join(", ")
+                ),
+                span,
+            ));
+        };
+        if let Some(expected_ty_expr) = &required.ty {
+            let expected_ty = resolve_row_field_type(
+                expected_ty_expr,
+                generic_types_by_name,
+                span,
+                registry,
+                current_module,
+            )?;
+            let actual_ty = &record_fields[index].1;
+            if actual_ty != &expected_ty {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0012,
+                    format!(
+                        "{} requires label `{}` to have type `{expected_ty}`, but it is `{actual_ty}`",
+                        row_bound_error_prefix(&bound),
+                        required.label
+                    ),
+                    span,
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn check_negative_row_bound(
+    record_fields: &[(String, Type)],
+    row: &RowConstraint,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+    generic_types_by_name: &HashMap<String, Type>,
+) -> Result<(), MetelError> {
+    let bound = GenericBound::Row(row.clone());
+    for forbidden in &row.fields {
+        let Ok(index) = record_fields
+            .binary_search_by(|(label, _)| label.as_str().cmp(forbidden.label.as_str()))
+        else {
+            continue;
+        };
+        let actual_ty = &record_fields[index].1;
+        let matches = if let Some(expected_ty_expr) = &forbidden.ty {
+            let expected_ty = resolve_row_field_type(
+                expected_ty_expr,
+                generic_types_by_name,
+                span,
+                registry,
+                current_module,
+            )?;
+            actual_ty == &expected_ty
+        } else {
+            true
+        };
+        if matches {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0012,
+                format!(
+                    "negative row bound `!{}` is not satisfied because the record has label `{}`",
+                    bound,
+                    forbidden.label
+                ),
+                span,
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Check one concrete type against a set of required bounds. Aspect bounds are
+/// checked against the impl registry; row bounds are handled structurally.
+#[allow(clippy::too_many_arguments)] // threads registry + module + generic map through bound checking
+fn check_type_satisfies_bounds(
+    concrete: &Type,
+    bounds: &[GenericBound],
+    record_kind: bool,
+    fun_name: &str,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+    generic_types_by_name: &HashMap<String, Type>,
+) -> Result<(), MetelError> {
+    check_record_kind_requirement(
+        concrete,
+        bounds,
+        record_kind,
+        fun_name,
+        span,
+        registry,
+        current_module,
+    )?;
+    if let Type::Record(record_fields) = concrete {
+        for bound in bounds {
+            if let GenericBound::Row(row) = bound {
+                check_positive_row_bound(
+                    record_fields,
+                    row,
+                    span,
+                    registry,
+                    current_module,
+                    generic_types_by_name,
+                )?;
+            }
+        }
+    }
+
     let type_name = match concrete {
         Type::Named(n, _) => n.clone(),
         Type::Array(elem) => {
-            for aspect in aspect_names {
+            for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
                 if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0012,
@@ -3730,7 +3965,7 @@ fn check_type_satisfies_bounds(
             return Ok(());
         }
         Type::Tuple(_) => {
-            for aspect in aspect_names {
+            for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
                 if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0012,
@@ -3744,7 +3979,7 @@ fn check_type_satisfies_bounds(
             return Ok(());
         }
         Type::Fun(_, _) => {
-            for aspect in aspect_names {
+            for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
                 if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0012,
@@ -3755,13 +3990,8 @@ fn check_type_satisfies_bounds(
             }
             return Ok(());
         }
-        // RFC-0116 §3: an anonymous record has no nominal owner, so it can implement no
-        // non-local aspect — only the auto-derived `Send`/`Sync` compose field-wise. Must
-        // be checked explicitly: falling through to the primitive lookup below returns
-        // `Ok(())`, which made a record vacuously satisfy *every* bound and then fail at
-        // run time as an internal error inside method dispatch.
         Type::Record(_) => {
-            for aspect in aspect_names {
+            for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
                 if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0012,
@@ -3779,7 +4009,7 @@ fn check_type_satisfies_bounds(
             None => return Ok(()),
         },
     };
-    for aspect in aspect_names {
+    for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
         if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
             return Err(MetelError::type_error(
                 TypeErrorCode::T0012,
@@ -3791,18 +4021,42 @@ fn check_type_satisfies_bounds(
     Ok(())
 }
 
-/// Check that a concrete type does NOT satisfy a set of negative aspect names
-/// (RFC-0072, `T: !Aspect`, issue #243). Inverts `check_type_satisfies_bounds`:
-/// for each required `!Aspect`, the type must NOT have a registered positive impl.
-/// The Copy-implies-!Drop override (RFC-0072 §2.3) is applied here.
+/// Check that a concrete type does NOT satisfy a set of negative bounds.
+#[allow(clippy::too_many_arguments)] // mirrors check_type_satisfies_bounds' parameter list
 fn check_type_does_not_satisfy_bound(
     concrete: &Type,
-    neg_aspect_names: &[String],
+    neg_bounds: &[GenericBound],
+    record_kind: bool,
     fun_name: &str,
     span: &Span,
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
+    generic_types_by_name: &HashMap<String, Type>,
 ) -> Result<(), MetelError> {
+    check_record_kind_requirement(
+        concrete,
+        neg_bounds,
+        record_kind,
+        fun_name,
+        span,
+        registry,
+        current_module,
+    )?;
+    if let Type::Record(record_fields) = concrete {
+        for bound in neg_bounds {
+            if let GenericBound::Row(row) = bound {
+                check_negative_row_bound(
+                    record_fields,
+                    row,
+                    span,
+                    registry,
+                    current_module,
+                    generic_types_by_name,
+                )?;
+            }
+        }
+    }
+
     let type_name = match concrete {
         Type::Named(n, _) => n.clone(),
         other => match super::inference::primitive_type_name(other) {
@@ -3810,10 +4064,8 @@ fn check_type_does_not_satisfy_bound(
             None => return Ok(()),
         },
     };
-    for aspect in neg_aspect_names {
+    for aspect in neg_bounds.iter().filter_map(GenericBound::aspect_name) {
         if registry.type_satisfies_aspect(current_module, concrete, aspect) {
-            // RFC-0072 §2.3: Copy implies !Drop. Scoped to this exact pair —
-            // do not generalize into a general aspect-exclusion mechanism.
             if aspect == "Drop" && registry.type_satisfies_aspect(current_module, concrete, "Copy")
             {
                 continue;
@@ -3839,20 +4091,24 @@ fn check_fun_call_neg_bounds(
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
 ) -> Result<(), MetelError> {
-    let Some(bounds_map) = registry.neg_fun_bounds_for(fun_name) else {
-        return Ok(());
-    };
-    for (tv, neg_aspect_names) in bounds_map {
-        let Some(concrete) = var_to_type.get(tv) else {
+    let bounds_map = registry.neg_fun_bounds_for(fun_name);
+    let record_kinds = registry.fun_record_kinds_for(fun_name);
+    let generic_types_by_name: HashMap<String, Type> = HashMap::new();
+    for (tv, concrete) in var_to_type {
+        let bounds = bounds_map.and_then(|map| map.get(tv)).map_or(&[][..], Vec::as_slice);
+        let record_kind = record_kinds.and_then(|map| map.get(tv)).copied().unwrap_or(false);
+        if bounds.is_empty() && !record_kind {
             continue;
-        };
+        }
         check_type_does_not_satisfy_bound(
             concrete,
-            neg_aspect_names,
+            bounds,
+            record_kind,
             fun_name,
             span,
             registry,
             current_module,
+            &generic_types_by_name,
         )?;
     }
     Ok(())
@@ -3869,11 +4125,16 @@ fn check_scheme_neg_bounds(
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
 ) -> Result<(), MetelError> {
-    if scheme.neg_bounds.is_empty() {
-        return Ok(());
-    }
-    for (tv, neg_aspect_names) in scheme.quantified_vars.iter().zip(&scheme.neg_bounds) {
-        if neg_aspect_names.is_empty() {
+    let generic_types_by_name: HashMap<String, Type> = scheme
+        .quantified_vars
+        .iter()
+        .zip(&scheme.param_names)
+        .filter_map(|(tv, name)| var_to_type.get(tv).cloned().map(|ty| (name.clone(), ty)))
+        .collect();
+    for (index, tv) in scheme.quantified_vars.iter().enumerate() {
+        let bounds = scheme.neg_bounds.get(index).map_or(&[][..], Vec::as_slice);
+        let record_kind = scheme.record_kinds.get(index).copied().unwrap_or(false);
+        if bounds.is_empty() && !record_kind {
             continue;
         }
         let Some(concrete) = var_to_type.get(tv) else {
@@ -3881,11 +4142,13 @@ fn check_scheme_neg_bounds(
         };
         check_type_does_not_satisfy_bound(
             concrete,
-            neg_aspect_names,
+            bounds,
+            record_kind,
             fun_name,
             span,
             registry,
             current_module,
+            &generic_types_by_name,
         )?;
     }
     Ok(())

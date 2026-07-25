@@ -249,21 +249,72 @@ pub enum Polarity {
 #[derive(Debug, Clone)]
 pub struct Bound {
     pub polarity: Polarity,
-    pub aspect: TypeExpr,
+    pub head: BoundHead,
     pub assoc_bindings: Vec<(String, TypeExpr)>,
     #[allow(dead_code)] // not yet consumed; will back diagnostics once bounds are checked
     pub span: Span,
 }
 
+impl Bound {
+    #[must_use]
+    pub fn aspect_name(&self) -> Option<&str> {
+        match &self.head {
+            BoundHead::Aspect(TypeExpr::Named(name, _)) => Some(name.as_str()),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub fn row_bound(&self) -> Option<&RowBound> {
+        match &self.head {
+            BoundHead::Row(row) => Some(row),
+            BoundHead::Aspect(_) => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum BoundHead {
+    Aspect(TypeExpr),
+    Row(RowBound),
+}
+
+#[derive(Debug, Clone)]
+pub struct RowBound {
+    pub fields: Vec<RowBoundField>,
+    pub open: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct RowBoundField {
+    pub label: String,
+    pub ty: Option<TypeExpr>,
+}
+
 #[derive(Debug, Clone)]
 pub struct GenericParam {
     pub name: String,
+    pub is_record: bool,
     pub bounds: Vec<Bound>, // empty = unconstrained
 }
 
 #[derive(Debug, Clone)]
+pub struct WhereConstraint {
+    pub name: String,
+    pub is_record: bool,
+    pub bounds: Vec<Bound>,
+}
+
+#[derive(Debug, Clone)]
 pub struct WhereClause {
-    pub constraints: Vec<(String, Vec<Bound>)>, // (type_param_name, [bound, ...])
+    pub constraints: Vec<WhereConstraint>,
+}
+
+impl WhereClause {
+    #[must_use]
+    pub fn constraint_for(&self, name: &str) -> Option<&WhereConstraint> {
+        self.constraints.iter().find(|constraint| constraint.name == name)
+    }
 }
 
 #[derive(Debug, Clone)]

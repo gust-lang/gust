@@ -1,4 +1,4 @@
-use metel::ast::{Decl, Expr, ImportTree, PathRoot, Polarity, TypeExpr};
+use metel::ast::{BoundHead, Decl, Expr, ImportTree, PathRoot, Polarity, TypeExpr};
 use metel::parser;
 
 #[test]
@@ -258,6 +258,61 @@ fun main() {
     };
     assert_eq!(fields[0].0, "x");
     assert_eq!(fields[1].0, "y");
+}
+
+#[test]
+fn row_bounds_parse_inline_and_where_record_marker() {
+    let source = r#"
+fun f<record T: { x, y: i64, .. }>(value: T) -> i64
+where record T: !{ z } {
+    0
+}
+"#;
+    let program = parser::parse(source, "row_bounds_surface.mtl")
+        .unwrap_or_else(|e| panic!("{e}"));
+
+    let Decl::Fun(fun) = &program.decls[0] else {
+        panic!("expected function declaration");
+    };
+    assert!(fun.generics[0].is_record);
+    assert_eq!(fun.generics[0].bounds.len(), 1);
+    let BoundHead::Row(row) = &fun.generics[0].bounds[0].head else {
+        panic!("expected inline row bound");
+    };
+    assert!(row.open);
+    assert_eq!(row.fields.len(), 2);
+    assert_eq!(row.fields[0].label, "x");
+    assert!(row.fields[0].ty.is_none());
+    assert_eq!(row.fields[1].label, "y");
+    assert!(matches!(row.fields[1].ty, Some(TypeExpr::Named(ref name, _)) if name == "i64"));
+
+    let where_clause = fun.where_clause.as_ref().expect("expected where clause");
+    assert_eq!(where_clause.constraints.len(), 1);
+    assert!(where_clause.constraints[0].is_record);
+    assert_eq!(where_clause.constraints[0].bounds[0].polarity, Polarity::Negative);
+    let BoundHead::Row(neg_row) = &where_clause.constraints[0].bounds[0].head else {
+        panic!("expected negative row bound");
+    };
+    assert!(!neg_row.open);
+    assert_eq!(neg_row.fields.len(), 1);
+    assert_eq!(neg_row.fields[0].label, "z");
+    assert!(neg_row.fields[0].ty.is_none());
+}
+
+#[test]
+fn boundless_record_generic_parses() {
+    let source = r#"
+fun keep<record T>(value: T) -> T { value }
+"#;
+    let program = parser::parse(source, "boundless_record_generic.mtl")
+        .unwrap_or_else(|e| panic!("{e}"));
+
+    let Decl::Fun(fun) = &program.decls[0] else {
+        panic!("expected function declaration");
+    };
+    assert_eq!(fun.generics.len(), 1);
+    assert!(fun.generics[0].is_record);
+    assert!(fun.generics[0].bounds.is_empty());
 }
 
 fn parse_error_message(filename: &str) -> String {
