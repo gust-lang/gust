@@ -1,17 +1,21 @@
 // Positive: a `Copy` type satisfies a `!Drop` bound, concretely and through a
 // `T: Copy` generic.
 //
-// NOTE ON WHAT THIS CAN AND CANNOT ASSERT. RFC-0072 §2.3 frames this as an
-// *implication* — `T: Copy` derives `T: !Drop` — and before `Copy`/`Drop` were real
-// aspects this fixture tested it by giving one type both, then relying on the
-// override. That program is now rejected outright: RFC-0071 §4's mutual exclusion is
-// enforced at the declaration site (see stage5_neg_33).
+// NOTE ON WHAT THIS ASSERTS. RFC-0072 §2.3 frames this as an *implication* —
+// `T: Copy` derives `T: !Drop`. Before `Copy`/`Drop` were real aspects, this fixture
+// tested it by giving one type both and relying on the override; that exact program is
+// now rejected by RFC-0071 §4's declaration-site mutual exclusion (stage5_neg_33).
 //
-// So the implication is now *structurally guaranteed* rather than derived, and no
-// positive test can isolate it: "a `Copy` type satisfies `!Drop`" and "a type with no
-// `Drop` impl satisfies `!Drop`" have become the same fact. This fixture therefore
-// guards the outcome, not the mechanism — it would still catch a regression where a
-// `Copy` type failed a `!Drop` bound. The mechanism's other half is stage5_neg_33.
+// An earlier revision of this comment claimed the implication had therefore become
+// structurally guaranteed and untestable. **That was wrong**, and an adversarial review
+// disproved it: §4 is only enforced for *concrete* impl targets, so two overlapping
+// conditional impls — `extend<T: Copy> Foo<T>: Copy` and `extend<T: Display> Foo<T>: Drop`
+// — still give `Foo<i64>` both, and the implication is what wrongly lets it through a
+// `!Drop` bound. The mechanism is live, and unsound. Tracked separately.
+//
+// What this fixture covers is the ordinary path only: a `Copy` type satisfies `!Drop`,
+// concretely and through a `T: Copy` generic. It does not isolate the implication —
+// `Both` has no `Drop` impl, so `!Drop` would hold regardless.
 
 struct Both {
     x: i64,
