@@ -39,15 +39,22 @@ pub struct Expectation {
 pub struct FixtureConfig {
     pub runner: RunnerKind,
     pub prelude: CorePreludeMode,
+    pub options: FixtureOptions,
     pub expect: Expectation,
     pub program: ProgramChecks,
     pub graph: GraphChecks,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FixtureOptions {
+    pub move_check: bool,
 }
 
 #[derive(Default)]
 struct PartialConfig {
     runner: Option<RunnerKind>,
     prelude: Option<CorePreludeMode>,
+    move_check: Option<bool>,
     status: Option<ExpectStatus>,
     code: Option<String>,
     contains: Option<String>,
@@ -97,6 +104,7 @@ fn suite_defaults(suite: &str) -> FixtureConfig {
         "parsing" => FixtureConfig {
             runner: RunnerKind::Parse,
             prelude: CorePreludeMode::Empty,
+            options: FixtureOptions::default(),
             expect: Expectation::success(),
             program: ProgramChecks::default(),
             graph: GraphChecks::default(),
@@ -104,6 +112,7 @@ fn suite_defaults(suite: &str) -> FixtureConfig {
         "typechecking" => FixtureConfig {
             runner: RunnerKind::Typecheck,
             prelude: CorePreludeMode::Default,
+            options: FixtureOptions::default(),
             expect: Expectation::success(),
             program: ProgramChecks::default(),
             graph: GraphChecks::default(),
@@ -111,6 +120,7 @@ fn suite_defaults(suite: &str) -> FixtureConfig {
         "evaluator" => FixtureConfig {
             runner: RunnerKind::Evaluate,
             prelude: CorePreludeMode::Default,
+            options: FixtureOptions::default(),
             expect: Expectation::success(),
             program: ProgramChecks::default(),
             graph: GraphChecks::default(),
@@ -118,6 +128,7 @@ fn suite_defaults(suite: &str) -> FixtureConfig {
         "module_loading" => FixtureConfig {
             runner: RunnerKind::FullPipeline,
             prelude: CorePreludeMode::Empty,
+            options: FixtureOptions::default(),
             expect: Expectation::success(),
             program: ProgramChecks::default(),
             graph: GraphChecks::default(),
@@ -125,6 +136,7 @@ fn suite_defaults(suite: &str) -> FixtureConfig {
         "module_semantics" => FixtureConfig {
             runner: RunnerKind::FullPipeline,
             prelude: CorePreludeMode::Empty,
+            options: FixtureOptions::default(),
             expect: Expectation::success(),
             program: ProgramChecks::default(),
             graph: GraphChecks::default(),
@@ -149,6 +161,9 @@ fn merge_config(defaults: FixtureConfig, partial: PartialConfig) -> FixtureConfi
     FixtureConfig {
         runner: partial.runner.unwrap_or(defaults.runner),
         prelude: partial.prelude.unwrap_or(defaults.prelude),
+        options: FixtureOptions {
+            move_check: partial.move_check.unwrap_or(defaults.options.move_check),
+        },
         expect: Expectation {
             status: partial.status.unwrap_or(defaults.expect.status),
             code: partial.code.or(defaults.expect.code),
@@ -210,6 +225,10 @@ fn parse_sidecar(path: &Path) -> PartialConfig {
                     "unknown top-level sidecar key `{other}` in {}",
                     path.display()
                 ),
+            },
+            "options" => match key {
+                "move_check" => partial.move_check = Some(parse_bool(&value)),
+                other => panic!("unknown options sidecar key `{other}` in {}", path.display()),
             },
             "expect" => match key {
                 "status" => partial.status = Some(parse_status(&value)),
@@ -306,6 +325,14 @@ fn parse_status(value: &str) -> ExpectStatus {
         "runtime_error" => ExpectStatus::RuntimeError,
         "load_error" => ExpectStatus::LoadError,
         other => panic!("unknown expectation status `{other}`"),
+    }
+}
+
+fn parse_bool(value: &str) -> bool {
+    match value {
+        "true" => true,
+        "false" => false,
+        other => panic!("unknown boolean literal `{other}`"),
     }
 }
 

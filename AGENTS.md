@@ -149,21 +149,44 @@ git push -u origin sprint/N
   effect of a sprint merging in (it's fine for it to lag `metel-docs main` between
   sprints — treat it like a dependency pin, not a freshness target), and `main`'s
   only moves at release time (see "Release Workflow" below).
-- **Update `docs/public/release-notes/changelog.md` in the same commit/session that lands the feature or fix, not later.** Add the entry under the current in-progress version's section (create it, marked "in progress on `sprint/N` — not yet released", if this is the first change of the sprint targeting a new version). The sprint-close gate below re-checks completeness; it is not when the changelog is first touched.
+- **Update `docs/public/release-notes/changelog.md` as each feature or fix lands, not later.**
+  Add the entry under the current in-progress version's section (create it, marked "in progress
+  on `develop` — not yet released", if this is the first change targeting a new version).
+
+  **The changelog is in the `docs/` submodule, so this can never be one commit** — the code
+  commit lands here, the entry lands in `metel-docs`, and the pointer bump lands here again.
+  That split is why this rule quietly failed for the whole of v0.12.0: an instruction to write
+  the entry "in the same commit" describes something impossible, so it degraded into "later",
+  which meant never. Treat it as a **pair**: the code commit, then immediately the docs commit
+  plus pointer bump. Do not batch a sprint's entries at the end — that is reconstruction from
+  `git log`, and it loses exactly the reasoning that makes an entry worth reading.
+
+  **Check it with `tools/changelog-status.sh`.** It lists every unreleased `feat`/`fix` commit
+  that touched real code and flags the ones landing after the changelog was last edited, so the
+  gate below is a diff to read rather than something to remember. It reports rather than
+  enforces — timestamps are a heuristic, since entries are prose and don't cite issue numbers.
 
 ### Closing a Sprint
 
 Before opening a pull request from `sprint/N` to `develop`, run the quality gate below. If any gate fails, fix it on the sprint branch and run the gate again.
 
 1. **Tests** - `cargo test` from `metel-interpreter/` must pass with zero failures.
-2. **Code quality** - review every file in `git diff develop..HEAD --name-only` for stale code, dead branches, accidental `todo!()`, `unimplemented!()`, `unreachable!()`, and fallible `unwrap()`/`expect()` paths.
+2. **Code quality** - `cargo clippy --release --lib -- -W clippy::pedantic` from
+   `metel-interpreter/` must end at **0 warnings**. The `--lib` scope is deliberate: `--all-targets`
+   also lints measurement binaries and test harnesses, which are held to a looser bar. Then review
+   every file in `git diff develop..HEAD --name-only` for stale code, dead branches, accidental
+   `todo!()`, `unimplemented!()`, `unreachable!()`, and fallible `unwrap()`/`expect()` paths.
 3. **Coverage** - every feature or fix needs a focused regression test:
    - Parser or grammar changes: parsing tests or typechecking tests.
    - Type system changes: typechecking tests in `tests/typechecking/sources/`.
    - Evaluator/runtime changes: evaluator tests in `tests/evaluator/sources/` or module semantics tests.
    - Module graph/name-resolution changes: `tests/module_loading/` or `tests/module_semantics/`.
 4. **Spec accuracy** - every language-visible change is documented in `docs/public/reference/spec.md` and the linked spec section.
-5. **Changelog** - confirm `docs/public/release-notes/changelog.md`'s in-progress section is actually complete against what this sprint shipped. This is a completeness check, not first authorship — see "During a Sprint" above.
+5. **Changelog** - `tools/changelog-status.sh` reports no unlogged commits, and
+   `docs/public/release-notes/changelog.md`'s in-progress section reads correctly against what
+   this sprint shipped. This is a completeness check, not first authorship — see "During a
+   Sprint" above. A gate that is failing here means entries were batched, not that the gate is
+   noisy.
 6. **RFC state** - `python3 docs/internal/rfcs/tools/rfc.py check` reports clean (frontmatter matches directory, no dangling references); any RFC at `3-integrated` or beyond has `impl_status`/`impl_tracking` set correctly per `docs/internal/rfcs/PROCESS.md`.
 7. **Internal docs** - update `metel-interpreter/docs/architecture.md`, `typechecker.md`, or `evaluator.md` when the corresponding pipeline, inference, construction, runtime, or builtin behavior changes.
 8. **Decision records** - add a new ADR in `metel-interpreter/docs/decisions/` for non-obvious architectural decisions, reversals, or workarounds future contributors must know.
@@ -248,6 +271,119 @@ mode this workflow is designed against — not to re-run the sprint-close gate.
 2. Relevant tests pass; for typechecker or inference changes, the full `cargo test` suite passes.
 3. Spec, changelog, RFC, internal docs, and ADR updates are complete where required.
 4. Close the issue.
+
+---
+
+## Delegated Implementation Work
+
+Implementation is sometimes handed to a sandboxed coding agent (`codex exec --sandbox
+workspace-write`). That sandbox has **no network**, **read-only git metadata** (so it cannot commit —
+it leaves work in the tree), and cannot reliably run `cargo` when another build holds the target lock.
+
+**A delegated result is unverified until you have run the verification commands yourself.** This is
+not a courtesy check. Reports arriving from a sandbox have twice been confidently wrong in ways the
+report did not flag: a measurement number inflated by a bug in the measuring code, and a "fixed"
+structural change that left four unit tests failing. An agent that says *"I could not verify this"* is
+being honest, and that sentence is the normal case, not an admission of failure.
+
+So:
+
+- Run `cargo test --release` and the clippy gate on the returned tree before reporting anything about
+  it, and before building further work on top of it.
+- Treat a returned test count, sweep total, or histogram as a claim about the code, not a measurement,
+  until it is reproduced.
+- The same rule applies to **adversarial review findings**: reproduce the repro before fixing it, and
+  once a finding is confirmed, look for siblings of the same class. Both times a review finding was
+  fixed properly on this project, the fix surfaced further instances the review had not found.
+- **Verify before filing an issue.** An issue filed on an unchecked premise costs more to retract than
+  it did to write — check the claim against the working tree first.
+
+Briefs for delegated work belong in the job's scratch directory, not the repository.
+
+---
+
+## Adversarial Review
+
+Before a substantial branch merges — a new analysis pass, a type-system change, anything where being
+confidently wrong is worse than being incomplete — it gets an **adversarial review**: a reviewer whose
+brief is to break it, not to assess it. A review that summarises the branch, or reports that it looks
+good, has produced nothing. This is distinct from the sprint-close gate, which checks that the required
+artefacts exist; this checks whether the code is *right*.
+
+### Briefing one
+
+The brief does the work. A vague brief produces a summary; these are the parts that reliably produce
+defects instead.
+
+- **State the job as breaking it**, and **forbid fixing**. Findings only, experiments reverted,
+  `git diff --stat` showing nothing but the branch's own changes at the end. A review that also edits
+  produces a diff nobody can verify.
+- **Tabulate the claims** — every behaviour the branch asserts, and the file that implements it. The
+  reviewer checks claims against code, rather than forming an impression of it.
+- **Supply the failure history, specifically.** *"Stage 1 produced three separate false-positive
+  classes, all found by hand-auditing real fixtures rather than by the tests. Assume there is a
+  fourth."* This is the highest-yield sentence in a review brief: it aims effort at where this code has
+  actually been wrong before, which is a much better prior than where a reader would look unprompted.
+- **Name the decisions to attack, and say they are not settled.** *"Do not treat these as settled
+  because I wrote them down."* Absent that, a reviewer reads the author's stated rationale as the spec
+  and reviews the implementation against it — which cannot find a wrong decision.
+- **Point at the more serious failure class.** Here it was false negatives, because the measurement
+  sweep already surfaces false positives; nobody had gone looking for code that *should* be rejected
+  and is not. Say which direction is under-explored and why.
+- **Demand runnable repros over arguments from reading code**, and give the entry point to run them
+  (the built binary, the sweep tool, the opt-in flag). An argument from reading is a hypothesis.
+- **Require a severity per finding**, and require it to separate **wrong behaviour** from **poor
+  diagnostic** from **untested but correct**. These get very different responses and a flat list
+  obscures which is which.
+- **Say plainly that an honest all-clear is an acceptable result** — while adding that "clean" should be
+  a conclusion the reviewer had to work for. Without the first half, a reviewer under implicit pressure
+  to justify the exercise invents findings; without the second, "looks fine" costs nothing to write.
+- State the sandbox constraints up front (see above), and have the report written **outside** the
+  repository.
+
+### Consuming one
+
+- **Reproduce a finding before fixing it.** Some will be real, some will be misreadings of code that is
+  correct, and the brief's own framing ("assume there is a fourth defect") actively encourages the
+  second. Reproduce first, then fix.
+- **A confirmed finding is a lead, not a bug.** Ask what class it belongs to and sweep for siblings.
+  Every time this was done properly here, the sweep found more instances than the review had: two
+  reported symptoms of one cause, whose correct fix exposed three further defects of the same shape.
+- **Prefer fixing the class over fixing the findings.** If two reported defects share a cause, the fix
+  that removes the cause is worth the larger diff — a rule that holds only for the spellings someone
+  happened to test is not implemented.
+- **Hand the fix out as its own brief, not as a follow-up to the review.** A fix brief can carry the
+  structural constraint a review brief cannot: *"do not add the two guards to the second path — that
+  leaves the class intact; express the rule over the shared data structure so both paths get it by
+  construction."* Then verify it yourself, per the section above.
+
+---
+
+## Landing an Enforcement Pass Over an Existing Corpus
+
+A new static check (move checking, borrow checking, negative-bound enforcement, exhaustiveness) will
+reject code the existing fixture corpus is full of. The corpus is not wrong; it predates the rule.
+
+The established pattern, used for both the `Copy`/`Drop` aspects and move checking:
+
+1. **Ship the check off by default**, behind a `RunOptions` field and a per-fixture sidecar opt-in
+   (`[options] move_check = true`), wired into *every* pipeline entry point.
+2. **Write new fixtures that opt in**, so the check and its diagnostics get real end-to-end coverage
+   from the first commit.
+3. **Do not edit an existing fixture to make a new check pass.** Many are behavioural evaluator tests
+   whose meaning changes when rewritten. An existing fixture that changes behaviour under the new
+   check is a finding to report and count, not a file to fix in passing.
+4. **Corpus migration and flipping the default are their own issue**, filed with the measured scope
+   (fixture count and violation count) so the decision to migrate is made against a number.
+5. **Measure before migrating**, and make the measurement tool assert its own invariants. Three
+   separate false-positive classes in one analysis were found by hand-auditing a sweep against real
+   fixtures, none by the analysis's own unit tests; the durable fix is for the sweep to fail loudly on
+   a self-contradictory result rather than to trust a later hand-audit.
+
+**The limit on this pattern:** off-by-default is acceptable only while the capability is *visibly*
+inert. A feature that appears to work and silently does nothing must be gated behind a rejection
+before release rather than shipped — see RFC-0071 §9c, which records this for `Drop` without
+destructor invocation and notes the project has already hit that failure mode twice.
 
 ---
 
@@ -414,6 +550,13 @@ Do not infer types in Pass 2. Do not build typed AST nodes in Pass 1. If a task 
 - `Never` is a bottom type. Typechecking tests alone may not distinguish a diverging expression from a correctly typed runtime path; use evaluator tests for runtime behavior.
 - Route conversions through `type_to_infer` where `Perhaps`/`Result` normalization matters.
 - Distinguish formal `TypeVar`s from fresh `InferType::Var(TypeVar)` usage-site variables.
+- **`crate::types::Type` contains no type variables** — by the time it exists, generics are
+  monomorphised. An abstract type parameter is therefore `InferType::Var(TypeVar)`, and any query
+  that must answer "does this abstract parameter satisfy an aspect?" belongs on the `InferType` side
+  with the concrete-`Type` form as a wrapper over it. Do not add a parameter variant to `Type`, and
+  do not smuggle one into a `Type::Named` name string: encoding a parameter as a mangled nominal name
+  was tried and rejected, because a generic parameter must be *structurally* distinct from a nominal
+  type, not distinguished by a naming convention every consumer has to re-learn.
 - Generic instantiation should follow the established `instantiate_scheme_for_call` pattern: fresh variables, initial substitution, unification against actuals, then extraction from the composed substitution.
 - Imported schemes must seed both inference and construction paths for a module. If only one pass sees imports, the typechecker is wrong.
 - Public module declarations that are consumed cross-module must have enough annotations to export concrete schemes.

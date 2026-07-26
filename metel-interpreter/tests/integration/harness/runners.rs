@@ -4,22 +4,24 @@ use std::path::Path;
 use metel::error::MetelError;
 use metel::{
     coherence, elaborator, evaluator, module_loader, name_resolver, parser, path_normalizer,
+    pipeline,
     typechecker,
 };
 
 use super::fixture::{
-    main_source_path, CorePreludeMode, ExpectStatus, FixtureConfig, GraphChecks, ProgramChecks,
+    main_source_path, CorePreludeMode, ExpectStatus, FixtureConfig, FixtureOptions, GraphChecks,
+    ProgramChecks,
 };
 
 pub fn run_fixture(path: &Path, config: &FixtureConfig) {
     let result = match config.runner {
         super::fixture::RunnerKind::Parse => run_parse(path),
-        super::fixture::RunnerKind::Typecheck => run_typecheck(path),
-        super::fixture::RunnerKind::Evaluate => run_evaluate(path),
+        super::fixture::RunnerKind::Typecheck => run_typecheck(path, &config.options),
+        super::fixture::RunnerKind::Evaluate => run_evaluate(path, &config.options),
         super::fixture::RunnerKind::LoadProgram => run_load_program(path, &config.program),
         super::fixture::RunnerKind::LoadGraph => run_load_graph(path, &config.graph),
         super::fixture::RunnerKind::FullPipeline => {
-            run_full_pipeline(path, config.prelude, &config.graph)
+            run_full_pipeline(path, config.prelude, &config.options, &config.graph)
         }
     };
 
@@ -67,23 +69,27 @@ fn run_parse(path: &Path) -> Result<(), MetelError> {
 // std::core, which drifted from the product path and could not run Metel-bodied
 // core free functions (e.g. the print/println Display wrappers, METEL-192). The
 // pub single-program API remains for the benchmark binary only.
-fn run_typecheck(path: &Path) -> Result<(), MetelError> {
+fn run_typecheck(path: &Path, options: &FixtureOptions) -> Result<(), MetelError> {
     let graph = module_loader::load_root(main_source_path(path))?;
     let names = name_resolver::resolve(&graph)?;
     let normalized = path_normalizer::normalize(graph, &names)?;
     coherence::check(&normalized, &names)?;
-    typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default()).map(|_| ())
+    let typed = typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())?;
+    if options.move_check {
+        metel::move_check::check_graph(&typed)?;
+    }
+    Ok(())
 }
 
-fn run_evaluate(path: &Path) -> Result<(), MetelError> {
-    let graph = module_loader::load_root(main_source_path(path))?;
-    let names = name_resolver::resolve(&graph)?;
-    let normalized = path_normalizer::normalize(graph, &names)?;
-    coherence::check(&normalized, &names)?;
-    let typed =
-        typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())?;
-    let elaborated = elaborator::elaborate(typed, &names)?;
-    evaluator::evaluate_graph(elaborated)
+fn run_evaluate(path: &Path, options: &FixtureOptions) -> Result<(), MetelError> {
+    pipeline::run_evaluator_fixture(
+        &main_source_path(path).to_string_lossy(),
+        &pipeline::RunOptions {
+            move_check: options.move_check,
+            ..pipeline::RunOptions::default()
+        },
+    )
+    .map(|_| ())
 }
 
 fn run_load_program(path: &Path, checks: &ProgramChecks) -> Result<(), MetelError> {
@@ -116,6 +122,7 @@ fn run_load_graph(path: &Path, checks: &GraphChecks) -> Result<(), MetelError> {
 fn run_full_pipeline(
     path: &Path,
     prelude_mode: CorePreludeMode,
+    options: &FixtureOptions,
     checks: &GraphChecks,
 ) -> Result<(), MetelError> {
     let graph = module_loader::load_root(main_source_path(path))?;
@@ -124,6 +131,9 @@ fn run_full_pipeline(
     let normalized = path_normalizer::normalize(graph, &names)?;
     coherence::check(&normalized, &names)?;
     let typed = typechecker::check_graph(&normalized, &names, &std_prelude(prelude_mode))?;
+    if options.move_check {
+        metel::move_check::check_graph(&typed)?;
+    }
     let elaborated = elaborator::elaborate(typed, &names)?;
     evaluator::evaluate_graph(elaborated)
 }

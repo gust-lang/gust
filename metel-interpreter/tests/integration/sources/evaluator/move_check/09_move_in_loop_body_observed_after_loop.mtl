@@ -1,0 +1,8 @@
+fun main() {
+    let s = "hello";
+    loop {
+        let moved = s;
+        break;
+    }
+    let again = s;
+}

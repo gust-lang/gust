@@ -1,0 +1,6 @@
+fun main() {
+    let n = 5;
+    let f = () -> i64 { return n; };
+    assert(f() == 5);
+    assert(n == 5);
+}
