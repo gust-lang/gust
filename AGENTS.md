@@ -283,6 +283,63 @@ Briefs for delegated work belong in the job's scratch directory, not the reposit
 
 ---
 
+## Adversarial Review
+
+Before a substantial branch merges — a new analysis pass, a type-system change, anything where being
+confidently wrong is worse than being incomplete — it gets an **adversarial review**: a reviewer whose
+brief is to break it, not to assess it. A review that summarises the branch, or reports that it looks
+good, has produced nothing. This is distinct from the sprint-close gate, which checks that the required
+artefacts exist; this checks whether the code is *right*.
+
+### Briefing one
+
+The brief does the work. A vague brief produces a summary; these are the parts that reliably produce
+defects instead.
+
+- **State the job as breaking it**, and **forbid fixing**. Findings only, experiments reverted,
+  `git diff --stat` showing nothing but the branch's own changes at the end. A review that also edits
+  produces a diff nobody can verify.
+- **Tabulate the claims** — every behaviour the branch asserts, and the file that implements it. The
+  reviewer checks claims against code, rather than forming an impression of it.
+- **Supply the failure history, specifically.** *"Stage 1 produced three separate false-positive
+  classes, all found by hand-auditing real fixtures rather than by the tests. Assume there is a
+  fourth."* This is the highest-yield sentence in a review brief: it aims effort at where this code has
+  actually been wrong before, which is a much better prior than where a reader would look unprompted.
+- **Name the decisions to attack, and say they are not settled.** *"Do not treat these as settled
+  because I wrote them down."* Absent that, a reviewer reads the author's stated rationale as the spec
+  and reviews the implementation against it — which cannot find a wrong decision.
+- **Point at the more serious failure class.** Here it was false negatives, because the measurement
+  sweep already surfaces false positives; nobody had gone looking for code that *should* be rejected
+  and is not. Say which direction is under-explored and why.
+- **Demand runnable repros over arguments from reading code**, and give the entry point to run them
+  (the built binary, the sweep tool, the opt-in flag). An argument from reading is a hypothesis.
+- **Require a severity per finding**, and require it to separate **wrong behaviour** from **poor
+  diagnostic** from **untested but correct**. These get very different responses and a flat list
+  obscures which is which.
+- **Say plainly that an honest all-clear is an acceptable result** — while adding that "clean" should be
+  a conclusion the reviewer had to work for. Without the first half, a reviewer under implicit pressure
+  to justify the exercise invents findings; without the second, "looks fine" costs nothing to write.
+- State the sandbox constraints up front (see above), and have the report written **outside** the
+  repository.
+
+### Consuming one
+
+- **Reproduce a finding before fixing it.** Some will be real, some will be misreadings of code that is
+  correct, and the brief's own framing ("assume there is a fourth defect") actively encourages the
+  second. Reproduce first, then fix.
+- **A confirmed finding is a lead, not a bug.** Ask what class it belongs to and sweep for siblings.
+  Every time this was done properly here, the sweep found more instances than the review had: two
+  reported symptoms of one cause, whose correct fix exposed three further defects of the same shape.
+- **Prefer fixing the class over fixing the findings.** If two reported defects share a cause, the fix
+  that removes the cause is worth the larger diff — a rule that holds only for the spellings someone
+  happened to test is not implemented.
+- **Hand the fix out as its own brief, not as a follow-up to the review.** A fix brief can carry the
+  structural constraint a review brief cannot: *"do not add the two guards to the second path — that
+  leaves the class intact; express the rule over the shared data structure so both paths get it by
+  construction."* Then verify it yourself, per the section above.
+
+---
+
 ## Landing an Enforcement Pass Over an Existing Corpus
 
 A new static check (move checking, borrow checking, negative-bound enforcement, exhaustiveness) will
