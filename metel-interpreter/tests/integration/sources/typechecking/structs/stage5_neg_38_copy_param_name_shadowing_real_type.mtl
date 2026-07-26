@@ -3,9 +3,12 @@
 //
 // `Holder`'s own scope declares one parameter, `U`. Field `inner: T` is
 // therefore the *struct* `T`, which holds a `String` and is not `Copy`, even
-// though the impl below names its parameter `T` as well. Keying the
-// assumptions on the bare name accepted this program: the field type `T` was
-// found among the assumptions and inherited `Copy` from the parameter.
+// though the impl below names its parameter `T` as well.
+//
+// This program was once accepted, because the assumptions were keyed by name
+// and the field type `T` matched the entry meant for the parameter. They are
+// keyed by type variable now — a parameter is not a named type — so the two
+// cannot be confused whatever they are called.
 //
 // The companion positive case is in
 // `evaluator/structs/97_copy_param_shadows_same_named_type.mtl`, where the

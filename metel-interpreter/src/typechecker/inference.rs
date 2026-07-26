@@ -142,76 +142,37 @@ fn native_fun_ty(fun: &FunDecl, ctx: &mut InferContext) -> Result<NativeFunTyRes
     })
 }
 
-/// Every positive aspect bound the impl places on each of its own generic
-/// parameters, from both the inline list and the `where` clause.
+/// A binding of one of an impl's own generic parameters: the type variable
+/// that stands for it structurally, and the name it was written with.
 ///
-/// These are exactly the facts a `Copy` eligibility check is entitled to
-/// assume about a field whose type mentions a parameter (issue #303). Every
-/// parameter gets an entry, including unbounded ones: an entry with an empty
-/// set says "this name is abstract and guarantees nothing", which is what
-/// stops `type_satisfies_aspect_under` from resolving it against a real
-/// declaration that happens to share the name.
-/// The marker prefixed to an impl's own generic-parameter names when they are
-/// substituted into a field type, so that the assumption set can never be
-/// consulted for anything but a genuine parameter. Metel identifiers are
-/// `[A-Za-z_][A-Za-z0-9_]*`, so `$` cannot appear in a real type name and a
-/// marked name cannot collide with one.
-///
-/// The collision this prevents is not hypothetical. Keying the assumptions on
-/// the bare parameter name let a *real* type that happened to share the name
-/// inherit the parameter's assumed aspects: given `struct T { s: String }` and
-/// `struct Holder<U> { inner: T, marker: U }`, the impl
-/// `extend<T: Copy> Holder<T>: Copy` found field `inner`'s type `T` in the
-/// assumption set and accepted a struct holding a `String` as `Copy`.
-///
-/// The rule the marker encodes: a field type written in the *struct's* scope
-/// means whatever that scope says, and `Holder`'s scope declares only `U`.
-/// Only the arguments substituted in from the impl's target carry the impl's
-/// meaning, so only those are marked — which is also why the impl's parameter
-/// correctly shadows a same-named type for those positions.
-const IMPL_PARAM_MARKER: &str = "$";
-
-/// `ty` with every bare reference to one of the impl's own generic parameters
-/// replaced by its marked form. Applied to an impl target argument before it
-/// is substituted into a field type.
-fn mark_impl_params(ty: &TypeExpr, params: &std::collections::HashSet<&str>) -> TypeExpr {
-    let go = |t: &TypeExpr| mark_impl_params(t, params);
-    match ty {
-        TypeExpr::Named(name, args) => {
-            if args.is_empty() && params.contains(name.as_str()) {
-                TypeExpr::Named(format!("{IMPL_PARAM_MARKER}{name}"), vec![])
-            } else {
-                TypeExpr::Named(name.clone(), args.iter().map(go).collect())
-            }
-        }
-        TypeExpr::Tuple(items) => TypeExpr::Tuple(items.iter().map(go).collect()),
-        TypeExpr::Record(fields) => TypeExpr::Record(
-            fields
-                .iter()
-                .map(|(label, field_ty)| (label.clone(), go(field_ty)))
-                .collect(),
-        ),
-        TypeExpr::Array(inner) => TypeExpr::Array(Box::new(go(inner))),
-        TypeExpr::SizedArray(inner, size) => TypeExpr::SizedArray(Box::new(go(inner)), *size),
-        TypeExpr::Reference(inner) => TypeExpr::Reference(Box::new(go(inner))),
-        TypeExpr::MutReference(inner) => TypeExpr::MutReference(Box::new(go(inner))),
-        TypeExpr::Fun(ps, ret) => TypeExpr::Fun(
-            ps.iter().map(go).collect(),
-            ret.as_deref().map(|r| Box::new(go(r))),
-        ),
-        TypeExpr::Unit
-        | TypeExpr::ImplAspect { .. }
-        | TypeExpr::Projection { .. }
-        | TypeExpr::RecordProjection { .. } => ty.clone(),
-    }
+/// Both are needed and they serve different jobs. The variable is what the
+/// aspect query reasons about — a parameter is not a named type, so it must
+/// not be *representable* as one. The name is only ever used to render a
+/// diagnostic, which is a presentation concern and deliberately kept out of
+/// the representation.
+struct ImplParam {
+    var: TypeVar,
+    name: String,
 }
 
-fn impl_param_bounds(ib: &ImplBlock) -> AspectAssumptions {
-    let mut bounds = AspectAssumptions::new();
+/// Fresh variables for an impl's own generic parameters, paired with the
+/// aspects each may be assumed to satisfy.
+///
+/// Every parameter gets an entry, including unbounded ones: an empty
+/// assumption set says "abstract, and guarantees nothing", which is what makes
+/// an unbounded `<T>` fail a `Copy` check rather than pass it.
+fn impl_params(ib: &ImplBlock, ctx: &mut InferContext) -> (Vec<ImplParam>, AspectAssumptions) {
+    let mut params = Vec::new();
+    let mut assumptions = AspectAssumptions::new();
     for param in &ib.generics {
-        let entry = bounds
-            .entry(format!("{IMPL_PARAM_MARKER}{}", param.name))
-            .or_default();
+        let InferType::Var(var) = ctx.fresh_var() else {
+            continue;
+        };
+        params.push(ImplParam {
+            var,
+            name: param.name.clone(),
+        });
+        let entry = assumptions.entry(var).or_default();
         for bound in &param.bounds {
             if bound.polarity == Polarity::Positive {
                 if let Some(aspect) = bound.aspect_name() {
@@ -225,10 +186,10 @@ fn impl_param_bounds(ib: &ImplBlock) -> AspectAssumptions {
             // A `where` subject that is not one of the impl's own parameters
             // constrains something else entirely; it says nothing about what
             // this impl may assume.
-            let Some(entry) = bounds.get_mut(format!("{IMPL_PARAM_MARKER}{}", constraint.name).as_str())
-            else {
+            let Some(param) = params.iter().find(|p| p.name == constraint.name) else {
                 continue;
             };
+            let entry = assumptions.entry(param.var).or_default();
             for bound in &constraint.bounds {
                 if bound.polarity == Polarity::Positive {
                     if let Some(aspect) = bound.aspect_name() {
@@ -238,8 +199,9 @@ fn impl_param_bounds(ib: &ImplBlock) -> AspectAssumptions {
             }
         }
     }
-    bounds
+    (params, assumptions)
 }
+
 
 fn infer_type_to_concrete_if_closed(ty: &InferType) -> Option<Type> {
     match ty {
@@ -314,26 +276,24 @@ fn closed_nominal_target(ib: &ImplBlock, target_name: &str) -> Option<Type> {
 }
 
 /// `ty` with the struct's or enum's own type variables replaced by the
-/// corresponding arguments of the impl's target type, so that an impl-scoped
-/// generic parameter appears as the bare named type it was written as.
+/// corresponding arguments of the impl's target type.
 ///
-/// Total, and deliberately so. It is used both to decide eligibility and to
-/// render the diagnostic when eligibility fails, which is the other half of
-/// issue #303: `struct Outer<T> { inner: Inner<T> }` stores that field's type
-/// as `Inner<?v>` against `Outer`'s own inference variable, and reporting it
-/// raw exposed `Inner<?t16>` to the user. After substitution it prints as
-/// `Inner<T>`, the way it was written.
+/// An argument that *is* one of the impl's own generic parameters becomes that
+/// parameter's type variable — structurally a variable, never a named type.
+/// That is the whole distinction: a field type written in the struct's scope
+/// keeps whatever that scope meant by it, while a position filled from the
+/// impl's target takes the impl's meaning, so a parameter correctly shadows a
+/// same-named type in exactly the positions where it should and nowhere else.
 fn substitute_impl_params(
     ty: &InferType,
     type_param_args: &HashMap<TypeVar, &TypeExpr>,
-    impl_params: &std::collections::HashSet<&str>,
+    params: &[ImplParam],
 ) -> InferType {
-    let go = |t: &InferType| substitute_impl_params(t, type_param_args, impl_params);
+    let go = |t: &InferType| substitute_impl_params(t, type_param_args, params);
     match ty {
-        InferType::Var(var) => type_param_args.get(var).map_or_else(
-            || ty.clone(),
-            |arg| type_expr_to_infer(&mark_impl_params(arg, impl_params)),
-        ),
+        InferType::Var(var) => type_param_args
+            .get(var)
+            .map_or_else(|| ty.clone(), |arg| type_expr_as_infer(arg, params)),
         InferType::Tuple(items) => InferType::Tuple(items.iter().map(go).collect()),
         InferType::Record(fields) => InferType::Record(
             fields
@@ -348,49 +308,97 @@ fn substitute_impl_params(
         InferType::Named(name, args) => {
             InferType::Named(name.clone(), args.iter().map(go).collect())
         }
-        InferType::Fun(params, ret) => {
-            InferType::Fun(params.iter().map(go).collect(), Box::new(go(ret)))
+        InferType::Fun(ps, ret) => {
+            InferType::Fun(ps.iter().map(go).collect(), Box::new(go(ret)))
         }
         InferType::Concrete(_) | InferType::Never => ty.clone(),
     }
 }
 
-/// A substituted type as the user wrote it: the internal parameter marker is
-/// removed, so `Inner<$T>` reads back as `Inner<T>`.
-fn display_type(ty: &InferType) -> String {
-    ty.to_string().replace(IMPL_PARAM_MARKER, "")
+/// An impl target argument as an `InferType`, with any mention of the impl's
+/// own generic parameters resolved to their type variables.
+fn type_expr_as_infer(ty: &TypeExpr, params: &[ImplParam]) -> InferType {
+    if let TypeExpr::Named(name, args) = ty {
+        if args.is_empty() {
+            if let Some(param) = params.iter().find(|p| &p.name == name) {
+                return InferType::Var(param.var);
+            }
+        }
+    }
+    let go = |t: &TypeExpr| type_expr_as_infer(t, params);
+    match ty {
+        TypeExpr::Named(name, args) => {
+            InferType::Named(name.clone(), args.iter().map(go).collect())
+        }
+        TypeExpr::Tuple(items) => InferType::Tuple(items.iter().map(go).collect()),
+        TypeExpr::Record(fields) => InferType::Record(
+            fields
+                .iter()
+                .map(|(label, field_ty)| (label.clone(), go(field_ty)))
+                .collect(),
+        ),
+        TypeExpr::Array(inner) => InferType::Array(Box::new(go(inner))),
+        TypeExpr::SizedArray(inner, size) => InferType::SizedArray(Box::new(go(inner)), *size),
+        TypeExpr::Reference(inner) => InferType::Reference(Box::new(go(inner))),
+        TypeExpr::MutReference(inner) => InferType::MutReference(Box::new(go(inner))),
+        // Anything without a parameter to resolve keeps the ordinary lowering.
+        _ => type_expr_to_infer(ty),
+    }
+}
+
+/// A substituted type rendered the way it was written, with each parameter's
+/// variable shown under its own name.
+///
+/// The names live here rather than in the type because they are a
+/// presentation concern: printing `Inner<?t16>` was the diagnostic half of
+/// issue #303, and the fix is to render variables properly, not to make the
+/// representation carry a name it should not have.
+fn display_type(ty: &InferType, params: &[ImplParam]) -> String {
+    match ty {
+        InferType::Var(var) => params
+            .iter()
+            .find(|p| p.var == *var)
+            .map_or_else(|| ty.to_string(), |p| p.name.clone()),
+        InferType::Named(name, args) if !args.is_empty() => {
+            let rendered: Vec<String> = args.iter().map(|a| display_type(a, params)).collect();
+            format!("{name}<{}>", rendered.join(", "))
+        }
+        InferType::Tuple(items) => {
+            let rendered: Vec<String> = items.iter().map(|i| display_type(i, params)).collect();
+            format!("({})", rendered.join(", "))
+        }
+        InferType::Array(item) => format!("{}[]", display_type(item, params)),
+        InferType::SizedArray(item, size) => format!("[{}; {size}]", display_type(item, params)),
+        InferType::Reference(item) => format!("&{}", display_type(item, params)),
+        InferType::MutReference(item) => format!("&var {}", display_type(item, params)),
+        _ => ty.to_string(),
+    }
 }
 
 /// Whether a field or payload type, already substituted by
 /// `substitute_impl_params`, is `Copy` under the impl's own bounds.
 ///
-/// This defers entirely to `type_satisfies_aspect_under` rather than walking
-/// the type itself. It used to walk it, in two mutually recursive functions
-/// that re-stated the `Copy` rules for tuples, fixed arrays and references —
-/// a third copy of rules that already live in `type_satisfies_aspect`, and
-/// one that had drifted: it answered `false` for any named type with an
-/// unresolved argument, which is issue #303's wrong rejection. Asking the
-/// canonical query under an assumption set gets the generic case right and
-/// keeps the rules in one place.
+/// Defers entirely to the registry's query rather than walking the type. It
+/// used to walk it, in two mutually recursive functions that re-stated the
+/// `Copy` rules for tuples, fixed arrays and references — a third copy of
+/// rules that already live in the query, and the copy that had drifted: it
+/// answered `false` for any named type with an unresolved argument, which is
+/// issue #303's wrong rejection.
 fn substituted_type_is_copy(
     ty: &InferType,
     assumptions: &AspectAssumptions,
     registry: &crate::typeinference::TypeDefinitionRegistry,
     current_module: &[String],
 ) -> bool {
-    infer_type_to_concrete_if_closed(ty).is_some_and(|concrete| {
-        registry.type_satisfies_aspect_under(current_module, &concrete, "Copy", assumptions)
-    })
+    registry.infer_type_satisfies_aspect(current_module, ty, "Copy", assumptions)
 }
 
 fn check_copy_impl_eligibility(
     ib: &ImplBlock,
     target_name: &str,
-    ctx: &InferContext,
+    ctx: &mut InferContext,
 ) -> Result<(), MetelError> {
-    let assumptions = impl_param_bounds(ib);
-    let impl_params: std::collections::HashSet<&str> =
-        ib.generics.iter().map(|g| g.name.as_str()).collect();
+    let (params, assumptions) = impl_params(ib, ctx);
     let mut type_param_args: HashMap<TypeVar, &TypeExpr> = HashMap::new();
     if let TypeExpr::Named(_, target_args) = &ib.target_type {
         if let Some(struct_params) = ctx.registry().raw_struct_type_params().get(target_name) {
@@ -406,7 +414,7 @@ fn check_copy_impl_eligibility(
 
     if let Some(fields) = ctx.get_struct_fields(target_name) {
         for field in fields {
-            let field_ty = substitute_impl_params(&field.ty, &type_param_args, &impl_params);
+            let field_ty = substitute_impl_params(&field.ty, &type_param_args, &params);
             if !substituted_type_is_copy(
                 &field_ty,
                 &assumptions,
@@ -418,7 +426,7 @@ fn check_copy_impl_eligibility(
                     format!(
                         "cannot implement `Copy` for `{target_name}`: field `{}` has type `{}` which is not `Copy`",
                         field.name,
-                        display_type(&field_ty)
+                        display_type(&field_ty, &params)
                     ),
                     &field.span,
                 ));
@@ -427,7 +435,7 @@ fn check_copy_impl_eligibility(
     } else if let Some(enum_info) = ctx.get_enum(target_name) {
         for variant in &enum_info.variants {
             for field in &variant.fields {
-                let field_ty = substitute_impl_params(&field.ty, &type_param_args, &impl_params);
+                let field_ty = substitute_impl_params(&field.ty, &type_param_args, &params);
                 if !substituted_type_is_copy(
                     &field_ty,
                     &assumptions,
@@ -441,7 +449,7 @@ fn check_copy_impl_eligibility(
                             field.name,
                             target_name,
                             variant.name,
-                            display_type(&field_ty)
+                            display_type(&field_ty, &params)
                         ),
                         &field.span,
                     ));

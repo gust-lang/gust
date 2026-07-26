@@ -335,27 +335,8 @@ pub(super) fn resolved_to_type(
     infer_type_to_type(&subst.apply(ty), span)
 }
 
-pub(super) fn type_to_infer(ty: &Type) -> InferType {
-    match ty {
-        Type::Never => InferType::Never,
-        Type::Array(t) => InferType::Array(Box::new(type_to_infer(t))),
-        Type::SizedArray(t, n) => InferType::SizedArray(Box::new(type_to_infer(t)), *n),
-        Type::Tuple(ts) => InferType::Tuple(ts.iter().map(type_to_infer).collect()),
-        Type::Record(fields) => InferType::Record(
-            fields
-                .iter()
-                .map(|(name, ty)| (name.clone(), type_to_infer(ty)))
-                .collect(),
-        ),
-        Type::Reference(t) => InferType::Reference(Box::new(type_to_infer(t))),
-        Type::MutReference(t) => InferType::MutReference(Box::new(type_to_infer(t))),
-        Type::Fun(ps, ret) => InferType::Fun(
-            ps.iter().map(type_to_infer).collect(),
-            Box::new(type_to_infer(ret)),
-        ),
-        Type::Named(n, args) => {
-            InferType::Named(n.clone(), args.iter().map(type_to_infer).collect())
-        }
-        other => InferType::Concrete(other.clone()),
-    }
-}
+// `type_to_infer` now lives in `typeinference` alongside `InferType` itself:
+// it is the canonical embedding of a concrete `Type` into inference space, and
+// the aspect-satisfaction query there needs it. Re-exported so the many call
+// sites in this module's siblings keep their existing import.
+pub(super) use crate::typeinference::type_to_infer;

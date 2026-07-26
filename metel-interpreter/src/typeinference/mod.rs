@@ -1271,10 +1271,48 @@ pub(crate) enum VisibleTypeKind {
     Enum,
 }
 
-/// Aspects assumed to hold for abstract type parameters, keyed by parameter
-/// name — the assumption set a bounded generic gives you inside the scope that
-/// declares it. See `TypeDefinitionRegistry::type_satisfies_aspect_under`.
-pub type AspectAssumptions = HashMap<String, std::collections::HashSet<String>>;
+/// Embed a concrete `Type` into inference space.
+///
+/// Structural rather than a blanket `InferType::Concrete` wrap: a named type
+/// becomes `InferType::Named` with embedded arguments, so that one canonical
+/// shape exists for each type regardless of which side it came from. The
+/// aspect-satisfaction query below relies on that — it matches on
+/// `InferType::Named`, and would miss a `Concrete(Type::Named(..))`.
+#[must_use]
+pub fn type_to_infer(ty: &Type) -> InferType {
+    match ty {
+        Type::Never => InferType::Never,
+        Type::Array(t) => InferType::Array(Box::new(type_to_infer(t))),
+        Type::SizedArray(t, n) => InferType::SizedArray(Box::new(type_to_infer(t)), *n),
+        Type::Tuple(ts) => InferType::Tuple(ts.iter().map(type_to_infer).collect()),
+        Type::Record(fields) => InferType::Record(
+            fields
+                .iter()
+                .map(|(name, ty)| (name.clone(), type_to_infer(ty)))
+                .collect(),
+        ),
+        Type::Reference(t) => InferType::Reference(Box::new(type_to_infer(t))),
+        Type::MutReference(t) => InferType::MutReference(Box::new(type_to_infer(t))),
+        Type::Fun(ps, ret) => InferType::Fun(
+            ps.iter().map(type_to_infer).collect(),
+            Box::new(type_to_infer(ret)),
+        ),
+        Type::Named(n, args) => {
+            InferType::Named(n.clone(), args.iter().map(type_to_infer).collect())
+        }
+        other => InferType::Concrete(other.clone()),
+    }
+}
+
+/// Aspects assumed to hold for abstract type parameters, keyed by the type
+/// variable standing for the parameter.
+///
+/// Keyed by `TypeVar`, not by name. A type parameter is not a named type that
+/// happens to be spelled `T` — it is structurally a different thing, and
+/// `InferType::Var` is where that distinction already lives. Keying on the
+/// name conflated the two: a real `struct T` in scope would match an entry
+/// meant for a parameter called `T` and inherit its assumed aspects.
+pub type AspectAssumptions = HashMap<TypeVar, std::collections::HashSet<String>>;
 
 #[derive(Debug, Clone)]
 pub struct TypeDefinitionRegistry {
@@ -1849,11 +1887,24 @@ impl TypeDefinitionRegistry {
         &self,
         target_id: SymbolId,
         aspect_name: &str,
-        type_args: &[Type],
+        type_args: &[InferType],
     ) -> bool {
+        // Stored concrete args are embedded for the comparison rather than the
+        // query args being lowered: a query arg may be a type *variable*, which
+        // has no `Type` form. Embedding makes such an arg simply compare
+        // unequal, which is the right answer — a negative impl written for one
+        // concrete instantiation says nothing about an abstract parameter.
         self.neg_impl_env
             .get(&(target_id, aspect_name.to_string()))
-            .is_some_and(|entries| entries.iter().any(|args| args.as_slice() == type_args))
+            .is_some_and(|entries| {
+                entries.iter().any(|args| {
+                    args.len() == type_args.len()
+                        && args
+                            .iter()
+                            .zip(type_args)
+                            .all(|(stored, queried)| &type_to_infer(stored) == queried)
+                })
+            })
     }
 
     /// Check one conditional impl entry: for each type-argument position, every
@@ -1862,7 +1913,7 @@ impl TypeDefinitionRegistry {
     fn check_conditional_entry(
         &self,
         current_module: &[String],
-        type_args: &[Type],
+        type_args: &[InferType],
         pos_bounds: &[Vec<GenericBound>],
         neg_bounds: &[Vec<GenericBound>],
         assumptions: &AspectAssumptions,
@@ -1870,14 +1921,14 @@ impl TypeDefinitionRegistry {
         for (i, arg) in type_args.iter().enumerate() {
             if let Some(required) = pos_bounds.get(i) {
                 for aspect in required.iter().filter_map(GenericBound::aspect_name) {
-                    if !self.type_satisfies_aspect_under(current_module, arg, aspect, assumptions) {
+                    if !self.infer_type_satisfies_aspect(current_module, arg, aspect, assumptions) {
                         return false;
                     }
                 }
             }
             if let Some(forbidden) = neg_bounds.get(i) {
                 for aspect in forbidden.iter().filter_map(GenericBound::aspect_name) {
-                    if self.type_satisfies_aspect_under(current_module, arg, aspect, assumptions) {
+                    if self.infer_type_satisfies_aspect(current_module, arg, aspect, assumptions) {
                         return false;
                     }
                 }
@@ -1896,45 +1947,45 @@ impl TypeDefinitionRegistry {
         ty: &Type,
         aspect_name: &str,
     ) -> bool {
-        self.type_satisfies_aspect_under(
+        self.infer_type_satisfies_aspect(
             current_module,
-            ty,
+            &type_to_infer(ty),
             aspect_name,
             &AspectAssumptions::new(),
         )
     }
 
-    /// As `type_satisfies_aspect`, but with `assumptions`: aspects taken as
-    /// given for named types that stand in for an *abstract* type parameter
-    /// rather than a real declaration.
+    /// The aspect-satisfaction query, over `InferType` and under a set of
+    /// assumptions about abstract type parameters.
     ///
-    /// This is what lets `Copy` eligibility reason about a generic field type
-    /// (issue #303). Checking `extend<T: Copy> Outer<T>: Copy` for
-    /// `struct Outer<T> { inner: Inner<T> }` has to ask whether `Inner<T>` is
-    /// `Copy`, a question with no answer in terms of concrete types since `T`
-    /// is not one. Under `{T: {Copy}}` it does have one: `Inner`'s own
-    /// conditional impl `extend<U: Copy> Inner<U>: Copy` applies, because the
-    /// bound it places on the argument is discharged by the assumption.
+    /// Stated over `InferType` rather than `Type` because a type parameter has
+    /// to be *representable* for the question to be askable at all. Deciding
+    /// `extend<T: Copy> Outer<T>: Copy` for `struct Outer<T> { inner: Inner<T> }`
+    /// means asking whether `Inner<T>` is `Copy`, and `Type` cannot hold that
+    /// question — its contract is that generics are already monomorphised away
+    /// (issue #303). `InferType::Var` is the representation that already exists
+    /// for "a type that is not a concrete named type", so the query lives here
+    /// and `type_satisfies_aspect` embeds into it.
     ///
-    /// An assumed parameter answers *only* from its assumption set and is
-    /// never looked up among real impls, so an aspect the caller did not
-    /// assume is `false` rather than whatever an unrelated declaration that
-    /// happens to share the parameter's name might satisfy.
+    /// A variable answers *only* from `assumptions`, and is never resolved
+    /// against a declaration. That is the whole point of keying on `TypeVar`:
+    /// a parameter and a same-named struct are different things, and only a
+    /// structural distinction keeps them apart. An unbounded parameter has an
+    /// empty assumption set and so satisfies nothing, which is the safe
+    /// direction — it rejects rather than accepts.
     #[must_use]
     #[allow(clippy::too_many_lines)]
-    pub fn type_satisfies_aspect_under(
+    pub fn infer_type_satisfies_aspect(
         &self,
         current_module: &[String],
-        ty: &Type,
+        ty: &InferType,
         aspect_name: &str,
         assumptions: &AspectAssumptions,
     ) -> bool {
-        if let Type::Named(name, args) = ty {
-            if args.is_empty() {
-                if let Some(assumed) = assumptions.get(name.as_str()) {
-                    return assumed.contains(aspect_name);
-                }
-            }
+        if let InferType::Var(var) = ty {
+            return assumptions
+                .get(var)
+                .is_some_and(|assumed| assumed.contains(aspect_name));
         }
         if let Some(entries) = self.bare_neg_impl_bounds.get(aspect_name) {
             for (pos_bounds, neg_bounds) in entries {
@@ -1963,45 +2014,45 @@ impl TypeDefinitionRegistry {
             }
         }
         match ty {
-            Type::Record(fields) => {
+            InferType::Record(fields) => {
                 if aspect_name == "Send" || aspect_name == "Sync" {
                     return fields
                         .iter()
-                        .all(|(_, field_ty)| self.type_satisfies_aspect_under(current_module, field_ty, aspect_name, assumptions));
+                        .all(|(_, field_ty)| self.infer_type_satisfies_aspect(current_module, field_ty, aspect_name, assumptions));
                 }
                 false
             }
-            Type::SizedArray(elem, _) => {
+            InferType::SizedArray(elem, _) => {
                 if aspect_name == "Copy" {
                     // #299: fixed-size-array `Copy` stays hardcoded here until const generics
                     // exist and the stdlib can express `[T; N]: Copy` directly.
-                    return self.type_satisfies_aspect_under(current_module, elem, "Copy", assumptions);
+                    return self.infer_type_satisfies_aspect(current_module, elem, "Copy", assumptions);
                 }
                 false
             }
-            Type::Tuple(items) => {
+            InferType::Tuple(items) => {
                 if aspect_name == "Copy" {
                     // #299: tuple `Copy` stays hardcoded here until tuple impl targets stop
                     // being checker-only and can move into the stdlib.
                     return items
                         .iter()
-                        .all(|item| self.type_satisfies_aspect_under(current_module, item, "Copy", assumptions));
+                        .all(|item| self.infer_type_satisfies_aspect(current_module, item, "Copy", assumptions));
                 }
                 false
             }
-            Type::Reference(_) => {
+            InferType::Reference(_) => {
                 if aspect_name == "Copy" {
                     return true;
                 }
                 false
             }
-            Type::MutReference(_) => {
+            InferType::MutReference(_) => {
                 if aspect_name == "Copy" {
                     return false;
                 }
                 false
             }
-            Type::Array(elem) => {
+            InferType::Array(elem) => {
                 let inner_args = std::slice::from_ref(elem.as_ref());
                 if let Some(entries) = self.array_neg_impl_bounds.get(aspect_name) {
                     for (pos_bounds, neg_bounds) in entries {
@@ -2031,7 +2082,7 @@ impl TypeDefinitionRegistry {
                 }
                 false
             }
-            Type::Named(name, inner_args) => {
+            InferType::Named(name, inner_args) => {
                 let name = name.as_str();
                 if let Some(target_id) = self.resolve_type_position_id(current_module, name) {
                     if let Some(entries) = self
@@ -2077,7 +2128,11 @@ impl TypeDefinitionRegistry {
                 }
                 false
             }
-            other => {
+            // `Var` is answered by the assumption lookup above and cannot
+            // reach here; `Never` and `Fun` implement nothing, matching what
+            // the pre-`InferType` version returned for them.
+            InferType::Var(_) | InferType::Never | InferType::Fun(_, _) => false,
+            InferType::Concrete(other) => {
                 let name = match other {
                     Type::Str => "String",
                     Type::Boolean => "boolean",
