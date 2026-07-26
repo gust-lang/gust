@@ -1,0 +1,32 @@
+// The other side of `stage5_neg_38`: where the position really is the impl's
+// parameter, the parameter shadows a same-named type and the assumption
+// applies.
+//
+// `Holder<U>`'s only field is the parameter, so the impl's target argument is
+// what lands there. That argument is the impl's `T`, not the struct `T` — the
+// impl is `Copy` for any `Copy` argument, and `Holder<i64>` is one. Rejecting
+// this would be the over-correction to the bug `stage5_neg_38` guards.
+
+struct T {
+    s: String,
+}
+
+struct Holder<U> {
+    marker: U,
+}
+
+extend<T: Copy> Holder<T>: Copy;
+
+fun id<X: Copy>(x: X) -> X {
+    return x;
+}
+
+fun main() {
+    let h = Holder { marker = 1 };
+    let copied = id(h);
+    assert(copied.marker == 1);
+
+    // The struct `T` is untouched by any of this and still usable.
+    let real = T { s = "not copy" };
+    assert(real.s.len() == 8);
+}

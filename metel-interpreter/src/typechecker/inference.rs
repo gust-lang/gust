@@ -151,10 +151,67 @@ fn native_fun_ty(fun: &FunDecl, ctx: &mut InferContext) -> Result<NativeFunTyRes
 /// set says "this name is abstract and guarantees nothing", which is what
 /// stops `type_satisfies_aspect_under` from resolving it against a real
 /// declaration that happens to share the name.
+/// The marker prefixed to an impl's own generic-parameter names when they are
+/// substituted into a field type, so that the assumption set can never be
+/// consulted for anything but a genuine parameter. Metel identifiers are
+/// `[A-Za-z_][A-Za-z0-9_]*`, so `$` cannot appear in a real type name and a
+/// marked name cannot collide with one.
+///
+/// The collision this prevents is not hypothetical. Keying the assumptions on
+/// the bare parameter name let a *real* type that happened to share the name
+/// inherit the parameter's assumed aspects: given `struct T { s: String }` and
+/// `struct Holder<U> { inner: T, marker: U }`, the impl
+/// `extend<T: Copy> Holder<T>: Copy` found field `inner`'s type `T` in the
+/// assumption set and accepted a struct holding a `String` as `Copy`.
+///
+/// The rule the marker encodes: a field type written in the *struct's* scope
+/// means whatever that scope says, and `Holder`'s scope declares only `U`.
+/// Only the arguments substituted in from the impl's target carry the impl's
+/// meaning, so only those are marked — which is also why the impl's parameter
+/// correctly shadows a same-named type for those positions.
+const IMPL_PARAM_MARKER: &str = "$";
+
+/// `ty` with every bare reference to one of the impl's own generic parameters
+/// replaced by its marked form. Applied to an impl target argument before it
+/// is substituted into a field type.
+fn mark_impl_params(ty: &TypeExpr, params: &std::collections::HashSet<&str>) -> TypeExpr {
+    let go = |t: &TypeExpr| mark_impl_params(t, params);
+    match ty {
+        TypeExpr::Named(name, args) => {
+            if args.is_empty() && params.contains(name.as_str()) {
+                TypeExpr::Named(format!("{IMPL_PARAM_MARKER}{name}"), vec![])
+            } else {
+                TypeExpr::Named(name.clone(), args.iter().map(go).collect())
+            }
+        }
+        TypeExpr::Tuple(items) => TypeExpr::Tuple(items.iter().map(go).collect()),
+        TypeExpr::Record(fields) => TypeExpr::Record(
+            fields
+                .iter()
+                .map(|(label, field_ty)| (label.clone(), go(field_ty)))
+                .collect(),
+        ),
+        TypeExpr::Array(inner) => TypeExpr::Array(Box::new(go(inner))),
+        TypeExpr::SizedArray(inner, size) => TypeExpr::SizedArray(Box::new(go(inner)), *size),
+        TypeExpr::Reference(inner) => TypeExpr::Reference(Box::new(go(inner))),
+        TypeExpr::MutReference(inner) => TypeExpr::MutReference(Box::new(go(inner))),
+        TypeExpr::Fun(ps, ret) => TypeExpr::Fun(
+            ps.iter().map(go).collect(),
+            ret.as_deref().map(|r| Box::new(go(r))),
+        ),
+        TypeExpr::Unit
+        | TypeExpr::ImplAspect { .. }
+        | TypeExpr::Projection { .. }
+        | TypeExpr::RecordProjection { .. } => ty.clone(),
+    }
+}
+
 fn impl_param_bounds(ib: &ImplBlock) -> AspectAssumptions {
     let mut bounds = AspectAssumptions::new();
     for param in &ib.generics {
-        let entry = bounds.entry(param.name.clone()).or_default();
+        let entry = bounds
+            .entry(format!("{IMPL_PARAM_MARKER}{}", param.name))
+            .or_default();
         for bound in &param.bounds {
             if bound.polarity == Polarity::Positive {
                 if let Some(aspect) = bound.aspect_name() {
@@ -168,7 +225,8 @@ fn impl_param_bounds(ib: &ImplBlock) -> AspectAssumptions {
             // A `where` subject that is not one of the impl's own parameters
             // constrains something else entirely; it says nothing about what
             // this impl may assume.
-            let Some(entry) = bounds.get_mut(constraint.name.as_str()) else {
+            let Some(entry) = bounds.get_mut(format!("{IMPL_PARAM_MARKER}{}", constraint.name).as_str())
+            else {
                 continue;
             };
             for bound in &constraint.bounds {
@@ -268,12 +326,14 @@ fn closed_nominal_target(ib: &ImplBlock, target_name: &str) -> Option<Type> {
 fn substitute_impl_params(
     ty: &InferType,
     type_param_args: &HashMap<TypeVar, &TypeExpr>,
+    impl_params: &std::collections::HashSet<&str>,
 ) -> InferType {
-    let go = |t: &InferType| substitute_impl_params(t, type_param_args);
+    let go = |t: &InferType| substitute_impl_params(t, type_param_args, impl_params);
     match ty {
-        InferType::Var(var) => type_param_args
-            .get(var)
-            .map_or_else(|| ty.clone(), |arg| type_expr_to_infer(arg)),
+        InferType::Var(var) => type_param_args.get(var).map_or_else(
+            || ty.clone(),
+            |arg| type_expr_to_infer(&mark_impl_params(arg, impl_params)),
+        ),
         InferType::Tuple(items) => InferType::Tuple(items.iter().map(go).collect()),
         InferType::Record(fields) => InferType::Record(
             fields
@@ -293,6 +353,12 @@ fn substitute_impl_params(
         }
         InferType::Concrete(_) | InferType::Never => ty.clone(),
     }
+}
+
+/// A substituted type as the user wrote it: the internal parameter marker is
+/// removed, so `Inner<$T>` reads back as `Inner<T>`.
+fn display_type(ty: &InferType) -> String {
+    ty.to_string().replace(IMPL_PARAM_MARKER, "")
 }
 
 /// Whether a field or payload type, already substituted by
@@ -323,6 +389,8 @@ fn check_copy_impl_eligibility(
     ctx: &InferContext,
 ) -> Result<(), MetelError> {
     let assumptions = impl_param_bounds(ib);
+    let impl_params: std::collections::HashSet<&str> =
+        ib.generics.iter().map(|g| g.name.as_str()).collect();
     let mut type_param_args: HashMap<TypeVar, &TypeExpr> = HashMap::new();
     if let TypeExpr::Named(_, target_args) = &ib.target_type {
         if let Some(struct_params) = ctx.registry().raw_struct_type_params().get(target_name) {
@@ -338,7 +406,7 @@ fn check_copy_impl_eligibility(
 
     if let Some(fields) = ctx.get_struct_fields(target_name) {
         for field in fields {
-            let field_ty = substitute_impl_params(&field.ty, &type_param_args);
+            let field_ty = substitute_impl_params(&field.ty, &type_param_args, &impl_params);
             if !substituted_type_is_copy(
                 &field_ty,
                 &assumptions,
@@ -348,8 +416,9 @@ fn check_copy_impl_eligibility(
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0001,
                     format!(
-                        "cannot implement `Copy` for `{target_name}`: field `{}` has type `{field_ty}` which is not `Copy`",
-                        field.name
+                        "cannot implement `Copy` for `{target_name}`: field `{}` has type `{}` which is not `Copy`",
+                        field.name,
+                        display_type(&field_ty)
                     ),
                     &field.span,
                 ));
@@ -358,7 +427,7 @@ fn check_copy_impl_eligibility(
     } else if let Some(enum_info) = ctx.get_enum(target_name) {
         for variant in &enum_info.variants {
             for field in &variant.fields {
-                let field_ty = substitute_impl_params(&field.ty, &type_param_args);
+                let field_ty = substitute_impl_params(&field.ty, &type_param_args, &impl_params);
                 if !substituted_type_is_copy(
                     &field_ty,
                     &assumptions,
@@ -368,8 +437,11 @@ fn check_copy_impl_eligibility(
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0001,
                         format!(
-                            "cannot implement `Copy` for `{target_name}`: payload `{}` of variant `{}::{}` has type `{field_ty}` which is not `Copy`",
-                            field.name, target_name, variant.name
+                            "cannot implement `Copy` for `{target_name}`: payload `{}` of variant `{}::{}` has type `{}` which is not `Copy`",
+                            field.name,
+                            target_name,
+                            variant.name,
+                            display_type(&field_ty)
                         ),
                         &field.span,
                     ));

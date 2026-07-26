@@ -1,0 +1,25 @@
+// The assumption set an impl's generics contribute (issue #303) must never be
+// consulted for a real type that merely shares a parameter's name.
+//
+// `Holder`'s own scope declares one parameter, `U`. Field `inner: T` is
+// therefore the *struct* `T`, which holds a `String` and is not `Copy`, even
+// though the impl below names its parameter `T` as well. Keying the
+// assumptions on the bare name accepted this program: the field type `T` was
+// found among the assumptions and inherited `Copy` from the parameter.
+//
+// The companion positive case is in
+// `evaluator/structs/97_copy_param_shadows_same_named_type.mtl`, where the
+// substituted position genuinely is the parameter and shadowing must win.
+
+struct T {
+    s: String,
+}
+
+struct Holder<U> {
+    inner: T,
+    marker: U,
+}
+
+extend<T: Copy> Holder<T>: Copy;
+
+fun main() {}
