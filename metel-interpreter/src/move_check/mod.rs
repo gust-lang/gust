@@ -8,7 +8,7 @@ use crate::typed_ast::{
     FunBody, MethodDispatch, TypedBlock, TypedDecl, TypedExpr, TypedForInit, TypedModule,
     TypedModuleGraph, TypedPlace, TypedStmt,
 };
-use crate::typeinference::TypeDefinitionRegistry;
+use crate::typeinference::{type_to_infer, Substitution, TypeDefinitionRegistry};
 use crate::types::Type;
 
 use self::place::{from_expr as place_from_expr, from_typed_place, Place, Projection};
@@ -544,38 +544,30 @@ impl<'a> Checker<'a> {
         cause: MoveCause,
     ) {
         if let Some(place) = place_from_expr(expr) {
+            let root_ty = root_place_ty_from_expr(expr).unwrap_or_else(|| expr.ty());
             match expr {
                 TypedExpr::Index { index, .. } => {
-                    if !self.is_copy(current_module, expr.ty()) {
-                        self.report_illegal_move(
-                            &place,
-                            expr.span().clone(),
-                            type_bucket(expr.ty()),
-                            MoveViolationKind::ArrayElementMove,
-                        );
-                        self.observe_expr(index, current_module, state);
-                        return;
-                    }
-                    self.check_place_use_before_move(&place, expr.span(), state);
+                    self.consume_place(&place, root_ty, expr.span(), current_module, state, cause);
                     self.observe_expr(index, current_module, state);
-                    self.record_move_if_needed(&place, expr.ty(), expr.span(), current_module, state, cause);
                 }
                 TypedExpr::FieldAccess { object, .. } | TypedExpr::TupleAccess { object, .. } => {
-                    if self.is_drop(current_module, object.ty()) && !self.is_copy(current_module, expr.ty()) {
-                        self.report_illegal_move(
-                            &place,
-                            expr.span().clone(),
-                            type_bucket(expr.ty()),
-                            MoveViolationKind::PartialMoveOfDropType,
-                        );
-                        self.observe_projection_base_expr(object, current_module, state);
-                        return;
-                    }
-                    self.check_place_use_before_move(&place, expr.span(), state);
+                    self.consume_place(&place, root_ty, expr.span(), current_module, state, cause);
                     self.observe_projection_base_expr(object, current_module, state);
-                    self.record_move_if_needed(&place, expr.ty(), expr.span(), current_module, state, cause);
                 }
-                _ => self.consume_place(&place, expr.ty(), expr.span(), current_module, state, cause),
+                _ => self.consume_place(&place, root_ty, expr.span(), current_module, state, cause),
+            }
+            return;
+        }
+        // A tuple or array literal takes ownership of its elements, so building
+        // one *consumes* them. `observe_expr`'s arm only reads them, which let a
+        // banned move slip past every guard `consume_place` applies —
+        // `(h.name, 1)` out of a `Drop` type, `(xs[0], 1)` out of an array —
+        // and also lost the move itself, so the element stayed usable
+        // afterwards. Record and struct literals already consumed their fields;
+        // these two were the outliers.
+        if let TypedExpr::Tuple(items, ..) | TypedExpr::Array(items, ..) = expr {
+            for item in items {
+                self.consume_expr_with_cause(item, current_module, state, cause);
             }
             return;
         }
@@ -680,71 +672,24 @@ impl<'a> Checker<'a> {
         current_module: &[String],
         state: &mut FlowState,
     ) {
-        match pattern {
-            Pattern::Wildcard(_) | Pattern::Literal(_, _) => {}
-            Pattern::Binding(name, span) => {
-                if let Some(place) = place_from_expr(scrutinee) {
-                    self.consume_place(
-                        &place,
-                        scrutinee.ty(),
-                        scrutinee.span(),
-                        current_module,
-                        state,
-                        MoveCause::Other,
-                    );
-                }
-                state.bind(name);
-                let _ = span;
-            }
-            Pattern::Tuple(items, _) => {
-                for (index, item) in items.iter().enumerate() {
-                    if let Some(base) = place_from_expr(scrutinee) {
-                        let field_place = base.clone().with_projection(Projection::TupleIndex(index));
-                        self.apply_pattern_place_move(item, &field_place, scrutinee.ty(), current_module, state);
-                    }
-                }
-            }
-            Pattern::Record { fields, .. } => {
-                for field in fields {
-                    if let Some(base) = place_from_expr(scrutinee) {
-                        let field_place = base.clone().with_projection(Projection::Field(field.clone()));
-                        self.consume_place(
-                            &field_place,
-                            scrutinee.ty(),
-                            scrutinee.span(),
-                            current_module,
-                            state,
-                            MoveCause::Other,
-                        );
-                    }
-                    state.bind(field);
-                }
-            }
-            Pattern::EnumVariant { fields, .. } => {
-                if !fields.is_empty() {
-                    if let Some(place) = place_from_expr(scrutinee) {
-                        self.consume_place(
-                            &place,
-                            scrutinee.ty(),
-                            scrutinee.span(),
-                            current_module,
-                            state,
-                            MoveCause::Other,
-                        );
-                        for field in fields {
-                            state.bind(field);
-                        }
-                    }
-                }
-            }
-            Pattern::Array { elems, rest, .. } => {
-                for item in elems {
-                    Self::observe_pattern_bindings(item, state);
-                }
-                if let Some(rest) = rest {
-                    state.bind(rest);
-                }
-            }
+        if let Some(place) = place_from_expr(scrutinee) {
+            // The *root's* type, not the scrutinee's. `illegal_move_kind` walks
+            // the projection chain from the root looking for a `Drop` ancestor,
+            // so handing it `h.name`'s type for the place `h.name` starts the
+            // walk one level too deep and never sees `Handle`. The array-element
+            // rule is purely syntactic on projections and so survived that,
+            // which is why only the `Drop` half was reachable through a pattern.
+            let root_ty = root_place_ty_from_expr(scrutinee).unwrap_or_else(|| scrutinee.ty());
+            self.apply_pattern_place_move(
+                pattern,
+                &place,
+                root_ty,
+                scrutinee.span(),
+                current_module,
+                state,
+            );
+        } else {
+            Self::observe_pattern_bindings(pattern, state);
         }
     }
 
@@ -752,7 +697,8 @@ impl<'a> Checker<'a> {
         &mut self,
         pattern: &Pattern,
         place: &Place,
-        parent_ty: &Type,
+        root_ty: &Type,
+        use_span: &Span,
         current_module: &[String],
         state: &mut FlowState,
     ) {
@@ -761,8 +707,8 @@ impl<'a> Checker<'a> {
             Pattern::Binding(name, _) => {
                 self.consume_place(
                     place,
-                    parent_ty,
-                    &dummy_span_from_place(place),
+                    root_ty,
+                    use_span,
                     current_module,
                     state,
                     MoveCause::Other,
@@ -772,7 +718,7 @@ impl<'a> Checker<'a> {
             Pattern::Tuple(items, _) => {
                 for (index, item) in items.iter().enumerate() {
                     let child = place.clone().with_projection(Projection::TupleIndex(index));
-                    self.apply_pattern_place_move(item, &child, parent_ty, current_module, state);
+                    self.apply_pattern_place_move(item, &child, root_ty, use_span, current_module, state);
                 }
             }
             Pattern::Record { fields, .. } => {
@@ -780,8 +726,8 @@ impl<'a> Checker<'a> {
                     let child = place.clone().with_projection(Projection::Field(field.clone()));
                     self.consume_place(
                         &child,
-                        parent_ty,
-                        &dummy_span_from_place(place),
+                        root_ty,
+                        use_span,
                         current_module,
                         state,
                         MoveCause::Other,
@@ -793,8 +739,8 @@ impl<'a> Checker<'a> {
                 if !fields.is_empty() {
                     self.consume_place(
                         place,
-                        parent_ty,
-                        &dummy_span_from_place(place),
+                        root_ty,
+                        use_span,
                         current_module,
                         state,
                         MoveCause::Other,
@@ -806,7 +752,8 @@ impl<'a> Checker<'a> {
             }
             Pattern::Array { elems, rest, .. } => {
                 for item in elems {
-                    Self::observe_pattern_bindings(item, state);
+                    let child = place.clone().with_projection(Projection::OpaqueIndex);
+                    self.apply_pattern_place_move(item, &child, root_ty, use_span, current_module, state);
                 }
                 if let Some(rest) = rest {
                     state.bind(rest);
@@ -870,14 +817,21 @@ impl<'a> Checker<'a> {
     fn consume_place(
         &mut self,
         place: &Place,
-        ty: &Type,
+        root_ty: &Type,
         use_span: &Span,
         current_module: &[String],
         state: &mut FlowState,
         cause: MoveCause,
     ) {
+        let place_ty = self
+            .type_of_place(root_ty, place, current_module)
+            .unwrap_or_else(|| root_ty.clone());
+        if let Some(kind) = self.illegal_move_kind(place, root_ty, &place_ty, current_module) {
+            self.report_illegal_move(place, use_span.clone(), type_bucket(&place_ty), kind);
+            return;
+        }
         self.check_place_use_before_move(place, use_span, state);
-        self.record_move_if_needed(place, ty, use_span, current_module, state, cause);
+        self.record_move_if_needed(place, &place_ty, use_span, current_module, state, cause);
     }
 
     fn check_place_use_before_move(&mut self, place: &Place, use_span: &Span, state: &FlowState) {
@@ -950,6 +904,91 @@ impl<'a> Checker<'a> {
 
     fn is_drop(&self, current_module: &[String], ty: &Type) -> bool {
         self.registry.type_satisfies_aspect(current_module, ty, "Drop")
+    }
+
+    fn illegal_move_kind(
+        &self,
+        place: &Place,
+        root_ty: &Type,
+        place_ty: &Type,
+        current_module: &[String],
+    ) -> Option<MoveViolationKind> {
+        if self.is_copy(current_module, place_ty) {
+            return None;
+        }
+        if place
+            .projections()
+            .iter()
+            .any(|projection| matches!(projection, Projection::OpaqueIndex))
+        {
+            return Some(MoveViolationKind::ArrayElementMove);
+        }
+
+        let mut prefix_ty = root_ty.clone();
+        for projection in place.projections() {
+            if self.is_drop(current_module, &prefix_ty) {
+                return Some(MoveViolationKind::PartialMoveOfDropType);
+            }
+            prefix_ty = self.project_type(&prefix_ty, projection, current_module)?;
+        }
+        None
+    }
+
+    fn type_of_place(
+        &self,
+        root_ty: &Type,
+        place: &Place,
+        current_module: &[String],
+    ) -> Option<Type> {
+        let mut ty = root_ty.clone();
+        for projection in place.projections() {
+            ty = self.project_type(&ty, projection, current_module)?;
+        }
+        Some(ty)
+    }
+
+    fn project_type(
+        &self,
+        base_ty: &Type,
+        projection: &Projection,
+        current_module: &[String],
+    ) -> Option<Type> {
+        let peeled = peel_type_references(base_ty);
+        match projection {
+            Projection::TupleIndex(index) => match peeled {
+                Type::Tuple(items) => items.get(*index).cloned(),
+                _ => None,
+            },
+            Projection::OpaqueIndex => match peeled {
+                Type::Array(item) | Type::SizedArray(item, _) => Some((**item).clone()),
+                _ => None,
+            },
+            Projection::Field(field) => match peeled {
+                Type::Record(fields) => fields
+                    .iter()
+                    .find(|(name, _)| name == field)
+                    .map(|(_, ty)| ty.clone()),
+                Type::Named(name, args) => {
+                    let (resolved_name, fields) =
+                        self.registry.projection_struct_fields(current_module, name)?;
+                    let field_entry = fields.iter().find(|entry| entry.name == *field)?;
+                    let raw_ty = field_entry.ty.clone();
+                    let infer_ty = if let Some(type_params) =
+                        self.registry.struct_type_params_for(resolved_name)
+                    {
+                        let mut remap = Substitution::new();
+                        for (&param, arg) in type_params.iter().zip(args.iter()) {
+                            remap.bind(param, type_to_infer(arg));
+                        }
+                        remap.apply(&raw_ty)
+                    } else {
+                        raw_ty
+                    };
+                    infer_to_type_lossy(&infer_ty)
+                }
+                _ => None,
+            },
+        }
     }
 
     fn report_illegal_move(
@@ -1432,6 +1471,16 @@ fn bind_pattern_names(pattern: &Pattern, into: &mut HashSet<String>) {
     }
 }
 
+fn root_place_ty_from_expr(expr: &TypedExpr) -> Option<&Type> {
+    match expr {
+        TypedExpr::Ident(_, ty, _) => Some(ty),
+        TypedExpr::FieldAccess { object, .. }
+        | TypedExpr::TupleAccess { object, .. }
+        | TypedExpr::Index { object, .. } => root_place_ty_from_expr(object),
+        _ => None,
+    }
+}
+
 fn dummy_span_from_place(place: &Place) -> Span {
     Span {
         start: 0,
@@ -1648,6 +1697,135 @@ fun main() {
     }
 
     #[test]
+    fn partial_move_of_drop_type_in_match_binding_is_reported() {
+        assert_has_violation(
+            r#"
+struct Handle {
+    name: String,
+    fd: i64,
+}
+
+extend Handle: Drop {
+    fun drop(self) { }
+}
+
+fun main() {
+    let handle = Handle { name = "x", fd = 1 };
+    let n = match handle.name {
+        name => name.len(),
+    };
+}
+"#,
+            "handle",
+        );
+    }
+
+    /// A record pattern moves at field granularity, like a struct field access:
+    /// the moved field is gone, and the record may no longer be used as a whole.
+    ///
+    /// The `Drop` variant of this test is deliberately absent rather than
+    /// overlooked. An anonymous record can never implement `Drop` (RFC-0116 §3,
+    /// enforced in `coherence`: "anonymous records cannot implement `Drop`"), so
+    /// a record pattern partially moving a `Drop` value is unrepresentable. An
+    /// earlier revision tried to write it by destructuring a *nominal* struct
+    /// with a record pattern, which the typechecker rejects outright — the test
+    /// was failing on its own fixture, not on the checker.
+    #[test]
+    fn record_pattern_moves_at_field_granularity() {
+        assert_has_violation(
+            r#"
+fun take(r: { n: i64, name: String }) -> i64 {
+    return r.n;
+}
+
+fun main() {
+    let r = { name = "x", n = 1 };
+    let moved = match r {
+        { name, n } => name,
+    };
+    let again = take(r);
+}
+"#,
+            "r",
+        );
+    }
+
+    #[test]
+    fn tuple_pattern_partial_move_of_drop_prefix_is_reported() {
+        assert_has_violation(
+            r#"
+struct Wrapper {
+    pair: (String, i64),
+}
+
+extend Wrapper: Drop {
+    fun drop(self) { }
+}
+
+fun main() {
+    let wrapper = Wrapper { pair = ("x", 1) };
+    let n = match wrapper.pair {
+        (name, _) => name.len(),
+    };
+}
+"#,
+            "wrapper",
+        );
+    }
+
+    #[test]
+    fn enum_payload_pattern_partial_move_of_drop_prefix_is_reported() {
+        assert_has_violation(
+            r#"
+enum MaybeText {
+    Empty,
+    Full { text: String },
+}
+
+struct Wrapper {
+    payload: MaybeText,
+}
+
+extend Wrapper: Drop {
+    fun drop(self) { }
+}
+
+fun main() {
+    let wrapper = Wrapper {
+        payload = MaybeText::Full { text = "x" },
+    };
+    let n = match wrapper.payload {
+        MaybeText::Full { text } => text.len(),
+        MaybeText::Empty => 0,
+    };
+}
+"#,
+            "wrapper",
+        );
+    }
+
+    #[test]
+    fn nested_direct_partial_move_of_drop_prefix_is_reported() {
+        assert_has_violation(
+            r#"
+struct Wrapper {
+    pair: (String, i64),
+}
+
+extend Wrapper: Drop {
+    fun drop(self) { }
+}
+
+fun main() {
+    let wrapper = Wrapper { pair = ("x", 1) };
+    let name = wrapper.pair.0;
+}
+"#,
+            "wrapper",
+        );
+    }
+
+    #[test]
     fn tuple_element_partial_move_then_reuse_is_reported() {
         assert_has_violation(
             r#"
@@ -1690,6 +1868,36 @@ fun main() {
 fun main() {
     let xs = ["x"];
     let first = xs[0];
+}
+"#,
+            "xs",
+        );
+    }
+
+    #[test]
+    fn array_element_move_in_match_binding_is_reported() {
+        assert_has_violation(
+            r#"
+fun main() {
+    let xs = ["x"];
+    let n = match xs[0] {
+        s => s.len(),
+    };
+}
+"#,
+            "xs",
+        );
+    }
+
+    #[test]
+    fn array_pattern_binding_array_element_is_reported() {
+        assert_has_violation(
+            r#"
+fun main() {
+    let xs: [String; 1] = ["x"];
+    let n = match xs {
+        [s] => s.len(),
+    };
 }
 "#,
             "xs",
@@ -1823,6 +2031,62 @@ fun main() {
         assert!(
             violations.is_empty(),
             "moving `pair.left` must not report `pair` as used-after-move: {violations:#?}"
+        );
+    }
+
+    /// A tuple literal takes ownership of its elements. Regression for a false
+    /// negative where they were only *observed*: the element stayed usable
+    /// afterwards, and every rule `consume_place` enforces was skipped.
+    #[test]
+    fn tuple_literal_consumes_its_elements() {
+        assert_has_violation(
+            r#"
+struct Owned {
+    s: String,
+}
+
+fun main() {
+    let a = Owned { s = "x" };
+    let t = (a, 1);
+    let n = a.s.len();
+}
+"#,
+            "a",
+        );
+    }
+
+    #[test]
+    fn tuple_literal_cannot_partially_move_a_drop_type() {
+        assert_has_violation(
+            r#"
+struct Handle {
+    name: String,
+    fd: i64,
+}
+
+extend Handle: Drop {
+    fun drop(self) { }
+}
+
+fun main() {
+    let h = Handle { name = "x", fd = 1 };
+    let t = (h.name, 1);
+}
+"#,
+            "h",
+        );
+    }
+
+    #[test]
+    fn array_literal_cannot_move_an_array_element() {
+        assert_has_violation(
+            r#"
+fun main() {
+    let xs = ["a"];
+    let ys = [xs[0]];
+}
+"#,
+            "xs",
         );
     }
 }
