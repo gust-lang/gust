@@ -156,7 +156,11 @@ git push -u origin sprint/N
 Before opening a pull request from `sprint/N` to `develop`, run the quality gate below. If any gate fails, fix it on the sprint branch and run the gate again.
 
 1. **Tests** - `cargo test` from `metel-interpreter/` must pass with zero failures.
-2. **Code quality** - review every file in `git diff develop..HEAD --name-only` for stale code, dead branches, accidental `todo!()`, `unimplemented!()`, `unreachable!()`, and fallible `unwrap()`/`expect()` paths.
+2. **Code quality** - `cargo clippy --release --lib -- -W clippy::pedantic` from
+   `metel-interpreter/` must end at **0 warnings**. The `--lib` scope is deliberate: `--all-targets`
+   also lints measurement binaries and test harnesses, which are held to a looser bar. Then review
+   every file in `git diff develop..HEAD --name-only` for stale code, dead branches, accidental
+   `todo!()`, `unimplemented!()`, `unreachable!()`, and fallible `unwrap()`/`expect()` paths.
 3. **Coverage** - every feature or fix needs a focused regression test:
    - Parser or grammar changes: parsing tests or typechecking tests.
    - Type system changes: typechecking tests in `tests/typechecking/sources/`.
@@ -248,6 +252,62 @@ mode this workflow is designed against — not to re-run the sprint-close gate.
 2. Relevant tests pass; for typechecker or inference changes, the full `cargo test` suite passes.
 3. Spec, changelog, RFC, internal docs, and ADR updates are complete where required.
 4. Close the issue.
+
+---
+
+## Delegated Implementation Work
+
+Implementation is sometimes handed to a sandboxed coding agent (`codex exec --sandbox
+workspace-write`). That sandbox has **no network**, **read-only git metadata** (so it cannot commit —
+it leaves work in the tree), and cannot reliably run `cargo` when another build holds the target lock.
+
+**A delegated result is unverified until you have run the verification commands yourself.** This is
+not a courtesy check. Reports arriving from a sandbox have twice been confidently wrong in ways the
+report did not flag: a measurement number inflated by a bug in the measuring code, and a "fixed"
+structural change that left four unit tests failing. An agent that says *"I could not verify this"* is
+being honest, and that sentence is the normal case, not an admission of failure.
+
+So:
+
+- Run `cargo test --release` and the clippy gate on the returned tree before reporting anything about
+  it, and before building further work on top of it.
+- Treat a returned test count, sweep total, or histogram as a claim about the code, not a measurement,
+  until it is reproduced.
+- The same rule applies to **adversarial review findings**: reproduce the repro before fixing it, and
+  once a finding is confirmed, look for siblings of the same class. Both times a review finding was
+  fixed properly on this project, the fix surfaced further instances the review had not found.
+- **Verify before filing an issue.** An issue filed on an unchecked premise costs more to retract than
+  it did to write — check the claim against the working tree first.
+
+Briefs for delegated work belong in the job's scratch directory, not the repository.
+
+---
+
+## Landing an Enforcement Pass Over an Existing Corpus
+
+A new static check (move checking, borrow checking, negative-bound enforcement, exhaustiveness) will
+reject code the existing fixture corpus is full of. The corpus is not wrong; it predates the rule.
+
+The established pattern, used for both the `Copy`/`Drop` aspects and move checking:
+
+1. **Ship the check off by default**, behind a `RunOptions` field and a per-fixture sidecar opt-in
+   (`[options] move_check = true`), wired into *every* pipeline entry point.
+2. **Write new fixtures that opt in**, so the check and its diagnostics get real end-to-end coverage
+   from the first commit.
+3. **Do not edit an existing fixture to make a new check pass.** Many are behavioural evaluator tests
+   whose meaning changes when rewritten. An existing fixture that changes behaviour under the new
+   check is a finding to report and count, not a file to fix in passing.
+4. **Corpus migration and flipping the default are their own issue**, filed with the measured scope
+   (fixture count and violation count) so the decision to migrate is made against a number.
+5. **Measure before migrating**, and make the measurement tool assert its own invariants. Three
+   separate false-positive classes in one analysis were found by hand-auditing a sweep against real
+   fixtures, none by the analysis's own unit tests; the durable fix is for the sweep to fail loudly on
+   a self-contradictory result rather than to trust a later hand-audit.
+
+**The limit on this pattern:** off-by-default is acceptable only while the capability is *visibly*
+inert. A feature that appears to work and silently does nothing must be gated behind a rejection
+before release rather than shipped — see RFC-0071 §9c, which records this for `Drop` without
+destructor invocation and notes the project has already hit that failure mode twice.
 
 ---
 
@@ -414,6 +474,13 @@ Do not infer types in Pass 2. Do not build typed AST nodes in Pass 1. If a task 
 - `Never` is a bottom type. Typechecking tests alone may not distinguish a diverging expression from a correctly typed runtime path; use evaluator tests for runtime behavior.
 - Route conversions through `type_to_infer` where `Perhaps`/`Result` normalization matters.
 - Distinguish formal `TypeVar`s from fresh `InferType::Var(TypeVar)` usage-site variables.
+- **`crate::types::Type` contains no type variables** — by the time it exists, generics are
+  monomorphised. An abstract type parameter is therefore `InferType::Var(TypeVar)`, and any query
+  that must answer "does this abstract parameter satisfy an aspect?" belongs on the `InferType` side
+  with the concrete-`Type` form as a wrapper over it. Do not add a parameter variant to `Type`, and
+  do not smuggle one into a `Type::Named` name string: encoding a parameter as a mangled nominal name
+  was tried and rejected, because a generic parameter must be *structurally* distinct from a nominal
+  type, not distinguished by a naming convention every consumer has to re-learn.
 - Generic instantiation should follow the established `instantiate_scheme_for_call` pattern: fresh variables, initial substitution, unification against actuals, then extraction from the composed substitution.
 - Imported schemes must seed both inference and construction paths for a module. If only one pass sees imports, the typechecker is wrong.
 - Public module declarations that are consumed cross-module must have enough annotations to export concrete schemes.
