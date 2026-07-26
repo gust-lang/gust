@@ -18,8 +18,30 @@ pub struct MoveViolation {
     pub use_place: Place,
     pub moved_place: Place,
     pub moved_by_value_receiver: bool,
+    /// Coarse shape of the value that moved, for triage: which of these
+    /// violations would disappear if a given type became `Copy`. Notably
+    /// `T[]`, whose ownership is RFC-0124's open question.
+    pub moved_type: String,
     pub use_span: Span,
     pub moved_span: Span,
+}
+
+/// A coarse bucket for `ty`, enough to separate the sequence types from
+/// everything else without exploding into one label per user struct.
+#[must_use]
+fn type_bucket(ty: &Type) -> String {
+    match ty {
+        Type::Array(_) => "T[]".to_string(),
+        Type::SizedArray(_, _) => "[T; N]".to_string(),
+        Type::Tuple(_) => "tuple".to_string(),
+        Type::Record(_) => "record".to_string(),
+        Type::Str => "String".to_string(),
+        Type::Reference(_) => "&T".to_string(),
+        Type::MutReference(_) => "&var T".to_string(),
+        Type::Fun(_, _) => "fun".to_string(),
+        Type::Named(name, _) => format!("named:{}", name.rsplit("::").next().unwrap_or(name)),
+        other => format!("other:{other}"),
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -55,6 +77,7 @@ struct MoveRecord {
     place: Place,
     moved_span: Span,
     cause: MoveCause,
+    moved_type: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,16 +112,16 @@ impl FlowState {
         self.moved.remove(name);
     }
 
-    fn record_move(&mut self, place: Place, moved_span: Span, cause: MoveCause) {
+    fn record_move(&mut self, place: Place, moved_span: Span, cause: MoveCause, moved_type: String) {
         let root = place.root().to_string();
         let records = self.moved.entry(root).or_default();
         if place.projections().is_empty() {
             records.clear();
-            records.push(MoveRecord { place, moved_span, cause });
+            records.push(MoveRecord { place, moved_span, cause, moved_type });
             return;
         }
         records.retain(|record| !place.is_prefix_of(&record.place));
-        records.push(MoveRecord { place, moved_span, cause });
+        records.push(MoveRecord { place, moved_span, cause, moved_type });
     }
 
     fn moved_record_for_descendant_use(&self, place: &Place) -> Option<&MoveRecord> {
@@ -440,7 +463,7 @@ impl<'a> Checker<'a> {
             match expr {
                 TypedExpr::Index { index, .. } => {
                     if !self.is_copy(current_module, expr.ty()) {
-                        self.report_illegal_move(place.clone(), expr.span().clone());
+                        self.report_illegal_move(place.clone(), expr.span().clone(), type_bucket(expr.ty()));
                         self.observe_expr(index, current_module, state);
                         return;
                     }
@@ -450,7 +473,7 @@ impl<'a> Checker<'a> {
                 }
                 TypedExpr::FieldAccess { object, .. } | TypedExpr::TupleAccess { object, .. } => {
                     if self.is_drop(current_module, object.ty()) && !self.is_copy(current_module, expr.ty()) {
-                        self.report_illegal_move(place.clone(), expr.span().clone());
+                        self.report_illegal_move(place.clone(), expr.span().clone(), type_bucket(expr.ty()));
                         self.observe_projection_base_expr(object, current_module, state);
                         return;
                     }
@@ -785,7 +808,7 @@ impl<'a> Checker<'a> {
         if self.is_copy(current_module, ty) {
             return;
         }
-        state.record_move(place, use_span.clone(), cause);
+        state.record_move(place, use_span.clone(), cause, type_bucket(ty));
     }
 
     fn record_descendant_use_if_moved(
@@ -800,6 +823,7 @@ impl<'a> Checker<'a> {
                 use_place: place.clone(),
                 moved_place: record.place.clone(),
                 moved_by_value_receiver: record.cause == MoveCause::ByValueReceiver,
+                moved_type: record.moved_type.clone(),
                 use_span: use_span.clone(),
                 moved_span: record.moved_span.clone(),
             });
@@ -815,6 +839,7 @@ impl<'a> Checker<'a> {
                 use_place: place.clone(),
                 moved_place: record.place.clone(),
                 moved_by_value_receiver: record.cause == MoveCause::ByValueReceiver,
+                moved_type: record.moved_type.clone(),
                 use_span: use_span.clone(),
                 moved_span: record.moved_span.clone(),
             });
@@ -837,12 +862,13 @@ impl<'a> Checker<'a> {
         self.registry.type_satisfies_aspect(current_module, ty, "Drop")
     }
 
-    fn report_illegal_move(&mut self, place: Place, use_span: Span) {
+    fn report_illegal_move(&mut self, place: Place, use_span: Span, moved_type: String) {
         self.report.violations.push(MoveViolation {
             binding: place.root().to_string(),
             use_place: place.clone(),
             moved_place: place.clone(),
             moved_by_value_receiver: false,
+            moved_type,
             use_span,
             moved_span: dummy_span_from_place(&place),
         });

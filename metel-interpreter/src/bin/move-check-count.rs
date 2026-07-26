@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -13,6 +14,10 @@ fn main() {
     collect_sources(&root, &mut fixtures);
     fixtures.sort();
 
+    let mut by_type: BTreeMap<String, usize> = BTreeMap::new();
+    let mut per_fixture_types: BTreeMap<String, std::collections::BTreeSet<String>> =
+        BTreeMap::new();
+    let mut fixtures_by_type: BTreeMap<String, std::collections::BTreeSet<String>> = BTreeMap::new();
     let mut newly_failing = Vec::new();
     let mut skipped_generic_bodies_user_total = 0usize;
     let mut skipped_generic_bodies_embedded_std_total = 0usize;
@@ -63,6 +68,15 @@ fn main() {
                 user_violations_with_by_value_receiver_moves += 1;
             }
             user_violation_count += 1;
+            *by_type.entry(violation.moved_type.clone()).or_default() += 1;
+            per_fixture_types
+                .entry(fixture.display().to_string())
+                .or_default()
+                .insert(violation.moved_type.clone());
+            fixtures_by_type
+                .entry(violation.moved_type.clone())
+                .or_default()
+                .insert(fixture.display().to_string());
             user_violations.push(violation);
         }
         skipped_generic_bodies_user_total += report.skipped_generic_bodies_user;
@@ -125,6 +139,30 @@ fn main() {
     for (fixture, count, details) in newly_failing {
         println!("{}:{}:{}", fixture.display(), count, details.join("|"));
     }
+
+    println!(
+        "fixtures_whose_violations_are_all_T_bracket={}",
+        fixtures_all_one_type(&per_fixture_types, "T[]")
+    );
+    println!(
+        "fixtures_with_no_T_bracket_violation={}",
+        per_fixture_types
+            .values()
+            .filter(|types| !types.contains("T[]"))
+            .count()
+    );
+    println!("--- violations by moved-value type ---");
+    let mut rows: Vec<_> = by_type.iter().collect();
+    rows.sort_by(|a, b| b.1.cmp(a.1));
+    for (ty, count) in rows {
+        let fixtures = fixtures_by_type.get(ty).map_or(0, std::collections::BTreeSet::len);
+        println!("type={ty} violations={count} fixtures={fixtures}");
+        if std::env::var("MC_LIST").as_deref() == Ok(ty.as_str()) {
+            for f in fixtures_by_type.get(ty).into_iter().flatten() {
+                println!("    {f}");
+            }
+        }
+    }
 }
 
 fn is_projection_base_only_violation(violation: &move_check::MoveViolation) -> bool {
@@ -184,4 +222,14 @@ fn collect_sources(path: &Path, out: &mut Vec<PathBuf>) {
             out.push(child);
         }
     }
+}
+
+fn fixtures_all_one_type(
+    per_fixture: &BTreeMap<String, std::collections::BTreeSet<String>>,
+    ty: &str,
+) -> usize {
+    per_fixture
+        .values()
+        .filter(|types| types.len() == 1 && types.contains(ty))
+        .count()
 }
