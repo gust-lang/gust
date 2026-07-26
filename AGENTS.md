@@ -149,7 +149,22 @@ git push -u origin sprint/N
   effect of a sprint merging in (it's fine for it to lag `metel-docs main` between
   sprints — treat it like a dependency pin, not a freshness target), and `main`'s
   only moves at release time (see "Release Workflow" below).
-- **Update `docs/public/release-notes/changelog.md` in the same commit/session that lands the feature or fix, not later.** Add the entry under the current in-progress version's section (create it, marked "in progress on `sprint/N` — not yet released", if this is the first change of the sprint targeting a new version). The sprint-close gate below re-checks completeness; it is not when the changelog is first touched.
+- **Update `docs/public/release-notes/changelog.md` as each feature or fix lands, not later.**
+  Add the entry under the current in-progress version's section (create it, marked "in progress
+  on `develop` — not yet released", if this is the first change targeting a new version).
+
+  **The changelog is in the `docs/` submodule, so this can never be one commit** — the code
+  commit lands here, the entry lands in `metel-docs`, and the pointer bump lands here again.
+  That split is why this rule quietly failed for the whole of v0.12.0: an instruction to write
+  the entry "in the same commit" describes something impossible, so it degraded into "later",
+  which meant never. Treat it as a **pair**: the code commit, then immediately the docs commit
+  plus pointer bump. Do not batch a sprint's entries at the end — that is reconstruction from
+  `git log`, and it loses exactly the reasoning that makes an entry worth reading.
+
+  **Check it with `tools/changelog-status.sh`.** It lists every unreleased `feat`/`fix` commit
+  that touched real code and flags the ones landing after the changelog was last edited, so the
+  gate below is a diff to read rather than something to remember. It reports rather than
+  enforces — timestamps are a heuristic, since entries are prose and don't cite issue numbers.
 
 ### Closing a Sprint
 
@@ -167,7 +182,11 @@ Before opening a pull request from `sprint/N` to `develop`, run the quality gate
    - Evaluator/runtime changes: evaluator tests in `tests/evaluator/sources/` or module semantics tests.
    - Module graph/name-resolution changes: `tests/module_loading/` or `tests/module_semantics/`.
 4. **Spec accuracy** - every language-visible change is documented in `docs/public/reference/spec.md` and the linked spec section.
-5. **Changelog** - confirm `docs/public/release-notes/changelog.md`'s in-progress section is actually complete against what this sprint shipped. This is a completeness check, not first authorship — see "During a Sprint" above.
+5. **Changelog** - `tools/changelog-status.sh` reports no unlogged commits, and
+   `docs/public/release-notes/changelog.md`'s in-progress section reads correctly against what
+   this sprint shipped. This is a completeness check, not first authorship — see "During a
+   Sprint" above. A gate that is failing here means entries were batched, not that the gate is
+   noisy.
 6. **RFC state** - `python3 docs/internal/rfcs/tools/rfc.py check` reports clean (frontmatter matches directory, no dangling references); any RFC at `3-integrated` or beyond has `impl_status`/`impl_tracking` set correctly per `docs/internal/rfcs/PROCESS.md`.
 7. **Internal docs** - update `metel-interpreter/docs/architecture.md`, `typechecker.md`, or `evaluator.md` when the corresponding pipeline, inference, construction, runtime, or builtin behavior changes.
 8. **Decision records** - add a new ADR in `metel-interpreter/docs/decisions/` for non-obvious architectural decisions, reversals, or workarounds future contributors must know.
