@@ -1271,6 +1271,11 @@ pub(crate) enum VisibleTypeKind {
     Enum,
 }
 
+/// Aspects assumed to hold for abstract type parameters, keyed by parameter
+/// name — the assumption set a bounded generic gives you inside the scope that
+/// declares it. See `TypeDefinitionRegistry::type_satisfies_aspect_under`.
+pub type AspectAssumptions = HashMap<String, std::collections::HashSet<String>>;
+
 #[derive(Debug, Clone)]
 pub struct TypeDefinitionRegistry {
     /// struct name → fields with declaration spans.
@@ -1860,18 +1865,19 @@ impl TypeDefinitionRegistry {
         type_args: &[Type],
         pos_bounds: &[Vec<GenericBound>],
         neg_bounds: &[Vec<GenericBound>],
+        assumptions: &AspectAssumptions,
     ) -> bool {
         for (i, arg) in type_args.iter().enumerate() {
             if let Some(required) = pos_bounds.get(i) {
                 for aspect in required.iter().filter_map(GenericBound::aspect_name) {
-                    if !self.type_satisfies_aspect(current_module, arg, aspect) {
+                    if !self.type_satisfies_aspect_under(current_module, arg, aspect, assumptions) {
                         return false;
                     }
                 }
             }
             if let Some(forbidden) = neg_bounds.get(i) {
                 for aspect in forbidden.iter().filter_map(GenericBound::aspect_name) {
-                    if self.type_satisfies_aspect(current_module, arg, aspect) {
+                    if self.type_satisfies_aspect_under(current_module, arg, aspect, assumptions) {
                         return false;
                     }
                 }
@@ -1884,13 +1890,52 @@ impl TypeDefinitionRegistry {
     /// nested generic type arguments. Consults `conditional_impl_bounds` (RFC-0036)
     /// in addition to the unconditional `impl_aspect_env`.
     #[must_use]
-    #[allow(clippy::too_many_lines)]
     pub fn type_satisfies_aspect(
         &self,
         current_module: &[String],
         ty: &Type,
         aspect_name: &str,
     ) -> bool {
+        self.type_satisfies_aspect_under(
+            current_module,
+            ty,
+            aspect_name,
+            &AspectAssumptions::new(),
+        )
+    }
+
+    /// As `type_satisfies_aspect`, but with `assumptions`: aspects taken as
+    /// given for named types that stand in for an *abstract* type parameter
+    /// rather than a real declaration.
+    ///
+    /// This is what lets `Copy` eligibility reason about a generic field type
+    /// (issue #303). Checking `extend<T: Copy> Outer<T>: Copy` for
+    /// `struct Outer<T> { inner: Inner<T> }` has to ask whether `Inner<T>` is
+    /// `Copy`, a question with no answer in terms of concrete types since `T`
+    /// is not one. Under `{T: {Copy}}` it does have one: `Inner`'s own
+    /// conditional impl `extend<U: Copy> Inner<U>: Copy` applies, because the
+    /// bound it places on the argument is discharged by the assumption.
+    ///
+    /// An assumed parameter answers *only* from its assumption set and is
+    /// never looked up among real impls, so an aspect the caller did not
+    /// assume is `false` rather than whatever an unrelated declaration that
+    /// happens to share the parameter's name might satisfy.
+    #[must_use]
+    #[allow(clippy::too_many_lines)]
+    pub fn type_satisfies_aspect_under(
+        &self,
+        current_module: &[String],
+        ty: &Type,
+        aspect_name: &str,
+        assumptions: &AspectAssumptions,
+    ) -> bool {
+        if let Type::Named(name, args) = ty {
+            if args.is_empty() {
+                if let Some(assumed) = assumptions.get(name.as_str()) {
+                    return assumed.contains(aspect_name);
+                }
+            }
+        }
         if let Some(entries) = self.bare_neg_impl_bounds.get(aspect_name) {
             for (pos_bounds, neg_bounds) in entries {
                 if self.check_conditional_entry(
@@ -1898,6 +1943,7 @@ impl TypeDefinitionRegistry {
                     std::slice::from_ref(ty),
                     pos_bounds,
                     neg_bounds,
+                    assumptions,
                 ) {
                     return false;
                 }
@@ -1910,6 +1956,7 @@ impl TypeDefinitionRegistry {
                     std::slice::from_ref(ty),
                     pos_bounds,
                     neg_bounds,
+                    assumptions,
                 ) {
                     return true;
                 }
@@ -1920,7 +1967,7 @@ impl TypeDefinitionRegistry {
                 if aspect_name == "Send" || aspect_name == "Sync" {
                     return fields
                         .iter()
-                        .all(|(_, field_ty)| self.type_satisfies_aspect(current_module, field_ty, aspect_name));
+                        .all(|(_, field_ty)| self.type_satisfies_aspect_under(current_module, field_ty, aspect_name, assumptions));
                 }
                 false
             }
@@ -1928,7 +1975,7 @@ impl TypeDefinitionRegistry {
                 if aspect_name == "Copy" {
                     // #299: fixed-size-array `Copy` stays hardcoded here until const generics
                     // exist and the stdlib can express `[T; N]: Copy` directly.
-                    return self.type_satisfies_aspect(current_module, elem, "Copy");
+                    return self.type_satisfies_aspect_under(current_module, elem, "Copy", assumptions);
                 }
                 false
             }
@@ -1938,7 +1985,7 @@ impl TypeDefinitionRegistry {
                     // being checker-only and can move into the stdlib.
                     return items
                         .iter()
-                        .all(|item| self.type_satisfies_aspect(current_module, item, "Copy"));
+                        .all(|item| self.type_satisfies_aspect_under(current_module, item, "Copy", assumptions));
                 }
                 false
             }
@@ -1963,6 +2010,7 @@ impl TypeDefinitionRegistry {
                             inner_args,
                             pos_bounds,
                             neg_bounds,
+                            assumptions,
                         ) {
                             return false;
                         }
@@ -1975,6 +2023,7 @@ impl TypeDefinitionRegistry {
                             inner_args,
                             pos_bounds,
                             neg_bounds,
+                            assumptions,
                         ) {
                             return true;
                         }
@@ -1995,6 +2044,7 @@ impl TypeDefinitionRegistry {
                                 inner_args,
                                 pos_bounds,
                                 neg_bounds,
+                                assumptions,
                             ) {
                                 return false;
                             }
@@ -2018,6 +2068,7 @@ impl TypeDefinitionRegistry {
                                 inner_args,
                                 pos_bounds,
                                 neg_bounds,
+                                assumptions,
                             ) {
                                 return true;
                             }
@@ -2051,8 +2102,13 @@ impl TypeDefinitionRegistry {
                     .get(&(target_id, aspect_name.to_string()))
                 {
                     for (pos_bounds, neg_bounds) in entries {
-                        if self.check_conditional_entry(current_module, &[], pos_bounds, neg_bounds)
-                        {
+                        if self.check_conditional_entry(
+                            current_module,
+                            &[],
+                            pos_bounds,
+                            neg_bounds,
+                            assumptions,
+                        ) {
                             return false;
                         }
                     }

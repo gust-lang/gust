@@ -1,0 +1,20 @@
+// The rejecting half of issue #303. `Inner` has no `Copy` impl at all, so
+// `Inner<T>` is not `Copy` for any `T` and `Outer<T>` is not eligible —
+// recognising conditional impls must not degrade into accepting whatever it
+// cannot evaluate.
+//
+// The expected message also pins the diagnostic: the field type is named as
+// written, `Inner<T>`, not as the inference variable `Inner<?t16>` that the
+// struct's field entry actually stores.
+
+struct Inner<T> {
+    value: T,
+}
+
+struct Outer<T> {
+    inner: Inner<T>,
+}
+
+extend<T: Copy> Outer<T>: Copy;
+
+fun main() {}

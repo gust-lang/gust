@@ -7,8 +7,8 @@ use crate::ast::{
 };
 use crate::error::{MetelError, TypeErrorCode};
 use crate::typeinference::{
-    free_vars, generalize, EnumInfo, FieldEntry, GenericBound, InferContext, InferType,
-    Substitution, TypeScheme, TypeVar, VariantInfo,
+    free_vars, generalize, AspectAssumptions, EnumInfo, FieldEntry, GenericBound, InferContext,
+    InferType, Substitution, TypeScheme, TypeVar, VariantInfo,
 };
 use crate::types::Type;
 
@@ -142,29 +142,45 @@ fn native_fun_ty(fun: &FunDecl, ctx: &mut InferContext) -> Result<NativeFunTyRes
     })
 }
 
-fn impl_copy_bound_names(ib: &ImplBlock) -> std::collections::HashSet<String> {
-    let mut names = std::collections::HashSet::new();
+/// Every positive aspect bound the impl places on each of its own generic
+/// parameters, from both the inline list and the `where` clause.
+///
+/// These are exactly the facts a `Copy` eligibility check is entitled to
+/// assume about a field whose type mentions a parameter (issue #303). Every
+/// parameter gets an entry, including unbounded ones: an entry with an empty
+/// set says "this name is abstract and guarantees nothing", which is what
+/// stops `type_satisfies_aspect_under` from resolving it against a real
+/// declaration that happens to share the name.
+fn impl_param_bounds(ib: &ImplBlock) -> AspectAssumptions {
+    let mut bounds = AspectAssumptions::new();
     for param in &ib.generics {
-        if param
-            .bounds
-            .iter()
-            .any(|bound| bound.polarity == Polarity::Positive && bound.aspect_name() == Some("Copy"))
-        {
-            names.insert(param.name.clone());
+        let entry = bounds.entry(param.name.clone()).or_default();
+        for bound in &param.bounds {
+            if bound.polarity == Polarity::Positive {
+                if let Some(aspect) = bound.aspect_name() {
+                    entry.insert(aspect.to_string());
+                }
+            }
         }
     }
     if let Some(where_clause) = &ib.where_clause {
         for constraint in &where_clause.constraints {
-            if constraint
-                .bounds
-                .iter()
-                .any(|bound| bound.polarity == Polarity::Positive && bound.aspect_name() == Some("Copy"))
-            {
-                names.insert(constraint.name.clone());
+            // A `where` subject that is not one of the impl's own parameters
+            // constrains something else entirely; it says nothing about what
+            // this impl may assume.
+            let Some(entry) = bounds.get_mut(constraint.name.as_str()) else {
+                continue;
+            };
+            for bound in &constraint.bounds {
+                if bound.polarity == Polarity::Positive {
+                    if let Some(aspect) = bound.aspect_name() {
+                        entry.insert(aspect.to_string());
+                    }
+                }
             }
         }
     }
-    names
+    bounds
 }
 
 fn infer_type_to_concrete_if_closed(ty: &InferType) -> Option<Type> {
@@ -189,42 +205,6 @@ fn infer_type_to_concrete_if_closed(ty: &InferType) -> Option<Type> {
             .collect::<Option<Vec<_>>>()
             .map(|args| Type::Named(name.clone(), args)),
         InferType::Never | InferType::Var(_) | InferType::Fun(_, _) | InferType::Record(_) => None,
-    }
-}
-
-fn type_expr_guarantees_copy(
-    ty: &TypeExpr,
-    copy_bound_names: &std::collections::HashSet<String>,
-    registry: &crate::typeinference::TypeDefinitionRegistry,
-    current_module: &[String],
-) -> bool {
-    match ty {
-        TypeExpr::Named(name, args) => {
-            if args.is_empty() && copy_bound_names.contains(name) {
-                return true;
-            }
-            if let Some(prim) = primitive_type_from_name(name) {
-                return args.is_empty() && registry.type_satisfies_aspect(current_module, &prim, "Copy");
-            }
-            let infer = type_expr_to_infer(ty);
-            infer_type_to_concrete_if_closed(&infer)
-                .is_some_and(|concrete| registry.type_satisfies_aspect(current_module, &concrete, "Copy"))
-        }
-        TypeExpr::Tuple(items) => items
-            .iter()
-            .all(|item| type_expr_guarantees_copy(item, copy_bound_names, registry, current_module)),
-        TypeExpr::SizedArray(item, _) => {
-            type_expr_guarantees_copy(item, copy_bound_names, registry, current_module)
-        }
-        TypeExpr::Reference(_) => true,
-        TypeExpr::MutReference(_)
-        | TypeExpr::Array(_)
-        | TypeExpr::Unit
-        | TypeExpr::Record(_)
-        | TypeExpr::Fun(_, _)
-        | TypeExpr::ImplAspect { .. }
-        | TypeExpr::Projection { .. }
-        | TypeExpr::RecordProjection { .. } => false,
     }
 }
 
@@ -275,34 +255,66 @@ fn closed_nominal_target(ib: &ImplBlock, target_name: &str) -> Option<Type> {
     infer_type_to_concrete_if_closed(&type_expr_to_infer_with_self(&ib.target_type, target_name))
 }
 
-fn infer_type_guarantees_copy(
+/// `ty` with the struct's or enum's own type variables replaced by the
+/// corresponding arguments of the impl's target type, so that an impl-scoped
+/// generic parameter appears as the bare named type it was written as.
+///
+/// Total, and deliberately so. It is used both to decide eligibility and to
+/// render the diagnostic when eligibility fails, which is the other half of
+/// issue #303: `struct Outer<T> { inner: Inner<T> }` stores that field's type
+/// as `Inner<?v>` against `Outer`'s own inference variable, and reporting it
+/// raw exposed `Inner<?t16>` to the user. After substitution it prints as
+/// `Inner<T>`, the way it was written.
+fn substitute_impl_params(
     ty: &InferType,
     type_param_args: &HashMap<TypeVar, &TypeExpr>,
-    copy_bound_names: &std::collections::HashSet<String>,
+) -> InferType {
+    let go = |t: &InferType| substitute_impl_params(t, type_param_args);
+    match ty {
+        InferType::Var(var) => type_param_args
+            .get(var)
+            .map_or_else(|| ty.clone(), |arg| type_expr_to_infer(arg)),
+        InferType::Tuple(items) => InferType::Tuple(items.iter().map(go).collect()),
+        InferType::Record(fields) => InferType::Record(
+            fields
+                .iter()
+                .map(|(label, field_ty)| (label.clone(), go(field_ty)))
+                .collect(),
+        ),
+        InferType::Array(item) => InferType::Array(Box::new(go(item))),
+        InferType::SizedArray(item, size) => InferType::SizedArray(Box::new(go(item)), *size),
+        InferType::Reference(item) => InferType::Reference(Box::new(go(item))),
+        InferType::MutReference(item) => InferType::MutReference(Box::new(go(item))),
+        InferType::Named(name, args) => {
+            InferType::Named(name.clone(), args.iter().map(go).collect())
+        }
+        InferType::Fun(params, ret) => {
+            InferType::Fun(params.iter().map(go).collect(), Box::new(go(ret)))
+        }
+        InferType::Concrete(_) | InferType::Never => ty.clone(),
+    }
+}
+
+/// Whether a field or payload type, already substituted by
+/// `substitute_impl_params`, is `Copy` under the impl's own bounds.
+///
+/// This defers entirely to `type_satisfies_aspect_under` rather than walking
+/// the type itself. It used to walk it, in two mutually recursive functions
+/// that re-stated the `Copy` rules for tuples, fixed arrays and references —
+/// a third copy of rules that already live in `type_satisfies_aspect`, and
+/// one that had drifted: it answered `false` for any named type with an
+/// unresolved argument, which is issue #303's wrong rejection. Asking the
+/// canonical query under an assumption set gets the generic case right and
+/// keeps the rules in one place.
+fn substituted_type_is_copy(
+    ty: &InferType,
+    assumptions: &AspectAssumptions,
     registry: &crate::typeinference::TypeDefinitionRegistry,
     current_module: &[String],
 ) -> bool {
-    match ty {
-        InferType::Concrete(concrete) => registry.type_satisfies_aspect(current_module, concrete, "Copy"),
-        InferType::Var(var) => type_param_args.get(var).is_some_and(|arg| {
-            type_expr_guarantees_copy(arg, copy_bound_names, registry, current_module)
-        }),
-        InferType::Tuple(items) => items.iter().all(|item| {
-            infer_type_guarantees_copy(item, type_param_args, copy_bound_names, registry, current_module)
-        }),
-        InferType::SizedArray(item, _) => {
-            infer_type_guarantees_copy(item, type_param_args, copy_bound_names, registry, current_module)
-        }
-        InferType::Reference(_) => true,
-        InferType::MutReference(_)
-        | InferType::Array(_)
-        | InferType::Never
-        | InferType::Fun(_, _)
-        | InferType::Record(_) => false,
-        InferType::Named(_, _) => infer_type_to_concrete_if_closed(ty).is_some_and(|concrete| {
-            registry.type_satisfies_aspect(current_module, &concrete, "Copy")
-        }),
-    }
+    infer_type_to_concrete_if_closed(ty).is_some_and(|concrete| {
+        registry.type_satisfies_aspect_under(current_module, &concrete, "Copy", assumptions)
+    })
 }
 
 fn check_copy_impl_eligibility(
@@ -310,7 +322,7 @@ fn check_copy_impl_eligibility(
     target_name: &str,
     ctx: &InferContext,
 ) -> Result<(), MetelError> {
-    let copy_bound_names = impl_copy_bound_names(ib);
+    let assumptions = impl_param_bounds(ib);
     let mut type_param_args: HashMap<TypeVar, &TypeExpr> = HashMap::new();
     if let TypeExpr::Named(_, target_args) = &ib.target_type {
         if let Some(struct_params) = ctx.registry().raw_struct_type_params().get(target_name) {
@@ -326,18 +338,18 @@ fn check_copy_impl_eligibility(
 
     if let Some(fields) = ctx.get_struct_fields(target_name) {
         for field in fields {
-            if !infer_type_guarantees_copy(
-                &field.ty,
-                &type_param_args,
-                &copy_bound_names,
+            let field_ty = substitute_impl_params(&field.ty, &type_param_args);
+            if !substituted_type_is_copy(
+                &field_ty,
+                &assumptions,
                 ctx.registry(),
                 ctx.current_module_path(),
             ) {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0001,
                     format!(
-                        "cannot implement `Copy` for `{target_name}`: field `{}` has type `{}` which is not `Copy`",
-                        field.name, field.ty
+                        "cannot implement `Copy` for `{target_name}`: field `{}` has type `{field_ty}` which is not `Copy`",
+                        field.name
                     ),
                     &field.span,
                 ));
@@ -346,18 +358,18 @@ fn check_copy_impl_eligibility(
     } else if let Some(enum_info) = ctx.get_enum(target_name) {
         for variant in &enum_info.variants {
             for field in &variant.fields {
-                if !infer_type_guarantees_copy(
-                    &field.ty,
-                    &type_param_args,
-                    &copy_bound_names,
+                let field_ty = substitute_impl_params(&field.ty, &type_param_args);
+                if !substituted_type_is_copy(
+                    &field_ty,
+                    &assumptions,
                     ctx.registry(),
                     ctx.current_module_path(),
                 ) {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0001,
                         format!(
-                            "cannot implement `Copy` for `{target_name}`: payload `{}` of variant `{}::{}` has type `{}` which is not `Copy`",
-                            field.name, target_name, variant.name, field.ty
+                            "cannot implement `Copy` for `{target_name}`: payload `{}` of variant `{}::{}` has type `{field_ty}` which is not `Copy`",
+                            field.name, target_name, variant.name
                         ),
                         &field.span,
                     ));
