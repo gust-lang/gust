@@ -28,6 +28,7 @@ pub mod coherence;
 pub mod elaborator;
 pub mod error;
 pub mod evaluator;
+pub mod move_check;
 pub mod module_loader;
 pub mod module_paths;
 pub mod name_resolver;
