@@ -1,0 +1,47 @@
+// RFC-0071 §4 forbids one *type* having both `Copy` and `Drop`. It does not
+// forbid a program from containing an impl of each, and the check added for
+// issue #302 is deliberately precise about the difference — an approximation
+// that rejected any `Copy` impl and `Drop` impl sharing a target constructor
+// would reject both halves of this file.
+//
+// Two ways the two impls can coexist:
+
+struct Disjoint<T> {
+    val: T,
+}
+
+// 1. Provably disjoint bounds. No `T` is both `Copy` and `!Copy`, so no
+//    instantiation of `Disjoint<T>` ever has both aspects.
+extend<T: Copy> Disjoint<T>: Copy;
+
+extend<T: !Copy> Disjoint<T>: Drop {
+    fun drop(self) {}
+}
+
+struct Reach<T> {
+    val: T,
+}
+
+// 2. A concrete target outside the blanket's reach. `String` is not `Copy`,
+//    so the blanket does not apply to `Reach<String>` and it is free to
+//    implement `Drop`. With `i64` here instead this is a §4 violation —
+//    see `typechecking/structs/stage5_neg_35_copy_blanket_reaches_drop_instantiation.mtl`.
+extend<T: Copy> Reach<T>: Copy;
+
+extend Reach<String>: Drop {
+    fun drop(self) {}
+}
+
+fun main() {
+    let copyable = Disjoint { val = 1 };
+    assert(copyable.val == 1);
+
+    let droppable = Disjoint { val = "owned" };
+    assert(droppable.val.len() == 5);
+
+    let reached = Reach { val = 7 };
+    assert(reached.val == 7);
+
+    let unreached = Reach { val = "outside" };
+    assert(unreached.val.len() == 7);
+}

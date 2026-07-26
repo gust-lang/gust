@@ -8,10 +8,17 @@
 //
 // An earlier revision of this comment claimed the implication had therefore become
 // structurally guaranteed and untestable. **That was wrong**, and an adversarial review
-// disproved it: §4 is only enforced for *concrete* impl targets, so two overlapping
-// conditional impls — `extend<T: Copy> Foo<T>: Copy` and `extend<T: Display> Foo<T>: Drop`
-// — still give `Foo<i64>` both, and the implication is what wrongly lets it through a
-// `!Drop` bound. The mechanism is live, and unsound. Tracked separately.
+// disproved it (#302): §4 was enforced only for *concrete* impl targets, so two
+// overlapping conditional impls — `extend<T: Copy> Foo<T>: Copy` and
+// `extend<T: Display> Foo<T>: Drop` — gave `Foo<i64>` both, and the implication was
+// what let it through a `!Drop` bound.
+//
+// That hole is closed: `coherence` now checks the two aspects against each other for
+// open targets too. The implication is still not *structurally* guaranteed — it holds
+// because two separate checks enforce §4, not because the type system makes the
+// combination unrepresentable — so it stays worth testing. See
+// `typechecking/structs/stage5_neg_34_copy_and_drop_overlapping_conditional_impls.mtl`
+// for the case that used to slip through.
 //
 // What this fixture covers is the ordinary path only: a `Copy` type satisfies `!Drop`,
 // concretely and through a `T: Copy` generic. It does not isolate the implication —

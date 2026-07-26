@@ -228,6 +228,53 @@ fn type_expr_guarantees_copy(
     }
 }
 
+/// Whether `ty` mentions any of `params` anywhere inside it.
+fn mentions_type_param(ty: &TypeExpr, params: &std::collections::HashSet<&str>) -> bool {
+    let go = |t: &TypeExpr| mentions_type_param(t, params);
+    match ty {
+        TypeExpr::Named(name, args) => params.contains(name.as_str()) || args.iter().any(go),
+        TypeExpr::Tuple(items) => items.iter().any(go),
+        TypeExpr::Record(fields) => fields.iter().any(|(_, t)| go(t)),
+        TypeExpr::Array(inner)
+        | TypeExpr::SizedArray(inner, _)
+        | TypeExpr::Reference(inner)
+        | TypeExpr::MutReference(inner) => go(inner),
+        TypeExpr::Fun(ps, ret) => ps.iter().any(go) || ret.as_deref().is_some_and(go),
+        TypeExpr::Projection { base, .. } => go(base),
+        TypeExpr::Unit | TypeExpr::ImplAspect { .. } | TypeExpr::RecordProjection { .. } => false,
+    }
+}
+
+/// An impl's target type as a concrete `Type`, but only when the target is
+/// *closed*: a nominal type mentioning none of the impl's own generic
+/// parameters.
+///
+/// Closedness has to be tested against `ib.generics` explicitly rather than
+/// left to `infer_type_to_concrete_if_closed`, which cannot see it. Given
+/// `extend<T: !Copy> Foo<T>: Drop`, that function reduces `Foo<T>` to a
+/// perfectly concrete `Foo` applied to a nominal type *literally named* `T` —
+/// closed as far as it can tell. The RFC-0071 §4 checks below would then ask
+/// whether that type implements the other aspect, and `type_satisfies_aspect`
+/// would match any conditional impl of it while ignoring the bounds that
+/// cannot be evaluated against a placeholder — rejecting valid pairs like
+/// `extend<T: Copy> Foo<T>: Copy` alongside `extend<T: !Copy> Foo<T>: Drop`,
+/// where no instantiation can satisfy both.
+///
+/// Open targets are not unchecked: `coherence`'s cross-aspect overlap check
+/// handles them precisely, comparing the two impls' bounds instead of
+/// discarding them (issue #302).
+fn closed_nominal_target(ib: &ImplBlock, target_name: &str) -> Option<Type> {
+    if !matches!(&ib.target_type, TypeExpr::Named(_, _)) {
+        return None;
+    }
+    let params: std::collections::HashSet<&str> =
+        ib.generics.iter().map(|g| g.name.as_str()).collect();
+    if mentions_type_param(&ib.target_type, &params) {
+        return None;
+    }
+    infer_type_to_concrete_if_closed(&type_expr_to_infer_with_self(&ib.target_type, target_name))
+}
+
 fn infer_type_guarantees_copy(
     ty: &InferType,
     type_param_args: &HashMap<TypeVar, &TypeExpr>,
@@ -319,12 +366,7 @@ fn check_copy_impl_eligibility(
         }
     }
 
-    let concrete_target = if let TypeExpr::Named(_, _) = &ib.target_type {
-        infer_type_to_concrete_if_closed(&type_expr_to_infer_with_self(&ib.target_type, target_name))
-    } else {
-        None
-    };
-    if let Some(concrete_target) = concrete_target {
+    if let Some(concrete_target) = closed_nominal_target(ib, target_name) {
         if ctx
             .registry()
             .type_satisfies_aspect(ctx.current_module_path(), &concrete_target, "Drop")
@@ -768,15 +810,7 @@ fn infer_decl(
                     if aspect_name == "Copy" {
                         check_copy_impl_eligibility(ib, &target_name, ctx)?;
                     } else if aspect_name == "Drop" {
-                        let concrete_target = if let TypeExpr::Named(_, _) = &ib.target_type {
-                            infer_type_to_concrete_if_closed(&type_expr_to_infer_with_self(
-                                &ib.target_type,
-                                &target_name,
-                            ))
-                        } else {
-                            None
-                        };
-                        if let Some(concrete_target) = concrete_target {
+                        if let Some(concrete_target) = closed_nominal_target(ib, &target_name) {
                             if ctx.registry().type_satisfies_aspect(
                                 ctx.current_module_path(),
                                 &concrete_target,

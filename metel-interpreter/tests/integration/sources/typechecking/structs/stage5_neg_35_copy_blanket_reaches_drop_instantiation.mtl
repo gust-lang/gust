@@ -1,0 +1,21 @@
+// RFC-0071 §4 where a `Copy` blanket and a concrete `Drop` impl meet at one
+// instantiation (issue #302).
+//
+// `i64` is `Copy`, so the blanket reaches `Reach<i64>` — the exact type the
+// `Drop` impl targets. Contrast the accepted case in
+// `evaluator/structs/95_copy_and_drop_non_overlapping_impls.mtl`, which is
+// this program with `String` in place of `i64`: the rejection turns on
+// whether the concrete argument satisfies the blanket's bound, not on the
+// two impls merely sharing a target constructor.
+
+struct Reach<T> {
+    val: T,
+}
+
+extend<T: Copy> Reach<T>: Copy;
+
+extend Reach<i64>: Drop {
+    fun drop(self) {}
+}
+
+fun main() {}

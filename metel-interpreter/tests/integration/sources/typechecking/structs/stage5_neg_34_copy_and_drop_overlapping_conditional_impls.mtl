@@ -1,0 +1,19 @@
+// RFC-0071 §4 across two *conditional* impls (issue #302).
+//
+// Neither impl target is closed, so the declaration-site check in
+// `typechecker::inference` cannot evaluate either one — it is `coherence`'s
+// cross-aspect overlap check that rejects this. The bounds are not disjoint:
+// `i64` is both `Copy` and `Display`, so `Overlap<i64>` would have both
+// aspects, which §4 forbids.
+
+struct Overlap<T> {
+    val: T,
+}
+
+extend<T: Copy> Overlap<T>: Copy;
+
+extend<T: Display> Overlap<T>: Drop {
+    fun drop(self) {}
+}
+
+fun main() {}
