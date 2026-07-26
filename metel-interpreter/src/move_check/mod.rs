@@ -3,6 +3,7 @@ pub mod place;
 use std::collections::{HashMap, HashSet};
 
 use crate::ast::{Pattern, ReceiverKind, Span};
+use crate::error::{MetelError, TypeErrorCode};
 use crate::typed_ast::{
     FunBody, MethodDispatch, TypedBlock, TypedDecl, TypedExpr, TypedForInit, TypedModule,
     TypedModuleGraph, TypedPlace, TypedStmt,
@@ -17,6 +18,7 @@ pub struct MoveViolation {
     pub binding: String,
     pub use_place: Place,
     pub moved_place: Place,
+    pub kind: MoveViolationKind,
     pub moved_by_value_receiver: bool,
     /// Coarse shape of the value that moved, for triage: which of these
     /// violations would disappear if a given type became `Copy`. Notably
@@ -24,6 +26,15 @@ pub struct MoveViolation {
     pub moved_type: String,
     pub use_span: Span,
     pub moved_span: Span,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoveViolationKind {
+    UseAfterMove,
+    PartialMoveUsedAsWhole,
+    PartialMoveOfDropType,
+    ArrayElementMove,
+    MovedMutReferenceWithoutReborrow,
 }
 
 /// A coarse bucket for `ty`, enough to separate the sequence types from
@@ -72,6 +83,23 @@ pub fn collect_graph_violations(graph: &TypedModuleGraph) -> MoveCheckReport {
     checker.report
 }
 
+/// Run the move checker and convert the first violation into a user-facing type error.
+///
+/// # Errors
+/// Returns `T0019` when the graph contains a move-checking violation.
+pub fn check_graph(graph: &TypedModuleGraph) -> Result<(), MetelError> {
+    let report = collect_graph_violations(graph);
+    if let Some(violation) = report.violations.into_iter().next() {
+        let span = violation.use_span.clone();
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0019,
+            violation_message(&violation),
+            &span,
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone)]
 struct MoveRecord {
     place: Place,
@@ -89,6 +117,7 @@ enum MoveCause {
 #[derive(Debug, Clone, Default)]
 struct FlowState {
     moved: HashMap<String, Vec<MoveRecord>>,
+    binding_types: HashMap<String, Type>,
     scopes: Vec<Vec<String>>,
 }
 
@@ -101,6 +130,7 @@ impl FlowState {
         if let Some(bindings) = self.scopes.pop() {
             for binding in bindings {
                 self.moved.remove(&binding);
+                self.binding_types.remove(&binding);
             }
         }
     }
@@ -110,6 +140,16 @@ impl FlowState {
             scope.push(name.to_string());
         }
         self.moved.remove(name);
+        self.binding_types.remove(name);
+    }
+
+    fn bind_typed(&mut self, name: &str, ty: &Type) {
+        self.bind(name);
+        self.binding_types.insert(name.to_string(), ty.clone());
+    }
+
+    fn binding_type(&self, name: &str) -> Option<&Type> {
+        self.binding_types.get(name)
     }
 
     fn record_move(&mut self, place: Place, moved_span: Span, cause: MoveCause, moved_type: String) {
@@ -187,11 +227,11 @@ impl<'a> Checker<'a> {
         match decl {
             TypedDecl::Let(let_decl) => {
                 self.consume_expr(&let_decl.value, current_module, state);
-                state.bind(&let_decl.name);
+                state.bind_typed(&let_decl.name, let_decl.value.ty());
             }
             TypedDecl::Mut(mut_decl) => {
                 self.consume_expr(&mut_decl.value, current_module, state);
-                state.bind(&mut_decl.name);
+                state.bind_typed(&mut_decl.name, mut_decl.value.ty());
             }
             TypedDecl::Fun(fun) => {
                 state.bind(&fun.name);
@@ -250,11 +290,11 @@ impl<'a> Checker<'a> {
                     match init {
                         TypedForInit::Let(let_decl) => {
                             self.consume_expr(&let_decl.value, current_module, state);
-                            state.bind(&let_decl.name);
+                            state.bind_typed(&let_decl.name, let_decl.value.ty());
                         }
                         TypedForInit::Mut(mut_decl) => {
                             self.consume_expr(&mut_decl.value, current_module, state);
-                            state.bind(&mut_decl.name);
+                            state.bind_typed(&mut_decl.name, mut_decl.value.ty());
                         }
                         TypedForInit::Expr(expr) => self.observe_expr(expr, current_module, state),
                     }
@@ -298,7 +338,10 @@ impl<'a> Checker<'a> {
             self.record_whole_use_if_moved(&place, expr.span(), state);
         }
         match expr {
-            TypedExpr::Literal(..) | TypedExpr::Ident(..) | TypedExpr::Path(..) => {}
+            TypedExpr::Literal(..)
+            | TypedExpr::Ident(..)
+            | TypedExpr::Path(..)
+            | TypedExpr::Continue(_) => {}
             TypedExpr::Tuple(items, ..) | TypedExpr::Array(items, ..) => {
                 for item in items {
                     self.observe_expr(item, current_module, state);
@@ -306,8 +349,8 @@ impl<'a> Checker<'a> {
             }
             TypedExpr::RecordLiteral { fields, .. } | TypedExpr::StructLiteral { fields, .. } => {
                 for (_, value) in fields {
-                        self.consume_expr_with_cause(value, current_module, state, MoveCause::Other);
-                    }
+                    self.consume_expr_with_cause(value, current_module, state, MoveCause::Other);
+                }
             }
             TypedExpr::RepeatArray(value, ..) => self.consume_expr(value, current_module, state),
             TypedExpr::BinOp(left, _, right, ..) => {
@@ -320,18 +363,7 @@ impl<'a> Checker<'a> {
                 self.consume_expr(value, current_module, state);
             }
             TypedExpr::Call { callee, args, .. } => {
-                self.observe_expr(callee, current_module, state);
-                let param_types = function_param_types(callee.ty());
-                for (index, arg) in args.iter().enumerate() {
-                    let reborrow = param_types
-                        .and_then(|params| params.get(index))
-                        .is_some_and(|param_ty| is_reborrow(arg, param_ty));
-                    if reborrow {
-                        self.observe_expr(arg, current_module, state);
-                    } else {
-                        self.consume_expr(arg, current_module, state);
-                    }
-                }
+                self.observe_call_expr(callee, args, current_module, state);
             }
             TypedExpr::MethodCall {
                 receiver,
@@ -340,20 +372,7 @@ impl<'a> Checker<'a> {
                 dispatch,
                 ..
             } => {
-                self.consume_method_receiver(receiver, method, dispatch, current_module, state);
-                let param_types =
-                    self.method_param_types(receiver.ty(), method, current_module, dispatch);
-                for (index, arg) in args.iter().enumerate() {
-                    let reborrow = param_types
-                        .as_ref()
-                        .and_then(|params| params.get(index))
-                        .is_some_and(|param_ty| is_reborrow(arg, param_ty));
-                    if reborrow {
-                        self.observe_expr(arg, current_module, state);
-                    } else {
-                        self.consume_expr(arg, current_module, state);
-                    }
-                }
+                self.observe_method_call_expr(receiver, method, args, dispatch, current_module, state);
             }
             TypedExpr::FieldAccess { object, .. } | TypedExpr::TupleAccess { object, .. } => {
                 self.observe_projection_base_expr(object, current_module, state);
@@ -365,75 +384,21 @@ impl<'a> Checker<'a> {
             TypedExpr::Cast { expr, .. } | TypedExpr::SingletonCoerce { inner: expr, .. } => {
                 self.observe_expr(expr, current_module, state);
             }
-            TypedExpr::Match(m) => {
-                self.observe_expr(&m.scrutinee, current_module, state);
-                let mut joined = state.clone();
-                joined.moved.clear();
-                for arm in &m.arms {
-                    let mut arm_state = state.clone();
-                    arm_state.push_scope();
-                    self.apply_pattern_moves(
-                        &arm.pattern,
-                        &m.scrutinee,
-                        current_module,
-                        &mut arm_state,
-                    );
-                    if let Some(guard) = &arm.guard {
-                        self.observe_expr(guard, current_module, &mut arm_state);
-                    }
-                    self.check_block(&arm.body, current_module, &mut arm_state);
-                    arm_state.pop_scope();
-                    joined.union_from(&arm_state);
-                }
-                state.union_from(&joined);
-            }
+            TypedExpr::Match(m) => self.observe_match_expr(m, current_module, state),
             TypedExpr::If {
                 condition,
                 then_branch,
                 else_branch,
                 ..
-            } => {
-                self.observe_expr(condition, current_module, state);
-                let mut then_state = state.clone();
-                self.check_block(then_branch, current_module, &mut then_state);
-                let mut joined = state.clone();
-                joined.union_from(&then_state);
-                if let Some(else_branch) = else_branch {
-                    let mut else_state = state.clone();
-                    self.check_block(else_branch, current_module, &mut else_state);
-                    joined.union_from(&else_state);
-                }
-                state.union_from(&joined);
-            }
-            TypedExpr::Loop { body, .. } => {
-                let mut body_state = state.clone();
-                self.check_block(body, current_module, &mut body_state);
-                state.union_from(&body_state);
-            }
+            } => self.observe_if_expr(condition, then_branch, else_branch.as_ref(), current_module, state),
+            TypedExpr::Loop { body, .. } => self.observe_loop_expr(body, current_module, state),
             TypedExpr::Closure {
                 params,
                 body,
                 span,
                 ..
-            } => {
-                self.capture_closure(body, params.iter().map(|param| param.name.as_str()), span, state);
-                let mut closure_state = FlowState::default();
-                closure_state.push_scope();
-                for captured in collect_free_roots_from_typed_block(body, &HashSet::new()) {
-                    closure_state.bind(&captured);
-                }
-                for param in params {
-                    closure_state.bind(&param.name);
-                }
-                self.check_block(body, current_module, &mut closure_state);
-                closure_state.pop_scope();
-            }
-            TypedExpr::GenericClosure { params, span, .. } => {
-                for param in params {
-                    let _ = param;
-                }
-                self.record_skipped_generic_body(span);
-            }
+            } => self.observe_closure_expr(params, body, span, current_module, state),
+            TypedExpr::GenericClosure { span, .. } => self.record_skipped_generic_body(span),
             TypedExpr::Return(ret) => {
                 if let Some(value) = &ret.value {
                     self.consume_expr_with_cause(value, current_module, state, MoveCause::Other);
@@ -444,8 +409,127 @@ impl<'a> Checker<'a> {
                     self.consume_expr(value, current_module, state);
                 }
             }
-            TypedExpr::Continue(_) => {}
         }
+    }
+
+    fn observe_call_expr(
+        &mut self,
+        callee: &TypedExpr,
+        args: &[TypedExpr],
+        current_module: &[String],
+        state: &mut FlowState,
+    ) {
+        self.observe_expr(callee, current_module, state);
+        self.observe_call_args(args, function_param_types(callee.ty()), current_module, state);
+    }
+
+    fn observe_method_call_expr(
+        &mut self,
+        receiver: &TypedExpr,
+        method: &str,
+        args: &[TypedExpr],
+        dispatch: &MethodDispatch,
+        current_module: &[String],
+        state: &mut FlowState,
+    ) {
+        self.consume_method_receiver(receiver, method, dispatch, current_module, state);
+        let param_types = self.method_param_types(receiver.ty(), method, current_module, dispatch);
+        self.observe_call_args(args, param_types.as_deref(), current_module, state);
+    }
+
+    fn observe_call_args(
+        &mut self,
+        args: &[TypedExpr],
+        param_types: Option<&[Type]>,
+        current_module: &[String],
+        state: &mut FlowState,
+    ) {
+        for (index, arg) in args.iter().enumerate() {
+            let reborrow = param_types
+                .and_then(|params| params.get(index))
+                .is_some_and(|param_ty| is_reborrow(arg, param_ty));
+            if reborrow {
+                self.observe_expr(arg, current_module, state);
+            } else {
+                self.consume_expr(arg, current_module, state);
+            }
+        }
+    }
+
+    fn observe_match_expr(
+        &mut self,
+        m: &crate::typed_ast::TypedMatchExpr,
+        current_module: &[String],
+        state: &mut FlowState,
+    ) {
+        self.observe_expr(&m.scrutinee, current_module, state);
+        let mut joined = state.clone();
+        joined.moved.clear();
+        for arm in &m.arms {
+            let mut arm_state = state.clone();
+            arm_state.push_scope();
+            self.apply_pattern_moves(&arm.pattern, &m.scrutinee, current_module, &mut arm_state);
+            if let Some(guard) = &arm.guard {
+                self.observe_expr(guard, current_module, &mut arm_state);
+            }
+            self.check_block(&arm.body, current_module, &mut arm_state);
+            arm_state.pop_scope();
+            joined.union_from(&arm_state);
+        }
+        state.union_from(&joined);
+    }
+
+    fn observe_if_expr(
+        &mut self,
+        condition: &TypedExpr,
+        then_branch: &TypedBlock,
+        else_branch: Option<&TypedBlock>,
+        current_module: &[String],
+        state: &mut FlowState,
+    ) {
+        self.observe_expr(condition, current_module, state);
+        let mut then_state = state.clone();
+        self.check_block(then_branch, current_module, &mut then_state);
+        let mut joined = state.clone();
+        joined.union_from(&then_state);
+        if let Some(else_branch) = else_branch {
+            let mut else_state = state.clone();
+            self.check_block(else_branch, current_module, &mut else_state);
+            joined.union_from(&else_state);
+        }
+        state.union_from(&joined);
+    }
+
+    fn observe_loop_expr(
+        &mut self,
+        body: &TypedBlock,
+        current_module: &[String],
+        state: &mut FlowState,
+    ) {
+        let mut body_state = state.clone();
+        self.check_block(body, current_module, &mut body_state);
+        state.union_from(&body_state);
+    }
+
+    fn observe_closure_expr(
+        &mut self,
+        params: &[crate::ast::Param],
+        body: &TypedBlock,
+        span: &Span,
+        current_module: &[String],
+        state: &mut FlowState,
+    ) {
+        self.capture_closure(body, params.iter().map(|param| param.name.as_str()), span, state);
+        let mut closure_state = FlowState::default();
+        closure_state.push_scope();
+        for captured in collect_free_roots_from_typed_block(body, &HashSet::new()) {
+            closure_state.bind(&captured.name);
+        }
+        for param in params {
+            closure_state.bind(&param.name);
+        }
+        self.check_block(body, current_module, &mut closure_state);
+        closure_state.pop_scope();
     }
 
     fn consume_expr(&mut self, expr: &TypedExpr, current_module: &[String], state: &mut FlowState) {
@@ -463,30 +547,35 @@ impl<'a> Checker<'a> {
             match expr {
                 TypedExpr::Index { index, .. } => {
                     if !self.is_copy(current_module, expr.ty()) {
-                        self.report_illegal_move(place.clone(), expr.span().clone(), type_bucket(expr.ty()));
+                        self.report_illegal_move(
+                            &place,
+                            expr.span().clone(),
+                            type_bucket(expr.ty()),
+                            MoveViolationKind::ArrayElementMove,
+                        );
                         self.observe_expr(index, current_module, state);
                         return;
                     }
                     self.check_place_use_before_move(&place, expr.span(), state);
                     self.observe_expr(index, current_module, state);
-                    self.record_move_if_needed(place, expr.ty(), expr.span(), current_module, state, cause);
+                    self.record_move_if_needed(&place, expr.ty(), expr.span(), current_module, state, cause);
                 }
                 TypedExpr::FieldAccess { object, .. } | TypedExpr::TupleAccess { object, .. } => {
                     if self.is_drop(current_module, object.ty()) && !self.is_copy(current_module, expr.ty()) {
-                        self.report_illegal_move(place.clone(), expr.span().clone(), type_bucket(expr.ty()));
+                        self.report_illegal_move(
+                            &place,
+                            expr.span().clone(),
+                            type_bucket(expr.ty()),
+                            MoveViolationKind::PartialMoveOfDropType,
+                        );
                         self.observe_projection_base_expr(object, current_module, state);
                         return;
                     }
                     self.check_place_use_before_move(&place, expr.span(), state);
                     self.observe_projection_base_expr(object, current_module, state);
-                    self.record_move_if_needed(place, expr.ty(), expr.span(), current_module, state, cause);
+                    self.record_move_if_needed(&place, expr.ty(), expr.span(), current_module, state, cause);
                 }
-                TypedExpr::Ident(..) => {
-                    self.consume_place(place, expr.ty(), expr.span(), current_module, state, cause);
-                }
-                _ => {
-                    self.consume_place(place, expr.ty(), expr.span(), current_module, state, cause);
-                }
+                _ => self.consume_place(&place, expr.ty(), expr.span(), current_module, state, cause),
             }
             return;
         }
@@ -576,10 +665,10 @@ impl<'a> Checker<'a> {
         let receiver_kind = self.method_receiver_kind(receiver.ty(), method, current_module, dispatch);
         match receiver_kind {
             Some(ReceiverKind::Value) => {
-                self.consume_expr_with_cause(receiver, current_module, state, MoveCause::ByValueReceiver)
+                self.consume_expr_with_cause(receiver, current_module, state, MoveCause::ByValueReceiver);
             }
-            Some(ReceiverKind::Ref) | Some(ReceiverKind::RefMut) | None => {
-                self.observe_expr(receiver, current_module, state)
+            Some(ReceiverKind::Ref | ReceiverKind::RefMut) | None => {
+                self.observe_expr(receiver, current_module, state);
             }
         }
     }
@@ -596,7 +685,7 @@ impl<'a> Checker<'a> {
             Pattern::Binding(name, span) => {
                 if let Some(place) = place_from_expr(scrutinee) {
                     self.consume_place(
-                        place,
+                        &place,
                         scrutinee.ty(),
                         scrutinee.span(),
                         current_module,
@@ -620,7 +709,7 @@ impl<'a> Checker<'a> {
                     if let Some(base) = place_from_expr(scrutinee) {
                         let field_place = base.clone().with_projection(Projection::Field(field.clone()));
                         self.consume_place(
-                            field_place,
+                            &field_place,
                             scrutinee.ty(),
                             scrutinee.span(),
                             current_module,
@@ -635,7 +724,7 @@ impl<'a> Checker<'a> {
                 if !fields.is_empty() {
                     if let Some(place) = place_from_expr(scrutinee) {
                         self.consume_place(
-                            place,
+                            &place,
                             scrutinee.ty(),
                             scrutinee.span(),
                             current_module,
@@ -650,7 +739,7 @@ impl<'a> Checker<'a> {
             }
             Pattern::Array { elems, rest, .. } => {
                 for item in elems {
-                    self.observe_pattern_bindings(item, state);
+                    Self::observe_pattern_bindings(item, state);
                 }
                 if let Some(rest) = rest {
                     state.bind(rest);
@@ -671,7 +760,7 @@ impl<'a> Checker<'a> {
             Pattern::Wildcard(_) | Pattern::Literal(_, _) => {}
             Pattern::Binding(name, _) => {
                 self.consume_place(
-                    place.clone(),
+                    place,
                     parent_ty,
                     &dummy_span_from_place(place),
                     current_module,
@@ -690,7 +779,7 @@ impl<'a> Checker<'a> {
                 for field in fields {
                     let child = place.clone().with_projection(Projection::Field(field.clone()));
                     self.consume_place(
-                        child,
+                        &child,
                         parent_ty,
                         &dummy_span_from_place(place),
                         current_module,
@@ -703,7 +792,7 @@ impl<'a> Checker<'a> {
             Pattern::EnumVariant { fields, .. } => {
                 if !fields.is_empty() {
                     self.consume_place(
-                        place.clone(),
+                        place,
                         parent_ty,
                         &dummy_span_from_place(place),
                         current_module,
@@ -717,7 +806,7 @@ impl<'a> Checker<'a> {
             }
             Pattern::Array { elems, rest, .. } => {
                 for item in elems {
-                    self.observe_pattern_bindings(item, state);
+                    Self::observe_pattern_bindings(item, state);
                 }
                 if let Some(rest) = rest {
                     state.bind(rest);
@@ -726,27 +815,22 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn observe_pattern_bindings(&mut self, pattern: &Pattern, state: &mut FlowState) {
+    fn observe_pattern_bindings(pattern: &Pattern, state: &mut FlowState) {
         match pattern {
             Pattern::Binding(name, _) => state.bind(name),
             Pattern::Tuple(items, _) => {
                 for item in items {
-                    self.observe_pattern_bindings(item, state);
+                    Self::observe_pattern_bindings(item, state);
                 }
             }
-            Pattern::Record { fields, .. } => {
-                for field in fields {
-                    state.bind(field);
-                }
-            }
-            Pattern::EnumVariant { fields, .. } => {
+            Pattern::Record { fields, .. } | Pattern::EnumVariant { fields, .. } => {
                 for field in fields {
                     state.bind(field);
                 }
             }
             Pattern::Array { elems, rest, .. } => {
                 for item in elems {
-                    self.observe_pattern_bindings(item, state);
+                    Self::observe_pattern_bindings(item, state);
                 }
                 if let Some(rest) = rest {
                     state.bind(rest);
@@ -766,11 +850,15 @@ impl<'a> Checker<'a> {
         let mut locals: HashSet<String> = params.map(ToOwned::to_owned).collect();
         let captures = collect_free_roots_from_typed_block(body, &locals);
         for capture in captures {
-            locals.insert(capture.clone());
-            let capture_place = Place::new(capture.clone());
+            let CapturedRoot { name, ty } = capture;
+            locals.insert(name.clone());
+            let capture_place = Place::new(name.clone());
+            let Some(capture_ty) = ty.or_else(|| state.binding_type(&name).cloned()) else {
+                continue;
+            };
             self.consume_place(
-                capture_place,
-                &Type::Named(String::new(), vec![]),
+                &capture_place,
+                &capture_ty,
                 span,
                 &[],
                 state,
@@ -781,14 +869,14 @@ impl<'a> Checker<'a> {
 
     fn consume_place(
         &mut self,
-        place: Place,
+        place: &Place,
         ty: &Type,
         use_span: &Span,
         current_module: &[String],
         state: &mut FlowState,
         cause: MoveCause,
     ) {
-        self.check_place_use_before_move(&place, use_span, state);
+        self.check_place_use_before_move(place, use_span, state);
         self.record_move_if_needed(place, ty, use_span, current_module, state, cause);
     }
 
@@ -798,7 +886,7 @@ impl<'a> Checker<'a> {
 
     fn record_move_if_needed(
         &self,
-        place: Place,
+        place: &Place,
         ty: &Type,
         use_span: &Span,
         current_module: &[String],
@@ -808,7 +896,7 @@ impl<'a> Checker<'a> {
         if self.is_copy(current_module, ty) {
             return;
         }
-        state.record_move(place, use_span.clone(), cause, type_bucket(ty));
+        state.record_move(place.clone(), use_span.clone(), cause, type_bucket(ty));
     }
 
     fn record_descendant_use_if_moved(
@@ -822,6 +910,7 @@ impl<'a> Checker<'a> {
                 binding: place.root().to_string(),
                 use_place: place.clone(),
                 moved_place: record.place.clone(),
+                kind: Self::violation_kind(place, record),
                 moved_by_value_receiver: record.cause == MoveCause::ByValueReceiver,
                 moved_type: record.moved_type.clone(),
                 use_span: use_span.clone(),
@@ -838,6 +927,7 @@ impl<'a> Checker<'a> {
                 binding: place.root().to_string(),
                 use_place: place.clone(),
                 moved_place: record.place.clone(),
+                kind: Self::violation_kind(place, record),
                 moved_by_value_receiver: record.cause == MoveCause::ByValueReceiver,
                 moved_type: record.moved_type.clone(),
                 use_span: use_span.clone(),
@@ -862,16 +952,33 @@ impl<'a> Checker<'a> {
         self.registry.type_satisfies_aspect(current_module, ty, "Drop")
     }
 
-    fn report_illegal_move(&mut self, place: Place, use_span: Span, moved_type: String) {
+    fn report_illegal_move(
+        &mut self,
+        place: &Place,
+        use_span: Span,
+        moved_type: String,
+        kind: MoveViolationKind,
+    ) {
         self.report.violations.push(MoveViolation {
             binding: place.root().to_string(),
             use_place: place.clone(),
             moved_place: place.clone(),
+            kind,
             moved_by_value_receiver: false,
             moved_type,
             use_span,
-            moved_span: dummy_span_from_place(&place),
+            moved_span: dummy_span_from_place(place),
         });
+    }
+
+    fn violation_kind(place: &Place, record: &MoveRecord) -> MoveViolationKind {
+        if record.moved_type == "&var T" && record.cause != MoveCause::ByValueReceiver {
+            return MoveViolationKind::MovedMutReferenceWithoutReborrow;
+        }
+        if place.projections().is_empty() && !record.place.projections().is_empty() {
+            return MoveViolationKind::PartialMoveUsedAsWhole;
+        }
+        MoveViolationKind::UseAfterMove
     }
 
     fn method_receiver_kind(
@@ -996,7 +1103,7 @@ fn primitive_type_name(ty: &Type) -> Option<String> {
 fn collect_free_roots_from_typed_block(
     block: &TypedBlock,
     initial_locals: &HashSet<String>,
-) -> Vec<String> {
+) -> Vec<CapturedRoot> {
     let mut collector = FreeRootCollector {
         scope_stack: vec![initial_locals.clone()],
         captures: Vec::new(),
@@ -1006,9 +1113,15 @@ fn collect_free_roots_from_typed_block(
     collector.captures
 }
 
+#[derive(Debug, Clone)]
+struct CapturedRoot {
+    name: String,
+    ty: Option<Type>,
+}
+
 struct FreeRootCollector {
     scope_stack: Vec<HashSet<String>>,
-    captures: Vec<String>,
+    captures: Vec<CapturedRoot>,
     seen: HashSet<String>,
 }
 
@@ -1085,7 +1198,7 @@ impl FreeRootCollector {
 
     fn expr(&mut self, expr: &TypedExpr) {
         match expr {
-            TypedExpr::Ident(name, _, _) => self.capture_if_free(name),
+            TypedExpr::Ident(name, ty, _) => self.capture_if_free(name, ty),
             TypedExpr::Tuple(items, ..) | TypedExpr::Array(items, ..) => {
                 for item in items {
                     self.expr(item);
@@ -1183,7 +1296,7 @@ impl FreeRootCollector {
 
     fn place(&mut self, place: &TypedPlace) {
         match place {
-            TypedPlace::Ident(name, _) => self.capture_if_free(name),
+            TypedPlace::Ident(name, _) => self.capture_free_name(name),
             TypedPlace::Deref { object, .. } => self.expr(object),
             TypedPlace::Field { object, .. } | TypedPlace::Tuple { object, .. } => self.place(object),
             TypedPlace::Index { object, index, .. } => {
@@ -1200,7 +1313,7 @@ impl FreeRootCollector {
             .insert(name.to_string());
     }
 
-    fn capture_if_free(&mut self, name: &str) {
+    fn capture_if_free(&mut self, name: &str, ty: &Type) {
         if self
             .scope_stack
             .iter()
@@ -1210,9 +1323,85 @@ impl FreeRootCollector {
             return;
         }
         if self.seen.insert(name.to_string()) {
-            self.captures.push(name.to_string());
+            self.captures.push(CapturedRoot {
+                name: name.to_string(),
+                ty: Some(ty.clone()),
+            });
         }
     }
+
+    fn capture_free_name(&mut self, name: &str) {
+        if self
+            .scope_stack
+            .iter()
+            .rev()
+            .any(|scope| scope.contains(name))
+        {
+            return;
+        }
+        if self.seen.insert(name.to_string()) {
+            self.captures.push(CapturedRoot {
+                name: name.to_string(),
+                ty: None,
+            });
+        }
+    }
+}
+
+fn violation_message(violation: &MoveViolation) -> String {
+    match violation.kind {
+        MoveViolationKind::UseAfterMove => format!(
+            "use of moved value `{}`: `{}` was moved at {}",
+            violation.binding,
+            format_place(&violation.moved_place),
+            format_span(&violation.moved_span)
+        ),
+        MoveViolationKind::PartialMoveUsedAsWhole => format!(
+            "use of partially moved value `{}`: field or element `{}` was moved at {}",
+            violation.binding,
+            format_place(&violation.moved_place),
+            format_span(&violation.moved_span)
+        ),
+        MoveViolationKind::PartialMoveOfDropType => format!(
+            "cannot partially move value `{}`: `{}` belongs to a `Drop` type at {}",
+            violation.binding,
+            format_place(&violation.use_place),
+            format_span(&violation.use_span)
+        ),
+        MoveViolationKind::ArrayElementMove => format!(
+            "cannot move from `{}`: array element moves are not allowed at {}",
+            format_place(&violation.use_place),
+            format_span(&violation.use_span)
+        ),
+        MoveViolationKind::MovedMutReferenceWithoutReborrow => format!(
+            "use of moved `&var` binding `{}`: `{}` was moved by a non-reborrow use at {}",
+            violation.binding,
+            violation.binding,
+            format_span(&violation.moved_span)
+        ),
+    }
+}
+
+fn format_place(place: &Place) -> String {
+    let mut rendered = place.root().to_string();
+    for projection in place.projections() {
+        match projection {
+            Projection::Field(field) => {
+                rendered.push('.');
+                rendered.push_str(field);
+            }
+            Projection::TupleIndex(index) => {
+                rendered.push('.');
+                rendered.push_str(&index.to_string());
+            }
+            Projection::OpaqueIndex => rendered.push_str("[_]"),
+        }
+    }
+    rendered
+}
+
+fn format_span(span: &Span) -> String {
+    format!("{}:{}:{}", span.filename, span.line, span.col)
 }
 
 fn bind_pattern_names(pattern: &Pattern, into: &mut HashSet<String>) {
@@ -1361,6 +1550,15 @@ fun main() {
 }
 "#,
         );
+        assert_no_violations(
+            r#"
+fun main() {
+    let n = 5;
+    let f = () -> i64 { return n; };
+    assert(n == 5);
+}
+"#,
+        );
     }
 
     #[test]
@@ -1499,7 +1697,7 @@ fun main() {
 
     #[test]
     fn closure_capture_then_use_is_reported() {
-        assert_has_violation(
+        let violations = assert_has_violation(
             r#"
 fun main() {
     let s = "hello";
@@ -1509,6 +1707,7 @@ fun main() {
 "#,
             "s",
         );
+        assert_eq!(violations[0].moved_type, "String");
     }
 
     #[test]

@@ -1,0 +1,13 @@
+struct Handle {
+    name: String,
+    fd: i64,
+}
+
+extend Handle: Drop {
+    fun drop(self) { }
+}
+
+fun main() {
+    let handle = Handle { name = "x", fd = 1 };
+    let name = handle.name;
+}

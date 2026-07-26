@@ -1,0 +1,9 @@
+fun main() {
+    let s = "hello";
+    if (true) {
+        let moved = s;
+    } else {
+        let keep = 0;
+    }
+    let again = s;
+}

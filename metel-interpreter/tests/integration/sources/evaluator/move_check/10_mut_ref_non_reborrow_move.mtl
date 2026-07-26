@@ -1,0 +1,12 @@
+struct Counter {
+    value: i64,
+}
+
+fun bump(r: &var Counter) { }
+
+fun main() {
+    var c = Counter { value = 0 };
+    let r = &var c;
+    let q = r;
+    bump(r);
+}

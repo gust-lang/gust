@@ -18,6 +18,7 @@ mod coherence;
 mod elaborator;
 mod error;
 mod evaluator;
+mod move_check;
 mod module_loader;
 mod module_paths;
 mod name_resolver;

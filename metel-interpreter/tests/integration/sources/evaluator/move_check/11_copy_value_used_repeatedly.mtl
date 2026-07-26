@@ -1,0 +1,6 @@
+fun main() {
+    let n = 41;
+    let a = n;
+    let b = n;
+    assert(a + b == 82);
+}

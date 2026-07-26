@@ -1,0 +1,14 @@
+struct Pair {
+    left: String,
+    right: i64,
+}
+
+fun take(pair: Pair) -> i64 {
+    pair.right
+}
+
+fun main() {
+    let pair = Pair { left = "a", right = 1 };
+    let left: String = pair.left;
+    let value: i64 = take(pair);
+}
