@@ -1362,16 +1362,17 @@ fn violation_message(violation: &MoveViolation) -> String {
             format_place(&violation.moved_place),
             format_span(&violation.moved_span)
         ),
+        // No trailing location for the outright-banned rules: the offending
+        // expression *is* the diagnostic's own span, so citing it again only
+        // repeats the location the reader is already looking at.
         MoveViolationKind::PartialMoveOfDropType => format!(
-            "cannot partially move value `{}`: `{}` belongs to a `Drop` type at {}",
+            "cannot partially move value `{}`: `{}` belongs to a `Drop` type",
             violation.binding,
             format_place(&violation.use_place),
-            format_span(&violation.use_span)
         ),
         MoveViolationKind::ArrayElementMove => format!(
-            "cannot move from `{}`: array element moves are not allowed at {}",
+            "cannot move from `{}`: array element moves are not allowed",
             format_place(&violation.use_place),
-            format_span(&violation.use_span)
         ),
         MoveViolationKind::MovedMutReferenceWithoutReborrow => format!(
             "use of moved `&var` binding `{}`: `{}` was moved by a non-reborrow use at {}",

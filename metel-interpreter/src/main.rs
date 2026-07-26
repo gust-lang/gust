@@ -49,20 +49,34 @@ struct Args {
     /// Print the AST and exit without executing
     #[arg(long)]
     debug_ast: bool,
+
+    /// Reject use-after-move (RFC-0071, issue #291)
+    ///
+    /// Off by default: the checker is complete but the existing corpus is
+    /// written in a style affine ownership rejects, and that migration is
+    /// tracked separately. Opt in to run it against your own code.
+    #[arg(long)]
+    move_check: bool,
 }
 
 fn main() {
     let args = Args::parse();
 
-    if let Err(e) = run(&args.file, args.debug_ast) {
+    if let Err(e) = run(&args.file, args.debug_ast, args.move_check) {
         eprintln!("{}", e);
         process::exit(1);
     }
 }
 
-fn run(filename: &str, debug_ast: bool) -> Result<(), MetelError> {
+fn run(filename: &str, debug_ast: bool, move_check: bool) -> Result<(), MetelError> {
     if !debug_ast {
-        pipeline::run_file(filename, &pipeline::RunOptions::default())?;
+        pipeline::run_file(
+            filename,
+            &pipeline::RunOptions {
+                move_check,
+                ..pipeline::RunOptions::default()
+            },
+        )?;
         return Ok(());
     }
 
