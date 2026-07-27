@@ -6,21 +6,18 @@ import std::fs::{
 };
 
 fun main() {
-    let dir = "/tmp/metel_fs_fixture_x7q2";
-    let file = "/tmp/metel_fs_fixture_x7q2/note.txt";
-
     // create_dir_all + exists
-    assert(create_dir_all(dir).is_ok());
-    assert(exists(dir));
+    assert(create_dir_all("/tmp/metel_fs_fixture_x7q2").is_ok());
+    assert(exists("/tmp/metel_fs_fixture_x7q2"));
 
     // write then append, read back the concatenation
-    assert(write_string(file, "hello").is_ok());
-    assert(append_string(file, " world").is_ok());
-    assert(exists(file));
-    assert(read_to_string(file).unwrap_or("") == "hello world");
+    assert(write_string("/tmp/metel_fs_fixture_x7q2/note.txt", "hello").is_ok());
+    assert(append_string("/tmp/metel_fs_fixture_x7q2/note.txt", " world").is_ok());
+    assert(exists("/tmp/metel_fs_fixture_x7q2/note.txt"));
+    assert(read_to_string("/tmp/metel_fs_fixture_x7q2/note.txt").unwrap_or("") == "hello world");
 
     // read_dir returns the single entry name
-    let entries = read_dir(dir).unwrap_or([]);
+    let entries = read_dir("/tmp/metel_fs_fixture_x7q2").unwrap_or([]);
     assert(entries.len() == 1);
     assert(entries[0] == "note.txt");
 
@@ -31,9 +28,9 @@ fun main() {
     }
 
     // cleanup
-    assert(remove_file(file).is_ok());
-    assert(remove_dir_all(dir).is_ok());
-    assert(!exists(dir));
+    assert(remove_file("/tmp/metel_fs_fixture_x7q2/note.txt").is_ok());
+    assert(remove_dir_all("/tmp/metel_fs_fixture_x7q2").is_ok());
+    assert(!exists("/tmp/metel_fs_fixture_x7q2"));
 
     println("ok");
 }

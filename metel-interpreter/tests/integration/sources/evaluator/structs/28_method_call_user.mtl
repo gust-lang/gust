@@ -1,7 +1,7 @@
 struct Point { x: i64, y: i64 }
 
 extend Point {
-    fun magnitude_sq(self) -> i64 {
+    fun magnitude_sq(&self) -> i64 {
         self.x * self.x + self.y * self.y
     }
     fun translate(self, dx: i64, dy: i64) -> Point {

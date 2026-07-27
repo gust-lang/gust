@@ -17,11 +17,12 @@ fun bucket_of(v: f32, bucket_size: f32) -> u8 {
 
 fun mean_f32(values: List<f32>) -> f32 {
     var sum: f32 = 0.0;
-    let sl = values.as_slice();
+    let values_ref = &values;
+    let sl = values_ref.as_slice();
     for (v in sl) {
         sum += v;
     }
-    sum / (values.len() as f32)
+    sum / (values_ref.len() as f32)
 }
 
 fun sum_i32(values: List<i32>) -> i64 {
@@ -52,10 +53,10 @@ fun main() {
         idx += 1;
     }
 
-    assert(samples.len() == 5);
+    assert((&samples).len() == 5);
 
     // Verify individual samples.
-    match samples.get(0) {
+    match (&samples).get(0) {
         Perhaps::Some { value } => {
             assert(value.raw   == 10i16);
             assert(value.scaled == 5.0f32);
@@ -63,7 +64,7 @@ fun main() {
         },
         None => assert(false),
     };
-    match samples.get(2) {
+    match (&samples).get(2) {
         Perhaps::Some { value } => {
             assert(value.raw    == 100i16);
             assert(value.scaled == 50.0f32);
@@ -71,7 +72,7 @@ fun main() {
         },
         None => assert(false),
     };
-    match samples.get(4) {
+    match (&samples).get(4) {
         Perhaps::Some { value } => {
             assert(value.raw    == 255i16);
             assert(value.scaled == 127.5f32);
@@ -82,7 +83,7 @@ fun main() {
 
     // Collect scaled values into a List<f32> and compute mean.
     var scaled_vals: List<f32> = List::new();
-    let s_slice = samples.as_slice();
+    let s_slice = (&samples).as_slice();
     for (s in s_slice) {
         scaled_vals.push(s.scaled);
     }

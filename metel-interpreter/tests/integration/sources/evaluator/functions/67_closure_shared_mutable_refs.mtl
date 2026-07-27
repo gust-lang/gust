@@ -1,16 +1,19 @@
 fun get_closures() {
     var shared = 0;
     var ptr = &var shared;
+    let first_ptr: &&var i64 = &ptr;
+    let second_ptr: &&var i64 = &ptr;
+    let third_ptr: &&var i64 = &ptr;
     let first_closure = () -> {
-        *ptr += 1;
+        **first_ptr += 1;
     };
 
     let second_closure = () -> {
-        *ptr += 2;
+        **second_ptr += 2;
     };
 
     let third_closure = () -> i64 {
-        return ptr;
+        return third_ptr;
     };
 
     return (first_closure, second_closure, third_closure);

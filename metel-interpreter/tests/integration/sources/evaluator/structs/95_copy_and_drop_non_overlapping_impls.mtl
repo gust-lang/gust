@@ -37,11 +37,11 @@ fun main() {
     assert(copyable.val == 1);
 
     let droppable = Disjoint { val = "owned" };
-    assert(droppable.val.len() == 5);
+    assert((&droppable.val).len() == 5);
 
     let reached = Reach { val = 7 };
     assert(reached.val == 7);
 
     let unreached = Reach { val = "outside" };
-    assert(unreached.val.len() == 7);
+    assert((&unreached.val).len() == 7);
 }

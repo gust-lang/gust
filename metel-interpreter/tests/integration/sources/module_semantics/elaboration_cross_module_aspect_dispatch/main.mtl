@@ -9,15 +9,15 @@ fun main() {
     let r = Rectangle { width = 3, height = 4 };
 
     // Aspect method dispatch on Circle
-    assert(c.describe() == "Circle(r=5)");
-    assert(c.scale(2) == 10);
+    assert((&c).describe() == "Circle(r=5)");
+    assert((&c).scale(2) == 10);
 
     // Aspect method dispatch on Rectangle — same method name, different receiver type
-    assert(r.describe() == "Rect(3x4)");
-    assert(r.scale(3) == 36);
+    assert((&r).describe() == "Rect(3x4)");
+    assert((&r).scale(3) == 36);
 
     // Second instance
     let c2 = Circle { radius = 10 };
-    assert(c2.describe() == "Circle(r=10)");
-    assert(c2.scale(5) == 50);
+    assert((&c2).describe() == "Circle(r=10)");
+    assert((&c2).scale(5) == 50);
 }

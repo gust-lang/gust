@@ -11,7 +11,7 @@ extend Counter {
     }
 
     // value receiver: returns a new Counter, does not mutate in place
-    fun with_value(self, n: i64) -> Counter {
+    fun with_value(&self, n: i64) -> Counter {
         Counter { value = n, step = self.step }
     }
 

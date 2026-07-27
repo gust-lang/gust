@@ -11,7 +11,7 @@ fun main() {
     let x = 1;
     let y = 2;
     let point = { y, x };
-    assert(sum(point) == 3);
+    assert(sum({ x = point.x, y = point.y }) == 3);
     assert(sum({ x = 1, y = 2 }) == 3);
 
     let handle = Handle { fd = 7, tag = 9 };

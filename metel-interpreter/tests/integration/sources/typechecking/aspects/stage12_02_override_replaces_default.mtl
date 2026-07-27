@@ -5,19 +5,19 @@ struct Circle {
 }
 
 aspect Shape {
-    fun area_estimate(self) -> i64;
+    fun area_estimate(&self) -> i64;
 
-    fun describe(self) -> String {
+    fun describe(&self) -> String {
         return "shape";
     }
 }
 
 extend Circle: Shape {
-    fun area_estimate(self) -> i64 {
+    fun area_estimate(&self) -> i64 {
         return self.radius * self.radius;
     }
 
-    fun describe(self) -> String {
+    fun describe(&self) -> String {
         return "circle(r=" + self.radius.to_string() + ")";
     }
 }

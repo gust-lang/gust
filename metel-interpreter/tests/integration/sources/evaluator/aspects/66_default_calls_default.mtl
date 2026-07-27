@@ -5,19 +5,19 @@ struct Measurement {
 }
 
 aspect Ops {
-    fun raw(self) -> i64;
+    fun raw(&self) -> i64;
 
-    fun scaled(self) -> i64 {
+    fun scaled(&self) -> i64 {
         return self.raw() * 10;
     }
 
-    fun summary(self) -> String {
+    fun summary(&self) -> String {
         return "raw=" + self.raw().to_string() + " scaled=" + self.scaled().to_string();
     }
 }
 
 extend Measurement: Ops {
-    fun raw(self) -> i64 {
+    fun raw(&self) -> i64 {
         return self.raw;
     }
 }

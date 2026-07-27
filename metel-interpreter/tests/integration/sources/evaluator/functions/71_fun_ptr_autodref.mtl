@@ -43,8 +43,10 @@ fun apply_ptrs(fns: Array<&() -> ()>) {
 fun test_array_of_fun_ptrs() {
     var total = 0;
     let ptr = &var total;
-    let add1 = () -> { *ptr += 1; };
-    let add10 = () -> { *ptr += 10; };
+    let ptr1: &&var i64 = &ptr;
+    let ptr2: &&var i64 = &ptr;
+    let add1 = () -> { **ptr1 += 1; };
+    let add10 = () -> { **ptr2 += 10; };
     apply_ptrs([&add1, &add10]);
     assert(total == 11);
 }

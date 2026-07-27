@@ -53,22 +53,22 @@ extend Maybe<T> {
 fun main() {
     // Generic struct methods.
     let b = Box { value = 21 };
-    assert(b.get_or(0) == 21);
-    let doubled = b.map((x: i64) -> i64 { x * 2 });
+    assert((&b).get_or(0) == 21);
+    let doubled = (&b).map((x: i64) -> i64 { x * 2 });
     assert(doubled.get() == 42);
     // Method-level generic changing the element type.
-    let labelled = b.map((x: i64) -> String { "n" });
+    let labelled = (&b).map((x: i64) -> String { "n" });
     assert(labelled.get() == "n");
 
     // Generic enum methods, including match-on-self and chaining.
     let j = Maybe::Just { value = 10 };
-    assert(j.is_just());
-    assert(j.or_else(0) == 10);
+    assert((&j).is_just());
+    assert((&j).or_else(0) == 10);
     let n: Maybe<i64> = Maybe::Nothing;
-    assert(!n.is_just());
-    assert(n.or_else(7) == 7);
-    assert(j.map((x: i64) -> i64 { x + 5 }).or_else(0) == 15);
-    assert(n.map((x: i64) -> i64 { x + 5 }).or_else(99) == 99);
+    assert(!(&n).is_just());
+    assert((&n).or_else(7) == 7);
+    assert((&j).map((x: i64) -> i64 { x + 5 }).or_else(0) == 15);
+    assert((&n).map((x: i64) -> i64 { x + 5 }).or_else(99) == 99);
 
     println("ok");
 }

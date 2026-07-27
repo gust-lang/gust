@@ -26,17 +26,17 @@ fun main() {
     assert("$5" == "$5");
     // List<T>: new, push, len, get, pop, as_slice, from
     var lst: List<i64> = List::new();
-    assert(lst.len() == 0);
+    assert((&lst).len() == 0);
     lst.push(10);
     lst.push(20);
     lst.push(30);
-    assert(lst.len() == 3);
+    assert((&lst).len() == 3);
     // get returns Perhaps<T> (bounds-checked)
-    match lst.get(1) {
+    match (&lst).get(1) {
         Perhaps::Some { value } => assert(value == 20),
         None => assert(false),
     };
-    match lst.get(99) {
+    match (&lst).get(99) {
         Perhaps::Some { value } => assert(false),
         None => assert(true),
     };
@@ -45,10 +45,10 @@ fun main() {
         Perhaps::Some { value } => assert(value == 30),
         None => assert(false),
     };
-    assert(lst.len() == 2);
+    assert((&lst).len() == 2);
     // as_slice returns a T[] view
     lst.push(99);
-    let sl = lst.as_slice();
+    let sl = (&lst).as_slice();
     assert(sl[0] == 10);
     assert(sl[2] == 99);
     // List::from copies an existing T[] array
@@ -62,8 +62,8 @@ fun main() {
         built.push(i * i);
         i += 1;
     }
-    assert(built.len() == 5);
-    let built_arr = built.as_slice();
+    assert((&built).len() == 5);
+    let built_arr = (&built).as_slice();
     assert(built_arr[0] == 1);
     assert(built_arr[4] == 25);
     // get at boundary indices
@@ -71,11 +71,11 @@ fun main() {
     boundary.push(100);
     boundary.push(200);
     boundary.push(300);
-    match boundary.get(0) {
+    match (&boundary).get(0) {
         Perhaps::Some { value } => assert(value == 100),
         None => assert(false),
     };
-    match boundary.get(2) {
+    match (&boundary).get(2) {
         Perhaps::Some { value } => assert(value == 300),
         None => assert(false),
     };
@@ -113,8 +113,8 @@ fun main() {
     reuse.push(2);
     reuse.pop();
     reuse.push(99);
-    assert(reuse.len() == 2);
-    match reuse.get(1) {
+    assert((&reuse).len() == 2);
+    match (&reuse).get(1) {
         Perhaps::Some { value } => assert(value == 99),
         None => assert(false),
     };
@@ -123,14 +123,14 @@ fun main() {
     let lst_from_empty = List::from(empty_src);
     assert(lst_from_empty.len() == 0);
     // as_slice on empty list produces empty array
-    let empty_slice = empty_lst.as_slice();
+    let empty_slice = (&empty_lst).as_slice();
     assert(empty_slice.len() == 0);
     // List<String>
     var words: List<String> = List::new();
     words.push("hello");
     words.push("world");
-    assert(words.len() == 2);
-    match words.get(0) {
+    assert((&words).len() == 2);
+    match (&words).get(0) {
         Perhaps::Some { value } => assert(value == "hello"),
         None => assert(false),
     };
@@ -138,14 +138,14 @@ fun main() {
         Perhaps::Some { value } => assert(value == "world"),
         None => assert(false),
     };
-    assert(words.len() == 1);
+    assert((&words).len() == 1);
     // List<f64>
     var floats: List<f64> = List::new();
     floats.push(1.5);
     floats.push(2.5);
     floats.push(3.5);
-    assert(floats.len() == 3);
-    match floats.get(1) {
+    assert((&floats).len() == 3);
+    match (&floats).get(1) {
         Perhaps::Some { value } => assert(value == 2.5),
         None => assert(false),
     };
@@ -154,8 +154,8 @@ fun main() {
     flags.push(true);
     flags.push(false);
     flags.push(true);
-    assert(flags.len() == 3);
-    match flags.get(2) {
+    assert((&flags).len() == 3);
+    match (&flags).get(2) {
         Perhaps::Some { value } => assert(value == true),
         None => assert(false),
     };

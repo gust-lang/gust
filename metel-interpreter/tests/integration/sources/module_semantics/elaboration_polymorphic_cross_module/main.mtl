@@ -16,5 +16,6 @@ fun main() {
     // apply passes a closure through the generic pipeline
     let double = (x: i64) -> i64 { x * 2 };
     assert(apply(double, 5) == 10);
-    assert(apply(double, 0) == 0);
+    let double2 = (x: i64) -> i64 { x * 2 };
+    assert(apply(double2, 0) == 0);
 }

@@ -28,9 +28,10 @@ fun to_lower(c: Char) -> Char {
     }
 }
 
-fun count_uppercase(chars: List<Char>) -> i64 {
+fun count_uppercase(chars: &List<Char>) -> i64 {
     var count = 0;
-    let sl = chars.as_slice();
+    let chars_ref = &chars;
+    let sl = chars_ref.as_slice();
     for (c in sl) {
         if (is_uppercase(c)) {
             count += 1;
@@ -69,26 +70,26 @@ fun main() {
     chars.push('L');
     chars.push('L');
     chars.push('o');
-    assert(chars.len() == 5);
+    assert((&chars).len() == 5);
 
     // Count uppercase letters.
-    assert(count_uppercase(chars) == 3);
+    assert(count_uppercase(&chars) == 3);
 
     // Uppercase all chars and verify.
     var upper_chars: List<Char> = List::new();
-    let sl = chars.as_slice();
+    let sl = (&chars).as_slice();
     for (c in sl) {
         upper_chars.push(to_upper(c));
     }
-    assert(count_uppercase(upper_chars) == 5);
+    assert(count_uppercase(&upper_chars) == 5);
 
     // Lowercase all.
     var lower_chars: List<Char> = List::new();
-    let usl = upper_chars.as_slice();
+    let usl = (&upper_chars).as_slice();
     for (c in usl) {
         lower_chars.push(to_lower(c));
     }
-    assert(count_uppercase(lower_chars) == 0);
+    assert(count_uppercase(&lower_chars) == 0);
 
     // Char arithmetic via u32 — build a range 'a'..'e'.
     var alphabet_slice: List<Char> = List::new();
@@ -97,12 +98,12 @@ fun main() {
         alphabet_slice.push(code_i as Char);
         code_i += 1u32;
     }
-    assert(alphabet_slice.len() == 5);
-    match alphabet_slice.get(0) {
+    assert((&alphabet_slice).len() == 5);
+    match (&alphabet_slice).get(0) {
         Perhaps::Some { value } => assert(value == 'a'),
         None => assert(false),
     };
-    match alphabet_slice.get(4) {
+    match (&alphabet_slice).get(4) {
         Perhaps::Some { value } => assert(value == 'e'),
         None => assert(false),
     };

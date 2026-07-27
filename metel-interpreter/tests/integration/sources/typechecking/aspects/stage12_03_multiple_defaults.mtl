@@ -5,19 +5,19 @@ struct Value {
 }
 
 aspect Ops {
-    fun get(self) -> i64;
+    fun get(&self) -> i64;
 
-    fun doubled(self) -> i64 {
+    fun doubled(&self) -> i64 {
         return self.get() * 2;
     }
 
-    fun tripled(self) -> i64 {
+    fun tripled(&self) -> i64 {
         return self.get() * 3;
     }
 }
 
 extend Value: Ops {
-    fun get(self) -> i64 {
+    fun get(&self) -> i64 {
         return self.n;
     }
 }

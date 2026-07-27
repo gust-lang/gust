@@ -8,10 +8,11 @@
 // not a stale cached one from the mut's initial declaration.
 
 fun add_one(x: i64) -> i64 { x + 1 }
+fun add_one_again(x: i64) -> i64 { x + 1 }
 fun add_two(x: i64) -> i64 { x + 2 }
 
 let apply_fn = add_one;
-var reassignable_fn = add_one;
+var reassignable_fn = add_one_again;
 
 fun main() {
     // A plain top-level `let` bound to a function value dispatches by id.

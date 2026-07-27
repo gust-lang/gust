@@ -16,12 +16,12 @@
 // ── Aspects ────────────────────────────────────────────────────────────────────
 
 aspect Measurable {
-    fun area(self) -> f64;
-    fun perimeter(self) -> f64;
+    fun area(&self) -> f64;
+    fun perimeter(&self) -> f64;
 }
 
 aspect Describable {
-    fun describe(self) -> String;
+    fun describe(&self) -> String;
 }
 
 aspect Iterable<T> {
@@ -48,32 +48,32 @@ struct Circle    { radius: i64 }
 struct Rectangle { width: i64, height: i64 }
 
 extend Circle: Measurable {
-    fun area(self) -> f64 {
+    fun area(&self) -> f64 {
         let r = self.radius as f64;
         pi() * r * r
     }
-    fun perimeter(self) -> f64 {
+    fun perimeter(&self) -> f64 {
         2.0 * pi() * (self.radius as f64)
     }
 }
 
 extend Circle: Describable {
-    fun describe(self) -> String {
+    fun describe(&self) -> String {
         "Circle(r=" + self.radius.to_string() + ")"
     }
 }
 
 extend Rectangle: Measurable {
-    fun area(self) -> f64 {
+    fun area(&self) -> f64 {
         (self.width * self.height) as f64
     }
-    fun perimeter(self) -> f64 {
+    fun perimeter(&self) -> f64 {
         (2 * (self.width + self.height)) as f64
     }
 }
 
 extend Rectangle: Describable {
-    fun describe(self) -> String {
+    fun describe(&self) -> String {
         "Rect(" + self.width.to_string() + "x" + self.height.to_string() + ")"
     }
 }
@@ -84,7 +84,7 @@ struct AreaList { data: f64[], pos: i64 }
 
 extend AreaList {
     fun new(data: f64[]) -> AreaList { AreaList { data = data, pos = 0 } }
-    fun len(self) -> i64 { self.data.len() }
+    fun len(&self) -> i64 { self.data.len() }
 }
 
 extend AreaList: Iterable<f64> {

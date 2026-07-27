@@ -5,9 +5,10 @@
 fun main() {
     var x = 10;
     let p: &var i64 = &var x;
+    let p_ref: &&var i64 = &p;
 
     let f = () -> () {
-        *p = 42;
+        **p_ref = 42;
     };
 
     f();

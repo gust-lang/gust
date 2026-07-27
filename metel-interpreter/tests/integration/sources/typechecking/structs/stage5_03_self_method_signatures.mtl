@@ -5,11 +5,11 @@ struct Point {
 }
 
 extend Point {
-    fun clone(self) -> Self {
-        self
+    fun clone(&self) -> Self {
+        Point { x = self.x }
     }
 
-    fun same_as(self, other: Self) -> boolean {
+    fun same_as(&self, other: Self) -> boolean {
         self.x == other.x
     }
 }

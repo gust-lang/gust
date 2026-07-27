@@ -10,21 +10,21 @@ struct Cat {
 }
 
 aspect Named {
-    fun name(self) -> String;
+    fun name(&self) -> String;
 
-    fun greeting(self) -> String {
+    fun greeting(&self) -> String {
         return "Hi, I'm " + self.name();
     }
 }
 
 extend Dog: Named {
-    fun name(self) -> String {
+    fun name(&self) -> String {
         return self.name;
     }
 }
 
 extend Cat: Named {
-    fun name(self) -> String {
+    fun name(&self) -> String {
         return self.name;
     }
 }

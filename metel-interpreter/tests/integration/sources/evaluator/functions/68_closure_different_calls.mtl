@@ -1,20 +1,23 @@
 // Creates a tuple of three closures that all operate on the same mutable reference
 // Returns: (increment_by_1, increment_by_2, get_current_value)
 fun get_closures(ptr: &var i64) {
+    let first_ptr: &&var i64 = &ptr;
+    let second_ptr: &&var i64 = &ptr;
+    let third_ptr: &&var i64 = &ptr;
 
     // First closure: increments the value at ptr by 1
     let first_closure = () -> {
-        *ptr += 1;  // Write through ptr, adding 1 to the value it points to
+        **first_ptr += 1;  // Write through ptr, adding 1 to the value it points to
     };
 
     // Second closure: increments the value at ptr by 2
     let second_closure = () -> {
-        *ptr += 2;  // Write through ptr, adding 2 to the value it points to
+        **second_ptr += 2;  // Write through ptr, adding 2 to the value it points to
     };
 
     // Third closure: reads and returns the current value at ptr
     let third_closure = () -> i64 {
-        return ptr;  // Type-directed copy: read the current value out of ptr
+        return third_ptr;  // Type-directed copy: read the current value out of ptr
     };
 
     // Return all three closures as a tuple

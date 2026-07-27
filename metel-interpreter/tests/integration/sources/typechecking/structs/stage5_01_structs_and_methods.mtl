@@ -6,7 +6,7 @@ struct Point {
 }
 
 extend Point {
-    fun sum(self) -> f64 {
+    fun sum(&self) -> f64 {
         self.x + self.y
     }
 
@@ -39,7 +39,7 @@ struct Counter {
 }
 
 extend Counter {
-    fun get(self) -> i64 {
+    fun get(&self) -> i64 {
         self.value
     }
 

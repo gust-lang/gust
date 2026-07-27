@@ -39,13 +39,13 @@ extend Temperature: From<f64> {
 }
 
 extend Score: Printable {
-    fun format(self) -> String {
+    fun format(&self) -> String {
         "Score(" + self.points.to_string() + ")"
     }
 }
 
 extend Temperature: Printable {
-    fun format(self) -> String {
+    fun format(&self) -> String {
         "Temp(" + self.celsius.to_string() + ")"
     }
 }
@@ -56,14 +56,15 @@ struct StringBag { items: String[], pos: i64 }
 
 extend StringBag {
     fun new(items: String[]) -> StringBag { StringBag { items = items, pos = 0 } }
-    fun len(self) -> i64 { self.items.len() }
+    fun len(&self) -> i64 { self.items.len() }
 }
 
 extend StringBag: Iterable<String> {
     fun next(&var self) -> Perhaps<String> {
         if (self.pos < self.items.len()) {
-            let v = self.items[self.pos as u64];
-            self.pos = self.pos + 1;
+            let pos = self.pos;
+            self.pos = pos + 1;
+            let v = (&self.items[pos as u64]).to_string();
             Perhaps::Some { value = v }
         } else {
             None

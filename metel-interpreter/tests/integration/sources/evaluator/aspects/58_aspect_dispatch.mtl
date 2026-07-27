@@ -1,11 +1,11 @@
 // End-to-end test for aspect declaration, impl, and method dispatch.
 
 aspect Describable {
-    fun describe(self) -> String;
+    fun describe(&self) -> String;
 }
 
 aspect Scalable {
-    fun scale(self, factor: i64) -> i64;
+    fun scale(&self, factor: i64) -> i64;
 }
 
 struct Circle {
@@ -21,7 +21,7 @@ extend Circle {
     fun new(r: i64) -> Circle {
         return Circle { radius = r };
     }
-    fun area(self) -> i64 {
+    fun area(&self) -> i64 {
         return self.radius * self.radius;
     }
 }
@@ -33,25 +33,25 @@ extend Rectangle {
 }
 
 extend Circle: Describable {
-    fun describe(self) -> String {
+    fun describe(&self) -> String {
         return "Circle(r=" + self.radius.to_string() + ")";
     }
 }
 
 extend Rectangle: Describable {
-    fun describe(self) -> String {
+    fun describe(&self) -> String {
         return "Rect(" + self.width.to_string() + "x" + self.height.to_string() + ")";
     }
 }
 
 extend Circle: Scalable {
-    fun scale(self, factor: i64) -> i64 {
+    fun scale(&self, factor: i64) -> i64 {
         return self.radius * factor;
     }
 }
 
 extend Rectangle: Scalable {
-    fun scale(self, factor: i64) -> i64 {
+    fun scale(&self, factor: i64) -> i64 {
         return self.width * self.height * factor;
     }
 }

@@ -6,7 +6,8 @@ fun read_shared(r: &i64) -> i64 {
 fun main() {
     var n = 7;
     let m: &var i64 = &var n;
-    let s: &i64 = m;
+    let m2: &var i64 = &var n;
+    let s: &i64 = m2;
     assert(read_shared(s) == 7);
     assert(read_shared(m) == 7);
 }

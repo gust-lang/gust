@@ -11,12 +11,12 @@
 // ── Aspects ────────────────────────────────────────────────────────────────────
 
 aspect Transformable {
-    fun double(self) -> i64;
-    fun negate(self) -> i64;
+    fun double(&self) -> i64;
+    fun negate(&self) -> i64;
 }
 
 aspect Summarizable {
-    fun summary(self) -> String;
+    fun summary(&self) -> String;
 }
 
 aspect From<T> {
@@ -51,12 +51,12 @@ struct Token  { kind: String, value: i64 }
 struct Number { raw: i64 }
 
 extend Number: Transformable {
-    fun double(self) -> i64 { self.raw * 2 }
-    fun negate(self) -> i64 { 0 - self.raw }
+    fun double(&self) -> i64 { self.raw * 2 }
+    fun negate(&self) -> i64 { 0 - self.raw }
 }
 
 extend Number: Summarizable {
-    fun summary(self) -> String {
+    fun summary(&self) -> String {
         "Number(" + self.raw.to_string() + ")"
     }
 }
@@ -67,7 +67,7 @@ struct NumberList { data: i64[], pos: i64 }
 
 extend NumberList {
     fun new(data: i64[]) -> NumberList { NumberList { data = data, pos = 0 } }
-    fun len(self) -> i64 { self.data.len() }
+    fun len(&self) -> i64 { self.data.len() }
 }
 
 extend NumberList: Iterable<i64> {

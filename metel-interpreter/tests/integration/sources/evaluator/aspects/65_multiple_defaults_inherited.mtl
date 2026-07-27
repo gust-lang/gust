@@ -6,19 +6,19 @@ struct Counter {
 }
 
 aspect Stats {
-    fun value(self) -> i64;
+    fun value(&self) -> i64;
 
-    fun doubled(self) -> i64 {
+    fun doubled(&self) -> i64 {
         return self.value() * 2;
     }
 
-    fun tripled(self) -> i64 {
+    fun tripled(&self) -> i64 {
         return self.value() * 3;
     }
 }
 
 extend Counter: Stats {
-    fun value(self) -> i64 {
+    fun value(&self) -> i64 {
         return self.count;
     }
 }

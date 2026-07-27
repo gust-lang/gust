@@ -13,11 +13,11 @@
 // ── Aspects ────────────────────────────────────────────────────────────────────
 
 aspect Runnable {
-    fun run(self) -> String;
+    fun run(&self) -> String;
 }
 
 aspect Describable {
-    fun describe(self) -> String;
+    fun describe(&self) -> String;
 }
 
 aspect From<T> {
@@ -44,7 +44,7 @@ extend RunError: From<ConfigError> {
 struct Task { name: String, enabled: boolean }
 
 extend Task: Runnable {
-    fun run(self) -> String {
+    fun run(&self) -> String {
         if (self.enabled) {
             self.name + ":ok"
         } else {
@@ -54,7 +54,7 @@ extend Task: Runnable {
 }
 
 extend Task: Describable {
-    fun describe(self) -> String {
+    fun describe(&self) -> String {
         "Task[" + self.name + ", enabled=" + self.enabled.to_string() + "]"
     }
 }

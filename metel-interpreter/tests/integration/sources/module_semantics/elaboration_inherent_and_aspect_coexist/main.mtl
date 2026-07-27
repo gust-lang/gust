@@ -19,12 +19,12 @@ extend Counter {
     fun tick(&var self) {
         self.value = self.value + self.step;
     }
-    fun value(self) -> i64 { self.value }
+    fun value(&self) -> i64 { self.value }
 }
 
 extend Counter: Printable {
     // Aspect method — must not conflict with the inherent `value` method above.
-    fun summary(self) -> String {
+    fun summary(&self) -> String {
         "Counter(" + self.value.to_string() + ", step=" + self.step.to_string() + ")"
     }
 }

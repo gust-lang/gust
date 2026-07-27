@@ -7,19 +7,19 @@ struct Point {
 }
 
 aspect Shape {
-    fun label(self) -> String;
+    fun label(&self) -> String;
 
-    fun describe(self) -> String {
+    fun describe(&self) -> String {
         return "shape: " + self.label();
     }
 }
 
 extend Point: Shape {
-    fun label(self) -> String {
+    fun label(&self) -> String {
         return "(" + self.x.to_string() + ", " + self.y.to_string() + ")";
     }
 
-    fun describe(self) -> String {
+    fun describe(&self) -> String {
         return "Point" + self.label();
     }
 }

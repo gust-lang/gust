@@ -3,26 +3,26 @@
 // Dog::label calls Sayable::label and Cat::label calls Greetable::label without confusion.
 
 aspect Sayable {
-    fun label(self) -> String;
-    fun greet(self) -> String;
+    fun label(&self) -> String;
+    fun greet(&self) -> String;
 }
 
 aspect Greetable {
-    fun label(self) -> String;
-    fun farewell(self) -> String;
+    fun label(&self) -> String;
+    fun farewell(&self) -> String;
 }
 
 struct Dog { name: String }
 struct Cat { name: String }
 
 extend Dog: Sayable {
-    fun label(self) -> String { "dog:" + self.name }
-    fun greet(self) -> String { "woof from " + self.name }
+    fun label(&self) -> String { "dog:" + self.name }
+    fun greet(&self) -> String { "woof from " + self.name }
 }
 
 extend Cat: Greetable {
-    fun label(self) -> String { "cat:" + self.name }
-    fun farewell(self) -> String { "purr from " + self.name }
+    fun label(&self) -> String { "cat:" + self.name }
+    fun farewell(&self) -> String { "purr from " + self.name }
 }
 
 fun main() {
