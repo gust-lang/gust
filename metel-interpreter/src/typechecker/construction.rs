@@ -1452,7 +1452,7 @@ fn construct_expr(
                 .map(|e| construct_expr(e, None, ctx))
                 .collect::<Result<_, _>>()?;
             let elem_ty = typed[0].ty().clone();
-            let ty = Type::Array(Box::new(elem_ty));
+            let ty = Type::SizedArray(Box::new(elem_ty), elems.len() as u64);
             Ok(TypedExpr::Array(typed, ty, span.clone()))
         }
         Expr::RepeatArray(elem, n, span) => {
@@ -1562,6 +1562,7 @@ fn construct_expr(
             };
             let typed_value = construct_expr(value, value_hint.as_ref(), ctx)?;
             let typed_place = assign_target_to_typed_place(target, ctx)?;
+            let _ = typed_place_ty(&typed_place, ctx, span)?;
             Ok(TypedExpr::Assign {
                 target: typed_place,
                 op: op.clone(),
@@ -1668,7 +1669,9 @@ fn construct_expr(
             };
 
             // Resolve the method's function type and construct the arguments.
-            if let Type::Array(elem) = peel_type_references(typed_receiver.ty()) {
+            if let Type::Array(elem) | Type::SizedArray(elem, _) =
+                peel_type_references(typed_receiver.ty())
+            {
                 let candidates = ctx.registry.array_method_scheme_variants_for(method).to_vec();
                 if candidates.is_empty() {
                     return Err(MetelError::type_error(
@@ -5065,30 +5068,7 @@ fn typed_place_ty(
             // Reach through a reference at any step of the path, not just the root:
             // `s.t.0 = v` for `s: &var S` resolves `s.t` through this arm.
             let object_ty = peel_type_references(&typed_place_ty(object, ctx, field_span)?).clone();
-            match object_ty {
-                Type::Named(struct_name, _type_args) => {
-                    let fields = ctx.get_struct_fields(&struct_name).ok_or_else(|| {
-                        MetelError::type_error(
-                            TypeErrorCode::T0003,
-                            format!("unknown type `{struct_name}`"),
-                            field_span,
-                        )
-                    })?;
-                    let field_entry = fields.iter().find(|entry| entry.0 == *field).ok_or_else(|| {
-                        MetelError::type_error(
-                            TypeErrorCode::T0003,
-                            format!("no field `{field}` on `{struct_name}`"),
-                            field_span,
-                        )
-                    })?;
-                    Ok(field_entry.1.clone())
-                }
-                _ => Err(MetelError::type_error(
-                    TypeErrorCode::T0002,
-                    "cannot infer struct type for field assignment; add a type annotation",
-                    field_span,
-                )),
-            }
+            typed_place_field_ty(&object_ty, field, field_span, ctx)
         }
         TypedPlace::Tuple { object, index, span } => {
             let object_ty = peel_type_references(&typed_place_ty(object, ctx, span)?).clone();
@@ -5113,7 +5093,12 @@ fn typed_place_ty(
         TypedPlace::Index { object, .. } => {
             let object_ty = peel_type_references(&typed_place_ty(object, ctx, span)?).clone();
             match object_ty {
-                Type::Array(elem) => Ok((*elem).clone()),
+                Type::SizedArray(elem, _) => Ok((*elem).clone()),
+                Type::Array(_) => Err(MetelError::type_error(
+                    TypeErrorCode::T0002,
+                    "cannot assign through `T[]`: array views are immutable; use `[T; N]` or `List<T>`",
+                    span,
+                )),
                 _ => Err(MetelError::type_error(
                     TypeErrorCode::T0002,
                     "cannot infer array type for assignment; add a type annotation",
@@ -5121,5 +5106,79 @@ fn typed_place_ty(
                 )),
             }
         }
+    }
+}
+
+fn typed_place_field_ty(
+    object_ty: &Type,
+    field: &str,
+    field_span: &Span,
+    ctx: &mut ConstructCtx<'_>,
+) -> Result<Type, MetelError> {
+    match object_ty {
+        Type::Record(fields) => fields
+            .iter()
+            .find(|(name, _)| name == field)
+            .map(|(_, ty)| ty.clone())
+            .ok_or_else(|| {
+                MetelError::type_error(
+                    TypeErrorCode::T0003,
+                    format!("no field `{field}` on record"),
+                    field_span,
+                )
+            }),
+        Type::Named(struct_name, type_args) => {
+            if let Some(type_params) = ctx.registry.raw_struct_type_params().get(struct_name.as_str())
+            {
+                let raw_fields = ctx
+                    .registry
+                    .raw_struct_env()
+                    .get(struct_name.as_str())
+                    .ok_or_else(|| {
+                        MetelError::type_error(
+                            TypeErrorCode::T0003,
+                            format!("unknown type `{struct_name}`"),
+                            field_span,
+                        )
+                    })?;
+                let raw_ty = raw_fields
+                    .iter()
+                    .find(|entry| entry.name == field)
+                    .map(|entry| entry.ty.clone())
+                    .ok_or_else(|| {
+                        MetelError::type_error(
+                            TypeErrorCode::T0003,
+                            format!("no field `{field}` on `{struct_name}`"),
+                            field_span,
+                        )
+                    })?;
+                let mut remap = Substitution::new();
+                for (&tp, arg) in type_params.iter().zip(type_args.iter()) {
+                    remap.bind(tp, type_to_infer(arg));
+                }
+                infer_type_to_type(&remap.apply(&raw_ty), field_span)
+            } else {
+                let fields = ctx.get_struct_fields(struct_name).ok_or_else(|| {
+                    MetelError::type_error(
+                        TypeErrorCode::T0003,
+                        format!("unknown type `{struct_name}`"),
+                        field_span,
+                    )
+                })?;
+                let field_entry = fields.iter().find(|entry| entry.0 == field).ok_or_else(|| {
+                    MetelError::type_error(
+                        TypeErrorCode::T0003,
+                        format!("no field `{field}` on `{struct_name}`"),
+                        field_span,
+                    )
+                })?;
+                Ok(field_entry.1.clone())
+            }
+        }
+        _ => Err(MetelError::type_error(
+            TypeErrorCode::T0002,
+            "cannot infer struct type for field assignment; add a type annotation",
+            field_span,
+        )),
     }
 }

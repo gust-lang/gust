@@ -47,7 +47,7 @@ fun selectors_stay_implicit() {
     assert(q.y == 99);
 
     var xs = [1, 2, 3];
-    let xp: &var i64[] = &var xs;
+    let xp: &var [i64; 3] = &var xs;
     xp[0] = 9;
     xp[1] += 10;
     assert(xs[0] == 9);

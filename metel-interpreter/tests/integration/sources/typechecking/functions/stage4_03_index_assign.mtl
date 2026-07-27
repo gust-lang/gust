@@ -1,19 +1,19 @@
 // Stage 4: assignment to array elements via index targets.
 
 // Plain assignment
-fun zero_first(arr: i64[]) -> i64[] {
+fun zero_first(arr: [i64; 3]) -> [i64; 3] {
     arr[0] = 0;
     arr
 }
 
 // Compound assignment
-fun bump(arr: i64[]) -> i64[] {
+fun bump(arr: [i64; 3]) -> [i64; 3] {
     arr[0] += 10;
     arr
 }
 
 // Index expression evaluated at runtime
-fun set_at(arr: i64[], i: u64, v: i64) -> i64[] {
+fun set_at(arr: [i64; 3], i: u64, v: i64) -> [i64; 3] {
     arr[i] = v;
     arr
 }

@@ -38,25 +38,30 @@ fun int_max(a: i64, b: i64) -> i64 {
 
 // ── Sorting ───────────────────────────────────────────────────────────────────
 
-// Bubble sort — returns a sorted copy of the input array.
-fun sort_floats(arr: f64[]) -> f64[] {
-    var s = List::from(arr).as_slice();
-    let n = s.len();
-    var i = 0;
-    while (i < n) {
-        var j = 0;
-        while (j < n - i - 1) {
-            let jp1 = j + 1;
-            if (s[j as u64] > s[jp1 as u64]) {
-                let tmp = s[j as u64];
-                s[j as u64]   = s[jp1 as u64];
-                s[jp1 as u64] = tmp;
-            }
-            j += 1;
+fun insert_sorted(sorted: &var List<f64>, value: f64) {
+    var out: List<f64> = List::new();
+    var inserted = false;
+    let sorted_ref = &sorted;
+    for (x in sorted_ref.as_slice()) {
+        if (!inserted && value < x) {
+            out.push(value);
+            inserted = true;
         }
-        i += 1;
+        out.push(x);
     }
-    s
+    if (!inserted) {
+        out.push(value);
+    }
+    *sorted = out;
+}
+
+// Sort by building a fresh owned list, then borrow views from it at read sites.
+fun sort_floats(arr: f64[]) -> List<f64> {
+    var out: List<f64> = List::new();
+    for (x in arr) {
+        insert_sorted(&var out, x);
+    }
+    out
 }
 
 // ── Searching ─────────────────────────────────────────────────────────────────
@@ -143,12 +148,13 @@ fun median(data: f64[]) -> Perhaps<f64> {
     let n = data.len();
     if (n == 0) { return None; }
     let sorted = sort_floats(data);
+    let sorted_view = sorted.as_slice();
     let mid = n / 2;
     if (n % 2 == 1) {
-        Perhaps::Some { value = sorted[mid as u64] }
+        Perhaps::Some { value = sorted_view[mid as u64] }
     } else {
         let mid1 = mid - 1;
-        Perhaps::Some { value = (sorted[mid1 as u64] + sorted[mid as u64]) / 2.0 }
+        Perhaps::Some { value = (sorted_view[mid1 as u64] + sorted_view[mid as u64]) / 2.0 }
     }
 }
 
@@ -222,22 +228,25 @@ fun main() {
     let raw: f64[] = [3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0, 6.0];
     let raw_for_sort: f64[] = [3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0, 6.0];
     let srt = sort_floats(raw_for_sort);
+    let srt_ref = &srt;
+    let srt_view = srt_ref.as_slice();
     // Expected: [1.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 9.0]
-    assert(srt[0] == 1.0);
-    assert(srt[2] == 2.0);
-    assert(srt[3] == 3.0);
-    assert(srt[7] == 9.0);
+    assert(srt_view[0] == 1.0);
+    assert(srt_view[2] == 2.0);
+    assert(srt_view[3] == 3.0);
+    assert(srt_view[7] == 9.0);
     // Sort is non-destructive: original is unchanged.
     assert(raw[0] == 3.0);
 
     // 2. Binary search in the sorted array.
-    let fnd = binary_search(srt, 4.0);
+    let fnd = binary_search(srt_view, 4.0);
     match fnd {
         Perhaps::Some { value } => assert(value == 4),
         None => assert(false, "expected Some"),
     };
     let srt_for_miss = sort_floats([3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0, 6.0]);
-    let miss = binary_search(srt_for_miss, 7.0);
+    let srt_for_miss_ref = &srt_for_miss;
+    let miss = binary_search(srt_for_miss_ref.as_slice(), 7.0);
     match miss { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
     // Searching an empty array returns None.
     let empty_f: f64[] = [];
@@ -357,7 +366,9 @@ fun main() {
 
     // 10. Tuple: capture (min, max) of the sorted array as a pair.
     let srt_for_extremes = sort_floats([3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0, 6.0]);
-    let extremes: (f64, f64) = (srt_for_extremes[0], srt_for_extremes[7]);
+    let srt_for_extremes_ref = &srt_for_extremes;
+    let srt_for_extremes_view = srt_for_extremes_ref.as_slice();
+    let extremes: (f64, f64) = (srt_for_extremes_view[0], srt_for_extremes_view[7]);
     assert(extremes.0 == 1.0);
     assert(extremes.1 == 9.0);
 

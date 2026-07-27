@@ -445,11 +445,7 @@ extend<T: Display> T[]: Display {
 
 extend<T: Clone> T[]: Clone {
     fun clone(&self) -> Self {
-        var out: List<T> = List::new();
-        for (item in self) {
-            out.push(item.clone());
-        }
-        return out.as_slice();
+        return self;
     }
 }
 

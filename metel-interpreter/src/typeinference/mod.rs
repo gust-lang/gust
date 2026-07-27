@@ -2053,6 +2053,9 @@ impl TypeDefinitionRegistry {
                 false
             }
             InferType::Array(elem) => {
+                if aspect_name == "Copy" {
+                    return true;
+                }
                 let inner_args = std::slice::from_ref(elem.as_ref());
                 if let Some(entries) = self.array_neg_impl_bounds.get(aspect_name) {
                     for (pos_bounds, neg_bounds) in entries {

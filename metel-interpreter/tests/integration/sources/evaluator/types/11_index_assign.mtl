@@ -1,7 +1,7 @@
 // Regression (METEL-106): computed index expressions in assignment targets must work.
 
 fun main() {
-    struct S { data: i64[] }
+    struct S { data: [i64; 3] }
 
     // Computed index assignment.
     var arr = [10, 20, 30, 40, 50];
