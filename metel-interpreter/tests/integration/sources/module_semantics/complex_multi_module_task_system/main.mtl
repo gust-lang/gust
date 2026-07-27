@@ -48,46 +48,57 @@ fun main() {
     assert(tasks.len() == 5);
 
     // 4. total_effort via cross-module fold_left: 5+3+2+4+1 = 15
-    assert(total_effort(tasks) == 15);
+    let tasks_for_total = make_tasks();
+    assert(total_effort(tasks_for_total) == 15);
 
     // 5. open_task_count: Open(t1,t4) + InProgress(t2,t5) = 4
-    assert(open_task_count(tasks) == 4);
+    let tasks_for_open_count = make_tasks();
+    assert(open_task_count(tasks_for_open_count) == 4);
 
     // 6. Generic filter_array with cross-module predicates
-    let high = filter_array(tasks, (t: Task) -> boolean { is_high_priority(t) });
+    let tasks_for_high = make_tasks();
+    let high = filter_array(tasks_for_high, (t: Task) -> boolean { is_high_priority(t) });
     assert(high.len() == 3);
 
-    let done_list = filter_array(tasks, (t: Task) -> boolean { is_done(t) });
+    let tasks_for_done_list = make_tasks();
+    let done_list = filter_array(tasks_for_done_list, (t: Task) -> boolean { is_done(t) });
     assert(done_list.len() == 1);
 
     // 7. map_array: extract efforts, sum via sum_ints
-    let efforts = map_array(tasks, (t: Task) -> i64 { t.effort });
+    let tasks_for_efforts = make_tasks();
+    let efforts = map_array(tasks_for_efforts, (t: Task) -> i64 { t.effort });
     assert(sum_ints(efforts) == 15);
-    assert(efforts[0] == 5);
-    assert(efforts[4] == 1);
+    let tasks_for_efforts_again = make_tasks();
+    let efforts_again = map_array(tasks_for_efforts_again, (t: Task) -> i64 { t.effort });
+    assert(efforts_again[0] == 5);
+    assert(efforts_again[4] == 1);
 
     // 8. task_titles (cross-module map_array inside tasks module)
-    let titles = task_titles(tasks);
+    let tasks_for_titles = make_tasks();
+    let titles = task_titles(tasks_for_titles);
     assert(titles.len() == 5);
     assert(titles[0] == "Design API");
     assert(titles[2] == "Deploy");
 
     // 9. find_by_title: found
-    let found = find_by_title(tasks, "Write tests");
+    let tasks_for_found = make_tasks();
+    let found = find_by_title(tasks_for_found, "Write tests");
     match found {
         Perhaps::Some { value } => assert(value.effort == 3),
         None                    => assert(false),
     };
 
     // 10. find_by_title: not found
-    let not_found = find_by_title(tasks, "nonexistent");
+    let tasks_for_not_found = make_tasks();
+    let not_found = find_by_title(tasks_for_not_found, "nonexistent");
     match not_found {
         Perhaps::Some { value } => assert(false),
         None                    => (),
     };
 
     // 11. compute_completion_pct: 1 done / 5 total = 20%
-    assert(compute_completion_pct(tasks) == 20);
+    let tasks_for_completion = make_tasks();
+    assert(compute_completion_pct(tasks_for_completion) == 20);
     let empty_tasks: Task[] = [];
     assert(compute_completion_pct(empty_tasks) == 0);
 
@@ -97,7 +108,8 @@ fun main() {
     assert(product == 24);
 
     // 13. find_first: locate the Done task (Deploy, effort=2)
-    let first_done = find_first(tasks, (t: Task) -> boolean { is_done(t) });
+    let tasks_for_first_done = make_tasks();
+    let first_done = find_first(tasks_for_first_done, (t: Task) -> boolean { is_done_2(t) });
     match first_done {
         Perhaps::Some { value } => assert(value.title == "Deploy"),
         None                    => assert(false),
@@ -105,7 +117,8 @@ fun main() {
 
     // 14. Closure capturing outer variable (min_effort threshold)
     let min_effort = 3;
-    let heavy = filter_array(tasks, (t: Task) -> boolean { t.effort >= min_effort });
+    let tasks_for_heavy = make_tasks();
+    let heavy = filter_array(tasks_for_heavy, (t: Task) -> boolean { t.effort >= min_effort });
     assert(heavy.len() == 3);
 
     // 15. C-style for: manual effort accumulation
@@ -120,8 +133,7 @@ fun main() {
     var hp_active = 0;
     var idx = 0;
     while (idx < tasks.len()) {
-        let t = tasks[idx as u64];
-        if (is_high_priority(t) && !is_done(t)) { hp_active += 1; }
+        if (is_high_priority_ref(&tasks[idx as u64]) && !is_done_ref(&tasks[idx as u64])) { hp_active += 1; }
         idx += 1;
     }
     assert(hp_active == 2);
@@ -132,22 +144,27 @@ fun main() {
     assert(range_sum == 10);
 
     // 18. Type cast: total effort i64 -> f64
-    let effort_f = total_effort(tasks) as f64;
+    let tasks_for_effort_f = make_tasks();
+    let effort_f = total_effort(tasks_for_effort_f) as f64;
     assert(effort_f == 15.0);
 
     // 19. Tuple: pack (task_count, total_effort)
-    let report: (i64, i64) = (tasks.len(), total_effort(tasks));
+    let tasks_for_report_total = make_tasks();
+    let report: (i64, i64) = (tasks.len(), total_effort(tasks_for_report_total));
     assert(report.0 == 5);
     assert(report.1 == 15);
 
     // 20. Chained map + filter across modules
     // doubled efforts: [10,6,4,8,2]; filter > 5: [10,6,8] = 3 items
-    let doubled = map_array(efforts, (x: i64) -> i64 { x * 2 });
+    let tasks_for_doubled = make_tasks();
+    let efforts_for_doubled = map_array(tasks_for_doubled, (t: Task) -> i64 { t.effort });
+    let doubled = map_array(efforts_for_doubled, (x: i64) -> i64 { x * 2 });
     let big = filter_array(doubled, (x: i64) -> boolean { x > 5 });
     assert(big.len() == 3);
 
     // 21. Let-polymorphism: identity closure used at two different types
     let id = (x) -> { x };
-    assert(id(tasks[0u64]).effort == 5);
+    let id_task = unwrap_task(validate_task("Identity task", Priority::High, Status::Open, 5));
+    assert(id(id_task).effort == 5);
     assert(id(42) == 42);
 }

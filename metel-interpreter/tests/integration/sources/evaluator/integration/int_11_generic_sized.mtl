@@ -15,7 +15,7 @@ fun map_to_list<T, U>(src: T[], f: (T) -> U) -> List<U> {
     out
 }
 
-fun all_positive_i32(lst: List<i32>) -> boolean {
+fun all_positive_i32(lst: &List<i32>) -> boolean {
     var i: i64 = 0;
     let len: i64 = lst.len();
     while (i < len) {
@@ -32,7 +32,7 @@ fun all_positive_i32(lst: List<i32>) -> boolean {
     true
 }
 
-fun zip_add_i32(a: List<i32>, b: List<i32>) -> List<i32> {
+fun zip_add_i32(a: &List<i32>, b: &List<i32>) -> List<i32> {
     let len: i64 = if (a.len() < b.len()) { a.len() } else { b.len() };
     var out: List<i32> = List::new();
     var i: i64 = 0;
@@ -72,32 +72,34 @@ fun main() {
 
     // i32[] → List<i32> doubling each element.
     let doubled = map_to_list::<i32, i32>(src_i32, (x: i32) -> i32 { x * 2i32 });
-    assert(doubled.len() == 5);
-    match doubled.get(0) {
+    assert((&doubled).len() == 5);
+    match (&doubled).get(0) {
         Perhaps::Some { value } => assert(value == 2i32),
         None => assert(false),
     };
-    match doubled.get(4) {
+    match (&doubled).get(4) {
         Perhaps::Some { value } => assert(value == 10i32),
         None => assert(false),
     };
 
     // map_to_list: i32[] → List<i64> widening cast.
-    let widened = map_to_list::<i32, i64>(src_i32, (x: i32) -> i64 { x as i64 });
-    assert(widened.len() == 5);
-    match widened.get(2) {
+    let src_i32_widened: i32[] = [1, 2, 3, 4, 5];
+    let widened = map_to_list::<i32, i64>(src_i32_widened, (x: i32) -> i64 { x as i64 });
+    assert((&widened).len() == 5);
+    match (&widened).get(2) {
         Perhaps::Some { value } => assert(value == 3),
         None => assert(false),
     };
 
     // map_to_list: i32[] → List<boolean> via threshold.
-    let flags = map_to_list::<i32, boolean>(src_i32, (x: i32) -> boolean { x > 3i32 });
-    assert(flags.len() == 5);
-    match flags.get(3) {
+    let src_i32_flags: i32[] = [1, 2, 3, 4, 5];
+    let flags = map_to_list::<i32, boolean>(src_i32_flags, (x: i32) -> boolean { x > 3i32 });
+    assert((&flags).len() == 5);
+    match (&flags).get(3) {
         Perhaps::Some { value } => assert(value == true),
         None => assert(false),
     };
-    match flags.get(1) {
+    match (&flags).get(1) {
         Perhaps::Some { value } => assert(value == false),
         None => assert(false),
     };
@@ -107,27 +109,27 @@ fun main() {
     pos.push(1);
     pos.push(10);
     pos.push(100);
-    assert(all_positive_i32(pos));
+    assert(all_positive_i32(&pos));
 
     // all_positive_i32: contains zero.
     var with_zero: List<i32> = List::new();
     with_zero.push(5);
     with_zero.push(0);
     with_zero.push(3);
-    assert(!all_positive_i32(with_zero));
+    assert(!all_positive_i32(&with_zero));
 
     // zip_add_i32.
     var a: List<i32> = List::new();
     a.push(1); a.push(2); a.push(3);
     var b: List<i32> = List::new();
     b.push(10); b.push(20); b.push(30);
-    let zipped = zip_add_i32(a, b);
-    assert(zipped.len() == 3);
-    match zipped.get(0) {
+    let zipped = zip_add_i32(&a, &b);
+    assert((&zipped).len() == 3);
+    match (&zipped).get(0) {
         Perhaps::Some { value } => assert(value == 11i32),
         None => assert(false),
     };
-    match zipped.get(2) {
+    match (&zipped).get(2) {
         Perhaps::Some { value } => assert(value == 33i32),
         None => assert(false),
     };
@@ -137,8 +139,8 @@ fun main() {
     u16_list.push(1000);
     u16_list.push(2000);
     u16_list.push(65535);
-    assert(u16_list.len() == 3);
-    match u16_list.get(2) {
+    assert((&u16_list).len() == 3);
+    match (&u16_list).get(2) {
         Perhaps::Some { value } => assert(value == 65535u16),
         None => assert(false),
     };
@@ -148,8 +150,8 @@ fun main() {
     i8_list.push(10);
     i8_list.push(-5);
     i8_list.push(127);
-    assert(i8_list.len() == 3);
-    match i8_list.get(1) {
+    assert((&i8_list).len() == 3);
+    match (&i8_list).get(1) {
         Perhaps::Some { value } => assert(value == -5i8),
         None => assert(false),
     };
@@ -173,8 +175,8 @@ fun main() {
     let fixed: [i32; 3] = [100, 200, 300];
     let fixed_slice: i32[] = fixed;
     let mapped = map_to_list::<i32, i32>(fixed_slice, (x: i32) -> i32 { x / 100i32 });
-    assert(mapped.len() == 3);
-    match mapped.get(0) { Perhaps::Some { value } => assert(value == 1i32), None => assert(false) };
-    match mapped.get(1) { Perhaps::Some { value } => assert(value == 2i32), None => assert(false) };
-    match mapped.get(2) { Perhaps::Some { value } => assert(value == 3i32), None => assert(false) };
+    assert((&mapped).len() == 3);
+    match (&mapped).get(0) { Perhaps::Some { value } => assert(value == 1i32), None => assert(false) };
+    match (&mapped).get(1) { Perhaps::Some { value } => assert(value == 2i32), None => assert(false) };
+    match (&mapped).get(2) { Perhaps::Some { value } => assert(value == 3i32), None => assert(false) };
 }

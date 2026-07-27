@@ -22,30 +22,32 @@ fun wrap_pair<A, B>(a: A, b: B) -> List<A> {
 }
 
 fun main() {
-    let nums: i64[] = [1, 2, 3, 4, 5, 6];
-    let evens = collect_matching(nums, (x: i64) -> boolean { x % 2 == 0 });
-    assert(evens.len() == 3);
-    let evens_arr = evens.as_slice();
+    let nums_for_evens: i64[] = [1, 2, 3, 4, 5, 6];
+    let evens = collect_matching(nums_for_evens, (x: i64) -> boolean { x % 2 == 0 });
+    assert((&evens).len() == 3);
+    let evens_arr = (&evens).as_slice();
     assert(evens_arr[0] == 2);
 
     let strs: String[] = ["a", "bb", "ccc", "dddd"];
     let long = collect_matching(strs, (s: String) -> boolean { s.len() > 2 });
     assert(long.len() == 2);
 
-    let squares = map_to(nums, (x: i64) -> i64 { x * x });
-    assert(squares.len() == 6);
-    let squares_arr = squares.as_slice();
+    let nums_for_squares: i64[] = [1, 2, 3, 4, 5, 6];
+    let squares = map_to(nums_for_squares, (x: i64) -> i64 { x * x });
+    assert((&squares).len() == 6);
+    let squares_arr = (&squares).as_slice();
     assert(squares_arr[0] == 1);
     assert(squares_arr[5] == 36);
 
-    let bools = map_to(nums, (x: i64) -> boolean { x > 3 });
-    assert(bools.len() == 6);
-    let bools_arr = bools.as_slice();
+    let nums_for_bools: i64[] = [1, 2, 3, 4, 5, 6];
+    let bools = map_to(nums_for_bools, (x: i64) -> boolean { x > 3 });
+    assert((&bools).len() == 6);
+    let bools_arr = (&bools).as_slice();
     assert(!bools_arr[0]);
     assert(bools_arr[5]);
 
     let wrapped = wrap_pair(42, true);
-    assert(wrapped.len() == 1);
-    let wrapped_arr = wrapped.as_slice();
+    assert((&wrapped).len() == 1);
+    let wrapped_arr = (&wrapped).as_slice();
     assert(wrapped_arr[0] == 42);
 }

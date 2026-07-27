@@ -53,6 +53,13 @@ fun safe_sqrt(n: i64) -> MyResult<i64, String> {
     MyResult::Ok { value = i }
 }
 
+fun safe_sqrt_2(n: i64) -> MyResult<i64, String> {
+    if (n < 0) { return MyResult::Err { error = "negative input" }; }
+    var i = 0;
+    while ((i + 1) * (i + 1) <= n) { i += 1; }
+    MyResult::Ok { value = i }
+}
+
 // ── Generic Stack<T> backed by i64 ───────────────────────────────────────────
 
 struct Stack {
@@ -71,11 +78,11 @@ fun stack_push(s: Stack, v: i64) -> Stack {
     Stack { items = items_list.as_slice(), size = s.size + 1 }
 }
 
-fun stack_top(s: Stack) -> i64 {
+fun stack_top(s: &Stack) -> i64 {
     s.items[(s.size - 1) as u64]
 }
 
-fun stack_empty(s: Stack) -> boolean {
+fun stack_empty(s: &Stack) -> boolean {
     s.size == 0
 }
 
@@ -167,7 +174,7 @@ fun array_max(arr: i64[]) -> i64 {
 
 // ── Recursive: binary search ──────────────────────────────────────────────────
 
-fun bsearch(arr: i64[], target: i64, lo: i64, hi: i64) -> i64 {
+fun bsearch(arr: &i64[], target: i64, lo: i64, hi: i64) -> i64 {
     if (lo > hi) { return -1; }
     let mid = (lo + hi) / 2;
     if (arr[mid as u64] == target) { return mid; }
@@ -177,8 +184,8 @@ fun bsearch(arr: i64[], target: i64, lo: i64, hi: i64) -> i64 {
 
 // ── Recursive: sum of array ───────────────────────────────────────────────────
 
-fun rsum(arr: i64[], i: i64) -> i64 {
-    if (i >= arr.len()) { return 0; }
+fun rsum(arr: &i64[], i: i64) -> i64 {
+    if (i >= (*arr).len()) { return 0; }
     arr[i as u64] + rsum(arr, i + 1)
 }
 
@@ -219,14 +226,14 @@ fun perhaps_is_some<T>(p: Perhaps<T>) -> boolean {
 fun main() {
     // ── Stack operations ──────────────────────────────────────────────────────
     let s0 = stack_new();
-    assert(stack_empty(s0));
+    assert(stack_empty(&s0));
 
     let s1 = stack_push(s0, 10);
     let s2 = stack_push(s1, 20);
     let s3 = stack_push(s2, 30);
 
-    assert(!stack_empty(s3));
-    assert(stack_top(s3) == 30);
+    assert(!stack_empty(&s3));
+    assert(stack_top(&s3) == 30);
     assert(s3.size == 3);
 
     // ── MyResult<T, E>: multi-param generic enum (issue #129) ─────────────────
@@ -235,28 +242,41 @@ fun main() {
 
     assert(result_is_ok(ok42));
     assert(!result_is_ok(err_s));
-    assert(result_unwrap_or(ok42, 0) == 42);
-    assert(result_unwrap_or(err_s, 0) == 0);
+    let ok42_again: MyResult<i64, String> = MyResult::Ok { value = 42 };
+    let err_s_again: MyResult<i64, String> = MyResult::Err { error = "oops" };
+    assert(result_unwrap_or(ok42_again, 0) == 42);
+    assert(result_unwrap_or(err_s_again, 0) == 0);
 
     // map Ok → Ok
-    let doubled = result_map(ok42, (x: i64) -> i64 { x * 2 });
+    let ok42_map: MyResult<i64, String> = MyResult::Ok { value = 42 };
+    let doubled = result_map(ok42_map, (x: i64) -> i64 { x * 2 });
     assert(result_is_ok(doubled));
-    assert(result_unwrap_or(doubled, 0) == 84);
+    let ok42_map_again: MyResult<i64, String> = MyResult::Ok { value = 42 };
+    let doubled_again = result_map(ok42_map_again, (x: i64) -> i64 { x * 2 });
+    assert(result_unwrap_or(doubled_again, 0) == 84);
 
     // map Err → Err (error passes through)
-    let mapped_err = result_map(err_s, (x: i64) -> i64 { x + 1 });
+    let err_map: MyResult<i64, String> = MyResult::Err { error = "oops" };
+    let mapped_err = result_map(err_map, (x: i64) -> i64 { x + 1 });
     assert(!result_is_ok(mapped_err));
 
     // and_then: Ok chains
-    let chained = result_and_then(ok42, (x: i64) -> MyResult<i64, String> {
+    let ok42_chain: MyResult<i64, String> = MyResult::Ok { value = 42 };
+    let chained = result_and_then(ok42_chain, (x: i64) -> MyResult<i64, String> {
         if (x > 0) { MyResult::Ok { value = x + 1 } }
         else       { MyResult::Err { error = "non-positive" } }
     });
     assert(result_is_ok(chained));
-    assert(result_unwrap_or(chained, 0) == 43);
+    let ok42_chain_again: MyResult<i64, String> = MyResult::Ok { value = 42 };
+    let chained_again = result_and_then(ok42_chain_again, (x: i64) -> MyResult<i64, String> {
+        if (x > 0) { MyResult::Ok { value = x + 1 } }
+        else       { MyResult::Err { error = "non-positive" } }
+    });
+    assert(result_unwrap_or(chained_again, 0) == 43);
 
     // and_then: Err short-circuits
-    let short = result_and_then(err_s, (x: i64) -> MyResult<i64, String> {
+    let err_short: MyResult<i64, String> = MyResult::Err { error = "oops" };
+    let short = result_and_then(err_short, (x: i64) -> MyResult<i64, String> {
         MyResult::Ok { value = x * 100 }
     });
     assert(!result_is_ok(short));
@@ -264,7 +284,8 @@ fun main() {
     // safe_div and safe_sqrt chained
     let r_div = safe_div(100, 4);
     assert(result_is_ok(r_div));
-    assert(result_unwrap_or(r_div, -1) == 25);
+    let r_div_again = safe_div(100, 4);
+    assert(result_unwrap_or(r_div_again, -1) == 25);
 
     let r_zero = safe_div(10, 0);
     assert(!result_is_ok(r_zero));
@@ -275,13 +296,13 @@ fun main() {
     assert(result_unwrap_or(chain, -1) == 5);
 
     let chain_err = result_and_then(safe_div(10, 0), (n: i64) -> MyResult<i64, String> {
-        safe_sqrt(n)
+        safe_sqrt_2(n)
     });
     assert(!result_is_ok(chain_err));
 
     // MyResult<boolean, String>
     let ok_b: MyResult<boolean, String> = MyResult::Ok { value = true };
-    let neg   = result_map(ok_b, (b: boolean) -> boolean { !b });
+    let neg = result_map(ok_b, (b: boolean) -> boolean { !b });
     assert(!result_unwrap_or(neg, true));
 
     // ── filter ────────────────────────────────────────────────────────────────
@@ -290,7 +311,8 @@ fun main() {
     assert(evens.len() == 5);
     assert(evens[0] == 2);
 
-    let big = filter(nums, (x: i64) -> boolean { x > 7 });
+    let nums_big: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let big = filter(nums_big, (x: i64) -> boolean { x > 7 });
     assert(big.len() == 3);
     assert(big[0] == 8);
 
@@ -299,24 +321,28 @@ fun main() {
     assert(long_words.len() == 2);
 
     // ── map_arr ───────────────────────────────────────────────────────────────
-    let squares = map_arr(nums, (x: i64) -> i64 { x * x });
+    let nums_squares: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let squares = map_arr(nums_squares, (x: i64) -> i64 { x * x });
     assert(squares.len() == 10);
     assert(squares[0] == 1);
     assert(squares[9] == 100);
 
-    let is_even: boolean[] = map_arr(nums, (x: i64) -> boolean { x % 2 == 0 });
+    let nums_is_even: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let is_even: boolean[] = map_arr(nums_is_even, (x: i64) -> boolean { x % 2 == 0 });
     assert(!is_even[0]);
     assert(is_even[1]);
 
     // ── fold ──────────────────────────────────────────────────────────────────
-    let sum = fold(nums, 0, (acc: i64, x: i64) -> i64 { acc + x });
+    let nums_sum: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let sum = fold(nums_sum, 0, (acc: i64, x: i64) -> i64 { acc + x });
     assert(sum == 55);
 
     let product_small: i64[] = [1, 2, 3, 4, 5];
     let prod = fold(product_small, 1, (acc: i64, x: i64) -> i64 { acc * x });
     assert(prod == 120);
 
-    let maximum = fold(nums, nums[0], (acc: i64, x: i64) -> i64 { max_int(acc, x) });
+    let nums_max: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let maximum = fold(nums_max, 1, (acc: i64, x: i64) -> i64 { max_int(acc, x) });
     assert(maximum == 10);
 
     // fold over boolean[]
@@ -324,7 +350,8 @@ fun main() {
     let all_set = fold(flags, true, (acc: boolean, b: boolean) -> boolean { acc && b });
     assert(!all_set);
 
-    let any_set = fold(flags, false, (acc: boolean, b: boolean) -> boolean { acc || b });
+    let flags_any: boolean[] = [true, true, false, true];
+    let any_set = fold(flags_any, false, (acc: boolean, b: boolean) -> boolean { acc || b });
     assert(any_set);
 
     // fold to build a string
@@ -341,51 +368,63 @@ fun main() {
     assert(dot[3] == 160);
 
     // zip shorter array — result truncated to shorter length
+    let a_partial: i64[] = [1, 2, 3, 4];
     let c: i64[] = [100, 200];
-    let partial = zip_with(a, c, (x: i64, y: i64) -> i64 { x + y });
+    let partial = zip_with(a_partial, c, (x: i64, y: i64) -> i64 { x + y });
     assert(partial.len() == 2);
     assert(partial[1] == 202);
 
     // zip producing boolean[]: check which b[i] equals a[i]*10
-    let exact: boolean[] = zip_with(a, b, (x: i64, y: i64) -> boolean { y == x * 10 });
+    let a_exact: i64[] = [1, 2, 3, 4];
+    let b_exact: i64[] = [10, 20, 30, 40];
+    let exact: boolean[] = zip_with(a_exact, b_exact, (x: i64, y: i64) -> boolean { y == x * 10 });
     assert(exact[0]);   // 10 == 10
     assert(exact[1]);   // 20 == 20
     assert(exact[2]);   // 30 == 30
     assert(exact[3]);   // 40 == 40
 
     // ── any / all ─────────────────────────────────────────────────────────────
-    assert(any(nums, (x: i64) -> boolean { x > 9 }));
-    assert(!any(nums, (x: i64) -> boolean { x > 100 }));
-    assert(all(nums, (x: i64) -> boolean { x > 0 }));
-    assert(!all(nums, (x: i64) -> boolean { x > 5 }));
+    let nums_any_9: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    assert(any(nums_any_9, (x: i64) -> boolean { x > 9 }));
+    let nums_any_100: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    assert(!any(nums_any_100, (x: i64) -> boolean { x > 100 }));
+    let nums_all_pos: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    assert(all(nums_all_pos, (x: i64) -> boolean { x > 0 }));
+    let nums_all_gt5: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    assert(!all(nums_all_gt5, (x: i64) -> boolean { x > 5 }));
 
     // ── take / drop ───────────────────────────────────────────────────────────
-    let first3 = take(nums, 3);
+    let nums_first3: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let first3 = take(nums_first3, 3);
     assert(first3.len() == 3);
     assert(first3[2] == 3);
 
-    let rest = drop(nums, 7);
+    let nums_rest: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let rest = drop(nums_rest, 7);
     assert(rest.len() == 3);
     assert(rest[0] == 8);
 
-    let take_all = take(nums, 100);
+    let nums_take_all: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let take_all = take(nums_take_all, 100);
     assert(take_all.len() == 10);
 
     // ── array_min / array_max ─────────────────────────────────────────────────
     let data: i64[] = [5, 3, 8, 1, 9, 2, 7];
     assert(array_min(data) == 1);
-    assert(array_max(data) == 9);
+    let data_max: i64[] = [5, 3, 8, 1, 9, 2, 7];
+    assert(array_max(data_max) == 9);
 
     // ── binary search ─────────────────────────────────────────────────────────
     let sorted: i64[] = [10, 20, 30, 40, 50, 60, 70];
-    assert(bsearch(sorted, 10, 0, 6) == 0);
-    assert(bsearch(sorted, 70, 0, 6) == 6);
-    assert(bsearch(sorted, 40, 0, 6) == 3);
-    assert(bsearch(sorted, 99, 0, 6) == -1);
+    assert(bsearch(&sorted, 10, 0, 6) == 0);
+    assert(bsearch(&sorted, 70, 0, 6) == 6);
+    assert(bsearch(&sorted, 40, 0, 6) == 3);
+    assert(bsearch(&sorted, 99, 0, 6) == -1);
 
     // ── recursive sum ─────────────────────────────────────────────────────────
-    assert(rsum(data, 0) == 35);
-    assert(rsum(data, 3) == 19);   // 1+9+2+7
+    let data_sum: i64[] = [5, 3, 8, 1, 9, 2, 7];
+    assert(rsum(&data_sum, 0) == 35);
+    assert(rsum(&data_sum, 3) == 19);   // 1+9+2+7
 
     // ── concat_int ────────────────────────────────────────────────────────────
     let a1: i64[] = [1, 2, 3];
@@ -396,17 +435,24 @@ fun main() {
     assert(merged[5] == 6);
 
     // ── find_first (Perhaps<T>) ───────────────────────────────────────────────
-    let first_big = find_first(nums, (x: i64) -> boolean { x > 6 });
+    let nums_first_big: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let first_big = find_first(nums_first_big, (x: i64) -> boolean { x > 6 });
     assert(perhaps_is_some(first_big));
-    assert(perhaps_or(first_big, 0) == 7);
+    let nums_first_big_again: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let first_big_again = find_first(nums_first_big_again, (x: i64) -> boolean { x > 6 });
+    assert(perhaps_or(first_big_again, 0) == 7);
 
-    let none_found = find_first(nums, (x: i64) -> boolean { x > 100 });
+    let nums_none_found: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let none_found = find_first(nums_none_found, (x: i64) -> boolean { x > 100 });
     assert(!perhaps_is_some(none_found));
 
     // find in string array
-    let first_long = find_first(strs, (s: String) -> boolean { s.len() >= 6 });
+    let strs_first_long: String[] = ["apple", "banana", "cherry", "date"];
+    let first_long = find_first(strs_first_long, (s: String) -> boolean { s.len() >= 6 });
     assert(perhaps_is_some(first_long));
-    assert(perhaps_or(first_long, "") == "banana");
+    let strs_first_long_again: String[] = ["apple", "banana", "cherry", "date"];
+    let first_long_again = find_first(strs_first_long_again, (s: String) -> boolean { s.len() >= 6 });
+    assert(perhaps_or(first_long_again, "") == "banana");
 
     // ── Let-polymorphism: identity at multiple types ──────────────────────────
     let id = (x) -> { x };

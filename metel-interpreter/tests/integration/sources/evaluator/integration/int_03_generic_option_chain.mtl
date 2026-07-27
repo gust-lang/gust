@@ -24,6 +24,13 @@ fun option_map<T, U>(opt: Option<T>, f: (T) -> U) -> Option<U> {
     }
 }
 
+fun option_map_2<T, U>(opt: Option<T>, f: (T) -> U) -> Option<U> {
+    match opt {
+        Option::Some { value } => Option::Some { value = f(value) },
+        _                      => Option::None,
+    }
+}
+
 fun option_and_then<T, U>(opt: Option<T>, f: (T) -> Option<U>) -> Option<U> {
     match opt {
         Option::Some { value } => f(value),
@@ -102,6 +109,10 @@ fun safe_div(a: i64, b: i64) -> Option<i64> {
     if (b == 0) Option::None else Option::Some { value = a / b }
 }
 
+fun safe_div_2(a: i64, b: i64) -> Option<i64> {
+    if (b == 0) Option::None else Option::Some { value = a / b }
+}
+
 // ── Safe array index ──────────────────────────────────────────────────────────
 
 fun safe_get_int(arr: i64[], i: i64) -> Option<i64> {
@@ -130,11 +141,12 @@ fun main() {
     let none_i: Option<i64>  = Option::None;
 
     // map: Some(10) → Some(20)
-    let doubled = option_map(some10, (x: i64) -> i64 { x * 2 });
+    let doubled = option_map(Option::Some { value = 10 }, (x: i64) -> i64 { x * 2 });
     assert(option_or(doubled, 0) == 20);
 
     // map over None → None
-    let mapped_none = option_map(none_i, (x: i64) -> i64 { x * 2 });
+    let none_i_map: Option<i64> = Option::None;
+    let mapped_none = option_map(none_i_map, (x: i64) -> i64 { x * 2 });
     assert(!option_is_some(mapped_none));
 
     // or: Some(10) → 10, None → 99
@@ -142,18 +154,19 @@ fun main() {
     assert(option_or(none_i,  99) == 99);
 
     // filter: keeps if predicate holds
-    let keep   = option_filter(some10, (x: i64) -> boolean { x > 5  });
-    let remove = option_filter(some10, (x: i64) -> boolean { x > 50 });
+    let keep   = option_filter(Option::Some { value = 10 }, (x: i64) -> boolean { x > 5  });
+    let remove = option_filter(Option::Some { value = 10 }, (x: i64) -> boolean { x > 50 });
     assert(option_is_some(keep));
     assert(!option_is_some(remove));
 
     // and_then (flatMap): chain two operations
-    let chained = option_and_then(some10, (x: i64) -> Option<i64> {
+    let chained = option_and_then(Option::Some { value = 10 }, (x: i64) -> Option<i64> {
         if (x > 5) Option::Some { value = x + 1 } else Option::None
     });
     assert(option_or(chained, 0) == 11);
 
-    let chained_none = option_and_then(none_i, (x: i64) -> Option<i64> {
+    let none_i_chain: Option<i64> = Option::None;
+    let chained_none = option_and_then(none_i_chain, (x: i64) -> Option<i64> {
         Option::Some { value = x + 1 }
     });
     assert(!option_is_some(chained_none));
@@ -165,7 +178,7 @@ fun main() {
     assert(option_or(some_true,  false));
     assert(!option_or(some_false, true));
 
-    let negated = option_map(some_true, (b: boolean) -> boolean { !b });
+    let negated = option_map(Option::Some { value = true }, (b: boolean) -> boolean { !b });
     assert(!option_or(negated, true));
 
     // ── Option<String> ────────────────────────────────────────────────────────
@@ -189,20 +202,24 @@ fun main() {
     assert(option_or(chain_div, -1) == 5);
 
     // Chain where second step divides by zero → None
-    let chain_zero = option_and_then(safe_div(100, 5), (x: i64) -> Option<i64> {
-        safe_div(x, 0)
+    let chain_zero = option_and_then(safe_div_2(100, 5), (x: i64) -> Option<i64> {
+        safe_div_2(x, 0)
     });
     assert(!option_is_some(chain_zero));
 
     // ── safe_get_int ──────────────────────────────────────────────────────────
     let arr: i64[] = [10, 20, 30, 40, 50];
     assert(option_or(safe_get_int(arr, 0),  -1) == 10);
-    assert(option_or(safe_get_int(arr, 4),  -1) == 50);
-    assert(!option_is_some(safe_get_int(arr, 5)));
-    assert(!option_is_some(safe_get_int(arr, -1)));
+    let arr_4: i64[] = [10, 20, 30, 40, 50];
+    assert(option_or(safe_get_int(arr_4, 4),  -1) == 50);
+    let arr_5: i64[] = [10, 20, 30, 40, 50];
+    assert(!option_is_some(safe_get_int(arr_5, 5)));
+    let arr_neg1: i64[] = [10, 20, 30, 40, 50];
+    assert(!option_is_some(safe_get_int(arr_neg1, -1)));
 
     // Chain: get element then double it
-    let doubled_elem = option_map(safe_get_int(arr, 2), (x: i64) -> i64 { x * 2 });
+    let arr_2: i64[] = [10, 20, 30, 40, 50];
+    let doubled_elem = option_map(safe_get_int(arr_2, 2), (x: i64) -> i64 { x * 2 });
     assert(option_or(doubled_elem, -1) == 60);
 
     // ── Pair<A,B> operations ──────────────────────────────────────────────────
@@ -211,17 +228,17 @@ fun main() {
     assert(p1.second);
 
     // map_first: double the i64
-    let p2 = pair_map_first(p1, (x: i64) -> i64 { x * 2 });
+    let p2 = pair_map_first(Pair { first = 7, second = true }, (x: i64) -> i64 { x * 2 });
     assert(p2.first == 14);
     assert(p2.second);
 
     // map_second: negate the boolean
-    let p3 = pair_map_second(p1, (b: boolean) -> boolean { !b });
+    let p3 = pair_map_second(Pair { first = 7, second = true }, (b: boolean) -> boolean { !b });
     assert(p3.first  == 7);
     assert(!p3.second);
 
     // swap: Pair<i64,boolean> → Pair<boolean,i64>
-    let p4 = pair_swap(p1);
+    let p4 = pair_swap(Pair { first = 7, second = true });
     assert(p4.first);
     assert(p4.second == 7);
 
@@ -240,14 +257,30 @@ fun main() {
     ];
 
     let apples  = table_get(table, "apples");
-    let missing = table_get(table, "grapes");
+    let table_again: Pair<String, i64>[] = [
+        Pair { first = "apples",  second = 3  },
+        Pair { first = "bananas", second = 7  },
+        Pair { first = "cherries", second = 12 },
+    ];
+    let missing = table_get(table_again, "grapes");
     assert(option_or(apples,  0) == 3);
     assert(!option_is_some(missing));
 
     // Compute total of found items using and_then
-    let bananas = table_get(table, "bananas");
-    let total = option_and_then(apples, (a: i64) -> Option<i64> {
-        option_map(bananas, (b: i64) -> i64 { a + b })
+    let table_apples_again: Pair<String, i64>[] = [
+        Pair { first = "apples",  second = 3  },
+        Pair { first = "bananas", second = 7  },
+        Pair { first = "cherries", second = 12 },
+    ];
+    let apples_for_total = table_get(table_apples_again, "apples");
+    let table_third: Pair<String, i64>[] = [
+        Pair { first = "apples",  second = 3  },
+        Pair { first = "bananas", second = 7  },
+        Pair { first = "cherries", second = 12 },
+    ];
+    let bananas = table_get(table_third, "bananas");
+    let total = option_and_then(apples_for_total, (a: i64) -> Option<i64> {
+        option_map_2(bananas, (b: i64) -> i64 { a + b })
     });
     assert(option_or(total, 0) == 10);
 
@@ -257,27 +290,42 @@ fun main() {
     let first_big = find_first(nums, (x: i64) -> boolean { x > 4 });
     assert(option_or(first_big, 0) == 5);
 
-    let first_huge = find_first(nums, (x: i64) -> boolean { x > 100 });
+    let nums_huge: i64[] = [3, 1, 4, 1, 5, 9, 2, 6];
+    let first_huge = find_first(nums_huge, (x: i64) -> boolean { x > 100 });
     assert(!option_is_some(first_huge));
 
-    let evens_count = count_where(nums, (x: i64) -> boolean { x % 2 == 0 });
+    let nums_even_count: i64[] = [3, 1, 4, 1, 5, 9, 2, 6];
+    let evens_count = count_where(nums_even_count, (x: i64) -> boolean { x % 2 == 0 });
     assert(evens_count == 3);   // 4, 2, 6
 
     // ── map_array<i64, i64> and map_array<i64, boolean> ──────────────────────────
-    let doubled_arr = map_array(nums, (x: i64) -> i64 { x * 2 });
+    let nums_doubled: i64[] = [3, 1, 4, 1, 5, 9, 2, 6];
+    let doubled_arr = map_array(nums_doubled, (x: i64) -> i64 { x * 2 });
     assert(doubled_arr.len() == 8);
     assert(doubled_arr[0] == 6);
     assert(doubled_arr[4] == 10);
 
-    let above_mean: boolean[] = map_array(nums, (x: i64) -> boolean { x > 4 });
+    let nums_above_mean: i64[] = [3, 1, 4, 1, 5, 9, 2, 6];
+    let above_mean: boolean[] = map_array(nums_above_mean, (x: i64) -> boolean { x > 4 });
     assert(!above_mean[0]);   // 3 <= 4
     assert(above_mean[5]);    // 9 > 4
 
     // ── Composing combinators ─────────────────────────────────────────────────
     // find_first in an array of Pairs: locate entry with value > 5
-    let rich_entry = find_first(table, (p: Pair<String, i64>) -> boolean { p.second > 5 });
+    let table_rich: Pair<String, i64>[] = [
+        Pair { first = "apples",  second = 3  },
+        Pair { first = "bananas", second = 7  },
+        Pair { first = "cherries", second = 12 },
+    ];
+    let rich_entry = find_first(table_rich, (p: Pair<String, i64>) -> boolean { p.second > 5 });
     assert(option_is_some(rich_entry));
-    let rich_name = option_map(rich_entry, (p: Pair<String, i64>) -> String { p.first });
+    let table_rich_again: Pair<String, i64>[] = [
+        Pair { first = "apples",  second = 3  },
+        Pair { first = "bananas", second = 7  },
+        Pair { first = "cherries", second = 12 },
+    ];
+    let rich_entry_again = find_first(table_rich_again, (p: Pair<String, i64>) -> boolean { p.second > 5 });
+    let rich_name = option_map(rich_entry_again, (p: Pair<String, i64>) -> String { p.first });
     assert(option_or(rich_name, "") == "bananas");
 
     // ── braceless if throughout (re-asserted inline) ──────────────────────────

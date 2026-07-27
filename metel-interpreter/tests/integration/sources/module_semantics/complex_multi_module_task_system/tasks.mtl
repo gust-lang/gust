@@ -3,7 +3,7 @@ import types::*;
 import utils::*;
 
 public fun validate_task(title: String, priority: Priority, status: Status, effort: i64) -> Result<Task, ValidationError> {
-    if (title.len() == 0) {
+    if ((&title).len() == 0) {
         return Result::Err { error = ValidationError { message = "title cannot be empty" } };
     }
     if (effort < 0) {
@@ -36,7 +36,31 @@ public fun is_high_priority(t: Task) -> boolean {
     }
 }
 
+public fun is_high_priority_ref(t: &Task) -> boolean {
+    match t.priority {
+        Priority::High   => true,
+        Priority::Medium => false,
+        Priority::Low    => false,
+    }
+}
+
 public fun is_done(t: Task) -> boolean {
+    match t.status {
+        Status::Done       => true,
+        Status::Open       => false,
+        Status::InProgress => false,
+    }
+}
+
+public fun is_done_2(t: Task) -> boolean {
+    match t.status {
+        Status::Done       => true,
+        Status::Open       => false,
+        Status::InProgress => false,
+    }
+}
+
+public fun is_done_ref(t: &Task) -> boolean {
     match t.status {
         Status::Done       => true,
         Status::Open       => false,
