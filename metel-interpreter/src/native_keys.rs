@@ -108,6 +108,9 @@ pub enum NativeKey {
     StdCoreListLen,
     /// `List::get(self, i64) -> Perhaps<T>` — element at an index.
     StdCoreListGet,
+    /// `List::set(&mut self, i64, T) -> Perhaps<T>` — overwrite an element in place,
+    /// returning the value it replaced, or `None` if the index was out of bounds.
+    StdCoreListSet,
     /// `List::as_slice(self) -> T[]` — the backing array.
     StdCoreListAsSlice,
 
@@ -198,6 +201,7 @@ impl NativeKey {
             ["std", "core", "list_pop"] => NativeKey::StdCoreListPop,
             ["std", "core", "list_len"] => NativeKey::StdCoreListLen,
             ["std", "core", "list_get"] => NativeKey::StdCoreListGet,
+            ["std", "core", "list_set"] => NativeKey::StdCoreListSet,
             ["std", "core", "list_as_slice"] => NativeKey::StdCoreListAsSlice,
             ["std", "env", "get"] => NativeKey::StdEnvVar,
             ["std", "env", "vars"] => NativeKey::StdEnvVars,
@@ -267,6 +271,7 @@ impl NativeKey {
             NativeKey::StdCoreListPop => "@std.core.list_pop",
             NativeKey::StdCoreListLen => "@std.core.list_len",
             NativeKey::StdCoreListGet => "@std.core.list_get",
+            NativeKey::StdCoreListSet => "@std.core.list_set",
             NativeKey::StdCoreListAsSlice => "@std.core.list_as_slice",
             NativeKey::StdEnvVar => "@std.env.get",
             NativeKey::StdEnvVars => "@std.env.vars",
@@ -333,6 +338,7 @@ impl NativeKey {
         NativeKey::StdCoreListPop,
         NativeKey::StdCoreListLen,
         NativeKey::StdCoreListGet,
+        NativeKey::StdCoreListSet,
         NativeKey::StdCoreListAsSlice,
         NativeKey::StdEnvVar,
         NativeKey::StdEnvVars,

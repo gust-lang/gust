@@ -539,6 +539,22 @@ fn native_list_get(args: &[Value], _span: &crate::ast::Span) -> Result<Value, Me
     }
 }
 
+fn native_list_set(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
+    let inner = list_inner(args, "List::set")?;
+    match (args.get(1), args.get(2)) {
+        (Some(Value::I64(idx)), Some(val)) => {
+            let mut v = inner.borrow_mut();
+            if *idx >= 0 && (*idx as usize) < v.len() {
+                let old = std::mem::replace(&mut v[*idx as usize], val.clone());
+                Ok(perhaps_value(Some(old)))
+            } else {
+                Ok(perhaps_value(None))
+            }
+        }
+        _ => Err(MetelError::internal("List::set: expected (List, i64, T)")),
+    }
+}
+
 fn native_list_as_slice(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
     let inner = list_inner(args, "List::as_slice")?;
     Ok(Value::Array(inner))
@@ -800,6 +816,7 @@ pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
         NativeKey::StdCoreListPop => ("List::pop", native_list_pop),
         NativeKey::StdCoreListLen => ("List::len", native_list_len),
         NativeKey::StdCoreListGet => ("List::get", native_list_get),
+        NativeKey::StdCoreListSet => ("List::set", native_list_set),
         NativeKey::StdCoreListAsSlice => ("List::as_slice", native_list_as_slice),
         NativeKey::StdEnvVar => ("std::env::get", native_env_var),
         NativeKey::StdEnvVars => ("std::env::vars", native_env_vars),

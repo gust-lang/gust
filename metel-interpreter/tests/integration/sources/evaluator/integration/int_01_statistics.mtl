@@ -38,30 +38,29 @@ fun int_max(a: i64, b: i64) -> i64 {
 
 // ── Sorting ───────────────────────────────────────────────────────────────────
 
-fun insert_sorted(sorted: &var List<f64>, value: f64) {
-    var out: List<f64> = List::new();
-    var inserted = false;
-    let sorted_ref = &sorted;
-    for (x in sorted_ref.as_slice()) {
-        if (!inserted && value < x) {
-            out.push(value);
-            inserted = true;
-        }
-        out.push(x);
-    }
-    if (!inserted) {
-        out.push(value);
-    }
-    *sorted = out;
-}
-
-// Sort by building a fresh owned list, then borrow views from it at read sites.
+// Bubble sort, in place, over an owned List<f64> — returns a sorted copy of the
+// input. Returns List<f64> rather than f64[] because a T[] is a borrowed view
+// under RFC-0126: a function that builds its own buffer has nothing else for
+// that view to outlive.
 fun sort_floats(arr: f64[]) -> List<f64> {
-    var out: List<f64> = List::new();
-    for (x in arr) {
-        insert_sorted(&var out, x);
+    var s: List<f64> = List::from(arr);
+    let n = s.len();
+    var i = 0;
+    while (i < n) {
+        var j = 0;
+        while (j < n - i - 1) {
+            let jp1 = j + 1;
+            let a = s.get(j).unwrap_or(0.0);
+            let b = s.get(jp1).unwrap_or(0.0);
+            if (a > b) {
+                s.set(j, b);
+                s.set(jp1, a);
+            }
+            j += 1;
+        }
+        i += 1;
     }
-    out
+    s
 }
 
 // ── Searching ─────────────────────────────────────────────────────────────────

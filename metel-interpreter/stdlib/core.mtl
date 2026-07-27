@@ -240,9 +240,12 @@ extend List<T> {
     native(@std.core.list_from)     fun from(src: T[]) -> List<T>;
     native(@std.core.list_push)     fun push(&var self, x: T);
     native(@std.core.list_pop)      fun pop(&var self) -> Perhaps<T>;
-    native(@std.core.list_len)      fun len(self) -> i64;
-    native(@std.core.list_get)      fun get(self, i: i64) -> Perhaps<T>;
-    native(@std.core.list_as_slice) fun as_slice(self) -> T[];
+    native(@std.core.list_len)      fun len(&self) -> i64;
+    native(@std.core.list_get)      fun get(&self, i: i64) -> Perhaps<T>;
+    // Overwrites the element at `i`, returning the value it replaced, or `None`
+    // if `i` is out of bounds — total, like `get`, rather than panicking.
+    native(@std.core.list_set)      fun set(&var self, i: i64, value: T) -> Perhaps<T>;
+    native(@std.core.list_as_slice) fun as_slice(&self) -> T[];
 
     // ── Ergonomics (METEL-160) ──────────────────────────────────────────────
     // Eager transforms over the backing array. A lazy iterator layer is a
