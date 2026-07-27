@@ -122,6 +122,37 @@ the unit of review.
 
 Sprints are repository branches; issues track the work within them. Sprint branches still use the `sprint/<N>` convention.
 
+### Merging: Fast-Forward Only
+
+**Every merge in these repositories is a fast-forward.** That holds at every tier —
+a feature branch into `sprint/N`, `sprint/N` into `develop`, and `develop` into
+`main` at release. History stays linear, so `git log` on any branch reads as the
+order work actually landed, and `git bisect` never has to pick a parent.
+
+The consequence is that **a branch must be rebased onto its target before it can
+merge**. If the target moved while you were working, rebase the branch onto it and
+force-push *the branch* — a topic branch you own, never the target. Do not merge
+the target back into the branch to catch up: that creates exactly the merge commit
+this rule exists to prevent.
+
+`tea pr merge` cannot do this. Its `--style` accepts only `merge`, `rebase`,
+`squash`, and `rebase-merge`, and it defaults to `merge` — which is how PR #311
+produced `5d5e561`, a merge commit for a branch that was already fast-forwardable.
+Both repositories permit the style server-side, so merge a pull request through the
+API instead:
+
+```bash
+curl -sS -X POST \
+  -H "Authorization: token $(grep -oP '^\s*token:\s*\K\S+' ~/.config/tea/config.yml | head -1)" \
+  -H 'Content-Type: application/json' -d '{"Do":"fast-forward-only"}' \
+  "https://codeberg.org/api/v1/repos/metel-lang/<repo>/pulls/<index>/merge"
+```
+
+A non-fast-forwardable branch fails this call rather than silently growing a merge
+commit, which is the point. Locally, use `git merge --ff-only`; never a bare
+`git merge`, whose default is to create a commit when it cannot fast-forward
+instead of stopping.
+
 ### Starting a Sprint
 
 1. Confirm the milestone this sprint targets, and which open issues belong to it.
@@ -234,9 +265,12 @@ mode this workflow is designed against — not to re-run the sprint-close gate.
 
 ### Cutting the Release
 
-1. Merge `develop` into `main` (a real merge commit, not a rebase — `main`'s
-   history should show exactly which sprints/PRs went into each release).
-2. Tag `main` at the merge commit: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+1. Fast-forward `main` to `develop` (`git merge --ff-only develop`, per "Merging:
+   Fast-Forward Only" above). There is no release merge commit: because every
+   sprint fast-forwarded into `develop`, `main` is by construction a prefix of it,
+   and what went into a release is read off the tags bracketing the range, not off
+   a merge node.
+2. Tag `main` at its new tip: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. Create a Codeberg Release from that tag, with the release body sourced from
    the changelog section just finalized (not regenerated separately — the
    changelog is the single source of truth for release notes).
@@ -637,4 +671,5 @@ When stopping, explain what you found, the options, and the recommended path.
 - Do not close an issue with unchecked acceptance criteria.
 - Do not commit sprint work directly to `develop` or `main`.
 - Do not merge `develop` into `main` outside the Release Workflow's gate — `main` only moves at an actual release.
+- Do not create a merge commit anywhere, at any tier. Rebase the branch and fast-forward — see "Merging: Fast-Forward Only". In particular, do not reach for `tea pr merge`, whose default style is exactly the thing this forbids.
 - Do not re-introduce a synced "RFC status" field on an issue or elsewhere — the RFC file's own directory/frontmatter is the only source of truth for RFC lifecycle state (see RFC Workflow above); this is a deliberate simplification versus how Plane was used, not an oversight.
