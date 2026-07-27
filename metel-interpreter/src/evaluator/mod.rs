@@ -2608,6 +2608,16 @@ pub fn eval_expr(
             lvalue::eval_binop(op, lv, rv, span)
         }
 
+        TypedExpr::RefTemp { init, .. } => {
+            // Temporary lifetime extension: `init` has no addressable place of its
+            // own, so materialize it into a fresh, independent cell rather than
+            // sharing storage with anything — nothing else can ever reach this cell,
+            // by construction (the typechecker only emits this node for a non-lvalue
+            // operand).
+            let v = eval_expr(init, env, runtime)?.into_value();
+            Ok(Signal::Value(Value::Reference(Rc::new(RefCell::new(v)))))
+        }
+
         TypedExpr::UnaryOp(op, operand, _, span) => {
             match op {
                 // RFC-0110 §6: `&*p` is a *reborrow* — it must share the referent's

@@ -1,9 +1,0 @@
-// metel-core#280: address-of a non-place used to abort with `[I0001] internal error:
-// address-of requires an addressable lvalue`, at run time, after any side effects in the
-// surrounding statement had already run. The rule is purely syntactic on the typed AST,
-// so it was always static-determinable — it is now checked during construction.
-struct P { x: i64 }
-
-fun main() {
-    let p = &P { x = 1 }; // ERROR[T0005]
-}

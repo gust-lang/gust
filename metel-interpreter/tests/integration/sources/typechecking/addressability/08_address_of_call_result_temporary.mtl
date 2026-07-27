@@ -1,0 +1,9 @@
+// Temporary lifetime extension: a function's return value has no addressable
+// place of its own either, and is now legal to reference directly. Supersedes
+// what was neg_02_address_of_call_result.mtl.
+fun f() -> i64 { return 41; }
+
+fun main() {
+    let p: &i64 = &f();
+    assert(*p == 41);
+}

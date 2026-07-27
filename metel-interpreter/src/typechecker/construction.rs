@@ -4707,14 +4707,28 @@ fn construct_unaryop(
         // the surrounding statement had already run.
         UnaryOp::Ref | UnaryOp::RefMut => {
             if !crate::typed_ast::is_lvalue_path(&operand) {
-                let sigil = if matches!(op, UnaryOp::RefMut) { "&var" } else { "&" };
+                // `&<rvalue>` is temporary lifetime extension (matching Rust/C++:
+                // `foo(&Vec::new())`): materialize the value into a fresh, independent
+                // storage cell instead of requiring the caller to bind it to a name
+                // first. Only the shared form makes sense — a `&var` to a cell nothing
+                // else can ever observe again has no expressible effect, so `&var` on a
+                // non-lvalue stays rejected rather than gaining a matching temporary form.
+                if matches!(op, UnaryOp::Ref) {
+                    let ty = Type::Reference(Box::new(operand.ty().clone()));
+                    return Ok(TypedExpr::RefTemp {
+                        init: Box::new(operand),
+                        ty,
+                        span: span.clone(),
+                    });
+                }
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0005,
-                    format!(
-                        "`{sigil}` requires an addressable place — a binding, field, \
-                         tuple element, array element, dereference, or a chain of those; \
-                         bind the value to a name first"
-                    ),
+                    "`&var` requires an addressable place — a binding, field, tuple \
+                     element, array element, dereference, or a chain of those; a \
+                     temporary has nothing else that could ever observe the mutation, \
+                     so bind it to a name first if you need `&var` (`&` alone works on \
+                     a temporary directly)"
+                        .to_string(),
                     span,
                 ));
             }

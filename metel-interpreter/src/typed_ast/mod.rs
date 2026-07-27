@@ -326,6 +326,18 @@ pub enum TypedExpr {
     RepeatArray(Box<TypedExpr>, u64, Type, Span),
     BinOp(Box<TypedExpr>, BinOp, Box<TypedExpr>, Type, Span),
     UnaryOp(UnaryOp, Box<TypedExpr>, Type, Span),
+    /// `&<rvalue>` — a shared reference to a value with no addressable place of its
+    /// own (temporary lifetime extension, matching Rust/C++: `foo(&Vec::new())`).
+    /// `init` is materialized into a fresh, independent storage cell at evaluation
+    /// time; nothing outside this expression can ever observe or reuse that cell,
+    /// which is why only the shared form exists — `&var` to an unobservable
+    /// temporary has no expressible effect, so it stays rejected at `&var`'s
+    /// existing addressable-place check instead of getting a mutable counterpart.
+    RefTemp {
+        init: Box<TypedExpr>,
+        ty: Type,
+        span: Span,
+    },
     Assign {
         target: TypedPlace,
         op: AssignOp,
@@ -458,6 +470,7 @@ impl TypedExpr {
             | TypedExpr::RepeatArray(_, _, ty, _)
             | TypedExpr::BinOp(_, _, _, ty, _)
             | TypedExpr::UnaryOp(_, _, ty, _)
+            | TypedExpr::RefTemp { ty, .. }
             | TypedExpr::Assign { ty, .. }
             | TypedExpr::Call { ty, .. }
             | TypedExpr::MethodCall { ty, .. }
@@ -489,6 +502,7 @@ impl TypedExpr {
             | TypedExpr::RepeatArray(_, _, _, s)
             | TypedExpr::BinOp(_, _, _, _, s)
             | TypedExpr::UnaryOp(_, _, _, s)
+            | TypedExpr::RefTemp { span: s, .. }
             | TypedExpr::Assign { span: s, .. }
             | TypedExpr::Call { span: s, .. }
             | TypedExpr::MethodCall { span: s, .. }

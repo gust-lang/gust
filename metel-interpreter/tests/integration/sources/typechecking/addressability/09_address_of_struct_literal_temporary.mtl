@@ -1,0 +1,9 @@
+// Temporary lifetime extension: a freshly-constructed struct value has no
+// addressable place of its own, and is now legal to reference directly.
+// Supersedes what was neg_03_address_of_struct_literal.mtl.
+struct P { x: i64 }
+
+fun main() {
+    let p: &P = &P { x = 7 };
+    assert(p.x == 7);
+}

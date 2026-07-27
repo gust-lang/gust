@@ -292,6 +292,7 @@ fn elaborate_expr(expr: &mut TypedExpr, map: &DispatchMap) {
             elaborate_expr(rhs, map);
         }
         TypedExpr::UnaryOp(_, operand, ..) => elaborate_expr(operand, map),
+        TypedExpr::RefTemp { init, .. } => elaborate_expr(init, map),
         TypedExpr::Tuple(elems, ..) | TypedExpr::Array(elems, ..) => {
             for e in elems.iter_mut() {
                 elaborate_expr(e, map);

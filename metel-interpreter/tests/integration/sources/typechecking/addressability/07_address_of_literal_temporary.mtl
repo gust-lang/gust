@@ -1,0 +1,8 @@
+// Temporary lifetime extension (matching Rust/C++: `foo(&Vec::new())`): `&<rvalue>`
+// is now legal — the value is materialized into a fresh, independent cell instead
+// of requiring the caller to bind it to a name first. Supersedes what was
+// neg_01_address_of_literal.mtl, which tested the pre-extension rejection.
+fun main() {
+    let p: &i64 = &1;
+    assert(*p == 1);
+}

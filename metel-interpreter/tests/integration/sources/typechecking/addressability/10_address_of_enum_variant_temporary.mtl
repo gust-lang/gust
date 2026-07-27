@@ -1,0 +1,12 @@
+// Temporary lifetime extension: a freshly-constructed enum value has no
+// addressable place of its own, and is now legal to reference directly.
+// Supersedes what was neg_04_address_of_enum_variant.mtl.
+enum Colour { Red, Green }
+
+fun main() {
+    let p: &Colour = &Colour::Red;
+    match p {
+        Colour::Red => (),
+        Colour::Green => assert(false, "expected Red"),
+    };
+}

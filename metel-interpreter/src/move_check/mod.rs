@@ -358,6 +358,10 @@ impl<'a> Checker<'a> {
                 self.observe_expr(right, current_module, state);
             }
             TypedExpr::UnaryOp(_, inner, ..) => self.observe_expr(inner, current_module, state),
+            // `init`'s value is moved into the fresh cell the temporary reference
+            // wraps, the same as RepeatArray's element or a struct field's value —
+            // it is not itself a place being read, so it's consumed, not observed.
+            TypedExpr::RefTemp { init, .. } => self.consume_expr(init, current_module, state),
             TypedExpr::Assign { target, value, .. } => {
                 self.observe_typed_place(target, current_module, state);
                 self.consume_expr(value, current_module, state);
@@ -1251,7 +1255,8 @@ impl FreeRootCollector {
             TypedExpr::RepeatArray(value, ..)
             | TypedExpr::UnaryOp(_, value, ..)
             | TypedExpr::Cast { expr: value, .. }
-            | TypedExpr::SingletonCoerce { inner: value, .. } => self.expr(value),
+            | TypedExpr::SingletonCoerce { inner: value, .. }
+            | TypedExpr::RefTemp { init: value, .. } => self.expr(value),
             TypedExpr::BinOp(left, _, right, ..) => {
                 self.expr(left);
                 self.expr(right);
