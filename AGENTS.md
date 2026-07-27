@@ -331,6 +331,13 @@ So:
   fixed properly on this project, the fix surfaced further instances the review had not found.
 - **Verify before filing an issue.** An issue filed on an unchecked premise costs more to retract than
   it did to write — check the claim against the working tree first.
+- **An odd construct in the diff is a question, not a detail.** A sandboxed agent reaches for whatever
+  makes the checker pass — an explicit deref, a rewritten algorithm, a hardcoded literal standing in
+  for a computed read. Stop and ask why it was needed before moving past it: the answer is sometimes a
+  real bug worth filing (metel-core#314), sometimes a silently dropped feature (a fixture's own header
+  named "recursive functions" as covered, and the delegated fix had quietly rewritten the recursion
+  away to dodge an unrelated check). A green suite does not surface either — reading the diff does. See
+  `.claude/skills/codex-delegate/SKILL.md` §5 for the worked examples.
 
 Briefs for delegated work belong in the job's scratch directory, not the repository.
 

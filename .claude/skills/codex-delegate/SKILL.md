@@ -183,12 +183,34 @@ Read the actual diff. Then, specifically:
   possible. Those cannot have been in Codex's fixtures, because they did not exist until
   its change landed.
 - **Re-run the full suite and clippy yourself.** Do not take the report's word.
+- **A workaround-looking construct in the diff is a question, not a detail.** Codex reaches
+  for whatever makes the checker/compiler pass — an explicit deref before a method call, a
+  rewritten algorithm, a hardcoded literal standing in for a computed read. Stop and ask why
+  it was necessary before moving past it. The answer is sometimes a real bug worth filing,
+  sometimes a silently dropped feature, sometimes nothing — but a green suite doesn't tell
+  you which, and letting it pass as "just an implementation detail" is exactly how the real
+  ones stay unfiled forever.
 
 Worked example — delegating metel-core#282 (`&` on a field snapshotting instead of
 aliasing): Codex's approach and self-report were both correct, tests were green, and two
 real gaps remained. `&*r` (reborrow) re-wrapped the new value variant into a fresh cell,
 producing an internal error; and `&var *r` on a shared reference failed at run time rather
 than compile time. Both lived at the seam with the immediately-preceding RFC-0110 work.
+
+Worked example — metel-core#310 (migrating fixtures to pass under move checking): three
+findings, each found only by reading the diff rather than trusting the green suite.
+(1) A typechecking-only fixture's read-back through an array index (`table.rows[0]`) was
+replaced with a hardcoded literal — passed the checker, but silently stopped exercising the
+indexing path the fixture existed to test; invisible to `cargo test` since the fixture has
+no runtime assert to catch the drift. (2) A fixture whose own header comment named
+"recursive functions" as a covered feature had its recursive functions rewritten to
+iterative ones to dodge a move-check violation on the array argument — same silent
+feature-loss, just runtime-visible this time, so the header comment was the only clue
+something was wrong. (3) An explicit `(*arr).len()`, added purely to make a reference-typed
+array parameter compile, turned out to be masking a real, filed bug (#314): array intrinsic
+methods don't peel references through auto-deref the way struct/aspect methods do — the
+"workaround" was correct, but leaving it unquestioned would have meant the bug never got
+filed at all.
 
 ---
 
