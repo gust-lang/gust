@@ -23,14 +23,14 @@ public enum Perhaps<T> {
 
 extend Perhaps<T> {
     // True when this is `Some`.
-    public fun is_some(self) -> boolean {
+    public fun is_some(&self) -> boolean {
         match self {
             Perhaps::Some { value } => true,
             _ => false,
         }
     }
     // True when this is `None`.
-    public fun is_none(self) -> boolean {
+    public fun is_none(&self) -> boolean {
         match self {
             Perhaps::Some { value } => false,
             _ => true,
@@ -90,14 +90,14 @@ public enum Result<T, E> {
 
 extend Result<T, E> {
     // True when this is `Ok`.
-    public fun is_ok(self) -> boolean {
+    public fun is_ok(&self) -> boolean {
         match self {
             Result::Ok { value } => true,
             _ => false,
         }
     }
     // True when this is `Err`.
-    public fun is_err(self) -> boolean {
+    public fun is_err(&self) -> boolean {
         match self {
             Result::Ok { value } => false,
             _ => true,
@@ -253,7 +253,7 @@ extend List<T> {
     // iterator architecture.
 
     // Apply `f` to each element, collecting the results into a new list.
-    public fun map<U>(self, f: (T) -> U) -> List<U> {
+    public fun map<U>(&self, f: (T) -> U) -> List<U> {
         var out: List<U> = List::new();
         for (x in self.as_slice()) {
             out.push(f(x));
@@ -261,7 +261,7 @@ extend List<T> {
         out
     }
     // Keep only the elements for which `pred` holds.
-    public fun filter(self, pred: (T) -> boolean) -> List<T> {
+    public fun filter(&self, pred: (T) -> boolean) -> List<T> {
         var out: List<T> = List::new();
         for (x in self.as_slice()) {
             if (pred(x)) {
@@ -271,7 +271,7 @@ extend List<T> {
         out
     }
     // Reduce the list to a single value, left to right.
-    public fun fold<A>(self, init: A, f: (A, T) -> A) -> A {
+    public fun fold<A>(&self, init: A, f: (A, T) -> A) -> A {
         var acc = init;
         for (x in self.as_slice()) {
             acc = f(acc, x);
@@ -279,7 +279,7 @@ extend List<T> {
         acc
     }
     // The first element satisfying `pred`, or `None`.
-    public fun find(self, pred: (T) -> boolean) -> Perhaps<T> {
+    public fun find(&self, pred: (T) -> boolean) -> Perhaps<T> {
         for (x in self.as_slice()) {
             if (pred(x)) {
                 return Perhaps::Some { value = x };
@@ -288,7 +288,7 @@ extend List<T> {
         Perhaps::None
     }
     // A new list with this list's elements followed by `other`'s.
-    public fun concat(self, other: List<T>) -> List<T> {
+    public fun concat(&self, other: &List<T>) -> List<T> {
         var out: List<T> = List::new();
         for (x in self.as_slice()) {
             out.push(x);
@@ -306,39 +306,39 @@ extend String {
     // Number of characters (Unicode scalar values), not bytes. All index-based
     // string operations below are likewise in Unicode scalars, and are total:
     // out-of-range indices clamp or yield `None` rather than panicking.
-    native(@std.core.string_len) fun len(self) -> i64;
+    native(@std.core.string_len) fun len(&self) -> i64;
 
     // ── Case & trim ─────────────────────────────────────────────────────────
-    native(@std.core.string_to_upper)   fun to_upper(self) -> String;
-    native(@std.core.string_to_lower)   fun to_lower(self) -> String;
-    native(@std.core.string_trim)       fun trim(self) -> String;
-    native(@std.core.string_trim_start) fun trim_start(self) -> String;
-    native(@std.core.string_trim_end)   fun trim_end(self) -> String;
+    native(@std.core.string_to_upper)   fun to_upper(&self) -> String;
+    native(@std.core.string_to_lower)   fun to_lower(&self) -> String;
+    native(@std.core.string_trim)       fun trim(&self) -> String;
+    native(@std.core.string_trim_start) fun trim_start(&self) -> String;
+    native(@std.core.string_trim_end)   fun trim_end(&self) -> String;
     // True when the string has no characters.
-    native(@std.core.string_is_empty)   fun is_empty(self) -> boolean;
+    native(@std.core.string_is_empty)   fun is_empty(&self) -> boolean;
 
     // ── Search & test ───────────────────────────────────────────────────────
-    native(@std.core.string_contains)    fun contains(self, needle: String) -> boolean;
-    native(@std.core.string_starts_with) fun starts_with(self, prefix: String) -> boolean;
-    native(@std.core.string_ends_with)   fun ends_with(self, suffix: String) -> boolean;
+    native(@std.core.string_contains)    fun contains(&self, needle: String) -> boolean;
+    native(@std.core.string_starts_with) fun starts_with(&self, prefix: String) -> boolean;
+    native(@std.core.string_ends_with)   fun ends_with(&self, suffix: String) -> boolean;
     // Scalar index of the first occurrence of `needle`, or `None`.
-    native(@std.core.string_index_of)    fun index_of(self, needle: String) -> Perhaps<i64>;
+    native(@std.core.string_index_of)    fun index_of(&self, needle: String) -> Perhaps<i64>;
 
     // ── Split, join, replace ────────────────────────────────────────────────
     // Split on every occurrence of `sep`. An empty `sep` yields the whole string.
-    native(@std.core.string_split)   fun split(self, sep: String) -> String[];
-    native(@std.core.string_replace) fun replace(self, from: String, to: String) -> String;
+    native(@std.core.string_split)   fun split(&self, sep: String) -> String[];
+    native(@std.core.string_replace) fun replace(&self, from: String, to: String) -> String;
     // Repeat the string `n` times (`n <= 0` yields the empty string).
-    native(@std.core.string_repeat)  fun repeat(self, n: i64) -> String;
+    native(@std.core.string_repeat)  fun repeat(&self, n: i64) -> String;
     // Concatenate `parts` with `sep` between each element.
     native(@std.core.string_join)    fun join(parts: String[], sep: String) -> String;
 
     // ── Chars & slicing ─────────────────────────────────────────────────────
-    native(@std.core.string_chars)     fun chars(self) -> Char[];
+    native(@std.core.string_chars)     fun chars(&self) -> Char[];
     // The character at scalar index `i`, or `None` if out of range.
-    native(@std.core.string_char_at)   fun char_at(self, i: i64) -> Perhaps<Char>;
+    native(@std.core.string_char_at)   fun char_at(&self, i: i64) -> Perhaps<Char>;
     // The substring over the scalar range [start, end), with indices clamped.
-    native(@std.core.string_substring) fun substring(self, start: i64, end: i64) -> String;
+    native(@std.core.string_substring) fun substring(&self, start: i64, end: i64) -> String;
 }
 
 // ── Free functions ──────────────────────────────────────────────────────────

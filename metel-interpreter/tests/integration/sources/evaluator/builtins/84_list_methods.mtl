@@ -32,7 +32,8 @@ fun main() {
     assert((&xs).find((x: i64) -> boolean { x > 99 }).is_none());
 
     // concat
-    let joined = (&xs).concat(List::from([6, 7]));
+    let extra = List::from([6, 7]);
+    let joined = (&xs).concat(&extra);
     assert((&joined).len() == 7);
     assert((&joined).get(5).unwrap_or(0) == 6);
     assert((&joined).get(6).unwrap_or(0) == 7);
