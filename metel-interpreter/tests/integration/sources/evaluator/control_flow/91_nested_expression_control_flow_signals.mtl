@@ -1,0 +1,291 @@
+struct Pair { first: i64, second: i64 }
+
+fun id(x: i64) -> i64 { x }
+
+fun return_in_binop() -> i64 {
+    let value = 1 + (return 7);
+    0
+}
+
+fun return_in_call_arg() -> i64 {
+    let value = id(return 7);
+    0
+}
+
+fun return_in_array_elem() -> i64 {
+    let value = [return 7, 1];
+    0
+}
+
+fun return_in_tuple_elem() -> i64 {
+    let value = (return 7, 1);
+    0
+}
+
+fun return_in_struct_field() -> i64 {
+    let value = Pair { first = return 7, second = 1 };
+    0
+}
+
+fun return_in_unary_operand() -> i64 {
+    let value = -(return 7);
+    0
+}
+
+fun return_in_match_scrutinee() -> i64 {
+    let value = match (return 7) {
+        _ => 0,
+    };
+    0
+}
+
+fun return_in_if_condition() -> i64 {
+    let value = if (return 7) { 1 } else { 0 };
+    0
+}
+
+fun return_in_let_initializer() -> i64 {
+    let value = return 7;
+    0
+}
+
+fun break_in_binop() -> i64 {
+    loop {
+        let value = 1 + (break 7);
+    }
+}
+
+fun break_in_call_arg() -> i64 {
+    loop {
+        let value = id(break 7);
+    }
+}
+
+fun break_in_array_elem() -> i64 {
+    loop {
+        let value = [break 7, 1];
+    }
+}
+
+fun break_in_tuple_elem() -> i64 {
+    loop {
+        let value = (break 7, 1);
+    }
+}
+
+fun break_in_struct_field() -> i64 {
+    loop {
+        let value = Pair { first = break 7, second = 1 };
+    }
+}
+
+fun break_in_unary_operand() -> i64 {
+    loop {
+        let value = -(break 7);
+    }
+}
+
+fun break_in_match_scrutinee() -> i64 {
+    loop {
+        let value = match (break 7) {
+            _ => 0,
+        };
+    }
+}
+
+fun break_in_if_condition() -> i64 {
+    loop {
+        let value = if (break 7) { 1 } else { 0 };
+    }
+}
+
+fun break_in_let_initializer() -> i64 {
+    loop {
+        let value = break 7;
+    }
+}
+
+fun continue_in_binop() -> i64 {
+    var i = 0;
+    var hits = 0;
+    loop {
+        i += 1;
+        if (i < 3) {
+            let value = 1 + (continue);
+        }
+        hits += 1;
+        if (i == 3) { break hits; }
+    }
+}
+
+fun continue_in_call_arg() -> i64 {
+    var i = 0;
+    var hits = 0;
+    loop {
+        i += 1;
+        if (i < 3) {
+            let value = id(continue);
+        }
+        hits += 1;
+        if (i == 3) { break hits; }
+    }
+}
+
+fun continue_in_array_elem() -> i64 {
+    var i = 0;
+    var hits = 0;
+    loop {
+        i += 1;
+        if (i < 3) {
+            let value = [continue, 1];
+        }
+        hits += 1;
+        if (i == 3) { break hits; }
+    }
+}
+
+fun continue_in_tuple_elem() -> i64 {
+    var i = 0;
+    var hits = 0;
+    loop {
+        i += 1;
+        if (i < 3) {
+            let value = (continue, 1);
+        }
+        hits += 1;
+        if (i == 3) { break hits; }
+    }
+}
+
+fun continue_in_struct_field() -> i64 {
+    var i = 0;
+    var hits = 0;
+    loop {
+        i += 1;
+        if (i < 3) {
+            let value = Pair { first = continue, second = 1 };
+        }
+        hits += 1;
+        if (i == 3) { break hits; }
+    }
+}
+
+fun continue_in_unary_operand() -> i64 {
+    var i = 0;
+    var hits = 0;
+    loop {
+        i += 1;
+        if (i < 3) {
+            let value = -(continue);
+        }
+        hits += 1;
+        if (i == 3) { break hits; }
+    }
+}
+
+fun continue_in_match_scrutinee() -> i64 {
+    var i = 0;
+    var hits = 0;
+    loop {
+        i += 1;
+        if (i < 3) {
+            let value = match (continue) {
+                _ => 0,
+            };
+        }
+        hits += 1;
+        if (i == 3) { break hits; }
+    }
+}
+
+fun continue_in_if_condition() -> i64 {
+    var i = 0;
+    var hits = 0;
+    loop {
+        i += 1;
+        if (i < 3) {
+            let value = if (continue) { 1 } else { 0 };
+        }
+        hits += 1;
+        if (i == 3) { break hits; }
+    }
+}
+
+fun continue_in_let_initializer() -> i64 {
+    var i = 0;
+    var hits = 0;
+    loop {
+        i += 1;
+        if (i < 3) {
+            let value = continue;
+        }
+        hits += 1;
+        if (i == 3) { break hits; }
+    }
+}
+
+// A signal raised from a nested expression position must bind to the *innermost*
+// enclosing loop, exactly as a statement-position one does. Every other case here
+// uses a single loop, so nothing above would catch a propagation that unwound one
+// level too far.
+fun inner_break_binds_inner_loop() -> i64 {
+    var outer = 0;
+    var n = 0;
+    loop {
+        n += 1;
+        loop { let k = 1 + (break 0); }
+        outer += 1;
+        if (n == 3) { break outer; }
+    }
+}
+
+fun inner_continue_binds_inner_loop() -> i64 {
+    var outer = 0;
+    var n = 0;
+    loop {
+        n += 1;
+        var j = 0;
+        loop {
+            j += 1;
+            if (j < 3) { let v = 1 + (continue); }
+            break 0;
+        }
+        outer += j;
+        if (n == 2) { break outer; }
+    }
+}
+
+fun main() {
+    assert(return_in_binop() == 7);
+    assert(return_in_call_arg() == 7);
+    assert(return_in_array_elem() == 7);
+    assert(return_in_tuple_elem() == 7);
+    assert(return_in_struct_field() == 7);
+    assert(return_in_unary_operand() == 7);
+    assert(return_in_match_scrutinee() == 7);
+    assert(return_in_if_condition() == 7);
+    assert(return_in_let_initializer() == 7);
+
+    assert(break_in_binop() == 7);
+    assert(break_in_call_arg() == 7);
+    assert(break_in_array_elem() == 7);
+    assert(break_in_tuple_elem() == 7);
+    assert(break_in_struct_field() == 7);
+    assert(break_in_unary_operand() == 7);
+    assert(break_in_match_scrutinee() == 7);
+    assert(break_in_if_condition() == 7);
+    assert(break_in_let_initializer() == 7);
+
+    assert(continue_in_binop() == 1);
+    assert(continue_in_call_arg() == 1);
+    assert(continue_in_array_elem() == 1);
+    assert(continue_in_tuple_elem() == 1);
+    assert(continue_in_struct_field() == 1);
+    assert(continue_in_unary_operand() == 1);
+    assert(continue_in_match_scrutinee() == 1);
+    assert(continue_in_if_condition() == 1);
+    assert(continue_in_let_initializer() == 1);
+
+    assert(inner_break_binds_inner_loop() == 3);
+    assert(inner_continue_binds_inner_loop() == 6);
+}
