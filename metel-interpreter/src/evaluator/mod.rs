@@ -10,6 +10,7 @@ mod type_of;
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
+use std::ops::ControlFlow;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -589,10 +590,7 @@ impl RuntimeRegistry {
         let entries = self.pattern_aspect_methods.entry(pattern).or_default();
         let aspect_name = aspect_name.into();
         let method_name = method_name.into();
-        if let Some(existing) = entries
-            .iter_mut()
-            .find(|ai| ai.aspect_name == aspect_name)
-        {
+        if let Some(existing) = entries.iter_mut().find(|ai| ai.aspect_name == aspect_name) {
             if existing.aspect_id.is_none() {
                 existing.aspect_id = aspect_id;
             }
@@ -865,15 +863,13 @@ fn read_path(root: &Value, path: &[PathSegment], span: &Span) -> Result<Value, M
                 Value::Record { fields }
                 | Value::Struct { fields, .. }
                 | Value::Enum { fields, .. },
-            ) => {
-                fields.get(f.as_str()).cloned().ok_or_else(|| {
-                    MetelError::panic(
-                        RuntimeErrorCode::R0008,
-                        format!("fat pointer: no field `{f}`"),
-                        span,
-                    )
-                })?
-            }
+            ) => fields.get(f.as_str()).cloned().ok_or_else(|| {
+                MetelError::panic(
+                    RuntimeErrorCode::R0008,
+                    format!("fat pointer: no field `{f}`"),
+                    span,
+                )
+            })?,
             (PathSegment::TupleIndex(i), Value::Tuple(elems)) => {
                 elems.get(*i).cloned().ok_or_else(|| {
                     MetelError::panic(
@@ -1191,22 +1187,34 @@ fn build_mut_path(
     env: &mut Environment,
     runtime: &RuntimeRegistry,
     span: &Span,
-) -> Result<(String, Vec<PathSegment>), MetelError> {
+) -> Result<ControlFlow<Signal, (String, Vec<PathSegment>)>, MetelError> {
     match expr {
-        TypedExpr::Ident(name, _, _) => Ok((name.clone(), vec![])),
+        TypedExpr::Ident(name, _, _) => Ok(ControlFlow::Continue((name.clone(), vec![]))),
         TypedExpr::FieldAccess { object, field, .. } => {
-            let (root, mut path) = build_mut_path(object, env, runtime, span)?;
+            let (root, mut path) = match build_mut_path(object, env, runtime, span)? {
+                ControlFlow::Continue(path) => path,
+                ControlFlow::Break(signal) => return Ok(ControlFlow::Break(signal)),
+            };
             path.push(PathSegment::Field(field.clone()));
-            Ok((root, path))
+            Ok(ControlFlow::Continue((root, path)))
         }
         TypedExpr::TupleAccess { object, index, .. } => {
-            let (root, mut path) = build_mut_path(object, env, runtime, span)?;
+            let (root, mut path) = match build_mut_path(object, env, runtime, span)? {
+                ControlFlow::Continue(path) => path,
+                ControlFlow::Break(signal) => return Ok(ControlFlow::Break(signal)),
+            };
             path.push(PathSegment::TupleIndex(*index));
-            Ok((root, path))
+            Ok(ControlFlow::Continue((root, path)))
         }
         TypedExpr::Index { object, index, .. } => {
-            let (root, mut path) = build_mut_path(object, env, runtime, span)?;
-            let idx_val = eval_expr(index, env, runtime)?.into_value();
+            let (root, mut path) = match build_mut_path(object, env, runtime, span)? {
+                ControlFlow::Continue(path) => path,
+                ControlFlow::Break(signal) => return Ok(ControlFlow::Break(signal)),
+            };
+            let idx_val = match eval_to_value(index, env, runtime)? {
+                ControlFlow::Continue(value) => value,
+                ControlFlow::Break(signal) => return Ok(ControlFlow::Break(signal)),
+            };
             let i = match idx_val {
                 Value::I64(n) if n >= 0 => n as usize,
                 Value::U64(n) => n as usize,
@@ -1219,7 +1227,7 @@ fn build_mut_path(
                 }
             };
             path.push(PathSegment::ArrayIndex(i));
-            Ok((root, path))
+            Ok(ControlFlow::Continue((root, path)))
         }
         _ => Err(MetelError::internal("build_mut_path: not a lvalue path")),
     }
@@ -1250,6 +1258,21 @@ impl Signal {
             other => panic!("Signal::into_value called on non-Value signal: {other:?}"),
         }
     }
+
+    pub fn into_value_or_signal(self) -> ControlFlow<Signal, Value> {
+        match self {
+            Signal::Value(v) => ControlFlow::Continue(v),
+            other => ControlFlow::Break(other),
+        }
+    }
+}
+
+fn eval_to_value(
+    expr: &TypedExpr,
+    env: &mut Environment,
+    runtime: &RuntimeRegistry,
+) -> Result<ControlFlow<Signal, Value>, MetelError> {
+    Ok(eval_expr(expr, env, runtime)?.into_value_or_signal())
 }
 
 // ── Environment ───────────────────────────────────────────────────────────────
@@ -1925,11 +1948,17 @@ pub fn eval_stmt(
             if let Some(init) = &f.init {
                 match init {
                     TypedForInit::Let(d) => {
-                        let val = eval_expr(&d.value, env, runtime)?.into_value();
+                        let val = match eval_to_value(&d.value, env, runtime)? {
+                            ControlFlow::Continue(value) => value,
+                            ControlFlow::Break(signal) => return Ok(signal),
+                        };
                         env.define(&d.name, val);
                     }
                     TypedForInit::Mut(d) => {
-                        let val = eval_expr(&d.value, env, runtime)?.into_value();
+                        let val = match eval_to_value(&d.value, env, runtime)? {
+                            ControlFlow::Continue(value) => value,
+                            ControlFlow::Break(signal) => return Ok(signal),
+                        };
                         env.define(&d.name, val);
                     }
                     TypedForInit::Expr(e) => {
@@ -1964,7 +1993,10 @@ pub fn eval_stmt(
         }
 
         TypedStmt::ForIn(fi) => {
-            let iterable = eval_expr(&fi.iterable, env, runtime)?.into_value();
+            let iterable = match eval_to_value(&fi.iterable, env, runtime)? {
+                ControlFlow::Continue(value) => value,
+                ControlFlow::Break(signal) => return Ok(signal),
+            };
             eval_for_in(
                 &fi.binding,
                 fi.mutable,
@@ -2117,7 +2149,10 @@ fn eval_assign_expr(
 ) -> Result<Signal, MetelError> {
     use crate::typed_ast::TypedPlace;
 
-    let rhs = eval_expr(value, env, runtime)?.into_value();
+    let rhs = match eval_to_value(value, env, runtime)? {
+        ControlFlow::Continue(value) => value,
+        ControlFlow::Break(signal) => return Ok(signal),
+    };
     match target {
         TypedPlace::Ident(name, ident_span) => {
             let new_val = if matches!(op, crate::ast::AssignOp::Assign) {
@@ -2146,7 +2181,10 @@ fn eval_assign_expr(
             object,
             span: tspan,
         } => {
-            let ptr = eval_expr(object, env, runtime)?.into_value();
+            let ptr = match eval_to_value(object, env, runtime)? {
+                ControlFlow::Continue(value) => value,
+                ControlFlow::Break(signal) => return Ok(signal),
+            };
             match ptr {
                 Value::Reference(rc) | Value::MutReference(rc) => {
                     let new_val = if matches!(op, crate::ast::AssignOp::Assign) {
@@ -2187,7 +2225,10 @@ fn eval_assign_expr(
             // Pass 1 now performs. `Value::Array` holds an `Rc<RefCell<Vec<_>>>`, so the
             // peeled value shares the same backing store and writes propagate.
             let arr_val = deref_value(&raw_arr_val, tspan)?.unwrap_or(raw_arr_val);
-            let idx_val = eval_expr(index, env, runtime)?.into_value();
+            let idx_val = match eval_to_value(index, env, runtime)? {
+                ControlFlow::Continue(value) => value,
+                ControlFlow::Break(signal) => return Ok(signal),
+            };
             let i = match idx_val {
                 Value::U64(u) => u as usize,
                 _ => {
@@ -2254,7 +2295,11 @@ fn eval_struct_literal_expr(
 ) -> Result<Signal, MetelError> {
     let mut field_vals: HashMap<String, Value> = HashMap::new();
     for (name, expr) in fields {
-        field_vals.insert(name.clone(), eval_expr(expr, env, runtime)?.into_value());
+        let value = match eval_to_value(expr, env, runtime)? {
+            ControlFlow::Continue(value) => value,
+            ControlFlow::Break(signal) => return Ok(signal),
+        };
+        field_vals.insert(name.clone(), value);
     }
     if path.len() == 2 {
         Ok(Signal::Value(Value::Enum {
@@ -2288,11 +2333,18 @@ fn eval_method_call_expr(
     env: &mut Environment,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
-    let recv_val = eval_expr(receiver, env, runtime)?.into_value();
-    let arg_vals: Vec<Value> = args
-        .iter()
-        .map(|a| eval_expr(a, env, runtime).map(Signal::into_value))
-        .collect::<Result<_, _>>()?;
+    let recv_val = match eval_to_value(receiver, env, runtime)? {
+        ControlFlow::Continue(value) => value,
+        ControlFlow::Break(signal) => return Ok(signal),
+    };
+    let mut arg_vals = Vec::with_capacity(args.len());
+    for arg in args {
+        let value = match eval_to_value(arg, env, runtime)? {
+            ControlFlow::Continue(value) => value,
+            ControlFlow::Break(signal) => return Ok(signal),
+        };
+        arg_vals.push(value);
+    }
     // metel-core#286: exact static argument types from the typed nodes, for a generic
     // body constructed at call time.
     let static_arg_tys: Vec<crate::types::Type> = args.iter().map(|a| a.ty().clone()).collect();
@@ -2307,8 +2359,9 @@ fn eval_method_call_expr(
                 // Structural receivers (arrays/tuples/etc.) have no type_id, so
                 // `resolve_value_type_id` above is always `None` for them --
                 // check the pattern-keyed aspect table instead (issue #272).
-                runtime_type_pattern(&recv_type_view)
-                    .and_then(|pattern| runtime.get_pattern_aspect_method_by_id(&pattern, *aspect_id, method))
+                runtime_type_pattern(&recv_type_view).and_then(|pattern| {
+                    runtime.get_pattern_aspect_method_by_id(&pattern, *aspect_id, method)
+                })
             })
             .or_else(|| runtime.get_method_for_value(&recv_type_view, method)),
         MethodDispatch::Inherent | MethodDispatch::Dynamic => {
@@ -2362,8 +2415,7 @@ fn eval_method_call_expr(
                     .unwrap_or(call::ReceiverBinding::Value(recv_type_view.clone())),
             };
 
-            let result =
-                call::call_method_function(
+            let result = call::call_method_function(
                 func,
                 receiver_binding,
                 arg_vals,
@@ -2428,19 +2480,29 @@ fn eval_call_expr(
                     "no runtime value registered for overload symbol {id:?}"
                 )));
             }
-            None if runtime.is_let_mut_def_id(id) => eval_expr(callee, env, runtime)?.into_value(),
+            None if runtime.is_let_mut_def_id(id) => match eval_to_value(callee, env, runtime)? {
+                ControlFlow::Continue(value) => value,
+                ControlFlow::Break(signal) => return Ok(signal),
+            },
             None => {
                 return Err(MetelError::internal(format!(
                     "no runtime value registered for callable symbol {id:?}"
                 )));
             }
         },
-        None => eval_expr(callee, env, runtime)?.into_value(),
+        None => match eval_to_value(callee, env, runtime)? {
+            ControlFlow::Continue(value) => value,
+            ControlFlow::Break(signal) => return Ok(signal),
+        },
     };
-    let arg_vals: Vec<Value> = args
-        .iter()
-        .map(|a| eval_expr(a, env, runtime).map(Signal::into_value))
-        .collect::<Result<_, _>>()?;
+    let mut arg_vals = Vec::with_capacity(args.len());
+    for arg in args {
+        let value = match eval_to_value(arg, env, runtime)? {
+            ControlFlow::Continue(value) => value,
+            ControlFlow::Break(signal) => return Ok(signal),
+        };
+        arg_vals.push(value);
+    }
     // metel-core#286: the typed argument nodes already carry their exact static types.
     // Hand them down so a generic body constructed at call time does not have to
     // re-derive them from runtime values, which loses precision an empty collection
@@ -2553,7 +2615,11 @@ pub fn eval_expr(
         TypedExpr::Tuple(elems, _, _) => {
             let mut vals = Vec::with_capacity(elems.len());
             for e in elems {
-                vals.push(eval_expr(e, env, runtime)?.into_value());
+                let value = match eval_to_value(e, env, runtime)? {
+                    ControlFlow::Continue(value) => value,
+                    ControlFlow::Break(signal) => return Ok(signal),
+                };
+                vals.push(value);
             }
             Ok(Signal::Value(Value::Tuple(vals)))
         }
@@ -2561,7 +2627,11 @@ pub fn eval_expr(
         TypedExpr::Array(elems, _, _) => {
             let mut vals = Vec::with_capacity(elems.len());
             for e in elems {
-                vals.push(eval_expr(e, env, runtime)?.into_value());
+                let value = match eval_to_value(e, env, runtime)? {
+                    ControlFlow::Continue(value) => value,
+                    ControlFlow::Break(signal) => return Ok(signal),
+                };
+                vals.push(value);
             }
             Ok(Signal::Value(Value::Array(Rc::new(RefCell::new(vals)))))
         }
@@ -2569,13 +2639,20 @@ pub fn eval_expr(
         TypedExpr::RecordLiteral { fields, .. } => {
             let mut values = HashMap::with_capacity(fields.len());
             for (name, expr) in fields {
-                values.insert(name.clone(), eval_expr(expr, env, runtime)?.into_value());
+                let value = match eval_to_value(expr, env, runtime)? {
+                    ControlFlow::Continue(value) => value,
+                    ControlFlow::Break(signal) => return Ok(signal),
+                };
+                values.insert(name.clone(), value);
             }
             Ok(Signal::Value(Value::Record { fields: values }))
         }
 
         TypedExpr::RepeatArray(elem, n, _, _) => {
-            let val = eval_expr(elem, env, runtime)?.into_value();
+            let val = match eval_to_value(elem, env, runtime)? {
+                ControlFlow::Continue(value) => value,
+                ControlFlow::Break(signal) => return Ok(signal),
+            };
             let vals = (0..*n).map(|_| val.clone()).collect::<Vec<_>>();
             Ok(Signal::Value(Value::Array(Rc::new(RefCell::new(vals)))))
         }
@@ -2583,7 +2660,10 @@ pub fn eval_expr(
         TypedExpr::BinOp(lhs, op, rhs, _, span) => {
             // Short-circuit logical ops before evaluating rhs.
             if matches!(op, BinOp::And) {
-                let l = eval_expr(lhs, env, runtime)?.into_value();
+                let l = match eval_to_value(lhs, env, runtime)? {
+                    ControlFlow::Continue(value) => value,
+                    ControlFlow::Break(signal) => return Ok(signal),
+                };
                 return match l {
                     Value::Boolean(false) => Ok(Signal::Value(Value::Boolean(false))),
                     Value::Boolean(true) => eval_expr(rhs, env, runtime),
@@ -2593,7 +2673,10 @@ pub fn eval_expr(
                 };
             }
             if matches!(op, BinOp::Or) {
-                let l = eval_expr(lhs, env, runtime)?.into_value();
+                let l = match eval_to_value(lhs, env, runtime)? {
+                    ControlFlow::Continue(value) => value,
+                    ControlFlow::Break(signal) => return Ok(signal),
+                };
                 return match l {
                     Value::Boolean(true) => Ok(Signal::Value(Value::Boolean(true))),
                     Value::Boolean(false) => eval_expr(rhs, env, runtime),
@@ -2603,8 +2686,14 @@ pub fn eval_expr(
                 };
             }
 
-            let lv = eval_expr(lhs, env, runtime)?.into_value();
-            let rv = eval_expr(rhs, env, runtime)?.into_value();
+            let lv = match eval_to_value(lhs, env, runtime)? {
+                ControlFlow::Continue(value) => value,
+                ControlFlow::Break(signal) => return Ok(signal),
+            };
+            let rv = match eval_to_value(rhs, env, runtime)? {
+                ControlFlow::Continue(value) => value,
+                ControlFlow::Break(signal) => return Ok(signal),
+            };
             lvalue::eval_binop(op, lv, rv, span)
         }
 
@@ -2641,7 +2730,11 @@ pub fn eval_expr(
                     if matches!(&**operand, TypedExpr::UnaryOp(UnaryOp::Deref, ..)) =>
                 {
                     let TypedExpr::UnaryOp(_, inner, _, _) = &**operand else { unreachable!() };
-                    return match eval_expr(inner, env, runtime)?.into_value() {
+                    let inner = match eval_to_value(inner, env, runtime)? {
+                        ControlFlow::Continue(value) => value,
+                        ControlFlow::Break(signal) => return Ok(signal),
+                    };
+                    return match inner {
                         Value::Reference(rc) | Value::MutReference(rc) => {
                             Ok(Signal::Value(Value::Reference(rc)))
                         }
@@ -2661,7 +2754,11 @@ pub fn eval_expr(
                     if matches!(&**operand, TypedExpr::UnaryOp(UnaryOp::Deref, ..)) =>
                 {
                     let TypedExpr::UnaryOp(_, inner, _, _) = &**operand else { unreachable!() };
-                    return match eval_expr(inner, env, runtime)?.into_value() {
+                    let inner = match eval_to_value(inner, env, runtime)? {
+                        ControlFlow::Continue(value) => value,
+                        ControlFlow::Break(signal) => return Ok(signal),
+                    };
+                    return match inner {
                         Value::MutReference(rc) => Ok(Signal::Value(Value::MutReference(rc))),
                         Value::MutFieldReference { root, path } => {
                             Ok(Signal::Value(Value::MutFieldReference { root, path }))
@@ -2678,7 +2775,10 @@ pub fn eval_expr(
                         .map(|rc| Signal::Value(Value::Reference(rc)))
                         .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0003, format!("undefined variable `{name}`"), span)),
                     other if is_lvalue_path_typed(other) => {
-                        let (root_name, path) = build_mut_path(other, env, runtime, span)?;
+                        let (root_name, path) = match build_mut_path(other, env, runtime, span)? {
+                            ControlFlow::Continue(path) => path,
+                            ControlFlow::Break(signal) => return Ok(signal),
+                        };
                         let root = env.get_rc(&root_name).ok_or_else(|| MetelError::panic(
                             RuntimeErrorCode::R0003, format!("undefined variable `{root_name}`"), span))?;
                         Ok(Signal::Value(Value::FieldReference { root, path }))
@@ -2690,7 +2790,10 @@ pub fn eval_expr(
                         .map(|rc| Signal::Value(Value::MutReference(rc)))
                         .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0003, format!("undefined variable `{name}`"), span)),
                     other if is_lvalue_path_typed(other) => {
-                        let (root_name, path) = build_mut_path(other, env, runtime, span)?;
+                        let (root_name, path) = match build_mut_path(other, env, runtime, span)? {
+                            ControlFlow::Continue(path) => path,
+                            ControlFlow::Break(signal) => return Ok(signal),
+                        };
                         let root = env.get_rc(&root_name).ok_or_else(|| MetelError::panic(
                             RuntimeErrorCode::R0003, format!("undefined variable `{root_name}`"), span))?;
                         Ok(Signal::Value(Value::MutFieldReference { root, path }))
@@ -2699,39 +2802,42 @@ pub fn eval_expr(
                 },
                 _ => {}
             }
-            let v = eval_expr(operand, env, runtime)?.into_value();
-            let result =
-                match (op, v) {
-                    (UnaryOp::Neg, Value::I64(n)) => Value::I64(n.wrapping_neg()),
-                    (UnaryOp::Neg, Value::I8(n)) => Value::I8(n.wrapping_neg()),
-                    (UnaryOp::Neg, Value::I16(n)) => Value::I16(n.wrapping_neg()),
-                    (UnaryOp::Neg, Value::I32(n)) => Value::I32(n.wrapping_neg()),
-                    (UnaryOp::Neg, Value::F64(f)) => Value::F64(-f),
-                    (UnaryOp::Neg, Value::F32(f)) => Value::F32(-f),
-                    (UnaryOp::Not, Value::Boolean(b)) => Value::Boolean(!b),
-                    (UnaryOp::Deref, Value::Reference(rc) | Value::MutReference(rc)) => {
-                        rc.borrow().clone()
-                    }
-                    (UnaryOp::Deref,
-Value::FieldReference { root, path } | Value::MutFieldReference { root, path
-}) => {
-                        read_path(&root.borrow(), &path, span)?
-                    }
-                    (UnaryOp::Neg, _) => return Err(MetelError::internal(
+            let v = match eval_to_value(operand, env, runtime)? {
+                ControlFlow::Continue(value) => value,
+                ControlFlow::Break(signal) => return Ok(signal),
+            };
+            let result = match (op, v) {
+                (UnaryOp::Neg, Value::I64(n)) => Value::I64(n.wrapping_neg()),
+                (UnaryOp::Neg, Value::I8(n)) => Value::I8(n.wrapping_neg()),
+                (UnaryOp::Neg, Value::I16(n)) => Value::I16(n.wrapping_neg()),
+                (UnaryOp::Neg, Value::I32(n)) => Value::I32(n.wrapping_neg()),
+                (UnaryOp::Neg, Value::F64(f)) => Value::F64(-f),
+                (UnaryOp::Neg, Value::F32(f)) => Value::F32(-f),
+                (UnaryOp::Not, Value::Boolean(b)) => Value::Boolean(!b),
+                (UnaryOp::Deref, Value::Reference(rc) | Value::MutReference(rc)) => {
+                    rc.borrow().clone()
+                }
+                (
+                    UnaryOp::Deref,
+                    Value::FieldReference { root, path } | Value::MutFieldReference { root, path },
+                ) => read_path(&root.borrow(), &path, span)?,
+                (UnaryOp::Neg, _) => {
+                    return Err(MetelError::internal(
                         "unary `-`: expected numeric type (typechecker should have caught this)",
-                    )),
-                    (UnaryOp::Not, _) => {
-                        return Err(MetelError::internal(
-                            "unary `!`: expected boolean (typechecker should have caught this)",
-                        ))
-                    }
-                    (UnaryOp::Deref, _) => {
-                        return Err(MetelError::internal(
-                            "unary `*`: expected pointer (typechecker should have caught this)",
-                        ))
-                    }
-                    _ => unreachable!("Ref/RefMut handled above"),
-                };
+                    ))
+                }
+                (UnaryOp::Not, _) => {
+                    return Err(MetelError::internal(
+                        "unary `!`: expected boolean (typechecker should have caught this)",
+                    ))
+                }
+                (UnaryOp::Deref, _) => {
+                    return Err(MetelError::internal(
+                        "unary `*`: expected pointer (typechecker should have caught this)",
+                    ))
+                }
+                _ => unreachable!("Ref/RefMut handled above"),
+            };
             Ok(Signal::Value(result))
         }
 
@@ -2741,7 +2847,10 @@ Value::FieldReference { root, path } | Value::MutFieldReference { root, path
             span,
             ..
         } => {
-            let v = eval_expr(inner, env, runtime)?.into_value();
+            let v = match eval_to_value(inner, env, runtime)? {
+                ControlFlow::Continue(value) => value,
+                ControlFlow::Break(signal) => return Ok(signal),
+            };
             // Dispatch through From impl using the full aspect-signature key
             // "Target::From<Source>::from", then fall back to "Target::from"
             // (used by built-in Int::from / Float::from which have no type arg).
@@ -2762,7 +2871,10 @@ Value::FieldReference { root, path } | Value::MutFieldReference { root, path
             span,
             ..
         } => {
-            let v = eval_expr(object, env, runtime)?.into_value();
+            let v = match eval_to_value(object, env, runtime)? {
+                ControlFlow::Continue(value) => value,
+                ControlFlow::Break(signal) => return Ok(signal),
+            };
             match v {
                 Value::Tuple(elems) => {
                     elems
@@ -2789,12 +2901,18 @@ Value::FieldReference { root, path } | Value::MutFieldReference { root, path
             span,
             ..
         } => {
-            let arr = eval_expr(object, env, runtime)?.into_value();
+            let arr = match eval_to_value(object, env, runtime)? {
+                ControlFlow::Continue(value) => value,
+                ControlFlow::Break(signal) => return Ok(signal),
+            };
             let arr = match deref_value(&arr, span)? {
                 Some(value) => value,
                 None => arr,
             };
-            let idx = eval_expr(index, env, runtime)?.into_value();
+            let idx = match eval_to_value(index, env, runtime)? {
+                ControlFlow::Continue(value) => value,
+                ControlFlow::Break(signal) => return Ok(signal),
+            };
             let i: usize = match idx {
                 Value::U64(u) => u as usize,
                 _ => {
@@ -2854,7 +2972,10 @@ Value::FieldReference { root, path } | Value::MutFieldReference { root, path
             // patterns — unwrap any reference layers before matching, using the same
             // `deref_value` helper method dispatch already uses. `match_pattern` then
             // only ever sees a plain value, exactly as before.
-            let scrutinee_raw = eval_expr(&m.scrutinee, env, runtime)?.into_value();
+            let scrutinee_raw = match eval_to_value(&m.scrutinee, env, runtime)? {
+                ControlFlow::Continue(value) => value,
+                ControlFlow::Break(signal) => return Ok(signal),
+            };
             let scrutinee = deref_value(&scrutinee_raw, &m.span)?.unwrap_or(scrutinee_raw);
             for arm in &m.arms {
                 let mut bindings = HashMap::new();
@@ -2867,7 +2988,13 @@ Value::FieldReference { root, path } | Value::MutFieldReference { root, path
                     for (k, v) in &bindings {
                         env.define(k, v.clone());
                     }
-                    let guard_val = eval_expr(guard, env, runtime)?.into_value();
+                    let guard_val = match eval_to_value(guard, env, runtime)? {
+                        ControlFlow::Continue(value) => value,
+                        ControlFlow::Break(signal) => {
+                            env.pop_scope();
+                            return Ok(signal);
+                        }
+                    };
                     env.pop_scope();
                     match guard_val {
                         Value::Boolean(true) => {}
@@ -2897,7 +3024,10 @@ Value::FieldReference { root, path } | Value::MutFieldReference { root, path
         // needed — the typecheck-time uninhabited-variant exemption that licenses
         // this node guarantees no other variant could ever have been constructed.
         TypedExpr::SingletonCoerce { inner, field, .. } => {
-            let value = eval_expr(inner, env, runtime)?.into_value();
+            let value = match eval_to_value(inner, env, runtime)? {
+                ControlFlow::Continue(value) => value,
+                ControlFlow::Break(signal) => return Ok(signal),
+            };
             match value {
                 Value::Enum { mut fields, .. } => {
                     fields.remove(field).map(Signal::Value).ok_or_else(|| {
@@ -2913,14 +3043,20 @@ Value::FieldReference { root, path } | Value::MutFieldReference { root, path
         // `TypedExpr::Loop` already thread arbitrary `Signal`s transparently.
         TypedExpr::Return(r) => {
             let val = match &r.value {
-                Some(e) => eval_expr(e, env, runtime)?.into_value(),
+                Some(e) => match eval_to_value(e, env, runtime)? {
+                    ControlFlow::Continue(value) => value,
+                    ControlFlow::Break(signal) => return Ok(signal),
+                },
                 None => Value::Unit,
             };
             Ok(Signal::Return(val))
         }
         TypedExpr::Break(b) => {
             let val = match &b.value {
-                Some(e) => eval_expr(e, env, runtime)?.into_value(),
+                Some(e) => match eval_to_value(e, env, runtime)? {
+                    ControlFlow::Continue(value) => value,
+                    ControlFlow::Break(signal) => return Ok(signal),
+                },
                 None => Value::Unit,
             };
             Ok(Signal::Break(val))
@@ -2949,7 +3085,10 @@ Value::FieldReference { root, path } | Value::MutFieldReference { root, path
             span,
             ..
         } => {
-            let mut val = eval_expr(object, env, runtime)?.into_value();
+            let mut val = match eval_to_value(object, env, runtime)? {
+                ControlFlow::Continue(value) => value,
+                ControlFlow::Break(signal) => return Ok(signal),
+            };
             if let Some(deref) = deref_value(&val, span)? {
                 val = deref;
             }
