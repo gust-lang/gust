@@ -2608,14 +2608,28 @@ pub fn eval_expr(
             lvalue::eval_binop(op, lv, rv, span)
         }
 
-        TypedExpr::RefTemp { init, .. } => {
+        TypedExpr::RefTemp { init, mutable, .. } => {
             // Temporary lifetime extension: `init` has no addressable place of its
             // own, so materialize it into a fresh, independent cell rather than
             // sharing storage with anything — nothing else can ever reach this cell,
             // by construction (the typechecker only emits this node for a non-lvalue
             // operand).
-            let v = eval_expr(init, env, runtime)?.into_value();
-            Ok(Signal::Value(Value::Reference(Rc::new(RefCell::new(v)))))
+            //
+            // `init` can diverge (`&(return x)`, `&(break x)`) the same as any other
+            // subexpression position, so its Signal must be checked before assuming
+            // it produced a plain Value — propagate a control-flow signal upward
+            // rather than force it through `into_value()`.
+            let signal = eval_expr(init, env, runtime)?;
+            let v = match signal {
+                Signal::Value(v) => v,
+                other => return Ok(other),
+            };
+            let cell = Rc::new(RefCell::new(v));
+            Ok(Signal::Value(if *mutable {
+                Value::MutReference(cell)
+            } else {
+                Value::Reference(cell)
+            }))
         }
 
         TypedExpr::UnaryOp(op, operand, _, span) => {

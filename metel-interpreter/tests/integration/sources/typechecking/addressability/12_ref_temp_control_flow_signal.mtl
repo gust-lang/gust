@@ -1,0 +1,19 @@
+// A RefTemp's init can diverge via `return`/`break` the same as any other expression
+// position — found by adversarial review of the temporary-lifetime-extension feature.
+// The evaluator must propagate the control-flow signal rather than force it through
+// Signal::into_value(), which previously panicked instead of returning normally.
+fun returns_seven() -> i64 {
+    let r = &(return 7);
+    0
+}
+
+fun breaks_nine() -> i64 {
+    loop {
+        let r = &(break 9);
+    }
+}
+
+fun main() {
+    assert(returns_seven() == 7);
+    assert(breaks_nine() == 9);
+}

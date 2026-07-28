@@ -1,0 +1,10 @@
+// Temporary lifetime extension covers `&var` too, not just `&` (matching Rust: `&mut 41`
+// is legal there as well): a mutable reference to a temporary is sound, since nothing
+// outside this expression can ever alias the cell it points to. Supersedes what was
+// neg_05_mut_address_of_literal.mtl, which tested the pre-extension rejection of both
+// forms.
+fun main() {
+    let p: &var i64 = &var 1;
+    *p = 2;
+    assert(*p == 2);
+}

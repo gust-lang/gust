@@ -4707,30 +4707,25 @@ fn construct_unaryop(
         // the surrounding statement had already run.
         UnaryOp::Ref | UnaryOp::RefMut => {
             if !crate::typed_ast::is_lvalue_path(&operand) {
-                // `&<rvalue>` is temporary lifetime extension (matching Rust/C++:
-                // `foo(&Vec::new())`): materialize the value into a fresh, independent
-                // storage cell instead of requiring the caller to bind it to a name
-                // first. Only the shared form makes sense — a `&var` to a cell nothing
-                // else can ever observe again has no expressible effect, so `&var` on a
-                // non-lvalue stays rejected rather than gaining a matching temporary form.
-                if matches!(op, UnaryOp::Ref) {
-                    let ty = Type::Reference(Box::new(operand.ty().clone()));
-                    return Ok(TypedExpr::RefTemp {
-                        init: Box::new(operand),
-                        ty,
-                        span: span.clone(),
-                    });
-                }
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0005,
-                    "`&var` requires an addressable place — a binding, field, tuple \
-                     element, array element, dereference, or a chain of those; a \
-                     temporary has nothing else that could ever observe the mutation, \
-                     so bind it to a name first if you need `&var` (`&` alone works on \
-                     a temporary directly)"
-                        .to_string(),
-                    span,
-                ));
+                // `&<rvalue>` / `&var <rvalue>` is temporary lifetime extension
+                // (matching Rust/C++: `foo(&Vec::new())`, `foo(&mut Vec::new())`):
+                // materialize the value into a fresh, independent storage cell
+                // instead of requiring the caller to bind it to a name first. Sound
+                // for both forms — nothing outside this expression can ever alias the
+                // cell, so a mutable reference to it can never conflict with anything.
+                let mutable = matches!(op, UnaryOp::RefMut);
+                let inner_ty = operand.ty().clone();
+                let ty = if mutable {
+                    Type::MutReference(Box::new(inner_ty))
+                } else {
+                    Type::Reference(Box::new(inner_ty))
+                };
+                return Ok(TypedExpr::RefTemp {
+                    init: Box::new(operand),
+                    mutable,
+                    ty,
+                    span: span.clone(),
+                });
             }
             // `&var *r` cannot manufacture exclusive access out of a shared `&T`.
             // Statically determinable from the reborrowed reference's own type, so it
