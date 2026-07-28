@@ -1,47 +1,71 @@
 # /start-issue
 
-Begin work on a GitHub issue: read its details, mark it in-progress, and surface any dependencies.
+Begin work on a Codeberg issue: read it, verify its dependencies are real, create the
+issue branch, and summarise the work before any code is written.
 
-**Arguments:** `$ARGUMENTS` — issue number, e.g. `4`
+**Arguments:** `$ARGUMENTS` — issue number, e.g. `314`
+
+See AGENTS.md § Branch Workflow ("Starting an Issue") and § Task Workflow — this command
+mechanises those, it does not define them.
 
 ## Steps
 
-1. **Verify the sprint branch:**
-```bash
-git branch --show-current
-```
-If the current branch is not `sprint/<N>`, warn the user and do not proceed. All sprint work must be committed to the active sprint branch, never directly to `main`.
+1. **Read the issue.**
 
-2. **Read the issue:**
 ```bash
-gh issue view <N> --repo metel-lang/metel
-```
-Display the title, description, acceptance criteria, labels, and milestone to the user.
-
-3. **Check for dependencies** mentioned in the issue body (look for `#N` references or "Depends on" sections). If any dependency issues are still open, warn the user before proceeding.
-
-4. **Mark as in-progress:**
-```bash
-gh issue edit <N> --repo metel-lang/metel \
-  --remove-label "status:backlog" \
-  --add-label "status:in-progress"
+tea issue $ARGUMENTS
 ```
 
-5. **Update the GitHub Projects v2 board** status to "In Progress" via GraphQL:
-   - Fetch the project item ID for this issue
-   - Set the Status field to the "In Progress" option
+Surface its title, body, acceptance criteria, labels, and milestone. If it has no
+milestone, ask which version it targets — the milestone is the unit of grouping, and the
+release gate reads from it.
 
-6. **Read relevant source and doc files** mentioned in the issue or inferable from its labels:
-   - `evaluator` → `metel-interpreter/src/evaluator/` + `metel-interpreter/docs/evaluator.md`
-   - `typechecker` → `metel-interpreter/src/typechecker/` + `metel-interpreter/docs/typechecker.md`
-   - `type-inference` → `metel-interpreter/src/typeinference/` + `metel-interpreter/docs/typechecker.md`
-   - `generics` / `traits` → `metel-interpreter/src/types/`
-   - `architecture` → `metel-interpreter/docs/architecture.md`
-   - Any label → check `metel-interpreter/docs/decisions/` for ADRs governing the area
+2. **Check dependencies for real, not just for closed.** Find every `#N` reference and
+   "Blocked by"/"Depends on" line in the body. For each, read the dependency issue *and*
+   confirm the code actually provides the contract this issue assumes. A closed
+   dependency whose implementation diverged from what was agreed is the failure mode
+   here; "it's closed" is not the check.
 
-7. **Summarise** what needs to be done in 2–3 bullet points based on the acceptance criteria, so work can begin immediately.
+   If a dependency is genuinely unmet, stop and report it rather than branching.
+
+3. **Confirm `develop` is the base and is current.**
+
+```bash
+git checkout develop
+git pull --recurse-submodules
+```
+
+Never branch from `main` (it lags by design), or from another issue branch unless the
+dependency is genuine — and if it is, say so in the pull request body.
+
+4. **Create and push the branch**, named `<type>/<issue>-<slug>` with the same type
+   vocabulary as the commit convention (`feat`, `fix`, `refactor`, `test`, `docs`,
+   `chore`):
+
+```bash
+git checkout -b <type>/$ARGUMENTS-<slug>
+git push -u origin <type>/$ARGUMENTS-<slug>
+```
+
+5. **Read the substance before touching code**, per AGENTS.md § Task Workflow:
+   - every spec section the issue touches, from `docs/public/reference/spec.md`
+   - any RFC in `docs/internal/rfcs/` the issue implements or depends on — and check its
+     lifecycle stage: implementation work does not start on an RFC below `3-integrated`
+   - ADRs in `metel-interpreter/docs/decisions/` governing the area
+   - the code, by label: `evaluator` → `src/evaluator/` + `docs/evaluator.md`;
+     `typechecker` → `src/typechecker/` + `docs/typechecker.md`; `type-inference` →
+     `src/typeinference/`; `generics`/`aspects` → `src/types/`; `architecture` →
+     `docs/architecture.md`
+
+6. **Summarise in 2–3 bullets** what will be done, derived from the acceptance criteria,
+   and name the regression test each change will need — deciding this now (per-PR gate
+   item 3) is cheaper than retrofitting it at the end.
 
 ## Notes
+
 - Do not start implementing until the user confirms after seeing the summary.
-- If the issue references an RFC, read the RFC before summarising the work.
-- Commit messages for this issue must follow: `type(#<N>): description` — remind the user.
+- If the spec is missing or ambiguous on something this issue needs, update the spec
+  first. If the design choice is non-obvious, write an ADR before implementing.
+- Commit messages for this issue follow `type(#$ARGUMENTS): description`.
+- One issue, one branch, one pull request. If a second concern surfaces mid-branch, file
+  it as its own issue — do not widen this one.

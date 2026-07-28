@@ -1,125 +1,98 @@
 # /new-rfc
 
-Create a new RFC. The markdown file in the docs repo is the source of truth for RFC content; Plane tracks lifecycle state only.
+Create a new RFC. The markdown file in `metel-docs` is the source of truth for both the
+RFC's content **and** its lifecycle state — there is no tracker mirroring it.
 
-**Arguments:** `$ARGUMENTS` — the RFC title (e.g. `Array literal syntax`)
+**Arguments:** `$ARGUMENTS` — the RFC title, e.g. `Array literal syntax`
+
+`docs/internal/rfcs/PROCESS.md` is the sole authority on the RFC lifecycle. This command
+mechanises opening one; read PROCESS.md for anything beyond that.
 
 ## Steps
 
-1. **Determine the next RFC number.**
-   Fetch all RFC-type work items from Plane and find the highest RFC-NNNN number. Increment by one. Zero-pad to four digits.
+1. **Check it doesn't already exist.** Read `docs/internal/rfcs/INDEX.md` — the thematic
+   snapshot of every RFC by cluster and status. An RFC covering this ground, or a settled
+   decision bundled inside a broader RFC, is common enough that this step earns its place.
 
-   ```
-   mcp__plane__list_work_items(project_id=METEL_PROJECT_ID, type_ids=[RFC_TYPE_ID])
-   ```
+   If an existing draft bundles a *settled* decision with genuinely open ones, splitting
+   the settled part into its own RFC is usually better than adding a new one alongside —
+   that is what unblocked RFC-0126 out of RFC-0124.
 
-   Plane IDs:
-   - Project: `ec7904a4-cd24-40bd-8089-19a5eb8875ab`
-   - RFC type: `6b00ca94-017d-45e2-81eb-f7b6bed6ac89`
-   - Backlog state: `db7c9b8f-cc28-4cd3-8cf1-42092afcef6c`
+2. **Create the file** with the tool, which assigns the number, derives the slug, writes
+   the frontmatter, and runs its own overlap check against existing RFCs:
 
-2. **Derive the slug** (used for the file name).
-   Lowercase the title, replace spaces with hyphens, strip punctuation.
-   Example: `Array literal syntax` → `rfc-0004-array-literal-syntax`
+```bash
+python3 docs/internal/rfcs/tools/rfc.py new "$ARGUMENTS" \
+  --description "<one-line summary for the overlap check>"
+```
 
-3. **Create the RFC file** at `docs/internal/rfcs/0-draft/rfc-NNNN-<slug>.md`.
+   It lands at `docs/internal/rfcs/0-draft/rfc-NNNN-<slug>.md` with `status: draft`.
+   Do not hand-number or hand-place an RFC file — the directory and the frontmatter must
+   agree, and `rfc.py check` enforces that.
 
-   Use this template, filling in sections from conversation context. Leave a section body blank only when there is genuinely insufficient information.
+3. **Write the content**, filling sections from conversation context. Leave a section
+   blank only when there is genuinely insufficient information — an empty Alternatives
+   Considered usually means the design wasn't pressured, not that there were none.
 
-   ```markdown
-   ---
-   id: rfc-NNNN
-   title: "<title>"
-   date: '<YYYY-MM-DD>'
-   status: draft
-   ---
+   Include, at minimum: what problem this solves, the proposal itself, alternatives with
+   why they lose, and the open questions honestly enumerated. Prior art from comparable
+   languages (Rust, Zig, C++, Go, Swift) is worth a table when the decision has one.
 
-   ## Summary
+4. **Validate.**
 
+```bash
+python3 docs/internal/rfcs/tools/rfc.py check
+```
 
-   ---
+   Clean means frontmatter matches directory, no dangling references, no duplicate ids.
 
-   ## Motivation
+5. **Commit in the submodule, then bump the pointer.** `metel-docs` is trunk-based —
+   commit straight to its `main`:
 
+```bash
+git -C docs status -sb          # confirm on main, not detached
+git -C docs commit -m "docs(RFC-NNNN): add draft RFC — <title>"
+git -C docs push origin main
+```
 
-   ---
-
-   ## Proposal
-
-
-   ---
-
-   ## Alternatives Considered
-
-
-   ---
-
-   ## Open Questions
-
-
-   ---
-
-   ## Timing Recommendation
-
-
-   ---
-
-   ## References
-
-   - Language spec: `docs/public/spec.md`
-
-   ---
-
-   ## Decision
-
-   **Outcome:** *(pending)*
-   **Target:** *(set when accepted)*
-
-   *(Decision rationale goes here when the RFC is evaluated.)*
-   ```
-
-4. **Commit the file.**
-   Commit message: `docs(RFC-NNNN): add draft RFC — <title>`
-
-5. **Create a Plane work item.**
-
-   ```
-   mcp__plane__create_work_item(
-     project_id=METEL_PROJECT_ID,
-     name="RFC-NNNN: <title>",
-     type_id=RFC_TYPE_ID,
-     state=BACKLOG_STATE_ID,
-     description_html='<p>RFC file: <code>docs/internal/rfcs/0-draft/rfc-NNNN-&lt;slug&gt;.md</code></p>'
-   )
-   ```
-
-6. **Set the RFC Status property** to `draft` on the new work item using the Plane REST API.
-   Read the API key from `~/.claude.json` at runtime:
-
-   ```bash
-   PLANE_API_KEY=$(python3 -c "import json; print(json.load(open('/home/vlad/.claude.json'))['mcpServers']['plane']['headers']['Authorization'].split()[-1])")
-   curl -s -X PATCH \
-     -H "X-Api-Key: $PLANE_API_KEY" \
-     -H "Content-Type: application/json" \
-     -d '{"custom_field_rfc-status": "draft"}' \
-     "https://api.plane.so/api/v1/workspaces/vladastos/projects/ec7904a4-cd24-40bd-8089-19a5eb8875ab/work-items/<work_item_id>/properties/"
-   ```
+   Then commit the submodule pointer bump in this repo, on an issue branch — never
+   directly on `develop` or `main`.
 
 ## Lifecycle
 
-| RFC Status | Plane state | Action |
-|---|---|---|
-| `draft` | Backlog | File at `docs/internal/rfcs/0-draft/`. Frontmatter `status: draft`. |
-| `accepted` | Todo | Update Decision section in file. Set frontmatter `status: accepted`. Assign to Plane milestone. |
-| `incorporated` | Done | Spec updated. Set frontmatter `status: incorporated`, add `spec_status: done`. |
-| `implemented` | Done | Feature working. Move file to `docs/internal/rfcs/3-implemented/`. Set frontmatter `status: implemented`. |
-| `superseded` | Cancelled | Move file to `docs/internal/rfcs/4-superseded/`. Add note pointing to superseding RFC. Set frontmatter `status: superseded`. |
-| `deferred` | Cancelled | Set frontmatter `status: deferred`. No other action. |
+Seven stages, each one a directory. The **directory is the state**; frontmatter `status`
+must match it. Transition with the tool, never by hand:
 
-When transitioning an RFC's status, always update **both** the frontmatter `status` field in the file (commit it) and the RFC Status custom property in Plane to keep them in sync. The Plane state is a coarse queue signal for board visibility; the frontmatter is the authoritative lifecycle record.
+```bash
+python3 docs/internal/rfcs/tools/rfc.py transition <id> --to <stage>
+```
+
+| Directory | `status` | Meaning |
+|---|---|---|
+| `0-draft/` | `draft` | Being written |
+| `1-under-review/` | `under-review` | Ready for evaluation |
+| `2-accepted/` | `accepted` | Design settled; not yet in the spec |
+| `3-integrated/` | `integrated` | Merged into `docs/public/reference/spec/`, worked examples checked against everything already integrated |
+| `4-implemented/` | `implemented` | Implemented and shipped |
+| `5-superseded/` | `superseded` | Replaced by a later RFC |
+| `6-refused/` | `refused` | Refused, with the decision recorded |
+
+- **Implementation does not start below `3-integrated`.** That stage is the spec being
+  updated and the examples being checked — not a formality.
+- `transition --to integrated` **refuses to run without `--tracking <issue-url>`**. From
+  `3-integrated` onward the frontmatter carries `impl_status`
+  (`not-started`/`in-progress`/`implemented`) and `impl_tracking` (the Codeberg issue).
+  An RFC reaches integrated only with a real implementation issue behind it.
+- When implementation lands, `transition <id> --to implemented` also sets
+  `impl_status: implemented`.
 
 ## Notes
-- **No `target:` field in the file** — milestone is tracked in Plane only.
-- The RFC must be accepted and the relevant `docs/public/spec/` file updated before implementation begins.
-- Milestones (not a Target Version property) track which release an RFC is scoped to.
-- RFC Status options: `draft`, `accepted`, `incorporated`, `implemented`, `superseded`, `deferred`.
+
+- There is **no** mirrored RFC status on an issue, no custom property, and nothing to keep
+  in sync in the other direction. The file is the record — this is a deliberate
+  simplification versus how Plane was used, not an oversight.
+- An RFC gets a Codeberg issue only when it reaches `3-integrated` and needs real
+  implementation tracked: one issue per RFC, or per tightly-coupled cluster.
+- A `**Target:** vX.Y.0` in the file names the intended release; the issue's milestone is
+  what the release gate actually reads.
+- After a batch of RFC edits, `rfc.py index --rebuild-registry` refreshes `INDEX.md`.

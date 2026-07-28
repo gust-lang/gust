@@ -1,209 +1,242 @@
 # /gap-analysis
 
-Analyse the planned sprint work items for description gaps, scope ambiguities, and missing tasks. Gather all needed user input in a single pass, then update Plane so the sprint can be executed without further clarification.
+Analyse a version milestone's open issues for description gaps, scope ambiguities, and
+missing work. Gather every question in a single batched pass, then update the issues so
+the milestone can be executed without further clarification.
 
-**Arguments:** `$ARGUMENTS` — sprint number, e.g. `16`
+**Arguments:** `$ARGUMENTS` — the milestone, e.g. `v0.12.0`
 
-**The agent must complete the full analysis before asking the user anything. All questions are batched into one interaction, not asked one at a time.**
+**Complete the full analysis before asking the user anything.** All questions are batched
+into one interaction, not asked one at a time.
+
+The milestone is the unit of grouping (AGENTS.md § Task Tracking) — there is no sprint to
+analyse, and no cycle object anywhere.
 
 ---
 
-## Step 1 — Load sprint context
+## Step 1 — Load milestone context
 
-Call `mcp__plane__list_cycles` on the Metel project and find the cycle for Sprint `<N>`. Note the cycle UUID, sprint goal, and milestone.
+```bash
+tea issues ls --milestone $ARGUMENTS --state open
+```
 
-Call `mcp__plane__list_cycle_work_items` (or `mcp__plane__list_work_items` with `cycle_ids`) to retrieve every work item in the cycle. For each item, fetch its full details via `mcp__plane__retrieve_work_item_by_identifier` — you need the description, labels, state, milestone, and any linked items.
+Read each issue in full (`tea issue <N>`) — description, labels, referenced issue numbers.
+Then read `docs/reports/strategy/OBJECTIVES.md` §2 (current priorities) and §3 (open
+triggers) for anything bearing on this milestone, and the spec sections in
+`docs/public/reference/spec/` the milestone's theme is likely to touch.
 
-Also read `CLAUDE.md` for the active milestone and any active epics, and read the corresponding spec sections in `docs/public/spec/` that are likely to be touched by the sprint theme.
+### 1a. RFC lifecycle pre-check (hard gate)
 
-### 1a. RFC spec_status pre-check (hard gate)
+Before analysing any individual issue, scan `docs/internal/rfcs/` for every RFC referenced
+in a milestone issue (`rfc-NNNN`), plus every RFC at `2-accepted` or `3-integrated`.
 
-Before analysing any individual work item, scan `docs/internal/rfcs/` for every RFC that:
-- Is referenced in any sprint item description (look for `rfc-NNNN` mentions), **or**
-- Has `status: accepted`
+The RFC's **directory** is the source of truth for its stage; frontmatter `status` must
+match it. Run the mechanical check first:
 
-For each such RFC, read its frontmatter and check `spec_status` and `status`. Report two classes of blocker at the top of the Step 4 output under `### RFC blockers` before all other findings:
+```bash
+python3 docs/internal/rfcs/tools/rfc.py check
+```
 
-**Class 1 — Spec not updated (`spec_status: pending`):**
-The RFC is accepted but its decisions are not yet in the spec. Implementation is blocked.
+Then report two classes of blocker at the top of the Step 4 output:
 
-**Class 2 — Stale accepted RFC (should be `incorporated`):**
-The RFC has `status: accepted` but its `**Target:** vX.Y.0` (in `## Decision`) is ≤ the sprint's milestone version. It should have been marked `incorporated` when that version shipped. This is a tracking debt that must be resolved before the sprint closes.
+**Class 1 — Not yet integrated (`2-accepted` or below).** Implementation work does not
+start below `3-integrated`: the spec has not been updated and the worked examples have not
+been checked against everything else already integrated. Any issue implementing such an
+RFC is blocked on integrating it first.
+
+**Class 2 — Integrated but untracked.** An RFC at `3-integrated` or beyond whose
+`impl_status`/`impl_tracking` frontmatter is missing, stale, or points at a closed issue.
+This is tracking debt and must be resolved before the milestone closes.
 
 ```
-### RFC blockers (must be resolved before sprint can proceed)
+### RFC blockers (must be resolved before the milestone can proceed)
 
 **rfc-NNNN — <title>**
-- Class: [Spec not updated | Stale — should be incorporated]
+- Class: [Not yet integrated | Integrated but untracked]
 - Finding: <one sentence>
 - Required action: <what to do>
 ```
 
-Do not proceed with item-level gap analysis until the user confirms how blockers will be resolved.
+Do not proceed to issue-level analysis until the user confirms how blockers resolve.
 
 ---
 
-## Step 2 — Analyse each work item
+## Step 2 — Analyse each issue
 
-For every work item in the sprint, silently evaluate all of the following. Record every finding — you will present them all at once in Step 3.
+For every open issue in the milestone, silently evaluate all of the following. Record
+every finding — present them together in Step 4.
 
 ### 2a. Description completeness
-Ask yourself: could an agent implement this from the description alone, without asking any questions?
-
-Flag the item if any of these are missing or vague:
-- **What** specifically needs to change (which file, function, grammar rule, type, or behaviour)
-- **Why** — the motivation or constraint driving the change
-- **Acceptance criteria** — explicit, testable conditions for "done" (not just "it works")
-- **Edge cases** — what should happen at boundaries (empty input, type mismatch, recursive structure, etc.)
-- **Error behaviour** — what error code or message should be produced on invalid input
+Could an agent implement this from the description alone, without asking questions? Flag
+if any of these is missing or vague:
+- **What** specifically changes (which file, function, grammar rule, type, or behaviour)
+- **Why** — the motivation or constraint driving it
+- **Acceptance criteria** — explicit, testable conditions for "done", not "it works"
+- **Edge cases** — empty input, type mismatch, recursive structure, generic instantiation
+- **Error behaviour** — which error code or message an invalid input produces
 
 ### 2b. Scope
-Flag the item if it contains more than one independent concern that could fail or be deferred separately. Signs of over-scoping:
-- The description contains "and also…" for unrelated behaviour
-- Implementing it requires touching more than two unrelated modules
-- It could be split into a spec change + an implementation without loss of coherence
+Flag any issue holding more than one concern that could fail or be deferred separately.
+This matters more than it used to: one issue is one branch is one pull request, so an
+over-scoped issue produces exactly the omnibus diff that retiring sprint branches was
+meant to eliminate. Signs:
+- The description says "and also…" about unrelated behaviour
+- Implementing it touches more than two unrelated modules
+- It splits cleanly into a spec change plus an implementation
 
 ### 2c. Spec and RFC alignment
-For each work item:
-- Is there a spec section in `docs/public/spec/` that governs this behaviour? If so, does the spec already describe the target behaviour, or does the spec need updating first?
-- Does this require an RFC? If so, does the RFC exist in `docs/internal/rfcs/` and is its `status` either `draft` (needs acceptance) or `accepted`?
-- Does this implement an already-accepted RFC? If so, note the RFC id.
+- Is there a section in `docs/public/reference/spec/` governing this behaviour? Does it
+  already describe the target behaviour, or must the spec change first?
+- Does this need an RFC? If so, does one exist, and is it at `3-integrated` or beyond?
+- Does it implement an already-integrated RFC? Note the id and check `impl_tracking`
+  points at this issue.
 
-Flag: missing spec section, RFC not yet accepted, RFC not yet written, or spec/RFC conflict.
+Flag: missing spec section, RFC below `3-integrated`, RFC not written, spec/RFC conflict.
 
 ### 2d. Dependencies
-- Does this item depend on another work item in the sprint or in Backlog? Check the description for `METEL-N` references and "Depends on" sections.
-- If a dependency exists, is it scheduled before this item?
-- Does this item require a spec change that is not tracked as a separate work item?
+- Does it depend on another issue (look for `#N`, "Blocked by", "Depends on")?
+- Is that dependency scheduled to land first?
+- For a *closed* dependency, does the code actually provide the contract this issue
+  assumes? A closed issue whose implementation diverged is the failure mode; "it's closed"
+  is not the check.
+- Does it require a spec change not tracked as its own issue?
 
 ### 2e. Test requirements
-For the acceptance criteria to be verifiable, there must be a clear test strategy. Flag if:
-- There are no acceptance criteria that map to a concrete test
-- The item touches the typechecker or evaluator but has no negative-case test requirement stated
-- The item changes a builtin but the spec table update is not mentioned
+Flag if:
+- No acceptance criterion maps to a concrete fixture
+- It touches the typechecker or evaluator with no negative-case requirement stated
+- It changes a builtin without mentioning the `runtime.md` table update
+- The needed fixture is a directory fixture and nobody has said so — the sidecar is
+  `test.toml` there and `<name>.toml` for a single file, and getting it wrong makes the
+  sidecar silently inert
 
 ---
 
-## Step 3 — Analyse the sprint as a whole
+## Step 3 — Analyse the milestone as a whole
 
-After analysing individual items, look at the sprint collectively:
-
-### 3a. Sprint goal coverage
-Re-read the sprint goal. List every concern implied by the goal. Check each implied concern against the work item list. Flag any implied concern that has no work item tracking it.
+### 3a. Coverage
+Read the milestone's intent (from `OBJECTIVES.md` and the issues themselves). List every
+concern it implies, and flag each one with no issue tracking it.
 
 ### 3b. Implementation order
-Identify the natural implementation order given dependencies. Flag any ordering conflict (item A depends on item B, but B is not earlier in the dependency graph).
+Derive the natural order from the dependency graph. Flag ordering conflicts, and flag any
+**release gate** in an RFC — a §-level "must not ship without X" clause (RFC-0071 §9c is
+the live example) is a hard blocker on the release, not a preference.
 
 ### 3c. Missing scaffolding
-Flag if the sprint requires any of the following but has no work item for it:
-- A spec section that does not yet exist
+Flag if the milestone needs any of these with no issue for it:
+- A spec section that does not exist yet
 - A new error code or error variant
-- A new AST node or grammar rule
-- A test fixture or `.mln` test file that does not yet exist
-- A new type or typed AST node
+- A new AST node, typed AST node, or grammar rule
+- A fixture directory that does not exist yet
 
 ### 3d. Risk items
-Flag any work item that:
-- Touches `src/typeinference/mod.rs` or `src/typechecker/mod.rs` (high blast radius)
-- Requires changing the grammar in `src/grammar.pest` (ripple effects to parser and AST)
-- Has no prior art in the codebase (first instance of a pattern)
+Flag any issue that:
+- Touches `src/typeinference/mod.rs` or `src/typechecker/` (high blast radius)
+- Changes `src/grammar.pest` (ripples into parser and AST)
+- Introduces a static check over an existing fixture corpus — that has its own pattern,
+  see AGENTS.md § Landing an Enforcement Pass Over an Existing Corpus
+- Has no prior art in the codebase
 
-For each risk item, check whether an investigation or spike task should be added before the implementation task.
+For each, decide whether an investigation issue should precede the implementation issue.
 
 ---
 
 ## Step 4 — Batch all questions
 
-Do **not** ask questions one at a time. Compile every finding from Steps 2 and 3 into a single structured report presented to the user before making any changes.
-
-Format the report as follows:
+Compile every finding from Steps 2 and 3 into one report. Do not ask piecemeal.
 
 ```
-## Gap Analysis — Sprint <N>
+## Gap Analysis — $ARGUMENTS
 
-### Work item gaps
-For each flagged item:
+### RFC blockers
+…(from Step 1a)
 
-**METEL-N — <title>**
+### Issue gaps
+**#N — <title>**
 - Gap type: [Description / Scope / Spec / RFC / Dependency / Test]
-- Finding: <one sentence describing what is missing or ambiguous>
-- Question: <the specific question whose answer fills the gap>
+- Finding: <one sentence>
+- Question: <the specific question that fills it>
 
-### Sprint-level gaps
-For each sprint-level finding:
-
+### Milestone-level gaps
 **[Coverage / Order / Scaffolding / Risk]**
 - Finding: <what is missing or risky>
-- Question: <the specific question or decision needed>
+- Question: <the decision needed>
 
-### Proposed new work items
-For each gap large enough to warrant a new task:
-
+### Proposed new issues
 **Proposed: <title>**
-- Reason: <why this needs to be a separate work item>
-- Suggested description: <draft description>
-- Question: Should this be added to the sprint, deferred to backlog, or is it already covered?
+- Reason: <why it is separate>
+- Suggested description: <draft>
+- Question: add to $ARGUMENTS, defer to a later milestone, or already covered?
 ```
 
-Wait for the user to answer **all** questions before proceeding.
+Wait for answers to **all** questions before changing anything.
 
 ---
 
-## Step 5 — Update work items in Plane
+## Step 5 — Update the issues
 
-Using the user's answers, update every flagged work item via `mcp__plane__update_work_item`:
-- Rewrite or extend the `description` field to incorporate the clarified requirements, explicit acceptance criteria, edge cases, and error behaviour.
-- Keep the original intent — do not replace, extend.
-- If an RFC reference was identified, add it to the description: `RFC: rfc-NNNN`.
-- If a spec section was identified, add it: `Spec: docs/public/spec/<section>.md`.
+Using the answers, for each flagged issue:
 
----
+```bash
+tea issues edit <N> --description "<rewritten body>"
+```
 
-## Step 6 — Create new work items
+- Extend the original intent; do not replace it.
+- Add explicit acceptance criteria, edge cases, and error behaviour.
+- Add `RFC: rfc-NNNN` and `Spec: docs/public/reference/spec/<section>.md` where identified.
+- Note the dependency direction explicitly (`Blocked by #N` / `Blocks #N`) — Codeberg
+  renders these as links but does not enforce them, so they are documentation.
 
-For each gap the user confirmed should be a new work item:
-- Call `mcp__plane__create_work_item` with a complete description (not a stub — use the information gathered in Steps 2–4 to write it fully).
-- Set `state_id` to the **Todo** state UUID (these are sprint items, not backlog).
-- Assign the sprint milestone via `mcp__plane__add_work_items_to_milestone`.
-- Add to the sprint cycle via `mcp__plane__add_work_items_to_cycle`.
+## Step 6 — Create new issues
 
-For each gap the user deferred to backlog:
-- Call `mcp__plane__create_work_item` with `state_id` set to **Backlog**.
-- Do not add to the sprint cycle.
+For each confirmed gap:
 
----
+```bash
+tea issues create --title "<title>" --description "<full body>" --milestone $ARGUMENTS
+```
+
+Write the body in full from Steps 2–4, not as a stub. For gaps deferred past this
+milestone, create them with a later milestone or none.
+
+**Rate limit:** Codeberg allows roughly 5 issue creates or ~15 comments per 5 minutes. For
+more than a handful, use `tools/tea-paced.sh` and pause 60–90s between creates. Run `tea`
+from the repository root, never from `docs/`.
 
 ## Step 7 — Verify and report
 
-After all updates are applied, call `mcp__plane__list_cycle_work_items` again and present the final sprint work item list:
+```bash
+tea issues ls --milestone $ARGUMENTS --state open
+```
 
 ```
-## Sprint <N> — Ready for execution
+## $ARGUMENTS — ready for execution
 
-**Goal:** <sprint goal>
-**Milestone:** <milestone>
-
-### Work items
-- METEL-N — <title> [labels]
+### Issues, in dependency order
+- #N — <title> [labels]
   Acceptance criteria: <1-line summary>
-  ...
 
-### Deferred to backlog
-- METEL-N — <title> (reason: <why deferred>)
-  ...
+### Deferred past this milestone
+- #N — <title> (reason)
 
 ### Risk items requiring extra care
-- METEL-N — <title>: <risk summary>
+- #N — <title>: <risk>
+
+### Release gates
+- <RFC §clause>: #N must not ship without #M
 ```
 
-Remind the user: the sprint is now ready. Run `/start-issue METEL-<N>` to begin work on the first item.
+Then: run `/start-issue <N>` on the first item.
 
 ---
 
 ## Notes
 
-- The goal of this skill is **zero surprises during implementation**. Every question that could arise mid-sprint should be answered here.
-- Do not update Plane until after the user has answered all questions in Step 4. Do not make partial updates.
-- If the user's answers reveal that a work item is out of scope for this sprint entirely, move it to Backlog via `mcp__plane__update_work_item` (state → Backlog) and remove it from the cycle — do not leave it as a Todo item that will not be worked.
-- If the sprint goal itself is unclear after analysis, surface that as the first question — a sprint with an unclear goal cannot be gap-analysed.
-- The Metel project identifier is `METEL`; use `mcp__plane__retrieve_work_item_by_identifier` with `METEL-<N>` to resolve sequence IDs to UUIDs when needed.
+- The goal is **zero surprises during implementation**. Every question that could arise
+  mid-implementation should be answered here.
+- Do not update any issue until the user has answered everything in Step 4. No partial
+  updates.
+- If an issue turns out to be out of scope for this milestone, re-milestone it rather than
+  leaving it attached to a version it will not ship in — the release gate checks this.
+- If the milestone's own intent is unclear after analysis, surface that as the first
+  question; a milestone with an unclear goal cannot be gap-analysed.

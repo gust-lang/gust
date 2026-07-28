@@ -75,11 +75,13 @@ taxonomy nothing has asked for yet.
 **Milestones** — version milestones (`v0.10.0`, `v0.11.0`, ...) map directly from
 Plane's version-milestone use; no change in concept, just in host.
 
-**Sprints stay git branches, unchanged** — `sprint/N`, exactly as in "Sprint
-Workflow" below. A sprint's issues are whichever open issues are actually being
-worked against that branch; there is no separate "cycle" object to keep updated
-the way Plane's cycles needed one. If grouping sprint issues visually is wanted, use
-a `sprint-N` label or a Codeberg Project (kanban) board — neither is required.
+**There is no sprint object, and no sprint branch** — see "Branch Workflow" below for
+why `sprint/N` was retired. The unit of work is the issue; the unit of review is the
+pull request that closes it; the unit of grouping is the **version milestone**. Nothing
+needs a separate "cycle" object the way Plane's cycles did, and nothing needs a
+`sprint-N` label either — the milestone already answers "what is this batch of work
+for," and unlike a sprint number it answers it in a way the changelog and the release
+gate both read from.
 
 **Dependencies** between issues: reference by number in the issue body (`Blocked by
 #42`, `Blocks #57`) — Gitea/Codeberg's issue references render these as links but
@@ -111,22 +113,56 @@ Do not rely on `.github/` automation or GitHub issue labels — this is a Codebe
 
 ---
 
-## Sprint Workflow
+## Branch Workflow
 
-Three branch tiers, in order: `sprint/N` (active work) -> `develop` (accumulates
-finished sprints) -> `main` (released only). This exists so `main` always reflects
-an actual release, `develop` is a real "done, not yet released" staging area
-instead of the ad hoc gap that used to sit between a sprint branch and `main`, and
-per-issue branches/PRs stay unnecessary for solo work — a sprint branch is already
-the unit of review.
+Two branch tiers: **issue branches** (active work) -> **`develop`** (integration trunk)
+-> **`main`** (released only). One issue, one branch, one pull request, fast-forwarded
+into `develop`. `main` moves only at a release, also by fast-forward, and is tagged
+there. `develop` is the "done, not yet released" staging area that makes `main` mean
+"an actual release" rather than "wherever work happened to be."
 
-Sprints are repository branches; issues track the work within them. Sprint branches still use the `sprint/<N>` convention.
+Branch names are `<type>/<issue>-<slug>`, using the same types as the commit
+convention: `feat/291-move-checking`, `fix/314-array-intrinsics-through-view`,
+`refactor/304-structural-type-params`, `docs/…`, `chore/…`, `test/…`. Work with no
+tracked issue omits the number (`chore/drop-sprint-branches`), which should be rare —
+if it's worth a branch it's usually worth an issue.
+
+### Why `sprint/N` was retired
+
+The `sprint/N` tier existed as a third layer between issue branches and `develop`, and
+was removed in v0.12.0 because measurement showed it was carrying no information. This
+is recorded because it will otherwise look like drift and get "restored":
+
+- **A sprint branch outlived a release.** `v0.11.0` is tagged at `c641938`, a commit
+  *inside* `sprint/27` — 116 commits in, with 72 more landing after it. The documented
+  model said a release is `develop -> main`; what happened is `main` fast-forwarded to a
+  point on a sprint branch that then kept going. The tier boundary did not hold in
+  practice even while it was written down.
+- **The issue branch was already the real review unit.** Ten branches (`feat/288`,
+  `feat/289`, `feat/290`, `feat/291`, `refactor/304`, `fix-257-271`, `fix-272`,
+  `fix-274`, `chore/ff-only-merges`, `docs/codex-review-workaround-lesson`) landed
+  through their own pull requests inside `sprint/27`'s range alone, while the guide
+  still claimed per-issue branches were "unnecessary."
+- **Sprint pull requests were omnibus diffs, not reviewable units.** #320 bundled a
+  fixture migration, an RFC through four lifecycle stages, a new stdlib method, a
+  stdlib-wide `self`/`&self` audit, and temporary lifetime extension.
+- **The number meant nothing.** `sprint/21`–`24` ran one to three days each; `sprint/25`
+  ran four weeks; `sprint/27` ran eleven days and spanned a release. It was never a
+  time box, and version milestones already do the grouping it stood in for.
+- **Under fast-forward-only merging, the third tier is a third name for one line of
+  commits.** At retirement `develop` and `sprint/27` were not merely equivalent, they
+  were the same SHA.
+
+What the sprint tier did genuinely provide was a *periodic* gate — a moment to run
+`rfc.py check`, refresh internal architecture docs, and sweep issue hygiene. That did
+not disappear; it moved to the release gate, which is the boundary that still exists.
+See "The Two Gates" below.
 
 ### Merging: Fast-Forward Only
 
-**Every merge in these repositories is a fast-forward.** That holds at every tier —
-a feature branch into `sprint/N`, `sprint/N` into `develop`, and `develop` into
-`main` at release. History stays linear, so `git log` on any branch reads as the
+**Every merge in these repositories is a fast-forward.** That holds at both tiers — an
+issue branch into `develop`, and `develop` into `main` at release. History stays linear,
+so `git log` on any branch reads as the
 order work actually landed, and `git bisect` never has to pick a parent.
 
 The consequence is that **a branch must be rebased onto its target before it can
@@ -153,33 +189,36 @@ commit, which is the point. Locally, use `git merge --ff-only`; never a bare
 `git merge`, whose default is to create a commit when it cannot fast-forward
 instead of stopping.
 
-### Starting a Sprint
+### Starting an Issue
 
-1. Confirm the milestone this sprint targets, and which open issues belong to it.
-2. Create the branch from current `develop` (not `main` — `main` only moves at
-   release time and may lag `develop` by more than one sprint):
+1. Read the issue in full — acceptance criteria, referenced issue numbers, labels,
+   milestone — and check that its dependencies are actually satisfied, not just closed.
+   See "Task Workflow" below for what to read before editing code.
+2. Branch from current `develop` (never from `main`, which lags by design, and never
+   from another issue branch unless the dependency is genuine and stated in the PR):
 
 ```bash
 git checkout develop
 git pull --recurse-submodules
-git checkout -b sprint/N
-git push -u origin sprint/N
+git checkout -b feat/<issue>-<slug>
+git push -u origin feat/<issue>-<slug>
 ```
 
-3. Keep all sprint code, docs pointer updates, and release-prep commits on `sprint/N`.
+3. Keep every commit for that issue on that branch — code, docs pointer bumps, tests.
 
-### During a Sprint
+### While the Branch Is Open
 
-- Read the relevant issue before editing code.
-- Keep commits on the sprint branch.
-- Push after each logical unit of completed work.
+- Push after each logical unit of completed work, not once at the end.
+- **Rebase onto `develop`, never merge `develop` in.** If `develop` moved, rebase and
+  force-push *your* branch. See "Merging: Fast-Forward Only" above — this is what makes
+  the fast-forward possible at all.
 - If public docs changed, commit in `docs/` first — straight to `metel-docs main`; that
-  repo is trunk-based with no branch tier of its own, see its `README.md` — then
-  commit the updated submodule pointer here, on `sprint/N`. The pointer is never
-  bumped directly on `develop` or `main`: `develop`'s pointer only moves as a side
-  effect of a sprint merging in (it's fine for it to lag `metel-docs main` between
-  sprints — treat it like a dependency pin, not a freshness target), and `main`'s
-  only moves at release time (see "Release Workflow" below).
+  repo is trunk-based with no branch tier of its own, see its `README.md` — then commit
+  the updated submodule pointer here, on the issue branch. The pointer is never bumped
+  directly on `develop` or `main`: `develop`'s pointer only moves as a side effect of a
+  branch merging in (it's fine for it to lag `metel-docs main` — treat it like a
+  dependency pin, not a freshness target), and `main`'s only moves at release time (see
+  "Release Workflow" below).
 - **Update `docs/public/release-notes/changelog.md` as each feature or fix lands, not later.**
   Add the entry under the current in-progress version's section (create it, marked "in progress
   on `develop` — not yet released", if this is the first change targeting a new version).
@@ -189,62 +228,89 @@ git push -u origin sprint/N
   That split is why this rule quietly failed for the whole of v0.12.0: an instruction to write
   the entry "in the same commit" describes something impossible, so it degraded into "later",
   which meant never. Treat it as a **pair**: the code commit, then immediately the docs commit
-  plus pointer bump. Do not batch a sprint's entries at the end — that is reconstruction from
-  `git log`, and it loses exactly the reasoning that makes an entry worth reading.
+  plus pointer bump. Do not batch entries at the end — that is reconstruction from `git log`,
+  and it loses exactly the reasoning that makes an entry worth reading.
 
   **Check it with `tools/changelog-status.sh`.** It lists every unreleased `feat`/`fix` commit
   that touched real code and flags the ones landing after the changelog was last edited, so the
   gate below is a diff to read rather than something to remember. It reports rather than
   enforces — timestamps are a heuristic, since entries are prose and don't cite issue numbers.
 
-### Closing a Sprint
+### The Two Gates
 
-Before opening a pull request from `sprint/N` to `develop`, run the quality gate below. If any gate fails, fix it on the sprint branch and run the gate again.
+Quality checks split by how often they can meaningfully change. **Per-PR** checks are
+cheap, scoped to one diff, and must run every time — a green one means the branch is
+safe to fast-forward. **Release** checks sweep repository-wide state that no single diff
+owns; running them per-PR would be noise, since the answer barely moves between issues.
+They live in "Release Gate" below.
 
-1. **Tests** - `cargo test` from `metel-interpreter/` must pass with zero failures.
+This split is what replaced the single sprint-close gate. Nothing was dropped: items 1–5
+of that gate became per-PR (they were always per-diff questions wearing a sprint-sized
+label), and 6–9 became release-gate items (they were always periodic sweeps).
+
+### Closing an Issue
+
+Run the per-PR gate before opening the pull request. If any check fails, fix it on the
+branch and run again.
+
+1. **Tests** - `cargo test --release` from `metel-interpreter/` must pass with zero failures.
+   Confirm by reading the `test result:` lines, not by the command exiting — a wrapper shell
+   exiting has been mistaken for a finished test run more than once.
 2. **Code quality** - `cargo clippy --release --lib -- -W clippy::pedantic` from
    `metel-interpreter/` must end at **0 warnings**. The `--lib` scope is deliberate: `--all-targets`
    also lints measurement binaries and test harnesses, which are held to a looser bar. Then review
    every file in `git diff develop..HEAD --name-only` for stale code, dead branches, accidental
    `todo!()`, `unimplemented!()`, `unreachable!()`, and fallible `unwrap()`/`expect()` paths.
-3. **Coverage** - every feature or fix needs a focused regression test:
-   - Parser or grammar changes: parsing tests or typechecking tests.
-   - Type system changes: typechecking tests in `tests/typechecking/sources/`.
-   - Evaluator/runtime changes: evaluator tests in `tests/evaluator/sources/` or module semantics tests.
-   - Module graph/name-resolution changes: `tests/module_loading/` or `tests/module_semantics/`.
-4. **Spec accuracy** - every language-visible change is documented in `docs/public/reference/spec.md` and the linked spec section.
-5. **Changelog** - `tools/changelog-status.sh` reports no unlogged commits, and
-   `docs/public/release-notes/changelog.md`'s in-progress section reads correctly against what
-   this sprint shipped. This is a completeness check, not first authorship — see "During a
-   Sprint" above. A gate that is failing here means entries were batched, not that the gate is
-   noisy.
-6. **RFC state** - `python3 docs/internal/rfcs/tools/rfc.py check` reports clean (frontmatter matches directory, no dangling references); any RFC at `3-integrated` or beyond has `impl_status`/`impl_tracking` set correctly per `docs/internal/rfcs/PROCESS.md`.
-7. **Internal docs** - update `metel-interpreter/docs/architecture.md`, `typechecker.md`, or `evaluator.md` when the corresponding pipeline, inference, construction, runtime, or builtin behavior changes.
-8. **Decision records** - add a new ADR in `metel-interpreter/docs/decisions/` for non-obvious architectural decisions, reversals, or workarounds future contributors must know.
-9. **Issues** - completed issues have satisfied acceptance criteria and are closed; deferred work is an explicit open issue, not hidden in a comment.
+3. **Coverage** - every feature or fix needs a focused regression test. Fixtures live under
+   `metel-interpreter/tests/integration/sources/`:
+   - Parser or grammar changes: `parsing/`, or a typechecking fixture.
+   - Type system changes: `typechecking/`.
+   - Evaluator/runtime changes: `evaluator/`.
+   - Module graph/name-resolution changes: `module_loading/` or `module_semantics/`.
 
-After the gate passes, open a pull request from `sprint/N` to `develop` on Codeberg (not `main` — see "Release Workflow" below for how `develop` reaches `main`). The pull request diff is the authoritative sprint deliverable.
+   A directory fixture's sidecar is `test.toml`; a single-file fixture's is `<name>.toml`.
+   Getting this wrong makes the sidecar silently inert — the fixture passes while checking
+   nothing, which is how six migrated fixtures skipped move checking entirely.
+4. **Spec accuracy** - every language-visible change is documented in `docs/public/reference/spec.md` and the linked spec section.
+5. **Changelog** - `tools/changelog-status.sh` reports no unlogged commits for this branch's
+   work. This is a completeness check, not first authorship — see "While the Branch Is Open"
+   above. A failure here means entries were batched, not that the check is noisy.
+6. **Acceptance criteria** - every criterion in the issue is actually satisfied. Deferred
+   work is a new open issue, not an unchecked box or a comment.
+
+Then open a pull request to `develop` (never to `main` — see "Release Workflow" below for
+how `develop` reaches `main`). **One issue per pull request.** If the branch grew a second
+concern along the way, that concern is its own issue and its own branch; the fact that it
+was discovered here is not a reason to ship it here. Sprint-era omnibus pull requests are
+exactly what this rule exists to prevent.
+
+Merge by fast-forward, then close the issue. Delete the branch once merged — an issue
+branch has no life after its pull request, and leaving them accumulates the same
+uncertainty about "is this merged?" that sprint branches did.
 
 ---
 
 ## Release Workflow
 
-A release is the `develop -> main` merge, tag, and Codeberg Release together —
-distinct from, and less frequent than, a sprint merging into `develop`. `develop`
-may sit ahead of `main` across several completed sprints before a release is cut;
-there is no fixed cadence requirement, though in practice a release tends to line
-up with a version milestone (`docs/internal/versioning.md`) reaching completion.
+A release is the `develop -> main` fast-forward, tag, and Codeberg Release together —
+distinct from, and much less frequent than, an issue branch merging into `develop`.
+`develop` sits ahead of `main` across many closed issues before a release is cut. **A
+release is cut when a version milestone completes**, not on a calendar — that is the
+only cadence rule, and it is why the milestone rather than a sprint number is the unit
+of grouping (see "Task Tracking" above).
 
 ### Release Gate
 
-Before merging `develop` into `main`, run this gate. It exists specifically to
-catch changelog/spec drift relative to what's actually merged — the exact failure
-mode this workflow is designed against — not to re-run the sprint-close gate.
+Before merging `develop` into `main`, run this gate. It is the periodic half of "The
+Two Gates" above: it catches changelog/spec drift relative to what's actually merged —
+the exact failure mode this workflow is designed against — plus the repository-wide
+sweeps that no single pull request owns. It does **not** re-run the per-PR gate; those
+checks already passed on every branch that landed.
 
 1. **Changelog finalized** - `docs/public/release-notes/changelog.md`'s in-progress
    section is complete and accurate against everything merged into `develop` since
    the last release. Reword for clarity if needed, then replace the "in progress on
-   `sprint/N` — not yet released" line with the release date.
+   `develop` — not yet released" line with the release date.
 2. **Version number chosen** - per `docs/internal/versioning.md`'s major/minor/patch
    rule (spec changes require at least a minor bump; a patch must not touch
    language-visible behavior at all). Bump `metel-interpreter/Cargo.toml`'s
@@ -262,14 +328,29 @@ mode this workflow is designed against — not to re-run the sprint-close gate.
 5. **Spec correctness** - spot-check that `docs/public/reference/spec.md` and its
    linked sections actually describe the behavior being released, not a stale or
    aspirational version of it.
+6. **Internal docs** - `metel-interpreter/docs/architecture.md`, `typechecker.md`, and
+   `evaluator.md` reflect the pipeline, inference, construction, runtime, and builtin
+   behavior as it now is. Read them against the release's diff rather than from memory.
+7. **Decision records** - every non-obvious architectural decision, reversal, or
+   workaround this release introduced has an ADR in `metel-interpreter/docs/decisions/`.
+   A reversal especially: the reason a past decision stopped holding is the part that
+   gets lost, and the part the next person needs.
+8. **Issue hygiene** - the milestone's issues are genuinely closed with acceptance
+   criteria satisfied, and anything deferred out of the release is an explicit open
+   issue re-milestoned to a later version, not left silently attached to this one.
 
 ### Cutting the Release
 
 1. Fast-forward `main` to `develop` (`git merge --ff-only develop`, per "Merging:
-   Fast-Forward Only" above). There is no release merge commit: because every
-   sprint fast-forwarded into `develop`, `main` is by construction a prefix of it,
+   Fast-Forward Only" above). There is no release merge commit: because every issue
+   branch fast-forwarded into `develop`, `main` is by construction a prefix of it,
    and what went into a release is read off the tags bracketing the range, not off
    a merge node.
+   **Freeze `develop` for the duration.** `main` must land on `develop`'s tip, not on
+   a commit somewhere inside a longer line of work — `v0.11.0` was tagged 116 commits
+   into `sprint/27` with 72 more still to come, which is how a release ended up
+   bracketing a range nobody had decided on. Merge nothing into `develop` between the
+   gate passing and the tag being pushed.
 2. Tag `main` at its new tip: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. Create a Codeberg Release from that tag, with the release body sourced from
    the changelog section just finalized (not regenerated separately — the
@@ -281,6 +362,10 @@ mode this workflow is designed against — not to re-run the sprint-close gate.
 ---
 
 ## Task Workflow
+
+"Branch Workflow" above covers the mechanics — where commits go, how a pull request
+lands. This covers the substance: what to read before writing code, and what "done"
+means beyond the checks passing.
 
 ### Before Starting a Task
 
@@ -301,10 +386,13 @@ mode this workflow is designed against — not to re-run the sprint-close gate.
 
 ### Before Marking Done
 
-1. All acceptance criteria are satisfied.
-2. Relevant tests pass; for typechecker or inference changes, the full `cargo test` suite passes.
-3. Spec, changelog, RFC, internal docs, and ADR updates are complete where required.
-4. Close the issue.
+Run the per-PR gate in "Closing an Issue" above — it is the authoritative list, and is
+not restated here so the two cannot drift apart. Beyond it:
+
+- For typechecker or inference changes, the full `cargo test` suite passes, not just the
+  targeted tests. Blast radius in that part of the pipeline is routinely wider than the
+  change looks.
+- Close the issue only after the pull request has merged, not when the code is written.
 
 ---
 
@@ -348,7 +436,7 @@ Briefs for delegated work belong in the job's scratch directory, not the reposit
 Before a substantial branch merges — a new analysis pass, a type-system change, anything where being
 confidently wrong is worse than being incomplete — it gets an **adversarial review**: a reviewer whose
 brief is to break it, not to assess it. A review that summarises the branch, or reports that it looks
-good, has produced nothing. This is distinct from the sprint-close gate, which checks that the required
+good, has produced nothing. This is distinct from the per-PR gate, which checks that the required
 artefacts exist; this checks whether the code is *right*.
 
 ### Briefing one
@@ -529,7 +617,7 @@ feat(#57): enforce function aspect bounds
 Closes #57
 ```
 
-During an active sprint, commit only on `sprint/N`, not directly on `develop` or `main`.
+Commit only on an issue branch, never directly on `develop` or `main`.
 
 ---
 
@@ -539,7 +627,7 @@ During an active sprint, commit only on `sprint/N`, not directly on `develop` or
 - The spec contains rules and syntax, not rationale, history, or open questions. Put rationale in RFCs or ADRs.
 - New public behavior must be documented in `docs/public/reference/spec/`.
 - Runtime builtins documented in `docs/public/reference/spec/runtime.md` must match what the interpreter registers.
-- Version-visible changes must be reflected in `docs/public/release-notes/changelog.md` when the change lands, not batched for later — see "Sprint Workflow" above.
+- Version-visible changes must be reflected in `docs/public/release-notes/changelog.md` when the change lands, not batched for later — see "Branch Workflow" above.
 - Patch releases must not introduce spec changes; see `docs/internal/versioning.md`.
 
 ---
@@ -644,7 +732,7 @@ The public website consumes the same `metel-docs` content through the docs submo
 When a task or release affects public documentation:
 
 1. Update and commit `docs/` first.
-2. Update this repo's `docs` submodule pointer on the sprint branch.
+2. Update this repo's `docs` submodule pointer on the issue branch.
 3. Update `metel-website` to point at the same docs commit.
 4. For public releases, generate the versioned website snapshot if the release process requires it.
 5. Publish only after the docs version and website pointer match.
@@ -676,7 +764,9 @@ When stopping, explain what you found, the options, and the recommended path.
 - Do not use GitHub Projects or `.github/` workflows as the current process — this is a Codeberg repo, GitHub tooling doesn't apply.
 - Do not create new tracking documents for open work; use Codeberg Issues.
 - Do not close an issue with unchecked acceptance criteria.
-- Do not commit sprint work directly to `develop` or `main`.
+- Do not commit directly to `develop` or `main`. Work reaches `develop` only by fast-forwarding an issue branch that passed the per-PR gate.
+- Do not put two issues in one pull request. If a second concern appeared mid-branch, it gets its own issue and its own branch.
+- Do not create a `sprint/N` branch, or reintroduce a sprint tier under another name — see "Why `sprint/N` was retired"; it was removed against measurement, not taste.
 - Do not merge `develop` into `main` outside the Release Workflow's gate — `main` only moves at an actual release.
 - Do not create a merge commit anywhere, at any tier. Rebase the branch and fast-forward — see "Merging: Fast-Forward Only". In particular, do not reach for `tea pr merge`, whose default style is exactly the thing this forbids.
 - Do not re-introduce a synced "RFC status" field on an issue or elsewhere — the RFC file's own directory/frontmatter is the only source of truth for RFC lifecycle state (see RFC Workflow above); this is a deliberate simplification versus how Plane was used, not an oversight.

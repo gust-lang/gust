@@ -113,7 +113,7 @@ The canonical pattern is `instantiate_scheme_for_call`. Any new site that instan
 
 ## 10. Test coverage
 
-- [ ] Every new happy-path behavior has at least one passing typechecking test (\`.mln\` file under `tests/typechecking/` or a phase test in `tests/typeinference_tests.rs`)
+- [ ] Every new happy-path behavior has at least one passing typechecking test (a `.mtl` fixture under `tests/integration/sources/typechecking/`, or a unit test under `tests/unit/`)
 - [ ] Every new error path (new `ErrorCode` emission or new rejection branch) has at least one negative test that asserts the error is produced
 - [ ] If a test was added: confirm it actually exercises the changed code path, not a pre-existing path that happens to pass
 

@@ -4,8 +4,8 @@
 # The changelog lives in the `docs/` submodule, so a feature commit in this repo can never
 # contain its own changelog entry — the entry is a separate commit in `metel-docs`. That
 # split is exactly why "update the changelog when the feature lands" silently stopped
-# happening. This turns the sprint-close gate's changelog step from a memory exercise into
-# a diff you can read.
+# happening. This turns the changelog step of the per-PR and release gates from a memory
+# exercise into a diff you can read.
 #
 # Heuristic, deliberately: it compares commit timestamps across the two repositories rather
 # than trying to match issue numbers, because changelog entries are written in prose and
