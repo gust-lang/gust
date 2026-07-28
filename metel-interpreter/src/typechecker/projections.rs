@@ -100,7 +100,7 @@ impl Cx<'_> {
                 self.expr(&d.value, generics, self_allowed, local_types)?;
             }
             Decl::Struct(sd) => {
-                let scope = self.with_generics(generics, &sd.generics);
+                let scope = Self::with_generics(generics, &sd.generics);
                 self.bounds(
                     &sd.generics,
                     sd.where_clause.as_ref(),
@@ -115,7 +115,7 @@ impl Cx<'_> {
                 }
             }
             Decl::Enum(ed) => {
-                let scope = self.with_generics(generics, &ed.generics);
+                let scope = Self::with_generics(generics, &ed.generics);
                 self.bounds(
                     &ed.generics,
                     ed.where_clause.as_ref(),
@@ -145,7 +145,7 @@ impl Cx<'_> {
         self_allowed: bool,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
-        let generics = self.with_generics(inherited_generics, &fun.generics);
+        let generics = Self::with_generics(inherited_generics, &fun.generics);
         self.bounds(
             &fun.generics,
             fun.where_clause.as_ref(),
@@ -271,7 +271,7 @@ impl Cx<'_> {
             }
             TypeExpr::Named(name, args) => {
                 if !self.is_type_name(name, generics, self_allowed, local_types) {
-                    return Err(self.unknown_type(name, span));
+                    return Err(Self::unknown_type(name, span));
                 }
                 for a in args {
                     self.ty_at(a, span, field_of, generics, self_allowed, local_types)?;
@@ -321,7 +321,7 @@ impl Cx<'_> {
         inherited_generics: &HashSet<String>,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
-        let mut generics = self.with_generics(inherited_generics, &ib.generics);
+        let mut generics = Self::with_generics(inherited_generics, &ib.generics);
         generics.extend(self.inherited_impl_generics(&ib.target_type));
         self.bounds(
             &ib.generics,
@@ -333,7 +333,7 @@ impl Cx<'_> {
         self.ty(&ib.target_type, &ib.span, &generics, true, local_types)?;
         if let Some(aspect) = &ib.aspect_name {
             if !self.registry.is_visible_aspect(self.current_module, aspect) {
-                return Err(self.unknown_aspect(aspect, &ib.span));
+                return Err(Self::unknown_aspect(aspect, &ib.span));
             }
         }
         for arg in &ib.aspect_type_args {
@@ -379,7 +379,7 @@ impl Cx<'_> {
         inherited_generics: &HashSet<String>,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
-        let generics = self.with_generics(inherited_generics, &method.generics);
+        let generics = Self::with_generics(inherited_generics, &method.generics);
         for param in &method.params {
             self.param(param, &generics, true, local_types)?;
         }
@@ -470,7 +470,7 @@ impl Cx<'_> {
             ));
         };
         if !self.registry.is_visible_aspect(self.current_module, name) {
-            return Err(self.unknown_aspect(name, span));
+            return Err(Self::unknown_aspect(name, span));
         }
         for arg in args {
             self.ty(arg, span, generics, self_allowed, local_types)?;
@@ -642,11 +642,7 @@ impl Cx<'_> {
         }
     }
 
-    fn with_generics(
-        &self,
-        inherited: &HashSet<String>,
-        params: &[GenericParam],
-    ) -> HashSet<String> {
+    fn with_generics(inherited: &HashSet<String>, params: &[GenericParam]) -> HashSet<String> {
         let mut result = inherited.clone();
         result.extend(params.iter().map(|param| param.name.clone()));
         result
@@ -697,11 +693,11 @@ impl Cx<'_> {
                 .is_some()
     }
 
-    fn unknown_type(&self, name: &str, span: &Span) -> MetelError {
+    fn unknown_type(name: &str, span: &Span) -> MetelError {
         MetelError::type_error(TypeErrorCode::T0003, format!("unknown type `{name}`"), span)
     }
 
-    fn unknown_aspect(&self, name: &str, span: &Span) -> MetelError {
+    fn unknown_aspect(name: &str, span: &Span) -> MetelError {
         MetelError::type_error(
             TypeErrorCode::T0003,
             format!("unknown aspect `{name}`"),
