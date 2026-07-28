@@ -1,0 +1,6 @@
+// Construction is not required before a field annotation is validated.
+struct Holder {
+    value: Missing,
+}
+
+fun main() { }

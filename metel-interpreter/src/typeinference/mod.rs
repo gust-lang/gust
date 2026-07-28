@@ -715,14 +715,28 @@ fn validate_literal_bindings(
         match subst.apply(&InferType::Var(var)) {
             InferType::Var(_) | InferType::Never => {}
             InferType::Concrete(t) if is_integer_type(&t) => {}
-            other => return Err(literal_mismatch_error(operator, "an integer literal", &other, span)),
+            other => {
+                return Err(literal_mismatch_error(
+                    operator,
+                    "an integer literal",
+                    &other,
+                    span,
+                ))
+            }
         }
     }
     for &var in float_literal_vars {
         match subst.apply(&InferType::Var(var)) {
             InferType::Var(_) | InferType::Never => {}
             InferType::Concrete(t) if is_float_type(&t) => {}
-            other => return Err(literal_mismatch_error(operator, "a float literal", &other, span)),
+            other => {
+                return Err(literal_mismatch_error(
+                    operator,
+                    "a float literal",
+                    &other,
+                    span,
+                ))
+            }
         }
     }
     Ok(())
@@ -866,10 +880,7 @@ impl TypeScheme {
     }
 
     #[must_use]
-    pub fn with_record_kinds(
-        mut self,
-        by_var: &std::collections::HashMap<TypeVar, bool>,
-    ) -> Self {
+    pub fn with_record_kinds(mut self, by_var: &std::collections::HashMap<TypeVar, bool>) -> Self {
         if by_var.values().all(|flag| !*flag) {
             return self;
         }
@@ -1115,7 +1126,9 @@ impl GenericBound {
             return Some(Self::Row(RowConstraint::from(row)));
         }
         match &bound.head {
-            crate::ast::BoundHead::Aspect(TypeExpr::Named(name, _)) => Some(Self::Aspect(name.clone())),
+            crate::ast::BoundHead::Aspect(TypeExpr::Named(name, _)) => {
+                Some(Self::Aspect(name.clone()))
+            }
             _ => None,
         }
     }
@@ -1463,17 +1476,7 @@ impl TypeDefinitionRegistry {
         current_module: &[String],
         type_name: &str,
     ) -> Option<String> {
-        if self.struct_env.contains_key(type_name)
-            && (self.resolve_type_position_id(current_module, type_name).is_some()
-                || self.struct_decl_modules.contains_key(type_name))
-        {
-            return Some(type_name.to_string());
-        }
-        let (module_path, short_name) = Self::split_qualified_type_name(type_name)?;
-        self.struct_decl_modules
-            .get(short_name)
-            .filter(|declaring_module| **declaring_module == module_path)
-            .map(|_| short_name.to_string())
+        self.visible_decl_name(current_module, type_name, &self.struct_env)
     }
 
     pub(crate) fn visible_type_kind(
@@ -1487,17 +1490,9 @@ impl TypeDefinitionRegistry {
         {
             return Some(VisibleTypeKind::Struct);
         }
-        if self.enum_env.contains_key(type_name)
-            && (self.resolve_type_position_id(current_module, type_name).is_some()
-                || self.enum_decl_modules.contains_key(type_name))
-        {
-            return Some(VisibleTypeKind::Enum);
-        }
-        let (module_path, short_name) = Self::split_qualified_type_name(type_name)?;
         if self
-            .enum_decl_modules
-            .get(short_name)
-            .is_some_and(|declaring_module| *declaring_module == module_path)
+            .visible_decl_name(current_module, type_name, &self.enum_env)
+            .is_some()
         {
             return Some(VisibleTypeKind::Enum);
         }
@@ -1600,7 +1595,54 @@ impl TypeDefinitionRegistry {
                 }
             }
         }
-        std_hit
+        if let Some(id) = std_hit {
+            return Some(id);
+        }
+
+        // A qualified annotation can name an imported module handle. Resolve that
+        // handle (including aliases), then consult either the module's declaration
+        // table or its re-export surface. This mirrors ordinary module-path lookup:
+        // `facade::Token` is valid when `facade` re-exports `Token` from another
+        // module, even though no `(facade, Token)` declaration exists in `symbols`.
+        let (prefix, short_name) = Self::split_qualified_type_name(name)?;
+        let (first, rest) = prefix.split_first()?;
+        let module_path = match scope.explicit.get(first) {
+            Some(binding) if matches!(binding.kind, crate::name_resolver::BindingKind::Module) => {
+                let mut path = binding.source_module.clone();
+                path.extend_from_slice(rest);
+                path
+            }
+            _ => prefix,
+        };
+        self.symbols
+            .get(&(module_path.clone(), short_name.to_string()))
+            .copied()
+            .or_else(|| {
+                self.scopes
+                    .get(&module_path)
+                    .and_then(|module_scope| module_scope.re_exports.get(short_name))
+                    .map(|binding| binding.symbol_id)
+            })
+    }
+
+    /// Resolve a visible source spelling to the registry key used for its declaration.
+    /// Registry maps are keyed by a declaration's original name, while a caller may use
+    /// an import alias or a re-export path. Symbol identity bridges those spellings.
+    fn visible_decl_name<T>(
+        &self,
+        current_module: &[String],
+        spelling: &str,
+        declarations: &HashMap<String, T>,
+    ) -> Option<String> {
+        if self.symbols.is_empty() {
+            return declarations
+                .contains_key(spelling)
+                .then(|| spelling.to_string());
+        }
+        let id = self.resolve_type_position_id(current_module, spelling)?;
+        self.symbols.iter().find_map(|((_, name), candidate_id)| {
+            (*candidate_id == id && declarations.contains_key(name)).then(|| name.clone())
+        })
     }
 
     pub fn register_struct_fields(
@@ -2016,9 +2058,14 @@ impl TypeDefinitionRegistry {
         match ty {
             InferType::Record(fields) => {
                 if aspect_name == "Send" || aspect_name == "Sync" {
-                    return fields
-                        .iter()
-                        .all(|(_, field_ty)| self.infer_type_satisfies_aspect(current_module, field_ty, aspect_name, assumptions));
+                    return fields.iter().all(|(_, field_ty)| {
+                        self.infer_type_satisfies_aspect(
+                            current_module,
+                            field_ty,
+                            aspect_name,
+                            assumptions,
+                        )
+                    });
                 }
                 false
             }
@@ -2026,7 +2073,12 @@ impl TypeDefinitionRegistry {
                 if aspect_name == "Copy" {
                     // #299: fixed-size-array `Copy` stays hardcoded here until const generics
                     // exist and the stdlib can express `[T; N]: Copy` directly.
-                    return self.infer_type_satisfies_aspect(current_module, elem, "Copy", assumptions);
+                    return self.infer_type_satisfies_aspect(
+                        current_module,
+                        elem,
+                        "Copy",
+                        assumptions,
+                    );
                 }
                 false
             }
@@ -2034,9 +2086,9 @@ impl TypeDefinitionRegistry {
                 if aspect_name == "Copy" {
                     // #299: tuple `Copy` stays hardcoded here until tuple impl targets stop
                     // being checker-only and can move into the stdlib.
-                    return items
-                        .iter()
-                        .all(|item| self.infer_type_satisfies_aspect(current_module, item, "Copy", assumptions));
+                    return items.iter().all(|item| {
+                        self.infer_type_satisfies_aspect(current_module, item, "Copy", assumptions)
+                    });
                 }
                 false
             }
@@ -2197,11 +2249,7 @@ impl TypeDefinitionRegistry {
         self.type_param_record_kinds.get(name)
     }
 
-    pub fn register_neg_type_param_bounds(
-        &mut self,
-        name: String,
-        bounds: Vec<Vec<GenericBound>>,
-    ) {
+    pub fn register_neg_type_param_bounds(&mut self, name: String, bounds: Vec<Vec<GenericBound>>) {
         self.neg_type_param_bounds.insert(name, bounds);
     }
 
@@ -2243,7 +2291,11 @@ impl TypeDefinitionRegistry {
         self.fun_bounds.get(name)
     }
 
-    pub fn register_fun_record_kinds(&mut self, name: String, record_kinds: HashMap<TypeVar, bool>) {
+    pub fn register_fun_record_kinds(
+        &mut self,
+        name: String,
+        record_kinds: HashMap<TypeVar, bool>,
+    ) {
         if record_kinds.values().any(|flag| *flag) {
             self.fun_record_kinds.insert(name, record_kinds);
         }
@@ -2265,10 +2317,7 @@ impl TypeDefinitionRegistry {
     }
 
     #[must_use]
-    pub fn neg_fun_bounds_for(
-        &self,
-        name: &str,
-    ) -> Option<&HashMap<TypeVar, Vec<GenericBound>>> {
+    pub fn neg_fun_bounds_for(&self, name: &str) -> Option<&HashMap<TypeVar, Vec<GenericBound>>> {
         self.neg_fun_bounds.get(name)
     }
 
@@ -2374,6 +2423,18 @@ impl TypeDefinitionRegistry {
     #[must_use]
     pub fn aspect_declaring_module(&self, name: &str) -> Option<&Vec<String>> {
         self.aspect_decl_modules.get(name)
+    }
+
+    /// Whether an aspect name is visible from `current_module`.
+    ///
+    /// This follows the same type-position lookup as impl targets: unqualified names
+    /// use the module's local/import/glob scope, while a qualified path must name the
+    /// aspect's declaring module exactly. Keeping that rule in the registry prevents
+    /// eager annotation validation from drifting away from later bound resolution.
+    #[must_use]
+    pub(crate) fn is_visible_aspect(&self, current_module: &[String], name: &str) -> bool {
+        self.visible_decl_name(current_module, name, &self.aspect_env)
+            .is_some()
     }
 
     pub fn register_aspect_method_defs(&mut self, name: String, methods: Vec<AspectMethod>) {
@@ -3021,7 +3082,11 @@ impl InferContext {
             InferType::Var(v) => v,
             _ => tv,
         };
-        let mut merged = self.current_type_param_bounds.get(&tv).cloned().unwrap_or_default();
+        let mut merged = self
+            .current_type_param_bounds
+            .get(&tv)
+            .cloned()
+            .unwrap_or_default();
         if resolved != tv {
             if let Some(bounds) = self.current_type_param_bounds.get(&resolved) {
                 for bound in bounds {
@@ -3054,7 +3119,11 @@ impl InferContext {
                 }
             }
         }
-        if merged.is_empty() { None } else { Some(merged) }
+        if merged.is_empty() {
+            None
+        } else {
+            Some(merged)
+        }
     }
 
     /// Register an aspect bound for a type variable (for opaque return values).
@@ -3156,7 +3225,11 @@ impl InferContext {
         self.registry.register_fun_bounds(name, bounds);
     }
 
-    pub fn register_fun_record_kinds(&mut self, name: String, record_kinds: HashMap<TypeVar, bool>) {
+    pub fn register_fun_record_kinds(
+        &mut self,
+        name: String,
+        record_kinds: HashMap<TypeVar, bool>,
+    ) {
         self.registry.register_fun_record_kinds(name, record_kinds);
     }
 

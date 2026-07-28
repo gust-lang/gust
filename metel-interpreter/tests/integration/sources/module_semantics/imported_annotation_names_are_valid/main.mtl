@@ -1,0 +1,6 @@
+import helper::{Marker, Token};
+
+fun take(value: Token) { }
+fun require<T: Marker>(value: T) { }
+
+fun main() { }

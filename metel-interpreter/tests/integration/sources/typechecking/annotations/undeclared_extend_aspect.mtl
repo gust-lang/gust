@@ -1,0 +1,5 @@
+struct Holder { value: i64 }
+
+extend Holder: Missing { }
+
+fun main() { }

@@ -148,11 +148,12 @@ The HM algorithm infers types at rank 1: `∀` only at the outermost level. High
 
 ## Pre-Pass
 
-Three hoisting steps run before Pass 1:
+Four pre-inference steps run before Pass 1:
 
 1. `build_registry` (via `TypeDefinitionRegistry`) — registers types, aspects, and impls. It first calls `populate_schemes_from_embedded_core` to derive schemes for all `std::core` declarations (including `print`/`println`/`assert` with their aspect bounds, and `String::len` as a derived method entry), then calls `register_program_decls` for the user module. The old hand-maintained `register_builtins` step no longer exists — every stdlib item is derived from the embedded `core.mtl` source (ADR-0039).
-2. `build_overload_table` — groups same-name `fun` declarations into overload sets; assigns each definition a process-unique `SymbolId` from the `OVERLOAD_SYM_START` range. Overloaded names are not registered in the scheme env and are resolved by exact-match candidate selection in Pass 1 (ADR-0038).
-3. `hoist_fun_decls` — walks top-level non-overloaded `FunDecl`s and pre-registers each with a fresh type variable in both `ctx.mono_env` and `ctx.poly_env`. Enables forward references, mutual recursion, and shadowing of `std::core` names. Native decls are hoisted with bounds derived from their annotated parameter types.
+2. `projections::check` — walks type-bearing annotations and bounds against the completed registry. It reports unresolved type and aspect names (and malformed record projections) before inference can turn them into stand-in types and emit a misleading unification error. Its scope carries generic parameters, valid `Self` positions, and block-local nominal declarations.
+3. `build_overload_table` — groups same-name `fun` declarations into overload sets; assigns each definition a process-unique `SymbolId` from the `OVERLOAD_SYM_START` range. Overloaded names are not registered in the scheme env and are resolved by exact-match candidate selection in Pass 1 (ADR-0038).
+4. `hoist_fun_decls` — walks top-level non-overloaded `FunDecl`s and pre-registers each with a fresh type variable in both `ctx.mono_env` and `ctx.poly_env`. Enables forward references, mutual recursion, and shadowing of `std::core` names. Native decls are hoisted with bounds derived from their annotated parameter types.
 
 `hoist_fun_decls` is also called at block entry in `infer_block`, so nested functions support forward references within their block.
 

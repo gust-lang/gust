@@ -1,0 +1,7 @@
+struct Holder {
+    value: Missing,
+}
+
+fun main() {
+    let holder = Holder { value = 1 };
+}

@@ -1,0 +1,6 @@
+// An unused enum variant still carries a valid type annotation.
+enum Holder {
+    Value { value: Missing },
+}
+
+fun main() { }

@@ -1,0 +1,6 @@
+import helper::ping;
+
+// `Token` is declared by a loaded module but is not imported here.
+fun unused(value: Token) { }
+
+fun main() { }

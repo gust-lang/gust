@@ -1,0 +1,4 @@
+// An unused generic declaration must not leave an unknown aspect deferred.
+fun unused<T: Missing>(value: T) { }
+
+fun main() { }

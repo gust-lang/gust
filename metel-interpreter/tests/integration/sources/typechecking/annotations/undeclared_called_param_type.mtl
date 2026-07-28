@@ -1,0 +1,5 @@
+fun take(value: Missing) { }
+
+fun main() {
+    take(1);
+}

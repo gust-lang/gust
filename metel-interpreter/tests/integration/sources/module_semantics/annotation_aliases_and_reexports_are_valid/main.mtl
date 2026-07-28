@@ -1,0 +1,9 @@
+import helper::{Marker as Mark, Token as Tok};
+import facade::{Marker as FacadeMark, Token as FacadeToken};
+
+fun aliased(value: Tok) { }
+fun bounded<T: Mark>(value: T) { }
+fun reexported(value: FacadeToken) { }
+fun reexported_bound<T: FacadeMark>(value: T) { }
+
+fun main() { }

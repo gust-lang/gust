@@ -1,0 +1,4 @@
+// Nested type expressions must validate every named component.
+fun unused(values: Missing[]) { }
+
+fun main() { }

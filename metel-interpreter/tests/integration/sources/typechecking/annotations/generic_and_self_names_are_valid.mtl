@@ -1,0 +1,13 @@
+aspect Identity {
+    fun same(self, other: Self) -> Self;
+}
+
+struct Box<T> {
+    value: T,
+}
+
+fun keep<T>(value: T) -> T { value }
+
+fun main() {
+    let value: i64 = keep(1);
+}

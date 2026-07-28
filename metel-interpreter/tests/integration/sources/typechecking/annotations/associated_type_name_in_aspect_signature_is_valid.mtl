@@ -1,0 +1,6 @@
+aspect Container {
+    type Item;
+    fun get(&self) -> Item;
+}
+
+fun main() { }

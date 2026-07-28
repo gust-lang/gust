@@ -1,0 +1,4 @@
+// An uncalled signature must still reject an undeclared type.
+fun unused(value: Missing) { }
+
+fun main() { }

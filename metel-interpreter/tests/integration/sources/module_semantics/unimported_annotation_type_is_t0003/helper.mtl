@@ -1,0 +1,3 @@
+public struct Token { value: i64 }
+
+public fun ping() -> i64 { 1 }

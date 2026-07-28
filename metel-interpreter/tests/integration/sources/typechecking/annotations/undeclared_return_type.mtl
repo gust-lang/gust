@@ -1,0 +1,4 @@
+// Return annotations are diagnosed as unresolved names, not as a later mismatch.
+fun unused() -> Missing { 0 }
+
+fun main() { }
