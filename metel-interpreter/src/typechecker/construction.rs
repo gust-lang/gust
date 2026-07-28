@@ -2199,7 +2199,7 @@ fn construct_expr(
             span,
         } => {
             let typed_obj = construct_expr(object, None, ctx)?;
-            let ty = match typed_obj.ty() {
+            let ty = match peel_type_references(typed_obj.ty()) {
                 Type::Tuple(elems) => elems.get(*index).cloned().ok_or_else(|| {
                     MetelError::type_error(
                         TypeErrorCode::T0003,
@@ -4678,6 +4678,25 @@ fn construct_propagate_error(
     }))
 }
 
+/// The first shared-reference type encountered walking an lvalue path towards its root,
+/// if any. Mirrors `typed_ast::is_lvalue_path`'s shape deliberately: the two must agree on
+/// what a path *is*, or one admits a form the other rejects (see #313).
+fn shared_reference_root_in_lvalue_path(expr: &TypedExpr) -> Option<&Type> {
+    match expr {
+        TypedExpr::FieldAccess { object, .. }
+        | TypedExpr::TupleAccess { object, .. }
+        | TypedExpr::Index { object, .. }
+        | TypedExpr::UnaryOp(UnaryOp::Deref, object, _, _) => {
+            if let Type::Reference(inner) = object.ty() {
+                Some(inner.as_ref())
+            } else {
+                shared_reference_root_in_lvalue_path(object)
+            }
+        }
+        _ => None,
+    }
+}
+
 fn construct_unaryop(
     op: &UnaryOp,
     operand: &Expr,
@@ -4727,23 +4746,19 @@ fn construct_unaryop(
                     span: span.clone(),
                 });
             }
-            // `&var *r` cannot manufacture exclusive access out of a shared `&T`.
-            // Statically determinable from the reborrowed reference's own type, so it
-            // belongs here rather than as a runtime error (same principle as
-            // metel-core#280).
             if matches!(op, UnaryOp::RefMut) {
-                if let TypedExpr::UnaryOp(UnaryOp::Deref, inner, _, _) = &operand {
-                    if matches!(inner.ty(), Type::Reference(_)) {
-                        return Err(MetelError::type_error(
-                            TypeErrorCode::T0006,
-                            format!(
-                                "cannot take `&var` through a shared reference `{}`; \
-                                 a shared reference never grants write access",
-                                inner.ty()
-                            ),
-                            span,
-                        ));
-                    }
+                // `&var` cannot manufacture exclusive access out of any shared
+                // reference encountered along the lvalue path, whether spelled
+                // explicitly (`&var *r`) or through selectors (`&var r.field`).
+                if let Some(shared_inner) = shared_reference_root_in_lvalue_path(&operand) {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0006,
+                        format!(
+                            "cannot take `&var` through a shared reference `&{shared_inner}`; \
+                             a shared reference never grants write access"
+                        ),
+                        span,
+                    ));
                 }
             }
             if matches!(op, UnaryOp::RefMut) {

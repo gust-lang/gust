@@ -857,6 +857,7 @@ fn deep_clone_value(v: Value) -> Value {
 fn read_path(root: &Value, path: &[PathSegment], span: &Span) -> Result<Value, MetelError> {
     let mut cur = root.clone();
     for seg in path {
+        cur = deref_value(&cur, span)?.unwrap_or(cur);
         cur = match (seg, cur) {
             (
                 PathSegment::Field(f),
@@ -908,6 +909,29 @@ fn write_path(
     if path.is_empty() {
         *root = new_val;
         return Ok(());
+    }
+    match root {
+        Value::Reference(_) | Value::FieldReference { .. } => {
+            return Err(MetelError::panic(
+                RuntimeErrorCode::R0003,
+                "cannot write through a shared reference",
+                span,
+            ))
+        }
+        Value::MutReference(rc) => {
+            let mut referent = rc.borrow_mut();
+            return write_path(&mut referent, path, new_val, span);
+        }
+        Value::MutFieldReference {
+            root,
+            path: ref_path,
+        } => {
+            let mut full_path = ref_path.clone();
+            full_path.extend_from_slice(path);
+            let mut referent = root.borrow_mut();
+            return write_path(&mut referent, &full_path, new_val, span);
+        }
+        _ => {}
     }
     match (&path[0], root) {
         (
@@ -1228,6 +1252,9 @@ fn build_mut_path(
             };
             path.push(PathSegment::ArrayIndex(i));
             Ok(ControlFlow::Continue((root, path)))
+        }
+        TypedExpr::UnaryOp(crate::ast::UnaryOp::Deref, object, _, _) => {
+            build_mut_path(object, env, runtime, span)
         }
         _ => Err(MetelError::internal("build_mut_path: not a lvalue path")),
     }
@@ -2875,6 +2902,7 @@ pub fn eval_expr(
                 ControlFlow::Continue(value) => value,
                 ControlFlow::Break(signal) => return Ok(signal),
             };
+            let v = deref_value(&v, span)?.unwrap_or(v);
             match v {
                 Value::Tuple(elems) => {
                     elems
