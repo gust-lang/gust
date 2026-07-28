@@ -330,7 +330,10 @@ impl Cx<'_> {
             &generics,
             local_types,
         )?;
-        self.ty(&ib.target_type, &ib.span, &generics, true, local_types)?;
+        // `Self` becomes meaningful only inside an extend block, where it names this
+        // concrete target. It cannot name the target itself: no enclosing type exists
+        // at that point.
+        self.ty(&ib.target_type, &ib.span, &generics, false, local_types)?;
         if let Some(aspect) = &ib.aspect_name {
             if !self.registry.is_visible_aspect(self.current_module, aspect) {
                 return Err(Self::unknown_aspect(aspect, &ib.span));

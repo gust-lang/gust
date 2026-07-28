@@ -1,0 +1,7 @@
+import helper::ping;
+
+// Loading a module through one item must not make its other declarations visible.
+fun unused_type(value: helper::Token) { }
+fun unused_bound<T: helper::Marker>(value: T) { }
+
+fun main() { }

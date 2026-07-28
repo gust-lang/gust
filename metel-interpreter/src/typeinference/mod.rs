@@ -1606,14 +1606,12 @@ impl TypeDefinitionRegistry {
         // module, even though no `(facade, Token)` declaration exists in `symbols`.
         let (prefix, short_name) = Self::split_qualified_type_name(name)?;
         let (first, rest) = prefix.split_first()?;
-        let module_path = match scope.explicit.get(first) {
-            Some(binding) if matches!(binding.kind, crate::name_resolver::BindingKind::Module) => {
-                let mut path = binding.source_module.clone();
-                path.extend_from_slice(rest);
-                path
-            }
-            _ => prefix,
-        };
+        let binding = scope.explicit.get(first)?;
+        if !matches!(binding.kind, crate::name_resolver::BindingKind::Module) {
+            return None;
+        }
+        let mut module_path = binding.source_module.clone();
+        module_path.extend_from_slice(rest);
         self.symbols
             .get(&(module_path.clone(), short_name.to_string()))
             .copied()

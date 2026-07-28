@@ -1,0 +1,6 @@
+aspect Marker { }
+
+// `Self` is meaningful inside an extend block, not as the block's target.
+extend Self: Marker { }
+
+fun main() { }

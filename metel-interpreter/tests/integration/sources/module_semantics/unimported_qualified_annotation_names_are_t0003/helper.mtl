@@ -1,0 +1,3 @@
+public struct Token { }
+public aspect Marker { }
+public fun ping() -> () { }

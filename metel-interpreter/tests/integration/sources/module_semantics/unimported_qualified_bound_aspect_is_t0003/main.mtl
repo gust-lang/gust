@@ -1,0 +1,6 @@
+import helper::ping;
+
+// Loading one item must not make qualified aspect names visible either.
+fun unused<T: helper::Marker>(value: T) { }
+
+fun main() { }
