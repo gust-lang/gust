@@ -3131,7 +3131,8 @@ fn infer_expr(
         } => {
             let obj_ty = infer_expr(object, ctx, fun_generalizations)?;
             let obj_ty = ctx.solve()?.apply(&obj_ty);
-            match &obj_ty {
+            let peeled = peel_all_references(&obj_ty);
+            match &peeled {
                 InferType::Tuple(elems) => elems.get(*index).cloned().ok_or_else(|| {
                     MetelError::type_error(
                         TypeErrorCode::T0003,

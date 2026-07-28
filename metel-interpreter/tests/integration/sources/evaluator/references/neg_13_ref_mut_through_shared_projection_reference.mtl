@@ -1,0 +1,9 @@
+// TYPECHECK_ERROR[T0006]
+struct Cell { value: i64 }
+
+fun main() {
+    let c = Cell { value = 1 };
+    let r: &Cell = &c;
+    let p: &var i64 = &var r.value;
+    *p = 2;
+}

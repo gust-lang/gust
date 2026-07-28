@@ -1,0 +1,89 @@
+struct Pair { a: String, b: i64 }
+struct Inner { field: i64 }
+struct Outer { inner: Inner }
+struct Cell { value: i64 }
+
+fun struct_projection_through_reference() {
+    let p = Pair { a = "hi", b = 1 };
+    let r: &Pair = &p;
+
+    let implicit: &String = &r.a;
+    let explicit: &String = &(*r).a;
+
+    assert(*implicit == "hi");
+    assert(*explicit == "hi");
+    assert(*implicit == *explicit);
+    assert(r.b == 1);
+    assert((*r).b == 1);
+}
+
+fun tuple_projection_through_reference() {
+    let t: (String, i64) = ("left", 9);
+    let r: &(String, i64) = &t;
+
+    let implicit: &String = &r.0;
+    let explicit: &String = &(*r).0;
+
+    assert(*implicit == "left");
+    assert(*explicit == "left");
+    assert(*implicit == *explicit);
+}
+
+fun nested_projection_through_reference() {
+    let outer = Outer { inner = Inner { field = 7 } };
+    let r: &Outer = &outer;
+
+    let implicit: &i64 = &r.inner.field;
+    let explicit: &i64 = &(*r).inner.field;
+
+    assert(*implicit == 7);
+    assert(*explicit == 7);
+    assert(*implicit == *explicit);
+}
+
+fun array_projection_through_reference() {
+    let xs: [i64; 3] = [4, 5, 6];
+    let r: &[i64; 3] = &xs;
+
+    let implicit: &i64 = &r[0];
+    let explicit: &i64 = &(*r)[0];
+
+    assert(*implicit == 4);
+    assert(*explicit == 4);
+    assert(*implicit == *explicit);
+}
+
+fun mutable_projection_through_mut_reference() {
+    var c = Cell { value = 1 };
+    let r: &var Cell = &var c;
+
+    let implicit: &var i64 = &var r.value;
+    *implicit = 2;
+    assert(c.value == 2);
+
+    let explicit: &var i64 = &var (*r).value;
+    *explicit += 3;
+    assert(c.value == 5);
+}
+
+fun chained_reference_projection() {
+    let outer = Outer { inner = Inner { field = 12 } };
+    let r: &Outer = &outer;
+    let rr: &&Outer = &r;
+
+    let implicit: &i64 = &rr.inner.field;
+    let explicit: &i64 = &(*rr).inner.field;
+
+    assert(*implicit == 12);
+    assert(*explicit == 12);
+    assert(*implicit == *explicit);
+}
+
+fun main() {
+    struct_projection_through_reference();
+    tuple_projection_through_reference();
+    nested_projection_through_reference();
+    array_projection_through_reference();
+    mutable_projection_through_mut_reference();
+    chained_reference_projection();
+}
