@@ -17,7 +17,7 @@ analyse, and no cycle object anywhere.
 ## Step 1 — Load milestone context
 
 ```bash
-tea issues ls --milestone $ARGUMENTS --state open
+tea issues ls --milestones $ARGUMENTS --state open
 ```
 
 Read each issue in full (`tea issue <N>`) — description, labels, referenced issue numbers.
@@ -206,7 +206,7 @@ from the repository root, never from `docs/`.
 ## Step 7 — Verify and report
 
 ```bash
-tea issues ls --milestone $ARGUMENTS --state open
+tea issues ls --milestones $ARGUMENTS --state open
 ```
 
 ```

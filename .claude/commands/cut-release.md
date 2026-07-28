@@ -34,7 +34,7 @@ That range is what this release ships. Read it — it is the input to every gate
 ## Step 1 — Milestone is actually complete
 
 ```bash
-tea issues ls --milestone $ARGUMENTS --state open
+tea issues ls --milestones $ARGUMENTS --state open
 ```
 
 Every remaining open issue is either genuinely done and needs closing, or is deferred and
