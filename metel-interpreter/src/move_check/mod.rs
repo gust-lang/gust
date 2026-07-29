@@ -2,13 +2,16 @@ pub mod place;
 
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::{Pattern, ReceiverKind, Span};
+use crate::ast::{Pattern, ReceiverKind, Span, TypeExpr};
 use crate::error::{MetelError, TypeErrorCode};
 use crate::typed_ast::{
     FunBody, MethodDispatch, TypedBlock, TypedDecl, TypedExpr, TypedForInit, TypedModule,
     TypedModuleGraph, TypedPlace, TypedStmt,
 };
-use crate::typeinference::{type_to_infer, Substitution, TypeDefinitionRegistry};
+use crate::typeinference::{
+    type_to_infer, AspectAssumptions, GenericBound, InferType, Substitution, TypeCtx,
+    TypeDefinitionRegistry, TypeScheme, TypeVar,
+};
 use crate::types::Type;
 
 use self::place::{from_expr as place_from_expr, from_typed_place, Place, Projection};
@@ -60,6 +63,7 @@ pub struct MoveCheckReport {
     pub violations: Vec<MoveViolation>,
     pub skipped_generic_bodies_user: usize,
     pub skipped_generic_bodies_embedded_std: usize,
+    pub unchecked_generic_body_spans: Vec<Span>,
 }
 
 impl MoveCheckReport {
@@ -89,11 +93,22 @@ pub fn collect_graph_violations(graph: &TypedModuleGraph) -> MoveCheckReport {
 /// Returns `T0019` when the graph contains a move-checking violation.
 pub fn check_graph(graph: &TypedModuleGraph) -> Result<(), MetelError> {
     let report = collect_graph_violations(graph);
-    if let Some(violation) = report.violations.into_iter().next() {
+    if let Some(violation) = report
+        .violations
+        .into_iter()
+        .find(|violation| !is_embedded_std_span(&violation.use_span))
+    {
         let span = violation.use_span.clone();
         return Err(MetelError::type_error(
             TypeErrorCode::T0019,
             violation_message(&violation),
+            &span,
+        ));
+    }
+    if let Some(span) = report.unchecked_generic_body_spans.into_iter().next() {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0019,
+            "move checking could not analyze generic body",
             &span,
         ));
     }
@@ -201,9 +216,17 @@ impl FlowState {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+struct GenericMoveEnv {
+    placeholders: HashMap<String, TypeVar>,
+    assumptions: AspectAssumptions,
+}
+
 struct Checker<'a> {
     registry: &'a TypeDefinitionRegistry,
     report: MoveCheckReport,
+    type_ctx: Option<TypeCtx>,
+    generic_envs: Vec<GenericMoveEnv>,
 }
 
 impl<'a> Checker<'a> {
@@ -211,11 +234,17 @@ impl<'a> Checker<'a> {
         Self {
             registry,
             report: MoveCheckReport::default(),
+            type_ctx: None,
+            generic_envs: Vec::new(),
         }
     }
 
     fn check_module(&mut self, module: &TypedModule) {
         let mut state = FlowState::default();
+        self.type_ctx = Some(TypeCtx {
+            scheme_env: module.scheme_env.clone(),
+            registry: self.registry.clone(),
+        });
         state.push_scope();
         for decl in &module.decls {
             self.check_decl(decl, &module.module_path, &mut state);
@@ -245,14 +274,21 @@ impl<'a> Checker<'a> {
                         self.check_block(body, current_module, &mut fn_state);
                         fn_state.pop_scope();
                     }
-                    FunBody::Generic(_) => {
-                        self.record_skipped_generic_body(&fun.span);
+                    FunBody::Generic(body) => {
+                        self.check_generic_body(
+                            &fun.name,
+                            &fun.params,
+                            body,
+                            &fun.span,
+                            current_module,
+                        );
                     }
                     FunBody::Native(_) => {}
                 }
             }
             TypedDecl::Stmt(stmt) => self.check_stmt(stmt, current_module, state),
             TypedDecl::Impl(ib) => {
+                let method_target = method_scheme_target(&ib.target_type);
                 for method in &ib.methods {
                     match &method.body {
                         FunBody::Typed(body) => {
@@ -264,8 +300,15 @@ impl<'a> Checker<'a> {
                             self.check_block(body, current_module, &mut fn_state);
                             fn_state.pop_scope();
                         }
-                        FunBody::Generic(_) => {
-                            self.record_skipped_generic_body(&method.span);
+                        FunBody::Generic(body) => {
+                            self.check_generic_method_body(
+                                method_target,
+                                &method.name,
+                                &method.params,
+                                body,
+                                &method.span,
+                                current_module,
+                            );
                         }
                         FunBody::Native(_) => {}
                     }
@@ -273,6 +316,143 @@ impl<'a> Checker<'a> {
             }
             TypedDecl::Struct(_) | TypedDecl::Enum(_) | TypedDecl::Aspect(_) => {}
         }
+    }
+
+    fn check_generic_body(
+        &mut self,
+        name: &str,
+        params: &[crate::ast::Param],
+        body: &crate::ast::Block,
+        span: &Span,
+        current_module: &[String],
+    ) {
+        if params_contain_impl_aspect(params) {
+            self.record_skipped_generic_body(span);
+            return;
+        }
+        if let Some((typed_body, generic_env)) =
+            self.construct_generic_body_for_move(name, params, body, span)
+        {
+            self.generic_envs.push(generic_env);
+            let mut fn_state = FlowState::default();
+            fn_state.push_scope();
+            for param in params {
+                fn_state.bind(&param.name);
+            }
+            self.check_block(&typed_body, current_module, &mut fn_state);
+            fn_state.pop_scope();
+            self.generic_envs.pop();
+        }
+    }
+
+    fn construct_generic_body_for_move(
+        &mut self,
+        name: &str,
+        params: &[crate::ast::Param],
+        body: &crate::ast::Block,
+        span: &Span,
+    ) -> Option<(TypedBlock, GenericMoveEnv)> {
+        let Some(type_ctx) = self.type_ctx.as_ref() else {
+            self.record_skipped_generic_body(span);
+            return None;
+        };
+        let Some(scheme) = type_ctx.scheme_env.get(name) else {
+            self.record_skipped_generic_body(span);
+            return None;
+        };
+        let Some((arg_types, generic_env)) = Self::generic_sample_args(scheme) else {
+            self.record_skipped_generic_body(span);
+            return None;
+        };
+        if let Ok(typed_body) =
+            crate::typechecker::construct_generic_body(scheme, params, &arg_types, body, span, type_ctx)
+        {
+            Some((typed_body, generic_env))
+        } else {
+            self.record_skipped_generic_body(span);
+            None
+        }
+    }
+
+    fn check_generic_method_body(
+        &mut self,
+        target: MethodSchemeTarget<'_>,
+        method_name: &str,
+        params: &[crate::ast::Param],
+        body: &crate::ast::Block,
+        span: &Span,
+        current_module: &[String],
+    ) {
+        if params_contain_impl_aspect(params) {
+            self.record_skipped_generic_body(span);
+            return;
+        }
+        let Some(type_ctx) = self.type_ctx.as_ref() else {
+            self.record_skipped_generic_body(span);
+            return;
+        };
+        let scheme = match target {
+            MethodSchemeTarget::Named(target_name) => self
+                .registry
+                .method_scheme_for(target_name, method_name)
+                .map(|(scheme, _)| scheme),
+            MethodSchemeTarget::Array => self
+                .registry
+                .array_method_scheme_for(method_name)
+                .map(|(scheme, _)| scheme),
+            MethodSchemeTarget::Unsupported => None,
+        };
+        let Some(scheme) = scheme else {
+            self.record_skipped_generic_body(span);
+            return;
+        };
+        let Some((arg_types, generic_env)) = Self::generic_sample_args(scheme) else {
+            self.record_skipped_generic_body(span);
+            return;
+        };
+        match crate::typechecker::construct_generic_body(scheme, params, &arg_types, body, span, type_ctx) {
+            Ok(typed_body) => {
+                self.generic_envs.push(generic_env);
+                let mut fn_state = FlowState::default();
+                fn_state.push_scope();
+                for param in params {
+                    fn_state.bind(&param.name);
+                }
+                self.check_block(&typed_body, current_module, &mut fn_state);
+                fn_state.pop_scope();
+                self.generic_envs.pop();
+            }
+            Err(_) => self.record_skipped_generic_body(span),
+        }
+    }
+
+    fn generic_sample_args(scheme: &TypeScheme) -> Option<(Vec<Type>, GenericMoveEnv)> {
+        let mut subst = Substitution::new();
+        let mut generic_env = GenericMoveEnv::default();
+        for (index, var) in scheme.quantified_vars.iter().enumerate() {
+            let placeholder = generic_placeholder_name(*var);
+            let sample = Type::Named(placeholder.clone(), Vec::new());
+            generic_env.placeholders.insert(placeholder, *var);
+            if let Some(bounds) = scheme.bounds.get(index) {
+                let assumed: HashSet<String> = bounds
+                    .iter()
+                    .filter_map(GenericBound::aspect_name)
+                    .map(ToOwned::to_owned)
+                    .collect();
+                if !assumed.is_empty() {
+                    generic_env.assumptions.insert(*var, assumed);
+                }
+            }
+            subst.bind(*var, type_to_infer(&sample));
+        }
+        let InferType::Fun(params, _) = &scheme.ty else {
+            return None;
+        };
+        let arg_types = params
+            .iter()
+            .map(|param| infer_to_type_lossy(&subst.apply(param)))
+            .collect::<Option<Vec<_>>>()?;
+        Some((arg_types, generic_env))
     }
 
     fn check_stmt(&mut self, stmt: &TypedStmt, current_module: &[String], state: &mut FlowState) {
@@ -365,6 +545,7 @@ impl<'a> Checker<'a> {
             TypedExpr::Assign { target, value, .. } => {
                 self.observe_typed_place(target, current_module, state);
                 self.consume_expr(value, current_module, state);
+                Self::reinitialize_assigned_place(target, state);
             }
             TypedExpr::Call { callee, args, .. } => {
                 self.observe_call_expr(callee, args, current_module, state);
@@ -402,7 +583,19 @@ impl<'a> Checker<'a> {
                 span,
                 ..
             } => self.observe_closure_expr(params, body, span, current_module, state),
-            TypedExpr::GenericClosure { span, .. } => self.record_skipped_generic_body(span),
+            TypedExpr::GenericClosure {
+                name,
+                params,
+                body,
+                span,
+                ..
+            } => {
+                if let Some(name) = name {
+                    self.observe_generic_closure_expr(name, params, body, span, current_module, state);
+                } else {
+                    self.record_skipped_generic_body(span);
+                }
+            }
             TypedExpr::Return(ret) => {
                 if let Some(value) = &ret.value {
                     self.consume_expr_with_cause(value, current_module, state, MoveCause::Other);
@@ -452,7 +645,7 @@ impl<'a> Checker<'a> {
             let reborrow = param_types
                 .and_then(|params| params.get(index))
                 .is_some_and(|param_ty| is_reborrow(arg, param_ty));
-            if reborrow {
+            if reborrow || self.contains_active_generic_placeholder(arg.ty()) {
                 self.observe_expr(arg, current_module, state);
             } else {
                 self.consume_expr(arg, current_module, state);
@@ -534,6 +727,34 @@ impl<'a> Checker<'a> {
         }
         self.check_block(body, current_module, &mut closure_state);
         closure_state.pop_scope();
+    }
+
+    fn observe_generic_closure_expr(
+        &mut self,
+        name: &str,
+        params: &[crate::ast::Param],
+        body: &crate::ast::Block,
+        span: &Span,
+        current_module: &[String],
+        state: &mut FlowState,
+    ) {
+        if let Some((typed_body, generic_env)) =
+            self.construct_generic_body_for_move(name, params, body, span)
+        {
+            self.generic_envs.push(generic_env);
+            self.capture_closure(&typed_body, params.iter().map(|param| param.name.as_str()), span, state);
+            let mut closure_state = FlowState::default();
+            closure_state.push_scope();
+            for captured in collect_free_roots_from_typed_block(&typed_body, &HashSet::new()) {
+                closure_state.bind(&captured.name);
+            }
+            for param in params {
+                closure_state.bind(&param.name);
+            }
+            self.check_block(&typed_body, current_module, &mut closure_state);
+            closure_state.pop_scope();
+            self.generic_envs.pop();
+        }
     }
 
     fn consume_expr(&mut self, expr: &TypedExpr, current_module: &[String], state: &mut FlowState) {
@@ -895,19 +1116,35 @@ impl<'a> Checker<'a> {
     }
 
     fn record_skipped_generic_body(&mut self, span: &Span) {
-        if span.filename.starts_with("<embedded std::") {
+        if is_embedded_std_span(span) {
             self.report.skipped_generic_bodies_embedded_std += 1;
         } else {
             self.report.skipped_generic_bodies_user += 1;
+            self.report.unchecked_generic_body_spans.push(span.clone());
         }
     }
 
     fn is_copy(&self, current_module: &[String], ty: &Type) -> bool {
-        self.registry.type_satisfies_aspect(current_module, ty, "Copy")
+        self.type_satisfies_aspect(current_module, ty, "Copy")
     }
 
     fn is_drop(&self, current_module: &[String], ty: &Type) -> bool {
-        self.registry.type_satisfies_aspect(current_module, ty, "Drop")
+        self.type_satisfies_aspect(current_module, ty, "Drop")
+    }
+
+    fn type_satisfies_aspect(&self, current_module: &[String], ty: &Type, aspect_name: &str) -> bool {
+        let Some(generic_env) = self.generic_envs.last() else {
+            return self
+                .registry
+                .type_satisfies_aspect(current_module, ty, aspect_name);
+        };
+        let infer_ty = type_to_infer_under_generic_env(ty, &generic_env.placeholders);
+        self.registry.infer_type_satisfies_aspect(
+            current_module,
+            &infer_ty,
+            aspect_name,
+            &generic_env.assumptions,
+        )
     }
 
     fn illegal_move_kind(
@@ -925,6 +1162,9 @@ impl<'a> Checker<'a> {
             .iter()
             .any(|projection| matches!(projection, Projection::OpaqueIndex))
         {
+            if self.contains_active_generic_placeholder(root_ty) {
+                return None;
+            }
             return Some(MoveViolationKind::ArrayElementMove);
         }
 
@@ -936,6 +1176,19 @@ impl<'a> Checker<'a> {
             prefix_ty = self.project_type(&prefix_ty, projection, current_module)?;
         }
         None
+    }
+
+    fn reinitialize_assigned_place(typed_place: &TypedPlace, state: &mut FlowState) {
+        if let TypedPlace::Ident(name, _) = typed_place {
+            state.moved.remove(name);
+        }
+    }
+
+    fn contains_active_generic_placeholder(&self, ty: &Type) -> bool {
+        let Some(generic_env) = self.generic_envs.last() else {
+            return false;
+        };
+        type_contains_generic_placeholder(ty, &generic_env.placeholders)
     }
 
     fn type_of_place(
@@ -1065,6 +1318,58 @@ fn function_param_types(ty: &Type) -> Option<&[Type]> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum MethodSchemeTarget<'a> {
+    Named(&'a str),
+    Array,
+    Unsupported,
+}
+
+fn method_scheme_target(target_type: &TypeExpr) -> MethodSchemeTarget<'_> {
+    match target_type {
+        TypeExpr::Named(name, _) => MethodSchemeTarget::Named(name.as_str()),
+        TypeExpr::Array(_) | TypeExpr::SizedArray(_, _) => MethodSchemeTarget::Array,
+        _ => MethodSchemeTarget::Unsupported,
+    }
+}
+
+fn is_embedded_std_span(span: &Span) -> bool {
+    span.filename.starts_with("<embedded std::")
+}
+
+fn params_contain_impl_aspect(params: &[crate::ast::Param]) -> bool {
+    params
+        .iter()
+        .filter_map(|param| param.type_ann.as_ref())
+        .any(type_expr_contains_impl_aspect)
+}
+
+fn type_expr_contains_impl_aspect(type_expr: &TypeExpr) -> bool {
+    match type_expr {
+        TypeExpr::ImplAspect { .. } => true,
+        TypeExpr::Named(_, args) | TypeExpr::Tuple(args) => {
+            args.iter().any(type_expr_contains_impl_aspect)
+        }
+        TypeExpr::Record(fields) => fields
+            .iter()
+            .any(|(_, field_ty)| type_expr_contains_impl_aspect(field_ty)),
+        TypeExpr::Array(inner)
+        | TypeExpr::SizedArray(inner, _)
+        | TypeExpr::Reference(inner)
+        | TypeExpr::MutReference(inner) => type_expr_contains_impl_aspect(inner),
+        TypeExpr::Fun(params, ret) => {
+            params.iter().any(type_expr_contains_impl_aspect)
+                || ret.as_deref().is_some_and(type_expr_contains_impl_aspect)
+        }
+        TypeExpr::Projection { base, .. } => type_expr_contains_impl_aspect(base),
+        TypeExpr::RecordProjection { .. } | TypeExpr::Unit => false,
+    }
+}
+
+fn generic_placeholder_name(var: TypeVar) -> String {
+    format!("__metel_move_check_generic_{}", var.0)
+}
+
 fn infer_fun_param_types(fun_ty: &crate::typeinference::InferType) -> Option<Vec<Type>> {
     match fun_ty {
         crate::typeinference::InferType::Fun(params, _) => Some(
@@ -1074,6 +1379,121 @@ fn infer_fun_param_types(fun_ty: &crate::typeinference::InferType) -> Option<Vec
                 .collect(),
         ),
         _ => None,
+    }
+}
+
+fn type_to_infer_under_generic_env(ty: &Type, placeholders: &HashMap<String, TypeVar>) -> InferType {
+    match ty {
+        Type::Boolean
+        | Type::Str
+        | Type::Char
+        | Type::Unit
+        | Type::Never
+        | Type::I8
+        | Type::I16
+        | Type::I32
+        | Type::I64
+        | Type::U8
+        | Type::U16
+        | Type::U32
+        | Type::U64
+        | Type::F32
+        | Type::F64 => type_to_infer(ty),
+        Type::Tuple(items) => InferType::Tuple(
+            items
+                .iter()
+                .map(|item| type_to_infer_under_generic_env(item, placeholders))
+                .collect(),
+        ),
+        Type::Record(fields) => InferType::Record(
+            fields
+                .iter()
+                .map(|(name, field_ty)| {
+                    (
+                        name.clone(),
+                        type_to_infer_under_generic_env(field_ty, placeholders),
+                    )
+                })
+                .collect(),
+        ),
+        Type::Array(inner) => InferType::Array(Box::new(type_to_infer_under_generic_env(
+            inner,
+            placeholders,
+        ))),
+        Type::SizedArray(inner, len) => InferType::SizedArray(
+            Box::new(type_to_infer_under_generic_env(inner, placeholders)),
+            *len,
+        ),
+        Type::Reference(inner) => InferType::Reference(Box::new(type_to_infer_under_generic_env(
+            inner,
+            placeholders,
+        ))),
+        Type::MutReference(inner) => InferType::MutReference(Box::new(type_to_infer_under_generic_env(
+            inner,
+            placeholders,
+        ))),
+        Type::Fun(params, ret) => InferType::Fun(
+            params
+                .iter()
+                .map(|param| type_to_infer_under_generic_env(param, placeholders))
+                .collect(),
+            Box::new(type_to_infer_under_generic_env(ret, placeholders)),
+        ),
+        Type::Named(name, args) => {
+            if args.is_empty() {
+                if let Some(var) = placeholders.get(name) {
+                    return InferType::Var(*var);
+                }
+            }
+            InferType::Named(
+                name.clone(),
+                args.iter()
+                    .map(|arg| type_to_infer_under_generic_env(arg, placeholders))
+                    .collect(),
+            )
+        }
+    }
+}
+
+fn type_contains_generic_placeholder(ty: &Type, placeholders: &HashMap<String, TypeVar>) -> bool {
+    match ty {
+        Type::Tuple(items) => items
+            .iter()
+            .any(|item| type_contains_generic_placeholder(item, placeholders)),
+        Type::Record(fields) => fields
+            .iter()
+            .any(|(_, field_ty)| type_contains_generic_placeholder(field_ty, placeholders)),
+        Type::Array(inner)
+        | Type::SizedArray(inner, _)
+        | Type::Reference(inner)
+        | Type::MutReference(inner) => type_contains_generic_placeholder(inner, placeholders),
+        Type::Fun(params, ret) => {
+            params
+                .iter()
+                .any(|param| type_contains_generic_placeholder(param, placeholders))
+                || type_contains_generic_placeholder(ret, placeholders)
+        }
+        Type::Named(name, args) => {
+            (args.is_empty() && placeholders.contains_key(name))
+                || args
+                    .iter()
+                    .any(|arg| type_contains_generic_placeholder(arg, placeholders))
+        }
+        Type::Boolean
+        | Type::Str
+        | Type::Char
+        | Type::Unit
+        | Type::Never
+        | Type::I8
+        | Type::I16
+        | Type::I32
+        | Type::I64
+        | Type::U8
+        | Type::U16
+        | Type::U32
+        | Type::U64
+        | Type::F32
+        | Type::F64 => false,
     }
 }
 

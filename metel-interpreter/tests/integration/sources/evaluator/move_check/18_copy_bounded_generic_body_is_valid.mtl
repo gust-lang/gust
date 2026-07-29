@@ -1,0 +1,6 @@
+fun duplicate<T: Copy>(value: T) -> T {
+    let copied = value;
+    value
+}
+
+fun main() { }

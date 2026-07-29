@@ -1,0 +1,8 @@
+struct Token { }
+
+fun duplicate<T>(value: T) -> T {
+    let moved = value;
+    value
+}
+
+fun main() { }

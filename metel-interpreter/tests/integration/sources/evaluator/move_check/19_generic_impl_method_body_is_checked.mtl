@@ -1,0 +1,12 @@
+struct Box<T> {
+    value: T,
+}
+
+extend<T> Box<T> {
+    fun take_twice(self) -> T {
+        let first = self.value;
+        self.value
+    }
+}
+
+fun main() { }

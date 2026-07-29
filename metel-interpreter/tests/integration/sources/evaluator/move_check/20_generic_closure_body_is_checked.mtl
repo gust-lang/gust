@@ -1,0 +1,6 @@
+fun main() {
+    let duplicate = (value) -> {
+        let moved = value;
+        value
+    };
+}
