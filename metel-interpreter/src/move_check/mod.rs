@@ -63,7 +63,13 @@ pub struct MoveCheckReport {
     pub violations: Vec<MoveViolation>,
     pub skipped_generic_bodies_user: usize,
     pub skipped_generic_bodies_embedded_std: usize,
-    pub unchecked_generic_body_spans: Vec<Span>,
+    pub unchecked_generic_bodies: Vec<UncheckedGenericBody>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UncheckedGenericBody {
+    pub span: Span,
+    pub reason: String,
 }
 
 impl MoveCheckReport {
@@ -107,12 +113,15 @@ pub fn check_graph(graph: &TypedModuleGraph) -> Result<Vec<String>, MetelError> 
         ));
     }
     Ok(report
-        .unchecked_generic_body_spans
+        .unchecked_generic_bodies
         .into_iter()
-        .map(|span| {
+        .map(|unchecked| {
             format!(
-                "move checking could not analyze generic body at {}:{}:{}",
-                span.filename, span.line, span.col
+                "move checking could not analyze generic body at {}:{}:{}: {}",
+                unchecked.span.filename,
+                unchecked.span.line,
+                unchecked.span.col,
+                unchecked.reason
             )
         })
         .collect())
@@ -326,7 +335,10 @@ impl<'a> Checker<'a> {
         current_module: &[String],
     ) {
         if params_contain_impl_aspect(params) {
-            self.record_skipped_generic_body(span);
+            self.record_skipped_generic_body(
+                span,
+                "parameters using `impl Aspect` cannot be reconstructed symbolically",
+            );
             return;
         }
         if let Some((typed_body, generic_env)) =
@@ -353,21 +365,24 @@ impl<'a> Checker<'a> {
         span: &Span,
     ) -> Option<(TypedBlock, GenericMoveEnv)> {
         let Some(type_ctx) = self.type_ctx.as_ref() else {
-            self.record_skipped_generic_body(span);
+            self.record_skipped_generic_body(span, "type context was unavailable");
             return None;
         };
         let Some(raw_scheme) = type_ctx.scheme_env.get(name) else {
-            self.record_skipped_generic_body(span);
+            self.record_skipped_generic_body(span, "function type scheme was unavailable");
             return None;
         };
         let scheme = scheme_with_source_generics(raw_scheme, generics);
         let Some((arg_types, generic_env)) = Self::generic_sample_args(&scheme, &type_ctx.registry)
         else {
-            self.record_skipped_generic_body(span);
+            self.record_skipped_generic_body(
+                span,
+                "function type scheme could not be converted to symbolic arguments",
+            );
             return None;
         };
         let symbolic_type_ctx = type_ctx_with_symbolic_aspect_methods(type_ctx, &generic_env);
-        if let Ok(typed_body) = crate::typechecker::construct_generic_body(
+        match crate::typechecker::construct_generic_body(
             &scheme,
             params,
             &arg_types,
@@ -375,10 +390,11 @@ impl<'a> Checker<'a> {
             span,
             &symbolic_type_ctx,
         ) {
-            Some((typed_body, generic_env))
-        } else {
-            self.record_skipped_generic_body(span);
-            None
+            Ok(typed_body) => Some((typed_body, generic_env)),
+            Err(error) => {
+                self.record_skipped_generic_body(span, error.to_string());
+                None
+            }
         }
     }
 
@@ -390,11 +406,14 @@ impl<'a> Checker<'a> {
         current_module: &[String],
     ) {
         if params_contain_impl_aspect(&method.params) {
-            self.record_skipped_generic_body(&method.span);
+            self.record_skipped_generic_body(
+                &method.span,
+                "parameters using `impl Aspect` cannot be reconstructed symbolically",
+            );
             return;
         }
         if self.type_ctx.is_none() {
-            self.record_skipped_generic_body(&method.span);
+            self.record_skipped_generic_body(&method.span, "type context was unavailable");
             return;
         }
         let raw_scheme = self
@@ -413,19 +432,22 @@ impl<'a> Checker<'a> {
                 )
             });
         let Some(raw_scheme) = raw_scheme else {
-            self.record_skipped_generic_body(&method.span);
+            self.record_skipped_generic_body(&method.span, "method type scheme was unavailable");
             return;
         };
         let mut source_generics = impl_block.generics.clone();
         source_generics.extend_from_slice(&method.generics);
         let scheme = scheme_with_source_generics(&raw_scheme, &source_generics);
         let Some(type_ctx) = self.type_ctx.as_ref() else {
-            self.record_skipped_generic_body(&method.span);
+            self.record_skipped_generic_body(&method.span, "type context was unavailable");
             return;
         };
         let Some((arg_types, generic_env)) = Self::generic_sample_args(&scheme, &type_ctx.registry)
         else {
-            self.record_skipped_generic_body(&method.span);
+            self.record_skipped_generic_body(
+                &method.span,
+                "method type scheme could not be converted to symbolic arguments",
+            );
             return;
         };
         let symbolic_type_ctx = type_ctx_with_symbolic_aspect_methods(type_ctx, &generic_env);
@@ -448,7 +470,7 @@ impl<'a> Checker<'a> {
                 fn_state.pop_scope();
                 self.generic_envs.pop();
             }
-            Err(_) => self.record_skipped_generic_body(&method.span),
+            Err(error) => self.record_skipped_generic_body(&method.span, error.to_string()),
         }
     }
 
@@ -638,7 +660,10 @@ impl<'a> Checker<'a> {
                 if let Some(name) = name {
                     self.observe_generic_closure_expr(name, params, body, span, current_module, state);
                 } else {
-                    self.record_skipped_generic_body(span);
+                    self.record_skipped_generic_body(
+                        span,
+                        "anonymous generic closure has no type scheme lookup key",
+                    );
                 }
             }
             TypedExpr::Return(ret) => {
@@ -1166,12 +1191,15 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn record_skipped_generic_body(&mut self, span: &Span) {
+    fn record_skipped_generic_body(&mut self, span: &Span, reason: impl Into<String>) {
         if is_embedded_std_span(span) {
             self.report.skipped_generic_bodies_embedded_std += 1;
         } else {
             self.report.skipped_generic_bodies_user += 1;
-            self.report.unchecked_generic_body_spans.push(span.clone());
+            self.report.unchecked_generic_bodies.push(UncheckedGenericBody {
+                span: span.clone(),
+                reason: reason.into(),
+            });
         }
     }
 
@@ -2284,8 +2312,8 @@ fun main() { }
         assert!(
             warnings
                 .iter()
-                .any(|warning| warning.contains("move checking could not analyze generic body")),
-            "expected an unchecked-body warning, got {warnings:#?}"
+                .any(|warning| warning.contains("no method `inspect`")),
+            "expected the reconstruction failure reason, got {warnings:#?}"
         );
     }
 
@@ -2353,8 +2381,8 @@ fun main() { }
         assert!(
             warnings
                 .iter()
-                .any(|warning| warning.contains("move checking could not analyze generic body")),
-            "expected an unchecked-body warning, got {warnings:#?}"
+                .any(|warning| warning.contains("does not implement `Copy`")),
+            "expected the reconstruction failure reason, got {warnings:#?}"
         );
     }
 
