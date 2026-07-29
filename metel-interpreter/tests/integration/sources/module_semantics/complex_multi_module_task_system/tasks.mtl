@@ -13,7 +13,7 @@ public fun validate_task(title: String, priority: Priority, status: Status, effo
 }
 
 public fun total_effort(tasks: Task[]) -> i64 {
-    fold_left(tasks, 0, (acc: i64, t: Task) -> i64 { acc + t.effort })
+    fold_left(tasks, 0, (acc: i64, t: &Task) -> i64 { acc + (*t).effort })
 }
 
 public fun open_task_count(tasks: Task[]) -> i64 {
@@ -69,7 +69,7 @@ public fun is_done_ref(t: &Task) -> boolean {
 }
 
 public fun task_titles(tasks: Task[]) -> String[] {
-    map_array(tasks, (t: Task) -> String { t.title })
+    map_array(tasks, (t: &Task) -> String { (*t).title.substring(0, (*t).title.len()) })
 }
 
 public fun find_by_title(tasks: Task[], title: String) -> Perhaps<Task> {

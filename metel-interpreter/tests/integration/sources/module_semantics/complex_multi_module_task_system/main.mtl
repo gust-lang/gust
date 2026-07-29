@@ -74,10 +74,10 @@ fun main() {
 
     // 7. map_array: extract efforts, sum via sum_ints
     let tasks_for_efforts = make_tasks();
-    let efforts = map_array(tasks_for_efforts, (t: Task) -> i64 { t.effort });
+    let efforts = map_array(tasks_for_efforts, (t: &Task) -> i64 { (*t).effort });
     assert(sum_ints(efforts) == 15);
     let tasks_for_efforts_again = make_tasks();
-    let efforts_again = map_array(tasks_for_efforts_again, (t: Task) -> i64 { t.effort });
+    let efforts_again = map_array(tasks_for_efforts_again, (t: &Task) -> i64 { (*t).effort });
     assert(efforts_again[0] == 5);
     assert(efforts_again[4] == 1);
 
@@ -112,7 +112,7 @@ fun main() {
 
     // 12. fold_left directly: product of [1,2,3,4] = 24
     let small: i64[] = [1, 2, 3, 4];
-    let product = fold_left(small, 1, (acc: i64, x: i64) -> i64 { acc * x });
+    let product = fold_left(small, 1, (acc: i64, x: &i64) -> i64 { acc * *x });
     assert(product == 24);
 
     // 13. find_first: locate the Done task (Deploy, effort=2)
@@ -173,8 +173,8 @@ fun main() {
     // 20. Chained map + filter across modules
     // doubled efforts: [10,6,4,8,2]; filter > 5: [10,6,8] = 3 items
     let tasks_for_doubled = make_tasks();
-    let efforts_for_doubled = map_array(tasks_for_doubled, (t: Task) -> i64 { t.effort });
-    let doubled = map_array(efforts_for_doubled, (x: i64) -> i64 { x * 2 });
+    let efforts_for_doubled = map_array(tasks_for_doubled, (t: &Task) -> i64 { (*t).effort });
+    let doubled = map_array(efforts_for_doubled, (x: &i64) -> i64 { *x * 2 });
     let big = filter_array(doubled, (x: &i64) -> boolean { *x > 5 }, clone_i64);
     assert(big.len() == 3);
 

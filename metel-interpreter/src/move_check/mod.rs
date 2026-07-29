@@ -37,6 +37,7 @@ pub enum MoveViolationKind {
     PartialMoveUsedAsWhole,
     PartialMoveOfDropType,
     ArrayElementMove,
+    BorrowedArrayElementMove,
     MovedMutReferenceWithoutReborrow,
 }
 
@@ -145,6 +146,9 @@ enum MoveCause {
 struct FlowState {
     moved: HashMap<String, Vec<MoveRecord>>,
     binding_types: HashMap<String, Type>,
+    /// Loop bindings sourced from a `T[]` borrowed view. They may be read or
+    /// borrowed, but a non-Copy value cannot be moved out through the binding.
+    borrowed_array_bindings: HashSet<String>,
     scopes: Vec<Vec<String>>,
 }
 
@@ -158,6 +162,7 @@ impl FlowState {
             for binding in bindings {
                 self.moved.remove(&binding);
                 self.binding_types.remove(&binding);
+                self.borrowed_array_bindings.remove(&binding);
             }
         }
     }
@@ -168,11 +173,21 @@ impl FlowState {
         }
         self.moved.remove(name);
         self.binding_types.remove(name);
+        self.borrowed_array_bindings.remove(name);
     }
 
     fn bind_typed(&mut self, name: &str, ty: &Type) {
         self.bind(name);
         self.binding_types.insert(name.to_string(), ty.clone());
+    }
+
+    fn bind_borrowed_array_element(&mut self, name: &str, ty: &Type) {
+        self.bind_typed(name, ty);
+        self.borrowed_array_bindings.insert(name.to_string());
+    }
+
+    fn is_borrowed_array_element(&self, place: &Place) -> bool {
+        self.borrowed_array_bindings.contains(place.root())
     }
 
     fn binding_type(&self, name: &str) -> Option<&Type> {
@@ -575,7 +590,16 @@ impl<'a> Checker<'a> {
                 self.observe_expr(&for_in.iterable, current_module, state);
                 let mut body_state = state.clone();
                 body_state.push_scope();
-                body_state.bind(&for_in.binding);
+                let iterable_ty = peel_type_references(for_in.iterable.ty());
+                match iterable_ty {
+                    Type::Array(element_ty) => {
+                        body_state.bind_borrowed_array_element(&for_in.binding, element_ty);
+                    }
+                    Type::SizedArray(element_ty, _) => {
+                        body_state.bind_typed(&for_in.binding, element_ty);
+                    }
+                    _ => body_state.bind(&for_in.binding),
+                }
                 self.check_block(&for_in.body, current_module, &mut body_state);
                 body_state.pop_scope();
                 state.union_from(&body_state);
@@ -1141,6 +1165,15 @@ impl<'a> Checker<'a> {
         let place_ty = self
             .type_of_place(root_ty, place, current_module)
             .unwrap_or_else(|| root_ty.clone());
+        if state.is_borrowed_array_element(place) && !self.is_copy(current_module, &place_ty) {
+            self.report_illegal_move(
+                place,
+                use_span.clone(),
+                type_bucket(&place_ty),
+                MoveViolationKind::BorrowedArrayElementMove,
+            );
+            return;
+        }
         if let Some(kind) = self.illegal_move_kind(place, root_ty, &place_ty, current_module) {
             self.report_illegal_move(place, use_span.clone(), type_bucket(&place_ty), kind);
             return;
@@ -1218,7 +1251,8 @@ impl<'a> Checker<'a> {
     }
 
     fn is_copy(&self, current_module: &[String], ty: &Type) -> bool {
-        self.type_satisfies_aspect(current_module, ty, "Copy")
+        matches!(peel_type_references(ty), Type::Fun(_, _))
+            || self.type_satisfies_aspect(current_module, ty, "Copy")
     }
 
     fn is_drop(&self, current_module: &[String], ty: &Type) -> bool {
@@ -2187,6 +2221,10 @@ fn violation_message(violation: &MoveViolation) -> String {
             "cannot move from `{}`: array element moves are not allowed",
             format_place(&violation.use_place),
         ),
+        MoveViolationKind::BorrowedArrayElementMove => format!(
+            "cannot move `{}`: it is borrowed from a `T[]` view",
+            format_place(&violation.use_place),
+        ),
         MoveViolationKind::MovedMutReferenceWithoutReborrow => format!(
             "use of moved `&var` binding `{}`: `{}` was moved by a non-reborrow use at {}",
             violation.binding,
@@ -2993,6 +3031,59 @@ fun main() {
 }
 "#,
             "xs",
+        );
+    }
+
+    #[test]
+    fn borrowed_array_for_in_cannot_move_a_noncopy_element() {
+        assert_has_violation(
+            r#"
+fun first<T>(items: T[]) -> T {
+    for (item in items) {
+        return item;
+    }
+    panic("empty")
+}
+
+fun main() { }
+"#,
+            "item",
+        );
+    }
+
+    #[test]
+    fn borrowed_array_for_in_allows_copy_elements() {
+        assert_no_violations(
+            r#"
+fun first<T: Copy>(items: T[]) -> T {
+    for (item in items) {
+        return item;
+    }
+    panic("empty")
+}
+
+fun main() {
+    let values: i64[] = [1, 2, 3];
+    assert(first(values) == 1);
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn function_values_are_copy() {
+        assert_no_violations(
+            r#"
+fun increment(value: i64) -> i64 { value + 1 }
+
+fun apply(f: (i64) -> i64) -> i64 { f(1) }
+
+fun main() {
+    let f = increment;
+    assert(apply(f) == 2);
+    assert(apply(f) == 2);
+}
+"#,
         );
     }
 }

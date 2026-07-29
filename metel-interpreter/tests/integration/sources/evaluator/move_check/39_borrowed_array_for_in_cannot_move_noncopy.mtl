@@ -1,0 +1,8 @@
+fun first<T>(items: T[]) -> T {
+    for (item in items) {
+        return item;
+    }
+    panic("empty")
+}
+
+fun main() { }

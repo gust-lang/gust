@@ -95,17 +95,17 @@ fun find_first<T>(arr: T[], pred: (&T) -> boolean, clone: (&T) -> T) -> Option<T
     Option::None
 }
 
-fun count_where<T>(arr: T[], pred: (T) -> boolean) -> i64 {
+fun count_where<T>(arr: T[], pred: (&T) -> boolean) -> i64 {
     var cnt = 0;
     for (x in arr) {
-        if (pred(x)) { cnt += 1; }
+        if (pred(&x)) { cnt += 1; }
     }
     cnt
 }
 
-fun map_array<T, U>(arr: T[], f: (T) -> U) -> U[] {
+fun map_array<T, U>(arr: T[], f: (&T) -> U) -> U[] {
     var out: List<U> = List::new();
-    for (x in arr) { out.push(f(x)); }
+    for (x in arr) { out.push(f(&x)); }
     out.as_slice()
 }
 
@@ -314,18 +314,18 @@ fun main() {
     assert(!option_is_some(first_huge));
 
     let nums_even_count: i64[] = [3, 1, 4, 1, 5, 9, 2, 6];
-    let evens_count = count_where(nums_even_count, (x: i64) -> boolean { x % 2 == 0 });
+    let evens_count = count_where(nums_even_count, (x: &i64) -> boolean { *x % 2 == 0 });
     assert(evens_count == 3);   // 4, 2, 6
 
     // ── map_array<i64, i64> and map_array<i64, boolean> ──────────────────────────
     let nums_doubled: i64[] = [3, 1, 4, 1, 5, 9, 2, 6];
-    let doubled_arr = map_array(nums_doubled, (x: i64) -> i64 { x * 2 });
+    let doubled_arr = map_array(nums_doubled, (x: &i64) -> i64 { *x * 2 });
     assert(doubled_arr.len() == 8);
     assert(doubled_arr[0] == 6);
     assert(doubled_arr[4] == 10);
 
     let nums_above_mean: i64[] = [3, 1, 4, 1, 5, 9, 2, 6];
-    let above_mean: boolean[] = map_array(nums_above_mean, (x: i64) -> boolean { x > 4 });
+    let above_mean: boolean[] = map_array(nums_above_mean, (x: &i64) -> boolean { *x > 4 });
     assert(!above_mean[0]);   // 3 <= 4
     assert(above_mean[5]);    // 9 > 4
 
@@ -373,7 +373,7 @@ fun main() {
 
     // ── id used again at f64 via map_array ──────────────────────────────────
     let floats: f64[] = [1.0, 2.0, 3.0];
-    let same = map_array(floats, (x: f64) -> f64 { id(x) });
+    let same = map_array(floats, (x: &f64) -> f64 { id(*x) });
     assert(same[0] == 1.0);
     assert(same[2] == 3.0);
 }

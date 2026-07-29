@@ -1,0 +1,11 @@
+fun first<T: Copy>(items: T[]) -> T {
+    for (item in items) {
+        return item;
+    }
+    panic("empty")
+}
+
+fun main() {
+    let values: i64[] = [1, 2, 3];
+    assert(first(values) == 1);
+}

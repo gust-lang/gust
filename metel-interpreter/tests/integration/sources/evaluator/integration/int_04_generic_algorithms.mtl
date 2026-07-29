@@ -104,15 +104,15 @@ fun filter<T>(arr: T[], pred: (&T) -> boolean, clone: (&T) -> T) -> T[] {
     out.as_slice()
 }
 
-fun map_arr<T, U>(arr: T[], f: (T) -> U) -> U[] {
+fun map_arr<T, U>(arr: T[], f: (&T) -> U) -> U[] {
     var out: List<U> = List::new();
-    for (x in arr) { out.push(f(x)); }
+    for (x in arr) { out.push(f(&x)); }
     out.as_slice()
 }
 
-fun fold<T, A>(arr: T[], init: A, f: (A, T) -> A) -> A {
+fun fold<T, A>(arr: T[], init: A, f: (A, &T) -> A) -> A {
     var acc = init;
-    for (x in arr) { acc = f(acc, x); }
+    for (x in arr) { acc = f(acc, &x); }
     acc
 }
 
@@ -127,16 +127,16 @@ fun zip_with<A: Copy, B: Copy, C>(a: A[], b: B[], f: (A, B) -> C) -> C[] {
     out.as_slice()
 }
 
-fun any<T>(arr: T[], pred: (T) -> boolean) -> boolean {
+fun any<T>(arr: T[], pred: (&T) -> boolean) -> boolean {
     for (x in arr) {
-        if (pred(x)) { return true; }
+        if (pred(&x)) { return true; }
     }
     false
 }
 
-fun all<T>(arr: T[], pred: (T) -> boolean) -> boolean {
+fun all<T>(arr: T[], pred: (&T) -> boolean) -> boolean {
     for (x in arr) {
-        if (!pred(x)) { return false; }
+        if (!pred(&x)) { return false; }
     }
     true
 }
@@ -346,41 +346,41 @@ fun main() {
 
     // ── map_arr ───────────────────────────────────────────────────────────────
     let nums_squares: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let squares = map_arr(nums_squares, (x: i64) -> i64 { x * x });
+    let squares = map_arr(nums_squares, (x: &i64) -> i64 { *x * *x });
     assert(squares.len() == 10);
     assert(squares[0] == 1);
     assert(squares[9] == 100);
 
     let nums_is_even: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let is_even: boolean[] = map_arr(nums_is_even, (x: i64) -> boolean { x % 2 == 0 });
+    let is_even: boolean[] = map_arr(nums_is_even, (x: &i64) -> boolean { *x % 2 == 0 });
     assert(!is_even[0]);
     assert(is_even[1]);
 
     // ── fold ──────────────────────────────────────────────────────────────────
     let nums_sum: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let sum = fold(nums_sum, 0, (acc: i64, x: i64) -> i64 { acc + x });
+    let sum = fold(nums_sum, 0, (acc: i64, x: &i64) -> i64 { acc + *x });
     assert(sum == 55);
 
     let product_small: i64[] = [1, 2, 3, 4, 5];
-    let prod = fold(product_small, 1, (acc: i64, x: i64) -> i64 { acc * x });
+    let prod = fold(product_small, 1, (acc: i64, x: &i64) -> i64 { acc * *x });
     assert(prod == 120);
 
     let nums_max: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let maximum = fold(nums_max, 1, (acc: i64, x: i64) -> i64 { max_int(acc, x) });
+    let maximum = fold(nums_max, 1, (acc: i64, x: &i64) -> i64 { max_int(acc, *x) });
     assert(maximum == 10);
 
     // fold over boolean[]
     let flags: boolean[] = [true, true, false, true];
-    let all_set = fold(flags, true, (acc: boolean, b: boolean) -> boolean { acc && b });
+    let all_set = fold(flags, true, (acc: boolean, b: &boolean) -> boolean { acc && *b });
     assert(!all_set);
 
     let flags_any: boolean[] = [true, true, false, true];
-    let any_set = fold(flags_any, false, (acc: boolean, b: boolean) -> boolean { acc || b });
+    let any_set = fold(flags_any, false, (acc: boolean, b: &boolean) -> boolean { acc || *b });
     assert(any_set);
 
     // fold to build a string
     let words: String[] = ["hello", " ", "world"];
-    let joined = fold(words, "", (acc: String, s: String) -> String { acc + s });
+    let joined = fold(words, "", (acc: String, s: &String) -> String { acc + *s });
     assert(joined == "hello world");
 
     // ── zip_with ──────────────────────────────────────────────────────────────
@@ -409,13 +409,13 @@ fun main() {
 
     // ── any / all ─────────────────────────────────────────────────────────────
     let nums_any_9: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    assert(any(nums_any_9, (x: i64) -> boolean { x > 9 }));
+    assert(any(nums_any_9, (x: &i64) -> boolean { *x > 9 }));
     let nums_any_100: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    assert(!any(nums_any_100, (x: i64) -> boolean { x > 100 }));
+    assert(!any(nums_any_100, (x: &i64) -> boolean { *x > 100 }));
     let nums_all_pos: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    assert(all(nums_all_pos, (x: i64) -> boolean { x > 0 }));
+    assert(all(nums_all_pos, (x: &i64) -> boolean { *x > 0 }));
     let nums_all_gt5: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    assert(!all(nums_all_gt5, (x: i64) -> boolean { x > 5 }));
+    assert(!all(nums_all_gt5, (x: &i64) -> boolean { *x > 5 }));
 
     // ── take / drop ───────────────────────────────────────────────────────────
     let nums_first3: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -514,14 +514,14 @@ fun main() {
     let double  = (x: i64) -> i64 { x * 2 };
     let inc     = (x: i64) -> i64 { x + 1 };
     let nums2: i64[] = [1, 2, 3];
-    let result_d = map_arr(nums2, double);
-    let result_i = map_arr(result_d, inc);
+    let result_d = map_arr(nums2, (x: &i64) -> i64 { double(*x) });
+    let result_i = map_arr(result_d, (x: &i64) -> i64 { inc(*x) });
     assert(result_i[0] == 3);   // (1*2)+1
     assert(result_i[2] == 7);   // (3*2)+1
 
     // ── Braceless-if stress test ──────────────────────────────────────────────
     let sign = (x: i64) -> i64 { if (x > 0) 1 else if (x < 0) -1 else 0 };
-    let signs = map_arr([-3, 0, 5, -1, 2], (x: i64) -> i64 { sign(x) });
+    let signs = map_arr([-3, 0, 5, -1, 2], (x: &i64) -> i64 { sign(*x) });
     assert(signs[0] == -1);
     assert(signs[1] == 0);
     assert(signs[2] == 1);

@@ -1,8 +1,8 @@
 
-public fun fold_left<T, A>(arr: T[], init: A, f: (A, T) -> A) -> A {
+public fun fold_left<T, A>(arr: T[], init: A, f: (A, &T) -> A) -> A {
     var acc = init;
     for (x in arr) {
-        acc = f(acc, x);
+        acc = f(acc, &x);
     }
     acc
 }
@@ -36,8 +36,8 @@ public fun filter_array<T>(arr: T[], pred: (&T) -> boolean, clone: (&T) -> T) ->
     out.as_slice()
 }
 
-public fun map_array<T, U>(arr: T[], f: (T) -> U) -> U[] {
+public fun map_array<T, U>(arr: T[], f: (&T) -> U) -> U[] {
     var out: List<U> = List::new();
-    for (x in arr) { out.push(f(x)); }
+    for (x in arr) { out.push(f(&x)); }
     out.as_slice()
 }

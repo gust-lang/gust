@@ -75,9 +75,9 @@ fun filter_array<T>(arr: T[], pred: (&T) -> boolean, clone: (&T) -> T) -> T[] {
     out.as_slice()
 }
 
-fun map_array<T, U>(arr: T[], f: (T) -> U) -> U[] {
+fun map_array<T, U>(arr: T[], f: (&T) -> U) -> U[] {
     var out: List<U> = List::new();
-    for (x in arr) { out.push(f(x)); }
+    for (x in arr) { out.push(f(&x)); }
     out.as_slice()
 }
 
@@ -92,16 +92,16 @@ fun zip_with<A: Copy, B: Copy, C>(a: A[], b: B[], f: (A, B) -> C) -> C[] {
     out.as_slice()
 }
 
-fun any<T>(arr: T[], pred: (T) -> boolean) -> boolean {
+fun any<T>(arr: T[], pred: (&T) -> boolean) -> boolean {
     for (x in arr) {
-        if (pred(x)) { return true; }
+        if (pred(&x)) { return true; }
     }
     false
 }
 
-fun all<T>(arr: T[], pred: (T) -> boolean) -> boolean {
+fun all<T>(arr: T[], pred: (&T) -> boolean) -> boolean {
     for (x in arr) {
-        if (!pred(x)) { return false; }
+        if (!pred(&x)) { return false; }
     }
     true
 }
@@ -236,13 +236,13 @@ fun main() {
 
     // ── map_array ─────────────────────────────────────────────────────────────
     let nums_squares: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let squares = map_array(nums_squares, (x: i64) -> i64 { x * x });
+    let squares = map_array(nums_squares, (x: &i64) -> i64 { *x * *x });
     assert(squares.len() == 10);
     assert(squares[0] == 1);
     assert(squares[9] == 100);
 
     let nums_even_flags: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let is_even: boolean[] = map_array(nums_even_flags, (x: i64) -> boolean { x % 2 == 0 });
+    let is_even: boolean[] = map_array(nums_even_flags, (x: &i64) -> boolean { *x % 2 == 0 });
     assert(!is_even[0]);
     assert(is_even[1]);
 
@@ -272,13 +272,13 @@ fun main() {
 
     // ── any / all ─────────────────────────────────────────────────────────────
     let nums_any_9: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    assert(any(nums_any_9, (x: i64) -> boolean { x > 9 }));
+    assert(any(nums_any_9, (x: &i64) -> boolean { *x > 9 }));
     let nums_any_100: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    assert(!any(nums_any_100, (x: i64) -> boolean { x > 100 }));
+    assert(!any(nums_any_100, (x: &i64) -> boolean { *x > 100 }));
     let nums_all_pos: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    assert(all(nums_all_pos, (x: i64) -> boolean { x > 0 }));
+    assert(all(nums_all_pos, (x: &i64) -> boolean { *x > 0 }));
     let nums_all_gt5: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    assert(!all(nums_all_gt5, (x: i64) -> boolean { x > 5 }));
+    assert(!all(nums_all_gt5, (x: &i64) -> boolean { *x > 5 }));
 
     // ── take / drop ───────────────────────────────────────────────────────────
     let nums_first3: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -319,7 +319,7 @@ fun main() {
         Student { name = "Diana",   grade = 88 },
         Student { name = "Eve",     grade = 45 },
     ];
-    let letters = map_array(students_letters, (s: Student) -> String { student_grade_letter(&s) });
+    let letters = map_array(students_letters, (s: &Student) -> String { student_grade_letter(s) });
     assert(letters[0] == "A");
     assert(letters[1] == "F");
     assert(letters[2] == "C");
@@ -340,7 +340,7 @@ fun main() {
         Student { name = "Diana",   grade = 88 },
         Student { name = "Eve",     grade = 45 },
     ];
-    assert(any(students_any, (s: Student) -> boolean { s.grade >= 90 }));
+    assert(any(students_any, (s: &Student) -> boolean { (*s).grade >= 90 }));
     let students_all: Student[] = [
         Student { name = "Alice",   grade = 92 },
         Student { name = "Bob",     grade = 55 },
@@ -348,7 +348,7 @@ fun main() {
         Student { name = "Diana",   grade = 88 },
         Student { name = "Eve",     grade = 45 },
     ];
-    assert(!all(students_all, (s: Student) -> boolean { student_passing_2(&s) }));
+    assert(!all(students_all, (s: &Student) -> boolean { student_passing_2(s) }));
 
     // ── Let-polymorphism: identity at Record<String,i64> and Student ──────────
     let id = (x) -> { x };

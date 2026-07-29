@@ -17,9 +17,9 @@ fun collect_matching<T>(arr: T[], pred: (&T) -> boolean, clone: (&T) -> T) -> Li
     result
 }
 
-fun map_to<T, U>(arr: T[], f: (T) -> U) -> List<U> {
+fun map_to<T, U>(arr: T[], f: (&T) -> U) -> List<U> {
     var out: List<U> = List::new();
-    for (x in arr) { out.push(f(x)); }
+    for (x in arr) { out.push(f(&x)); }
     out
 }
 
@@ -49,14 +49,14 @@ fun main() {
     assert(long.len() == 2);
 
     let nums_for_squares: i64[] = [1, 2, 3, 4, 5, 6];
-    let squares = map_to(nums_for_squares, (x: i64) -> i64 { x * x });
+    let squares = map_to(nums_for_squares, (x: &i64) -> i64 { *x * *x });
     assert((&squares).len() == 6);
     let squares_arr = (&squares).as_slice();
     assert(squares_arr[0] == 1);
     assert(squares_arr[5] == 36);
 
     let nums_for_bools: i64[] = [1, 2, 3, 4, 5, 6];
-    let bools = map_to(nums_for_bools, (x: i64) -> boolean { x > 3 });
+    let bools = map_to(nums_for_bools, (x: &i64) -> boolean { *x > 3 });
     assert((&bools).len() == 6);
     let bools_arr = (&bools).as_slice();
     assert(!bools_arr[0]);
