@@ -392,7 +392,13 @@ impl<'a> Checker<'a> {
         ) {
             Ok(typed_body) => Some((typed_body, generic_env)),
             Err(error) => {
-                self.record_skipped_generic_body(span, error.to_string());
+                let reason = symbolic_method_ambiguity_reason(
+                    &error,
+                    &generic_env,
+                    &type_ctx.registry,
+                )
+                .unwrap_or_else(|| error.to_string());
+                self.record_skipped_generic_body(span, reason);
                 None
             }
         }
@@ -470,7 +476,15 @@ impl<'a> Checker<'a> {
                 fn_state.pop_scope();
                 self.generic_envs.pop();
             }
-            Err(error) => self.record_skipped_generic_body(&method.span, error.to_string()),
+            Err(error) => {
+                let reason = symbolic_method_ambiguity_reason(
+                    &error,
+                    &generic_env,
+                    &type_ctx.registry,
+                )
+                .unwrap_or_else(|| error.to_string());
+                self.record_skipped_generic_body(&method.span, reason);
+            }
         }
     }
 
@@ -1651,6 +1665,44 @@ fn symbolic_aspect_assumptions(
     symbolic_aspects
 }
 
+fn symbolic_method_ambiguity_reason(
+    error: &MetelError,
+    generic_env: &GenericMoveEnv,
+    registry: &TypeDefinitionRegistry,
+) -> Option<String> {
+    let MetelError::Internal { message, .. } = error else {
+        return None;
+    };
+    for (symbolic_name, aspects) in &generic_env.symbolic_aspects {
+        let prefix = "no method `";
+        let suffix = format!("` on `{symbolic_name}`");
+        let Some(method) = message
+            .strip_prefix(prefix)
+            .and_then(|rest| rest.strip_suffix(&suffix))
+        else {
+            continue;
+        };
+        let mut candidates: Vec<String> = aspects
+            .iter()
+            .filter(|aspect| {
+                registry
+                    .aspect_method_defs(aspect)
+                    .is_some_and(|methods| methods.iter().any(|candidate| candidate.name == method))
+            })
+            .cloned()
+            .collect();
+        if candidates.len() < 2 {
+            continue;
+        }
+        candidates.sort();
+        return Some(format!(
+            "ambiguous aspect method `{method}` on symbolic type `{symbolic_name}`; candidates: {}",
+            candidates.join(", ")
+        ));
+    }
+    None
+}
+
 fn infer_method_arg_types(fun_ty: &crate::typeinference::InferType) -> Option<Vec<Type>> {
     match fun_ty {
         crate::typeinference::InferType::Fun(params, _) => Some(
@@ -2302,8 +2354,14 @@ aspect SecondMarker {
     fun inspect(&self);
 }
 
-fun inspect<T: FirstMarker + SecondMarker>(value: T) {
-    value.inspect();
+aspect Container {
+    type Item: FirstMarker + SecondMarker;
+    fun get(self) -> Item;
+}
+
+fun inspect<T: Container>(value: T) {
+    let item = value.get();
+    item.inspect();
 }
 
 fun main() { }
@@ -2312,7 +2370,10 @@ fun main() { }
         assert!(
             warnings
                 .iter()
-                .any(|warning| warning.contains("no method `inspect`")),
+                .any(|warning| {
+                    warning.contains("ambiguous aspect method `inspect`")
+                        && warning.contains("FirstMarker, SecondMarker")
+                }),
             "expected the reconstruction failure reason, got {warnings:#?}"
         );
     }
