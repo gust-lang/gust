@@ -2,7 +2,7 @@
 
 fun make_pair<A, B>(a: A, b: B) -> (A, B) { (a, b) }
 fun swap<A, B>(a: A, b: B) -> (B, A) { (b, a) }
-fun dup<T>(x: T) -> (T, T) { (x, x) }
+fun dup<T: Copy>(x: T) -> (T, T) { (x, x) }
 
 fun use_tuples() -> i64 {
     let p: (i64, boolean) = make_pair(42, true);

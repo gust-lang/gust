@@ -5,7 +5,7 @@ fun first<T>(a: T, b: T) -> T { a }
 fun second<T>(a: T, b: T) -> T { b }
 
 // Pair both args into a tuple.
-fun dup_pair<T>(x: T) -> (T, T) { (x, x) }
+fun dup_pair<T: Copy>(x: T) -> (T, T) { (x, x) }
 
 // Pass-through: two T params, returns (T, T).
 fun wrap<T>(a: T, b: T) -> (T, T) { (a, b) }

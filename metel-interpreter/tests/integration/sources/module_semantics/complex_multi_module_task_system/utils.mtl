@@ -7,9 +7,9 @@ public fun fold_left<T, A>(arr: T[], init: A, f: (A, T) -> A) -> A {
     acc
 }
 
-public fun find_first<T>(arr: T[], pred: (T) -> boolean) -> Perhaps<T> {
+public fun find_first<T>(arr: T[], pred: (&T) -> boolean) -> Perhaps<T> {
     for (x in arr) {
-        if (pred(x)) { return Perhaps::Some { value = x }; }
+        if (pred(&x)) { return Perhaps::Some { value = x }; }
     }
     None
 }
@@ -20,10 +20,10 @@ public fun sum_ints(arr: i64[]) -> i64 {
     total
 }
 
-public fun filter_array<T>(arr: T[], pred: (T) -> boolean) -> T[] {
+public fun filter_array<T>(arr: T[], pred: (&T) -> boolean) -> T[] {
     var out: List<T> = List::new();
     for (x in arr) {
-        if (pred(x)) { out.push(x); }
+        if (pred(&x)) { out.push(x); }
     }
     out.as_slice()
 }

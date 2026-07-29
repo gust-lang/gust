@@ -28,7 +28,7 @@ public fun open_task_count(tasks: Task[]) -> i64 {
     count
 }
 
-public fun is_high_priority(t: Task) -> boolean {
+public fun is_high_priority(t: &Task) -> boolean {
     match t.priority {
         Priority::High   => true,
         Priority::Medium => false,
@@ -44,7 +44,7 @@ public fun is_high_priority_ref(t: &Task) -> boolean {
     }
 }
 
-public fun is_done(t: Task) -> boolean {
+public fun is_done(t: &Task) -> boolean {
     match t.status {
         Status::Done       => true,
         Status::Open       => false,
@@ -52,7 +52,7 @@ public fun is_done(t: Task) -> boolean {
     }
 }
 
-public fun is_done_2(t: Task) -> boolean {
+public fun is_done_2(t: &Task) -> boolean {
     match t.status {
         Status::Done       => true,
         Status::Open       => false,
@@ -73,7 +73,7 @@ public fun task_titles(tasks: Task[]) -> String[] {
 }
 
 public fun find_by_title(tasks: Task[], title: String) -> Perhaps<Task> {
-    find_first(tasks, (t: Task) -> boolean { t.title == title })
+    find_first(tasks, (t: &Task) -> boolean { t.title == title })
 }
 
 public fun compute_completion_pct(tasks: Task[]) -> i64 {
@@ -81,7 +81,7 @@ public fun compute_completion_pct(tasks: Task[]) -> i64 {
     if (n == 0) { return 0; }
     var done = 0;
     for (t in tasks) {
-        if (is_done(t)) { done += 1; }
+        if (is_done(&t)) { done += 1; }
     }
     (done * 100) / n
 }

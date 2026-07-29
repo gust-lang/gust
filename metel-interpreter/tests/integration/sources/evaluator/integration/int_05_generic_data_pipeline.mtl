@@ -59,10 +59,10 @@ fun record_swap<K, V>(r: Record<K, V>) -> Record<V, K> {
 
 // ── Generic pipeline combinators ──────────────────────────────────────────────
 
-fun filter_array<T>(arr: T[], pred: (T) -> boolean) -> T[] {
+fun filter_array<T>(arr: T[], pred: (&T) -> boolean) -> T[] {
     var out: List<T> = List::new();
     for (x in arr) {
-        if (pred(x)) { out.push(x); }
+        if (pred(&x)) { out.push(x); }
     }
     out.as_slice()
 }
@@ -73,7 +73,7 @@ fun map_array<T, U>(arr: T[], f: (T) -> U) -> U[] {
     out.as_slice()
 }
 
-fun zip_with<A, B, C>(a: A[], b: B[], f: (A, B) -> C) -> C[] {
+fun zip_with<A: Copy, B: Copy, C>(a: A[], b: B[], f: (A, B) -> C) -> C[] {
     var out: List<C> = List::new();
     let len = if (a.len() < b.len()) a.len() else b.len();
     var i = 0;
@@ -98,7 +98,7 @@ fun all<T>(arr: T[], pred: (T) -> boolean) -> boolean {
     true
 }
 
-fun take<T>(arr: T[], n: i64) -> T[] {
+fun take<T: Copy>(arr: T[], n: i64) -> T[] {
     var out: List<T> = List::new();
     var i = 0;
     while (i < n && i < arr.len()) {
@@ -108,7 +108,7 @@ fun take<T>(arr: T[], n: i64) -> T[] {
     out.as_slice()
 }
 
-fun drop<T>(arr: T[], n: i64) -> T[] {
+fun drop<T: Copy>(arr: T[], n: i64) -> T[] {
     var out: List<T> = List::new();
     var i = n;
     while (i < arr.len()) {
@@ -202,13 +202,13 @@ fun main() {
 
     // ── filter_array ──────────────────────────────────────────────────────────
     let nums: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let evens = filter_array(nums, (x: i64) -> boolean { x % 2 == 0 });
+    let evens = filter_array(nums, (x: &i64) -> boolean { *x % 2 == 0 });
     assert(evens.len() == 5);
     assert(evens[0] == 2);
     assert(evens[4] == 10);
 
     let nums_big: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let big = filter_array(nums_big, (x: i64) -> boolean { x > 7 });
+    let big = filter_array(nums_big, (x: &i64) -> boolean { *x > 7 });
     assert(big.len() == 3);
 
     // ── map_array ─────────────────────────────────────────────────────────────
@@ -282,7 +282,7 @@ fun main() {
         Student { name = "Eve",     grade = 45 },
     ];
 
-    let passing = filter_array(students, (s: Student) -> boolean { student_passing(&s) });
+    let passing = filter_array(students, (s: &Student) -> boolean { student_passing(s) });
     assert(passing.len() == 3);
 
     let students_letters: Student[] = [
@@ -299,7 +299,7 @@ fun main() {
     assert(letters[3] == "B");
 
     // count A-grades
-    let a_grades = filter_array(letters, (l: String) -> boolean { l == "A" });
+    let a_grades = filter_array(letters, (l: &String) -> boolean { *l == "A" });
     assert(a_grades.len() == 1);
 
     let students_any: Student[] = [

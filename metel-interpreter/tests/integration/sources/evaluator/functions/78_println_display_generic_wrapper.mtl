@@ -26,14 +26,14 @@ extend Status: Display {
     }
 }
 
-fun log_value<T: Display>(value: T) {
-    print(value);
-    println(value);
+fun log_value<T: Display>(first: T, second: T) {
+    print(first);
+    println(second);
 }
 
 fun main() {
-    log_value(User { name = "Ada" });
-    log_value(Status::Ready);
-    log_value(42);
-    log_value("done");
+    log_value(User { name = "Ada" }, User { name = "Ada" });
+    log_value(Status::Ready, Status::Ready);
+    log_value(42, 42);
+    log_value("done", "done");
 }

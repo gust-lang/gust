@@ -2,11 +2,11 @@
 // on the same type parameter.
 
 aspect Printable {
-    fun print(self);
+    fun print(&self);
 }
 
 aspect Serializable {
-    fun serialize(self) -> String;
+    fun serialize(&self) -> String;
 }
 
 struct Record {
@@ -14,11 +14,11 @@ struct Record {
 }
 
 extend Record: Printable {
-    fun print(self) {}
+    fun print(&self) {}
 }
 
 extend Record: Serializable {
-    fun serialize(self) -> String {
+    fun serialize(&self) -> String {
         self.name
     }
 }

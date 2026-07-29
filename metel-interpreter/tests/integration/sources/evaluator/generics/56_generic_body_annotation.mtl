@@ -1,10 +1,10 @@
 // Test: explicit type annotations using generic type params inside function bodies
 // Covers issue #128: T/U in body annotations must resolve to TypeVars, not Named types.
 
-fun collect_matching<T>(arr: T[], pred: (T) -> boolean) -> List<T> {
+fun collect_matching<T>(arr: T[], pred: (&T) -> boolean) -> List<T> {
     var result: List<T> = List::new();
     for (x in arr) {
-        if (pred(x)) { result.push(x); }
+        if (pred(&x)) { result.push(x); }
     }
     result
 }
@@ -23,13 +23,13 @@ fun wrap_pair<A, B>(a: A, b: B) -> List<A> {
 
 fun main() {
     let nums_for_evens: i64[] = [1, 2, 3, 4, 5, 6];
-    let evens = collect_matching(nums_for_evens, (x: i64) -> boolean { x % 2 == 0 });
+    let evens = collect_matching(nums_for_evens, (x: &i64) -> boolean { *x % 2 == 0 });
     assert((&evens).len() == 3);
     let evens_arr = (&evens).as_slice();
     assert(evens_arr[0] == 2);
 
     let strs: String[] = ["a", "bb", "ccc", "dddd"];
-    let long = collect_matching(strs, (s: String) -> boolean { s.len() > 2 });
+    let long = collect_matching(strs, (s: &String) -> boolean { s.len() > 2 });
     assert(long.len() == 2);
 
     let nums_for_squares: i64[] = [1, 2, 3, 4, 5, 6];

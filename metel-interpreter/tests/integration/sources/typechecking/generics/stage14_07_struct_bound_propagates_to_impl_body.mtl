@@ -3,7 +3,7 @@
 // the type rather than just of the construction site.
 
 aspect Comparable {
-    fun compare(self, other: Self) -> i64;
+    fun compare(&self, other: &Self) -> i64;
 }
 
 struct SortedList<T: Comparable> {
@@ -13,7 +13,7 @@ struct SortedList<T: Comparable> {
 struct Num { value: i64 }
 
 extend Num: Comparable {
-    fun compare(self, other: Num) -> i64 {
+    fun compare(&self, other: &Num) -> i64 {
         self.value - other.value
     }
 }
@@ -21,7 +21,7 @@ extend Num: Comparable {
 // A function that accepts the bounded struct and calls aspect methods on T.
 // The bound on SortedList<T> propagates — T: Comparable is available here.
 fun use_list<T: Comparable>(list: SortedList<T>, item: T) -> i64 {
-    item.compare(item)
+    item.compare(&item)
 }
 
 fun run(n: Num) -> i64 {
