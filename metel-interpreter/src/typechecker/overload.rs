@@ -24,7 +24,9 @@ use crate::symbols::SymbolId;
 use crate::typeinference::{OverloadEntry, OverloadTable, TypeDefinitionRegistry, TypeVar};
 use crate::types::Type;
 
-use super::conversions::{infer_type_to_type, type_expr_to_infer, type_expr_to_infer_with_assoc_ctx, AssocResolveCtx};
+use super::conversions::{
+    infer_type_to_type, type_expr_to_infer, type_expr_to_infer_with_assoc_ctx, AssocResolveCtx,
+};
 
 /// Process-global allocator for overload-definition `SymbolIds`. Overload tables
 /// are built per module; the global counter keeps ids unique across the whole
@@ -131,7 +133,9 @@ fn build_table_from_decls(
             }
             let params = fun_param_types(f, assoc_ctx)?;
             let ret = match &f.return_type {
-                Some(te) => infer_type_to_type(&type_expr_to_infer_for_overload(te, assoc_ctx), &f.span)?,
+                Some(te) => {
+                    infer_type_to_type(&type_expr_to_infer_for_overload(te, assoc_ctx), &f.span)?
+                }
                 None => Type::Unit,
             };
             if entries.iter().any(|e| e.params == params) {

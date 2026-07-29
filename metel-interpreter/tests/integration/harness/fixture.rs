@@ -228,7 +228,10 @@ fn parse_sidecar(path: &Path) -> PartialConfig {
             },
             "options" => match key {
                 "move_check" => partial.move_check = Some(parse_bool(&value)),
-                other => panic!("unknown options sidecar key `{other}` in {}", path.display()),
+                other => panic!(
+                    "unknown options sidecar key `{other}` in {}",
+                    path.display()
+                ),
             },
             "expect" => match key {
                 "status" => partial.status = Some(parse_status(&value)),

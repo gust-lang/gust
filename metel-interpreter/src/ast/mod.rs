@@ -313,7 +313,9 @@ pub struct WhereClause {
 impl WhereClause {
     #[must_use]
     pub fn constraint_for(&self, name: &str) -> Option<&WhereConstraint> {
-        self.constraints.iter().find(|constraint| constraint.name == name)
+        self.constraints
+            .iter()
+            .find(|constraint| constraint.name == name)
     }
 }
 
@@ -671,7 +673,6 @@ impl BinOp {
         }
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOp {

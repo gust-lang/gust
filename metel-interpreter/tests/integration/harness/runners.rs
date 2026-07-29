@@ -4,8 +4,7 @@ use std::path::Path;
 use metel::error::MetelError;
 use metel::{
     coherence, elaborator, evaluator, module_loader, name_resolver, parser, path_normalizer,
-    pipeline,
-    typechecker,
+    pipeline, typechecker,
 };
 
 use super::fixture::{
@@ -74,7 +73,8 @@ fn run_typecheck(path: &Path, options: &FixtureOptions) -> Result<(), MetelError
     let names = name_resolver::resolve(&graph)?;
     let normalized = path_normalizer::normalize(graph, &names)?;
     coherence::check(&normalized, &names)?;
-    let typed = typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())?;
+    let typed =
+        typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())?;
     if options.move_check {
         metel::move_check::check_graph(&typed)?;
     }

@@ -851,10 +851,8 @@ fn register_array_impl_method_schemes(
     let element_tv = gen.fresh();
     let mut type_gen_map = HashMap::new();
     type_gen_map.insert(element_name.to_string(), element_tv);
-    let structural_self_type_expr = TypeExpr::Array(Box::new(TypeExpr::Named(
-        element_name.to_string(),
-        vec![],
-    )));
+    let structural_self_type_expr =
+        TypeExpr::Array(Box::new(TypeExpr::Named(element_name.to_string(), vec![])));
     let by_var: HashMap<TypeVar, Vec<GenericBound>> = std::iter::once(element_tv)
         .zip(collect_type_param_bounds(
             &ib.generics,
@@ -944,12 +942,7 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
         TypeExpr::Record(fields) => TypeExpr::Record(
             fields
                 .iter()
-                .map(|(name, ty)| {
-                    (
-                        name.clone(),
-                        substitute_structural_self(ty, replacement),
-                    )
-                })
+                .map(|(name, ty)| (name.clone(), substitute_structural_self(ty, replacement)))
                 .collect(),
         ),
         TypeExpr::Array(inner) => TypeExpr::Array(Box::new(substitute_structural_self(
@@ -972,9 +965,8 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
                 .iter()
                 .map(|param| substitute_structural_self(param, replacement))
                 .collect(),
-            ret.as_ref().map(|ret_ty| {
-                Box::new(substitute_structural_self(ret_ty.as_ref(), replacement))
-            }),
+            ret.as_ref()
+                .map(|ret_ty| Box::new(substitute_structural_self(ret_ty.as_ref(), replacement))),
         ),
         TypeExpr::ImplAspect {
             bound,

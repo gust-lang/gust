@@ -234,8 +234,8 @@ fun main() {
     let sum = match point { { y, x } => x + y, };
 }
 "#;
-    let program = parser::parse(source, "anonymous_record_surface.mtl")
-        .unwrap_or_else(|e| panic!("{e}"));
+    let program =
+        parser::parse(source, "anonymous_record_surface.mtl").unwrap_or_else(|e| panic!("{e}"));
 
     let Decl::Fun(take) = &program.decls[0] else {
         panic!("expected first decl to be function");
@@ -268,8 +268,7 @@ where record T: !{ z } {
     0
 }
 "#;
-    let program = parser::parse(source, "row_bounds_surface.mtl")
-        .unwrap_or_else(|e| panic!("{e}"));
+    let program = parser::parse(source, "row_bounds_surface.mtl").unwrap_or_else(|e| panic!("{e}"));
 
     let Decl::Fun(fun) = &program.decls[0] else {
         panic!("expected function declaration");
@@ -289,7 +288,10 @@ where record T: !{ z } {
     let where_clause = fun.where_clause.as_ref().expect("expected where clause");
     assert_eq!(where_clause.constraints.len(), 1);
     assert!(where_clause.constraints[0].is_record);
-    assert_eq!(where_clause.constraints[0].bounds[0].polarity, Polarity::Negative);
+    assert_eq!(
+        where_clause.constraints[0].bounds[0].polarity,
+        Polarity::Negative
+    );
     let BoundHead::Row(neg_row) = &where_clause.constraints[0].bounds[0].head else {
         panic!("expected negative row bound");
     };
@@ -304,8 +306,8 @@ fn boundless_record_generic_parses() {
     let source = r#"
 fun keep<record T>(value: T) -> T { value }
 "#;
-    let program = parser::parse(source, "boundless_record_generic.mtl")
-        .unwrap_or_else(|e| panic!("{e}"));
+    let program =
+        parser::parse(source, "boundless_record_generic.mtl").unwrap_or_else(|e| panic!("{e}"));
 
     let Decl::Fun(fun) = &program.decls[0] else {
         panic!("expected function declaration");

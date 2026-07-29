@@ -152,16 +152,32 @@ impl FlowState {
         self.binding_types.get(name)
     }
 
-    fn record_move(&mut self, place: Place, moved_span: Span, cause: MoveCause, moved_type: String) {
+    fn record_move(
+        &mut self,
+        place: Place,
+        moved_span: Span,
+        cause: MoveCause,
+        moved_type: String,
+    ) {
         let root = place.root().to_string();
         let records = self.moved.entry(root).or_default();
         if place.projections().is_empty() {
             records.clear();
-            records.push(MoveRecord { place, moved_span, cause, moved_type });
+            records.push(MoveRecord {
+                place,
+                moved_span,
+                cause,
+                moved_type,
+            });
             return;
         }
         records.retain(|record| !place.is_prefix_of(&record.place));
-        records.push(MoveRecord { place, moved_span, cause, moved_type });
+        records.push(MoveRecord {
+            place,
+            moved_span,
+            cause,
+            moved_type,
+        });
     }
 
     fn moved_record_for_descendant_use(&self, place: &Place) -> Option<&MoveRecord> {
@@ -172,19 +188,19 @@ impl FlowState {
     }
 
     fn moved_record_for_whole_use(&self, place: &Place) -> Option<&MoveRecord> {
-        self.moved.get(place.root())?.iter().find(|record| {
-            record.place.is_prefix_of(place) || place.is_prefix_of(&record.place)
-        })
+        self.moved
+            .get(place.root())?
+            .iter()
+            .find(|record| record.place.is_prefix_of(place) || place.is_prefix_of(&record.place))
     }
 
     fn union_from(&mut self, other: &Self) {
         for (root, incoming) in &other.moved {
             let records = self.moved.entry(root.clone()).or_default();
             for record in incoming {
-                if records
-                    .iter()
-                    .any(|existing| existing.place == record.place && existing.moved_span == record.moved_span)
-                {
+                if records.iter().any(|existing| {
+                    existing.place == record.place && existing.moved_span == record.moved_span
+                }) {
                     continue;
                 }
                 if record.place.projections().is_empty() {
@@ -192,7 +208,10 @@ impl FlowState {
                     records.push(record.clone());
                     continue;
                 }
-                if records.iter().any(|existing| existing.place.projections().is_empty()) {
+                if records
+                    .iter()
+                    .any(|existing| existing.place.projections().is_empty())
+                {
                     continue;
                 }
                 records.push(record.clone());
@@ -322,7 +341,12 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn check_block(&mut self, block: &TypedBlock, current_module: &[String], state: &mut FlowState) {
+    fn check_block(
+        &mut self,
+        block: &TypedBlock,
+        current_module: &[String],
+        state: &mut FlowState,
+    ) {
         state.push_scope();
         for decl in &block.stmts {
             self.check_decl(decl, current_module, state);
@@ -376,7 +400,14 @@ impl<'a> Checker<'a> {
                 dispatch,
                 ..
             } => {
-                self.observe_method_call_expr(receiver, method, args, dispatch, current_module, state);
+                self.observe_method_call_expr(
+                    receiver,
+                    method,
+                    args,
+                    dispatch,
+                    current_module,
+                    state,
+                );
             }
             TypedExpr::FieldAccess { object, .. } | TypedExpr::TupleAccess { object, .. } => {
                 self.observe_projection_base_expr(object, current_module, state);
@@ -394,13 +425,16 @@ impl<'a> Checker<'a> {
                 then_branch,
                 else_branch,
                 ..
-            } => self.observe_if_expr(condition, then_branch, else_branch.as_ref(), current_module, state),
+            } => self.observe_if_expr(
+                condition,
+                then_branch,
+                else_branch.as_ref(),
+                current_module,
+                state,
+            ),
             TypedExpr::Loop { body, .. } => self.observe_loop_expr(body, current_module, state),
             TypedExpr::Closure {
-                params,
-                body,
-                span,
-                ..
+                params, body, span, ..
             } => self.observe_closure_expr(params, body, span, current_module, state),
             TypedExpr::GenericClosure { span, .. } => self.record_skipped_generic_body(span),
             TypedExpr::Return(ret) => {
@@ -424,7 +458,12 @@ impl<'a> Checker<'a> {
         state: &mut FlowState,
     ) {
         self.observe_expr(callee, current_module, state);
-        self.observe_call_args(args, function_param_types(callee.ty()), current_module, state);
+        self.observe_call_args(
+            args,
+            function_param_types(callee.ty()),
+            current_module,
+            state,
+        );
     }
 
     fn observe_method_call_expr(
@@ -523,7 +562,12 @@ impl<'a> Checker<'a> {
         current_module: &[String],
         state: &mut FlowState,
     ) {
-        self.capture_closure(body, params.iter().map(|param| param.name.as_str()), span, state);
+        self.capture_closure(
+            body,
+            params.iter().map(|param| param.name.as_str()),
+            span,
+            state,
+        );
         let mut closure_state = FlowState::default();
         closure_state.push_scope();
         for captured in collect_free_roots_from_typed_block(body, &HashSet::new()) {
@@ -658,10 +702,16 @@ impl<'a> Checker<'a> {
         current_module: &[String],
         state: &mut FlowState,
     ) {
-        let receiver_kind = self.method_receiver_kind(receiver.ty(), method, current_module, dispatch);
+        let receiver_kind =
+            self.method_receiver_kind(receiver.ty(), method, current_module, dispatch);
         match receiver_kind {
             Some(ReceiverKind::Value) => {
-                self.consume_expr_with_cause(receiver, current_module, state, MoveCause::ByValueReceiver);
+                self.consume_expr_with_cause(
+                    receiver,
+                    current_module,
+                    state,
+                    MoveCause::ByValueReceiver,
+                );
             }
             Some(ReceiverKind::Ref | ReceiverKind::RefMut) | None => {
                 self.observe_expr(receiver, current_module, state);
@@ -722,12 +772,21 @@ impl<'a> Checker<'a> {
             Pattern::Tuple(items, _) => {
                 for (index, item) in items.iter().enumerate() {
                     let child = place.clone().with_projection(Projection::TupleIndex(index));
-                    self.apply_pattern_place_move(item, &child, root_ty, use_span, current_module, state);
+                    self.apply_pattern_place_move(
+                        item,
+                        &child,
+                        root_ty,
+                        use_span,
+                        current_module,
+                        state,
+                    );
                 }
             }
             Pattern::Record { fields, .. } => {
                 for field in fields {
-                    let child = place.clone().with_projection(Projection::Field(field.clone()));
+                    let child = place
+                        .clone()
+                        .with_projection(Projection::Field(field.clone()));
                     self.consume_place(
                         &child,
                         root_ty,
@@ -757,7 +816,14 @@ impl<'a> Checker<'a> {
             Pattern::Array { elems, rest, .. } => {
                 for item in elems {
                     let child = place.clone().with_projection(Projection::OpaqueIndex);
-                    self.apply_pattern_place_move(item, &child, root_ty, use_span, current_module, state);
+                    self.apply_pattern_place_move(
+                        item,
+                        &child,
+                        root_ty,
+                        use_span,
+                        current_module,
+                        state,
+                    );
                 }
                 if let Some(rest) = rest {
                     state.bind(rest);
@@ -903,11 +969,13 @@ impl<'a> Checker<'a> {
     }
 
     fn is_copy(&self, current_module: &[String], ty: &Type) -> bool {
-        self.registry.type_satisfies_aspect(current_module, ty, "Copy")
+        self.registry
+            .type_satisfies_aspect(current_module, ty, "Copy")
     }
 
     fn is_drop(&self, current_module: &[String], ty: &Type) -> bool {
-        self.registry.type_satisfies_aspect(current_module, ty, "Drop")
+        self.registry
+            .type_satisfies_aspect(current_module, ty, "Drop")
     }
 
     fn illegal_move_kind(
@@ -973,8 +1041,9 @@ impl<'a> Checker<'a> {
                     .find(|(name, _)| name == field)
                     .map(|(_, ty)| ty.clone()),
                 Type::Named(name, args) => {
-                    let (resolved_name, fields) =
-                        self.registry.projection_struct_fields(current_module, name)?;
+                    let (resolved_name, fields) = self
+                        .registry
+                        .projection_struct_fields(current_module, name)?;
                     let field_entry = fields.iter().find(|entry| entry.name == *field)?;
                     let raw_ty = field_entry.ty.clone();
                     let infer_ty = if let Some(type_params) =
@@ -1051,9 +1120,15 @@ impl<'a> Checker<'a> {
                 .registry
                 .array_method_type(method)
                 .and_then(infer_fun_param_types),
-            Type::Named(name, _) => self.registry.method_type(name, method).and_then(infer_fun_param_types),
-            other => primitive_type_name(other)
-                .and_then(|name| self.registry.method_type(&name, method).and_then(infer_fun_param_types)),
+            Type::Named(name, _) => self
+                .registry
+                .method_type(name, method)
+                .and_then(infer_fun_param_types),
+            other => primitive_type_name(other).and_then(|name| {
+                self.registry
+                    .method_type(&name, method)
+                    .and_then(infer_fun_param_types)
+            }),
         }
     }
 }
@@ -1067,12 +1142,9 @@ fn function_param_types(ty: &Type) -> Option<&[Type]> {
 
 fn infer_fun_param_types(fun_ty: &crate::typeinference::InferType) -> Option<Vec<Type>> {
     match fun_ty {
-        crate::typeinference::InferType::Fun(params, _) => Some(
-            params
-                .iter()
-                .filter_map(infer_to_type_lossy)
-                .collect(),
-        ),
+        crate::typeinference::InferType::Fun(params, _) => {
+            Some(params.iter().filter_map(infer_to_type_lossy).collect())
+        }
         _ => None,
     }
 }
@@ -1091,7 +1163,9 @@ fn infer_to_type_lossy(ty: &crate::typeinference::InferType) -> Option<Type> {
                 .filter_map(|(name, ty)| infer_to_type_lossy(ty).map(|ty| (name.clone(), ty)))
                 .collect(),
         )),
-        InferType::Array(inner) => infer_to_type_lossy(inner).map(|inner| Type::Array(Box::new(inner))),
+        InferType::Array(inner) => {
+            infer_to_type_lossy(inner).map(|inner| Type::Array(Box::new(inner)))
+        }
         InferType::SizedArray(inner, len) => {
             infer_to_type_lossy(inner).map(|inner| Type::SizedArray(Box::new(inner), *len))
         }
@@ -1194,7 +1268,10 @@ impl FreeRootCollector {
                 self.bind(&fun.name);
             }
             TypedDecl::Stmt(stmt) => self.stmt(stmt),
-            TypedDecl::Impl(_) | TypedDecl::Struct(_) | TypedDecl::Enum(_) | TypedDecl::Aspect(_) => {}
+            TypedDecl::Impl(_)
+            | TypedDecl::Struct(_)
+            | TypedDecl::Enum(_)
+            | TypedDecl::Aspect(_) => {}
         }
     }
 
@@ -1288,7 +1365,10 @@ impl FreeRootCollector {
                 self.expr(&m.scrutinee);
                 for arm in &m.arms {
                     self.scope_stack.push(HashSet::new());
-                    bind_pattern_names(&arm.pattern, self.scope_stack.last_mut().expect("scope exists"));
+                    bind_pattern_names(
+                        &arm.pattern,
+                        self.scope_stack.last_mut().expect("scope exists"),
+                    );
                     if let Some(guard) = &arm.guard {
                         self.expr(guard);
                     }
@@ -1342,7 +1422,9 @@ impl FreeRootCollector {
         match place {
             TypedPlace::Ident(name, _) => self.capture_free_name(name),
             TypedPlace::Deref { object, .. } => self.expr(object),
-            TypedPlace::Field { object, .. } | TypedPlace::Tuple { object, .. } => self.place(object),
+            TypedPlace::Field { object, .. } | TypedPlace::Tuple { object, .. } => {
+                self.place(object);
+            }
             TypedPlace::Index { object, index, .. } => {
                 self.place(object);
                 self.expr(index);
@@ -1506,10 +1588,8 @@ mod tests {
     fn move_violations_for_source(source: &str) -> Vec<MoveViolation> {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "metel_move_check_{}_{n}.mtl",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("metel_move_check_{}_{n}.mtl", std::process::id()));
         {
             let mut file = std::fs::File::create(&path).expect("create temp fixture");
             file.write_all(source.as_bytes())
@@ -1518,10 +1598,12 @@ mod tests {
         let violations = (|| {
             let graph = module_loader::load_root(&path).expect("load temp fixture");
             let names = name_resolver::resolve(&graph).expect("resolve temp fixture");
-            let normalized = path_normalizer::normalize(graph, &names).expect("normalize temp fixture");
+            let normalized =
+                path_normalizer::normalize(graph, &names).expect("normalize temp fixture");
             coherence::check(&normalized, &names).expect("coherence temp fixture");
-            let typed = typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())
-                .expect("typecheck temp fixture");
+            let typed =
+                typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())
+                    .expect("typecheck temp fixture");
             collect_graph_violations(&typed)
                 .violations
                 .into_iter()
@@ -1535,7 +1617,9 @@ mod tests {
     fn assert_has_violation(source: &str, binding: &str) -> Vec<MoveViolation> {
         let violations = move_violations_for_source(source);
         assert!(
-            violations.iter().any(|violation| violation.binding == binding),
+            violations
+                .iter()
+                .any(|violation| violation.binding == binding),
             "expected a move violation for `{binding}`, got {violations:#?}"
         );
         violations
@@ -1543,7 +1627,10 @@ mod tests {
 
     fn assert_no_violations(source: &str) {
         let violations = move_violations_for_source(source);
-        assert!(violations.is_empty(), "unexpected violations: {violations:#?}");
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:#?}"
+        );
     }
 
     #[test]

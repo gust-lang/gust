@@ -71,9 +71,9 @@ pub fn from_expr(expr: &TypedExpr) -> Option<Place> {
 pub fn from_typed_place(place: &TypedPlace) -> Option<Place> {
     match place {
         TypedPlace::Ident(name, _) => Some(Place::new(name.clone())),
-        TypedPlace::Field { object, field, .. } => Some(
-            from_typed_place(object)?.with_projection(Projection::Field(field.clone())),
-        ),
+        TypedPlace::Field { object, field, .. } => {
+            Some(from_typed_place(object)?.with_projection(Projection::Field(field.clone())))
+        }
         TypedPlace::Tuple { object, index, .. } => {
             Some(from_typed_place(object)?.with_projection(Projection::TupleIndex(*index)))
         }

@@ -114,7 +114,8 @@ fn native_fun_ty(fun: &FunDecl, ctx: &mut InferContext) -> Result<NativeFunTyRes
     let neg_bounds_by_var = collect_negative_fun_type_var_bounds(fun, &generic_map);
     let record_kinds_by_var = collect_fun_type_var_record_kinds(fun, &generic_map);
     let assoc_eq_by_var = collect_fun_assoc_eq_constraints(fun, &generic_map);
-    let te_to_infer = |te: &TypeExpr| -> InferType { type_expr_to_infer_with_ctx(te, &generic_map, ctx) };
+    let te_to_infer =
+        |te: &TypeExpr| -> InferType { type_expr_to_infer_with_ctx(te, &generic_map, ctx) };
     let mut param_types = Vec::with_capacity(fun.params.len());
     for p in &fun.params {
         let ann = p.type_ann.as_ref().ok_or_else(|| {
@@ -202,7 +203,6 @@ fn impl_params(ib: &ImplBlock, ctx: &mut InferContext) -> (Vec<ImplParam>, Aspec
     (params, assumptions)
 }
 
-
 fn infer_type_to_concrete_if_closed(ty: &InferType) -> Option<Type> {
     match ty {
         InferType::Concrete(concrete) => Some(concrete.clone()),
@@ -211,14 +211,17 @@ fn infer_type_to_concrete_if_closed(ty: &InferType) -> Option<Type> {
             .map(infer_type_to_concrete_if_closed)
             .collect::<Option<Vec<_>>>()
             .map(Type::Tuple),
-        InferType::Array(item) => infer_type_to_concrete_if_closed(item)
-            .map(|item| Type::Array(Box::new(item))),
+        InferType::Array(item) => {
+            infer_type_to_concrete_if_closed(item).map(|item| Type::Array(Box::new(item)))
+        }
         InferType::SizedArray(item, size) => infer_type_to_concrete_if_closed(item)
             .map(|item| Type::SizedArray(Box::new(item), *size)),
-        InferType::Reference(item) => infer_type_to_concrete_if_closed(item)
-            .map(|item| Type::Reference(Box::new(item))),
-        InferType::MutReference(item) => infer_type_to_concrete_if_closed(item)
-            .map(|item| Type::MutReference(Box::new(item))),
+        InferType::Reference(item) => {
+            infer_type_to_concrete_if_closed(item).map(|item| Type::Reference(Box::new(item)))
+        }
+        InferType::MutReference(item) => {
+            infer_type_to_concrete_if_closed(item).map(|item| Type::MutReference(Box::new(item)))
+        }
         InferType::Named(name, args) => args
             .iter()
             .map(infer_type_to_concrete_if_closed)
@@ -308,9 +311,7 @@ fn substitute_impl_params(
         InferType::Named(name, args) => {
             InferType::Named(name.clone(), args.iter().map(go).collect())
         }
-        InferType::Fun(ps, ret) => {
-            InferType::Fun(ps.iter().map(go).collect(), Box::new(go(ret)))
-        }
+        InferType::Fun(ps, ret) => InferType::Fun(ps.iter().map(go).collect(), Box::new(go(ret))),
         InferType::Concrete(_) | InferType::Never => ty.clone(),
     }
 }
@@ -539,7 +540,8 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                                 // stale, unresolved `Named("T::Item", [])` that then fails to unify
                                 // with the correctly-resolved type computed later.
                                 if let Some(bounds) = type_var_bounds.get(&base_tv) {
-                                    for aspect in bounds.iter().filter_map(GenericBound::aspect_name)
+                                    for aspect in
+                                        bounds.iter().filter_map(GenericBound::aspect_name)
                                     {
                                         if let Some(decls) =
                                             ctx.registry().aspect_assoc_type_decls(aspect)
@@ -547,9 +549,7 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                                             if decls.iter().any(|d| d.name == *assoc_name) {
                                                 return InferType::Var(
                                                     ctx.fresh_assoc_projection_var(
-                                                        base_tv,
-                                                        aspect,
-                                                        assoc_name,
+                                                        base_tv, aspect, assoc_name,
                                                     ),
                                                 );
                                             }
@@ -999,7 +999,8 @@ fn infer_decl(
                                                         })
                                                         .collect::<Vec<_>>();
 
-                                                    if param_bounds.contains(&bound_aspect.to_string())
+                                                    if param_bounds
+                                                        .contains(&bound_aspect.to_string())
                                                     {
                                                         // The bound is satisfied by the impl's own parameter bounds
                                                         continue;
@@ -1268,11 +1269,9 @@ fn infer_fun_decl(
                         ));
                     }
                     if let Some(aspect) = matching_aspects.into_iter().next() {
-                        return Ok(InferType::Var(ctx.fresh_assoc_projection_var(
-                            base_tv,
-                            &aspect,
-                            assoc_name,
-                        )));
+                        return Ok(InferType::Var(
+                            ctx.fresh_assoc_projection_var(base_tv, &aspect, assoc_name),
+                        ));
                     }
                     // Fallback: named placeholder
                     return Ok(InferType::Named(format!("{n}::{assoc_name}"), vec![]));
@@ -1617,9 +1616,8 @@ fn infer_impl_method(
             .cloned()
             .unwrap_or_default()
     };
-    let structural_self_type_expr = array_target_generic_name.map(|name| {
-        TypeExpr::Array(Box::new(TypeExpr::Named(name.to_string(), vec![])))
-    });
+    let structural_self_type_expr = array_target_generic_name
+        .map(|name| TypeExpr::Array(Box::new(TypeExpr::Named(name.to_string(), vec![]))));
     let synth = super::registry::synth_generics_for_impl(&generic_names_for_impl, &ib.generics);
     let impl_bounds: Vec<Vec<GenericBound>> =
         super::registry::collect_type_param_bounds(&synth, ib.where_clause.as_ref());
@@ -1671,11 +1669,9 @@ fn infer_impl_method(
                         ));
                     }
                     if let Some(aspect) = matching_aspects.into_iter().next() {
-                        return Ok(InferType::Var(ctx.fresh_assoc_projection_var(
-                            base_tv,
-                            &aspect,
-                            assoc_name,
-                        )));
+                        return Ok(InferType::Var(
+                            ctx.fresh_assoc_projection_var(base_tv, &aspect, assoc_name),
+                        ));
                     }
                     return Ok(InferType::Named(format!("{n}::{assoc_name}"), vec![]));
                 }
@@ -1875,12 +1871,7 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
         TypeExpr::Record(fields) => TypeExpr::Record(
             fields
                 .iter()
-                .map(|(name, ty)| {
-                    (
-                        name.clone(),
-                        substitute_structural_self(ty, replacement),
-                    )
-                })
+                .map(|(name, ty)| (name.clone(), substitute_structural_self(ty, replacement)))
                 .collect(),
         ),
         TypeExpr::Array(inner) => TypeExpr::Array(Box::new(substitute_structural_self(
@@ -1903,9 +1894,8 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
                 .iter()
                 .map(|param| substitute_structural_self(param, replacement))
                 .collect(),
-            ret.as_ref().map(|ret_ty| {
-                Box::new(substitute_structural_self(ret_ty.as_ref(), replacement))
-            }),
+            ret.as_ref()
+                .map(|ret_ty| Box::new(substitute_structural_self(ret_ty.as_ref(), replacement))),
         ),
         TypeExpr::ImplAspect {
             bound,
@@ -2931,9 +2921,10 @@ fn infer_expr(
                                                 n,
                                             ))
                                         }
-                                        other => {
-                                            type_expr_to_infer_with_generics(other, &self_generic_map)
-                                        }
+                                        other => type_expr_to_infer_with_generics(
+                                            other,
+                                            &self_generic_map,
+                                        ),
                                     },
                                 );
 
@@ -2964,8 +2955,10 @@ fn infer_expr(
 
                                 for (arg_ty, param) in arg_tys.iter().zip(declared_params.iter()) {
                                     if let Some(ann) = &param.type_ann {
-                                        let param_ty =
-                                            type_expr_to_infer_with_generics(ann, &self_generic_map);
+                                        let param_ty = type_expr_to_infer_with_generics(
+                                            ann,
+                                            &self_generic_map,
+                                        );
                                         ctx.add_constraint(arg_ty.clone(), param_ty, span.clone());
                                     }
                                 }
@@ -3039,10 +3032,12 @@ fn infer_expr(
             })?;
             let type_args = match &base_ty {
                 InferType::Named(_, args) => args.clone(),
-                InferType::Reference(inner) | InferType::MutReference(inner) => match inner.as_ref() {
-                    InferType::Named(_, args) => args.clone(),
-                    _ => vec![],
-                },
+                InferType::Reference(inner) | InferType::MutReference(inner) => {
+                    match inner.as_ref() {
+                        InferType::Named(_, args) => args.clone(),
+                        _ => vec![],
+                    }
+                }
                 _ => vec![],
             };
             let declared_fields = ctx
@@ -3068,16 +3063,16 @@ fn infer_expr(
                         )
                     })?;
                 let raw_ty = field_entry.ty.clone();
-                let ty = if let Some(type_params) = ctx.get_struct_type_params(&struct_name).cloned()
-                {
-                    let mut remap = Substitution::new();
-                    for (&tp, arg) in type_params.iter().zip(type_args.iter()) {
-                        remap.bind(tp, arg.clone());
-                    }
-                    remap.apply(&raw_ty)
-                } else {
-                    raw_ty
-                };
+                let ty =
+                    if let Some(type_params) = ctx.get_struct_type_params(&struct_name).cloned() {
+                        let mut remap = Substitution::new();
+                        for (&tp, arg) in type_params.iter().zip(type_args.iter()) {
+                            remap.bind(tp, arg.clone());
+                        }
+                        remap.apply(&raw_ty)
+                    } else {
+                        raw_ty
+                    };
                 projected.push((field.clone(), ty));
             }
             Ok(InferType::Record(projected))
@@ -3283,13 +3278,11 @@ fn infer_match(
     // `infer_pattern`'s two-segment path assertion, and a bare no-field variant
     // (`Red`) is typed as the variant rather than a spurious binding.
     let scrutinee_enum_name = match &scrutinee_ty {
-        InferType::Named(name, _) | InferType::Concrete(Type::Named(name, _)) => {
-            Some(name.clone())
-        }
+        InferType::Named(name, _) | InferType::Concrete(Type::Named(name, _)) => Some(name.clone()),
         _ => None,
     };
-    let scrutinee_variants: Option<(String, Vec<(String, bool)>)> = scrutinee_enum_name
-        .and_then(|name| {
+    let scrutinee_variants: Option<(String, Vec<(String, bool)>)> =
+        scrutinee_enum_name.and_then(|name| {
             ctx.get_enum(&name).map(|info| {
                 (
                     name.clone(),
@@ -4028,9 +4021,7 @@ fn root_binding_for_write(expr: &Expr) -> Option<(&str, &Span)> {
         Expr::Ident(name, span) => Some((name.as_str(), span)),
         Expr::FieldAccess { object, .. }
         | Expr::TupleAccess { object, .. }
-        | Expr::Index { object, .. } => {
-            root_binding_for_write(object)
-        }
+        | Expr::Index { object, .. } => root_binding_for_write(object),
         _ => None,
     }
 }
@@ -4662,7 +4653,10 @@ fn lower_projections_in_expr(expr: &Expr, generics: &std::collections::HashSet<S
         Expr::Tuple(es, s) => Expr::Tuple(es.iter().map(go).collect(), s.clone()),
         Expr::Array(es, s) => Expr::Array(es.iter().map(go).collect(), s.clone()),
         Expr::RecordLiteral { fields, span } => Expr::RecordLiteral {
-            fields: fields.iter().map(|(name, expr)| (name.clone(), go(expr))).collect(),
+            fields: fields
+                .iter()
+                .map(|(name, expr)| (name.clone(), go(expr)))
+                .collect(),
             span: span.clone(),
         },
         Expr::RepeatArray(e, n, s) => Expr::RepeatArray(Box::new(go(e)), *n, s.clone()),

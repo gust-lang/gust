@@ -17,7 +17,8 @@ fn main() {
     let mut by_type: BTreeMap<String, usize> = BTreeMap::new();
     let mut per_fixture_types: BTreeMap<String, std::collections::BTreeSet<String>> =
         BTreeMap::new();
-    let mut fixtures_by_type: BTreeMap<String, std::collections::BTreeSet<String>> = BTreeMap::new();
+    let mut fixtures_by_type: BTreeMap<String, std::collections::BTreeSet<String>> =
+        BTreeMap::new();
     let mut newly_failing = Vec::new();
     let mut skipped_generic_bodies_user_total = 0usize;
     let mut skipped_generic_bodies_embedded_std_total = 0usize;
@@ -42,7 +43,9 @@ fn main() {
         if coherence::check(&normalized, &names).is_err() {
             continue;
         }
-        let Ok(typed) = typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default()) else {
+        let Ok(typed) =
+            typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())
+        else {
             continue;
         };
         let report = move_check::collect_graph_violations(&typed);
@@ -155,7 +158,9 @@ fn main() {
     let mut rows: Vec<_> = by_type.iter().collect();
     rows.sort_by(|a, b| b.1.cmp(a.1));
     for (ty, count) in rows {
-        let fixtures = fixtures_by_type.get(ty).map_or(0, std::collections::BTreeSet::len);
+        let fixtures = fixtures_by_type
+            .get(ty)
+            .map_or(0, std::collections::BTreeSet::len);
         println!("type={ty} violations={count} fixtures={fixtures}");
         if std::env::var("MC_LIST").as_deref() == Ok(ty.as_str()) {
             for f in fixtures_by_type.get(ty).into_iter().flatten() {

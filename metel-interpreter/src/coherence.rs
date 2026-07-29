@@ -157,8 +157,11 @@ fn canonicalize_impl_target(
         TypeExpr::Named(target_name, args) if !args.is_empty() => {
             // Top-level args: map each to TypeParam(i) if it's an impl param,
             // else canonicalize normally.
-            let cargs: Vec<CanonicalType> =
-                args.iter().enumerate().map(|(i, arg)| map_arg(i, arg)).collect();
+            let cargs: Vec<CanonicalType> = args
+                .iter()
+                .enumerate()
+                .map(|(i, arg)| map_arg(i, arg))
+                .collect();
             match resolve_id(names, current_module, target_name) {
                 Some(id) => CanonicalType::Resolved(id, cargs),
                 None => CanonicalType::Unresolved(target_name.clone(), cargs),
@@ -169,7 +172,11 @@ fn canonicalize_impl_target(
             CanonicalType::SizedArray(Box::new(map_arg(0, inner)), *n)
         }
         TypeExpr::Tuple(items) => CanonicalType::Tuple(
-            items.iter().enumerate().map(|(i, arg)| map_arg(i, arg)).collect(),
+            items
+                .iter()
+                .enumerate()
+                .map(|(i, arg)| map_arg(i, arg))
+                .collect(),
         ),
         TypeExpr::Record(fields) => CanonicalType::Record(
             fields
@@ -178,7 +185,11 @@ fn canonicalize_impl_target(
                 .collect(),
         ),
         TypeExpr::Fun(params, ret) => CanonicalType::Fun(
-            params.iter().enumerate().map(|(i, arg)| map_arg(i, arg)).collect(),
+            params
+                .iter()
+                .enumerate()
+                .map(|(i, arg)| map_arg(i, arg))
+                .collect(),
             ret.as_deref().map(|r| Box::new(map_arg(params.len(), r))),
         ),
         _ => canonicalize(names, current_module, &ib.target_type),
@@ -573,8 +584,16 @@ fn impls_actually_overlap(impls: &[CollectedImpl], a: &CollectedImpl, b: &Collec
         if matches!(a_pos, CanonicalType::TypeParam(_))
             && !matches!(b_pos, CanonicalType::TypeParam(_))
         {
-            let pos = a.scoped_bounds.0.get(i).map_or(&[] as &[GenericBound], |v| v);
-            let neg = a.scoped_bounds.1.get(i).map_or(&[] as &[GenericBound], |v| v);
+            let pos = a
+                .scoped_bounds
+                .0
+                .get(i)
+                .map_or(&[] as &[GenericBound], |v| v);
+            let neg = a
+                .scoped_bounds
+                .1
+                .get(i)
+                .map_or(&[] as &[GenericBound], |v| v);
             if !concrete_satisfies_bounds(impls, b_pos, pos, neg) {
                 return false;
             }
@@ -582,8 +601,16 @@ fn impls_actually_overlap(impls: &[CollectedImpl], a: &CollectedImpl, b: &Collec
         if matches!(b_pos, CanonicalType::TypeParam(_))
             && !matches!(a_pos, CanonicalType::TypeParam(_))
         {
-            let pos = b.scoped_bounds.0.get(i).map_or(&[] as &[GenericBound], |v| v);
-            let neg = b.scoped_bounds.1.get(i).map_or(&[] as &[GenericBound], |v| v);
+            let pos = b
+                .scoped_bounds
+                .0
+                .get(i)
+                .map_or(&[] as &[GenericBound], |v| v);
+            let neg = b
+                .scoped_bounds
+                .1
+                .get(i)
+                .map_or(&[] as &[GenericBound], |v| v);
             if !concrete_satisfies_bounds(impls, a_pos, pos, neg) {
                 return false;
             }
@@ -635,13 +662,13 @@ pub fn check(graph: &NormalizedModuleGraph, names: &ResolvedNames) -> Result<(),
             let is_structural_or_generic = !ib.generics.is_empty()
                 || matches!(
                     ib.target_type,
-                    TypeExpr::Array(_) | TypeExpr::SizedArray(_, _) | TypeExpr::Tuple(_)
+                    TypeExpr::Array(_)
+                        | TypeExpr::SizedArray(_, _)
+                        | TypeExpr::Tuple(_)
                         | TypeExpr::Fun(_, _)
                 );
             let target_head = match &ib.target_type {
-                TypeExpr::Named(name, _) => {
-                    name.rsplit("::").next().unwrap_or(name).to_string()
-                }
+                TypeExpr::Named(name, _) => name.rsplit("::").next().unwrap_or(name).to_string(),
                 _ => String::new(),
             };
             impls.push(CollectedImpl {
@@ -665,12 +692,7 @@ pub fn check(graph: &NormalizedModuleGraph, names: &ResolvedNames) -> Result<(),
     // typechecker will report on its own (T0003), and layering a coherence
     // error on top of it would only obscure the real problem.
     for imp in &impls {
-        if imp.aspect_name == "Drop"
-            && matches!(
-                imp.canonical_key.1,
-                CanonicalType::Record(_)
-            )
-        {
+        if imp.aspect_name == "Drop" && matches!(imp.canonical_key.1, CanonicalType::Record(_)) {
             return Err(MetelError::type_error(
                 TypeErrorCode::T0001,
                 "anonymous records cannot implement `Drop`; teardown logic requires a nominal type",
@@ -804,8 +826,10 @@ pub fn check(graph: &NormalizedModuleGraph, names: &ResolvedNames) -> Result<(),
         };
         for copy_impl in positive_impls_of(copy_id) {
             for drop_impl in positive_impls_of(drop_id) {
-                if !canonical_types_compatible(&copy_impl.canonical_key.1, &drop_impl.canonical_key.1)
-                {
+                if !canonical_types_compatible(
+                    &copy_impl.canonical_key.1,
+                    &drop_impl.canonical_key.1,
+                ) {
                     continue;
                 }
                 if !impls_actually_overlap(&impls, copy_impl, drop_impl) {
@@ -850,10 +874,7 @@ pub fn check(graph: &NormalizedModuleGraph, names: &ResolvedNames) -> Result<(),
             if !a.is_structural_or_generic && !b.is_structural_or_generic {
                 continue;
             }
-            let Some(&shared_method) = a
-                .method_names
-                .iter()
-                .find(|m| b.method_names.contains(m))
+            let Some(&shared_method) = a.method_names.iter().find(|m| b.method_names.contains(m))
             else {
                 continue;
             };

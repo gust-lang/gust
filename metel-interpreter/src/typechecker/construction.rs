@@ -1316,7 +1316,9 @@ fn construct_expr(
                 if fields.is_empty() {
                     let ty = if let Some(Type::Named(expected_name, _)) = expected_ty {
                         if expected_name == name {
-                            expected_ty.cloned().unwrap_or_else(|| Type::Named(name.clone(), vec![]))
+                            expected_ty
+                                .cloned()
+                                .unwrap_or_else(|| Type::Named(name.clone(), vec![]))
                         } else {
                             Type::Named(name.clone(), vec![])
                         }
@@ -1583,7 +1585,9 @@ fn construct_expr(
                     .iter()
                     .find(|(name, _)| name == field)
                     .map(|(_, ty)| ty.clone())
-                    .ok_or_else(|| MetelError::internal(format!("no field `{field}` on {peeled}")))?;
+                    .ok_or_else(|| {
+                        MetelError::internal(format!("no field `{field}` on {peeled}"))
+                    })?;
                 return Ok(TypedExpr::FieldAccess {
                     object: Box::new(typed_obj),
                     field: field.clone(),
@@ -1672,7 +1676,10 @@ fn construct_expr(
             if let Type::Array(elem) | Type::SizedArray(elem, _) =
                 peel_type_references(typed_receiver.ty())
             {
-                let candidates = ctx.registry.array_method_scheme_variants_for(method).to_vec();
+                let candidates = ctx
+                    .registry
+                    .array_method_scheme_variants_for(method)
+                    .to_vec();
                 if candidates.is_empty() {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0003,
@@ -1819,11 +1826,10 @@ fn construct_expr(
             symbol_id,
             span,
         } => {
-            let resolved_path =
-                if path.len() == 1
-                    && ctx.can_be_unqualified_variant(&path[0])
-                    && !ctx.has_struct_named(&path[0])
-                {
+            let resolved_path = if path.len() == 1
+                && ctx.can_be_unqualified_variant(&path[0])
+                && !ctx.has_struct_named(&path[0])
+            {
                 let expected_ty = expected_ty
                     .ok_or_else(|| unqualified_variant_needs_annotation_error(&path[0], span))?;
                 let (enum_name, enum_info) = resolve_expected_enum(Some(expected_ty), span, ctx)?;
@@ -1840,9 +1846,9 @@ fn construct_expr(
                         span,
                     ));
                 }
-                } else {
-                    path.clone()
-                };
+            } else {
+                path.clone()
+            };
             // Look up field type hints from the struct definition for non-generic structs.
             // Clone to release the borrow on ctx before calling construct_expr below.
             let type_name = resolved_path.last().map_or("", std::string::String::as_str);
@@ -2289,8 +2295,10 @@ fn builtin_pattern_method_expr(
     args: Vec<TypedExpr>,
     span: &Span,
 ) -> Option<Result<TypedExpr, MetelError>> {
-    if matches!(peel_type_references(receiver.ty()), Type::Array(_) | Type::SizedArray(_, _))
-        && method == "len"
+    if matches!(
+        peel_type_references(receiver.ty()),
+        Type::Array(_) | Type::SizedArray(_, _)
+    ) && method == "len"
         && args.is_empty()
     {
         return Some(Ok(TypedExpr::MethodCall {
@@ -2385,9 +2393,7 @@ fn construct_match(
     let mut typed_arms = vec![];
     for arm in &m.arms {
         let pattern = match &scrutinee_variants {
-            Some((enum_name, variants)) => {
-                resolve_bare_variant(&arm.pattern, enum_name, variants)
-            }
+            Some((enum_name, variants)) => resolve_bare_variant(&arm.pattern, enum_name, variants),
             None => arm.pattern.clone(),
         };
         ctx.push_scope();
@@ -2638,7 +2644,9 @@ pub(super) fn resolve_bare_variant(
 ) -> Pattern {
     match pattern {
         Pattern::Binding(name, span)
-            if variants.iter().any(|(vn, fieldless)| vn == name && *fieldless) =>
+            if variants
+                .iter()
+                .any(|(vn, fieldless)| vn == name && *fieldless) =>
         {
             Pattern::EnumVariant {
                 path: vec![enum_name.to_string(), name.clone()],
@@ -2694,7 +2702,9 @@ fn construct_pattern_bindings(
                     .iter()
                     .find(|(name, _)| name == field)
                     .map(|(_, ty)| ty.clone())
-                    .ok_or_else(|| MetelError::internal(format!("missing record field `{field}`")))?;
+                    .ok_or_else(|| {
+                        MetelError::internal(format!("missing record field `{field}`"))
+                    })?;
                 ctx.bind(field, field_ty);
             }
         }
@@ -3396,8 +3406,13 @@ fn check_fun_call_bounds(
     let record_kinds = registry.fun_record_kinds_for(fun_name);
     let generic_types_by_name: HashMap<String, Type> = HashMap::new();
     for (tv, concrete) in var_to_type {
-        let bounds = bounds_map.and_then(|map| map.get(tv)).map_or(&[][..], Vec::as_slice);
-        let record_kind = record_kinds.and_then(|map| map.get(tv)).copied().unwrap_or(false);
+        let bounds = bounds_map
+            .and_then(|map| map.get(tv))
+            .map_or(&[][..], Vec::as_slice);
+        let record_kind = record_kinds
+            .and_then(|map| map.get(tv))
+            .copied()
+            .unwrap_or(false);
         if bounds.is_empty() && !record_kind {
             continue;
         }
@@ -3778,7 +3793,9 @@ fn check_record_kind_requirement(
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
 ) -> Result<(), MetelError> {
-    let has_row_bound = bounds.iter().any(|bound| matches!(bound, GenericBound::Row(_)));
+    let has_row_bound = bounds
+        .iter()
+        .any(|bound| matches!(bound, GenericBound::Row(_)));
     if has_row_bound && !record_kind {
         return Err(MetelError::type_error(
             TypeErrorCode::T0012,
@@ -3804,7 +3821,9 @@ fn check_record_kind_requirement(
         }
         other => Err(MetelError::type_error(
             TypeErrorCode::T0012,
-            format!("`{other}` is not a record, and only records satisfy a `record` type parameter"),
+            format!(
+                "`{other}` is not a record, and only records satisfy a `record` type parameter"
+            ),
             span,
         )),
     }
@@ -3819,7 +3838,10 @@ fn check_positive_row_bound(
     generic_types_by_name: &HashMap<String, Type>,
 ) -> Result<(), MetelError> {
     let bound = GenericBound::Row(row.clone());
-    let actual_labels: Vec<&str> = record_fields.iter().map(|(label, _)| label.as_str()).collect();
+    let actual_labels: Vec<&str> = record_fields
+        .iter()
+        .map(|(label, _)| label.as_str())
+        .collect();
     if !row.open && record_fields.len() != row.fields.len() {
         return Err(MetelError::type_error(
             TypeErrorCode::T0012,
@@ -3904,8 +3926,7 @@ fn check_negative_row_bound(
                 TypeErrorCode::T0012,
                 format!(
                     "negative row bound `!{}` is not satisfied because the record has label `{}`",
-                    bound,
-                    forbidden.label
+                    bound, forbidden.label
                 ),
                 span,
             ));
@@ -3976,7 +3997,9 @@ fn check_type_satisfies_bounds(
                             "`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)\n       hint: fixed-size arrays implement `{aspect}` only when their element type `{elem}` does"
                         )
                     } else {
-                        format!("`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)")
+                        format!(
+                            "`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)"
+                        )
                     };
                     return Err(MetelError::type_error(TypeErrorCode::T0012, message, span));
                 }
@@ -4005,7 +4028,9 @@ fn check_type_satisfies_bounds(
                 if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0012,
-                        format!("`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)"),
+                        format!(
+                            "`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)"
+                        ),
                         span,
                     ));
                 }
@@ -4117,8 +4142,13 @@ fn check_fun_call_neg_bounds(
     let record_kinds = registry.fun_record_kinds_for(fun_name);
     let generic_types_by_name: HashMap<String, Type> = HashMap::new();
     for (tv, concrete) in var_to_type {
-        let bounds = bounds_map.and_then(|map| map.get(tv)).map_or(&[][..], Vec::as_slice);
-        let record_kind = record_kinds.and_then(|map| map.get(tv)).copied().unwrap_or(false);
+        let bounds = bounds_map
+            .and_then(|map| map.get(tv))
+            .map_or(&[][..], Vec::as_slice);
+        let record_kind = record_kinds
+            .and_then(|map| map.get(tv))
+            .copied()
+            .unwrap_or(false);
         if bounds.is_empty() && !record_kind {
             continue;
         }
@@ -4506,8 +4536,7 @@ fn construct_binop(
             // The real fix is routing `==` through the `Eq` aspect (metel-core#263 /
             // RFC-0062); this guard relaxes as that lands.
             let t = lhs.ty();
-            if !matches!(t, Type::Str | Type::Char | Type::Boolean | Type::Never)
-                && !t.is_numeric()
+            if !matches!(t, Type::Str | Type::Char | Type::Boolean | Type::Never) && !t.is_numeric()
             {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0005,
@@ -5094,7 +5123,11 @@ fn typed_place_ty(
             let object_ty = peel_type_references(&typed_place_ty(object, ctx, field_span)?).clone();
             typed_place_field_ty(&object_ty, field, field_span, ctx)
         }
-        TypedPlace::Tuple { object, index, span } => {
+        TypedPlace::Tuple {
+            object,
+            index,
+            span,
+        } => {
             let object_ty = peel_type_references(&typed_place_ty(object, ctx, span)?).clone();
             match object_ty {
                 Type::Tuple(elems) => elems.get(*index).cloned().ok_or_else(|| {
@@ -5152,7 +5185,10 @@ fn typed_place_field_ty(
                 )
             }),
         Type::Named(struct_name, type_args) => {
-            if let Some(type_params) = ctx.registry.raw_struct_type_params().get(struct_name.as_str())
+            if let Some(type_params) = ctx
+                .registry
+                .raw_struct_type_params()
+                .get(struct_name.as_str())
             {
                 let raw_fields = ctx
                     .registry
@@ -5189,13 +5225,17 @@ fn typed_place_field_ty(
                         field_span,
                     )
                 })?;
-                let field_entry = fields.iter().find(|entry| entry.0 == field).ok_or_else(|| {
-                    MetelError::type_error(
-                        TypeErrorCode::T0003,
-                        format!("no field `{field}` on `{struct_name}`"),
-                        field_span,
-                    )
-                })?;
+                let field_entry =
+                    fields
+                        .iter()
+                        .find(|entry| entry.0 == field)
+                        .ok_or_else(|| {
+                            MetelError::type_error(
+                                TypeErrorCode::T0003,
+                                format!("no field `{field}` on `{struct_name}`"),
+                                field_span,
+                            )
+                        })?;
                 Ok(field_entry.1.clone())
             }
         }
