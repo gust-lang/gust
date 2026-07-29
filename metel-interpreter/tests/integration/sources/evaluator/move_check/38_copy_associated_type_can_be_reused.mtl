@@ -1,0 +1,12 @@
+aspect Source {
+    type Item: Copy;
+    fun get(self) -> Item;
+}
+
+fun reuse_item<S: Source>(source: S) {
+    let item = source.get();
+    let first = item;
+    let second = item;
+}
+
+fun main() { }

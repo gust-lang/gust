@@ -1,0 +1,16 @@
+aspect Consume {
+    fun consume(self);
+}
+
+aspect Container {
+    type Item: Consume;
+    fun get(self) -> Item;
+}
+
+fun consume_item_twice<C: Container>(container: C) {
+    let item = container.get();
+    item.consume();
+    item.consume();
+}
+
+fun main() { }

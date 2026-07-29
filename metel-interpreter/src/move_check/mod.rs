@@ -223,6 +223,7 @@ impl FlowState {
 struct GenericMoveEnv {
     placeholders: HashMap<String, TypeVar>,
     assumptions: AspectAssumptions,
+    symbolic_aspects: HashMap<String, HashSet<String>>,
     arg_types: Vec<Type>,
 }
 
@@ -360,7 +361,8 @@ impl<'a> Checker<'a> {
             return None;
         };
         let scheme = scheme_with_source_generics(raw_scheme, generics);
-        let Some((arg_types, generic_env)) = Self::generic_sample_args(&scheme) else {
+        let Some((arg_types, generic_env)) = Self::generic_sample_args(&scheme, &type_ctx.registry)
+        else {
             self.record_skipped_generic_body(span);
             return None;
         };
@@ -421,7 +423,8 @@ impl<'a> Checker<'a> {
             self.record_skipped_generic_body(&method.span);
             return;
         };
-        let Some((arg_types, generic_env)) = Self::generic_sample_args(&scheme) else {
+        let Some((arg_types, generic_env)) = Self::generic_sample_args(&scheme, &type_ctx.registry)
+        else {
             self.record_skipped_generic_body(&method.span);
             return;
         };
@@ -449,7 +452,10 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn generic_sample_args(scheme: &TypeScheme) -> Option<(Vec<Type>, GenericMoveEnv)> {
+    fn generic_sample_args(
+        scheme: &TypeScheme,
+        registry: &TypeDefinitionRegistry,
+    ) -> Option<(Vec<Type>, GenericMoveEnv)> {
         let mut subst = Substitution::new();
         let mut generic_env = GenericMoveEnv::default();
         let mut named_samples = HashMap::new();
@@ -472,6 +478,11 @@ impl<'a> Checker<'a> {
             }
             subst.bind(*var, type_to_infer(&sample));
         }
+        generic_env.symbolic_aspects = symbolic_aspect_assumptions(
+            registry,
+            &generic_env.placeholders,
+            &generic_env.assumptions,
+        );
         let InferType::Fun(params, _) = &scheme.ty else {
             return None;
         };
@@ -1178,6 +1189,16 @@ impl<'a> Checker<'a> {
                 .registry
                 .type_satisfies_aspect(current_module, ty, aspect_name);
         };
+        if let Type::Named(name, args) = peel_type_references(ty) {
+            if args.is_empty()
+                && generic_env
+                    .symbolic_aspects
+                    .get(name)
+                    .is_some_and(|aspects| aspects.contains(aspect_name))
+            {
+                return true;
+            }
+        }
         let infer_ty = type_to_infer_under_generic_env(ty, &generic_env.placeholders);
         self.registry.infer_type_satisfies_aspect(
             current_module,
@@ -1376,8 +1397,7 @@ impl<'a> Checker<'a> {
             return None;
         }
         let generic_env = self.generic_envs.last()?;
-        let var = generic_env.placeholders.get(placeholder)?;
-        let aspects = generic_env.assumptions.get(var)?;
+        let aspects = generic_env.symbolic_aspects.get(placeholder)?;
         let mut matches = aspects.iter().filter_map(|aspect| {
             self.registry
                 .aspect_method_defs(aspect)?
@@ -1491,10 +1511,7 @@ fn type_ctx_with_symbolic_aspect_methods(
 ) -> TypeCtx {
     let mut enriched = type_ctx.clone();
     let mut method_gen = TypeVarGenerator::with_counter(2_000_000);
-    for (placeholder, var) in &generic_env.placeholders {
-        let Some(aspects) = generic_env.assumptions.get(var) else {
-            continue;
-        };
+    for (placeholder, aspects) in &generic_env.symbolic_aspects {
         enriched
             .registry
             .register_symbolic_named_aspects(placeholder.clone(), aspects.clone());
@@ -1552,6 +1569,58 @@ fn type_ctx_with_symbolic_aspect_methods(
         }
     }
     enriched
+}
+
+fn symbolic_aspect_assumptions(
+    registry: &TypeDefinitionRegistry,
+    placeholders: &HashMap<String, TypeVar>,
+    assumptions: &AspectAssumptions,
+) -> HashMap<String, HashSet<String>> {
+    let mut symbolic_aspects: HashMap<String, HashSet<String>> = placeholders
+        .iter()
+        .filter_map(|(placeholder, var)| {
+            assumptions
+                .get(var)
+                .cloned()
+                .map(|aspects| (placeholder.clone(), aspects))
+        })
+        .collect();
+    let mut pending: Vec<String> = symbolic_aspects.keys().cloned().collect();
+    let mut next = 0;
+
+    while let Some(symbolic_name) = pending.get(next).cloned() {
+        next += 1;
+        let aspects = symbolic_aspects
+            .get(&symbolic_name)
+            .cloned()
+            .unwrap_or_default();
+        for aspect in aspects {
+            let Some(assoc_decls) = registry.aspect_assoc_type_decls(&aspect) else {
+                continue;
+            };
+            for assoc_decl in assoc_decls {
+                let assoc_aspects: HashSet<String> = assoc_decl
+                    .bounds
+                    .iter()
+                    .filter(|bound| bound.polarity == Polarity::Positive)
+                    .filter_map(GenericBound::from_ast)
+                    .filter_map(|bound| bound.aspect_name().map(ToOwned::to_owned))
+                    .collect();
+                if assoc_aspects.is_empty() {
+                    continue;
+                }
+                let projection = format!("{symbolic_name}::{}", assoc_decl.name);
+                let entry = symbolic_aspects.entry(projection.clone()).or_default();
+                let previous_len = entry.len();
+                entry.extend(assoc_aspects);
+                if entry.len() != previous_len {
+                    pending.push(projection);
+                }
+            }
+        }
+    }
+
+    symbolic_aspects
 }
 
 fn infer_method_arg_types(fun_ty: &crate::typeinference::InferType) -> Option<Vec<Type>> {
