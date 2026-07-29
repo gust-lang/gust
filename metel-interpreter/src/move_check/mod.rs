@@ -105,13 +105,6 @@ pub fn check_graph(graph: &TypedModuleGraph) -> Result<(), MetelError> {
             &span,
         ));
     }
-    if let Some(span) = report.unchecked_generic_body_spans.into_iter().next() {
-        return Err(MetelError::type_error(
-            TypeErrorCode::T0019,
-            "move checking could not analyze generic body",
-            &span,
-        ));
-    }
     Ok(())
 }
 
@@ -288,7 +281,6 @@ impl<'a> Checker<'a> {
             }
             TypedDecl::Stmt(stmt) => self.check_stmt(stmt, current_module, state),
             TypedDecl::Impl(ib) => {
-                let method_target = method_scheme_target(&ib.target_type);
                 for method in &ib.methods {
                     match &method.body {
                         FunBody::Typed(body) => {
@@ -302,8 +294,6 @@ impl<'a> Checker<'a> {
                         }
                         FunBody::Generic(body) => {
                             self.check_generic_method_body(
-                                method_target,
-                                &method.name,
                                 &method.params,
                                 body,
                                 &method.span,
@@ -376,8 +366,6 @@ impl<'a> Checker<'a> {
 
     fn check_generic_method_body(
         &mut self,
-        target: MethodSchemeTarget<'_>,
-        method_name: &str,
         params: &[crate::ast::Param],
         body: &crate::ast::Block,
         span: &Span,
@@ -387,30 +375,23 @@ impl<'a> Checker<'a> {
             self.record_skipped_generic_body(span);
             return;
         }
+        if self.type_ctx.is_none() {
+            self.record_skipped_generic_body(span);
+            return;
+        }
+        let Some(scheme) = self.registry.generic_method_scheme_for_decl(span).cloned() else {
+            self.record_skipped_generic_body(span);
+            return;
+        };
         let Some(type_ctx) = self.type_ctx.as_ref() else {
             self.record_skipped_generic_body(span);
             return;
         };
-        let scheme = match target {
-            MethodSchemeTarget::Named(target_name) => self
-                .registry
-                .method_scheme_for(target_name, method_name)
-                .map(|(scheme, _)| scheme),
-            MethodSchemeTarget::Array => self
-                .registry
-                .array_method_scheme_for(method_name)
-                .map(|(scheme, _)| scheme),
-            MethodSchemeTarget::Unsupported => None,
-        };
-        let Some(scheme) = scheme else {
+        let Some((arg_types, generic_env)) = Self::generic_sample_args(&scheme) else {
             self.record_skipped_generic_body(span);
             return;
         };
-        let Some((arg_types, generic_env)) = Self::generic_sample_args(scheme) else {
-            self.record_skipped_generic_body(span);
-            return;
-        };
-        match crate::typechecker::construct_generic_body(scheme, params, &arg_types, body, span, type_ctx) {
+        match crate::typechecker::construct_generic_body(&scheme, params, &arg_types, body, span, type_ctx) {
             Ok(typed_body) => {
                 self.generic_envs.push(generic_env);
                 let mut fn_state = FlowState::default();
@@ -1315,21 +1296,6 @@ fn function_param_types(ty: &Type) -> Option<&[Type]> {
     match ty {
         Type::Fun(params, _) => Some(params),
         _ => None,
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-enum MethodSchemeTarget<'a> {
-    Named(&'a str),
-    Array,
-    Unsupported,
-}
-
-fn method_scheme_target(target_type: &TypeExpr) -> MethodSchemeTarget<'_> {
-    match target_type {
-        TypeExpr::Named(name, _) => MethodSchemeTarget::Named(name.as_str()),
-        TypeExpr::Array(_) | TypeExpr::SizedArray(_, _) => MethodSchemeTarget::Array,
-        _ => MethodSchemeTarget::Unsupported,
     }
 }
 

@@ -1,0 +1,15 @@
+aspect NonCopyTake {
+    fun describe(self) -> String;
+}
+
+public struct Box<T> {
+    public value: T,
+}
+
+extend<T: !Copy> Box<T>: NonCopyTake {
+    fun describe(self) -> String {
+        let first = self.value;
+        let second = self.value;
+        "non-copy"
+    }
+}

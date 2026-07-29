@@ -1354,6 +1354,10 @@ pub struct TypeDefinitionRegistry {
     array_method_scheme_env: HashMap<String, (TypeScheme, Vec<TypeVar>)>,
     /// Variant list mirroring `method_scheme_variants` for array-target impls.
     array_method_scheme_variants: HashMap<String, Vec<ArrayMethodSchemeVariant>>,
+    /// Exact generic method scheme keyed by the method declaration's source span.
+    /// Unlike the name-keyed environments above, this remains unambiguous when
+    /// several conditional impls provide the same method name.
+    generic_method_schemes_by_span: HashMap<Span, TypeScheme>,
     /// Per-type-param aspect bounds for generic structs and enums.
     /// Key: type name. Value: one Vec<String> per type param (same order as `struct_type_params`),
     /// each containing the aspect names that param must satisfy.
@@ -1521,6 +1525,7 @@ impl TypeDefinitionRegistry {
             method_scheme_variants: HashMap::new(),
             array_method_scheme_env: HashMap::new(),
             array_method_scheme_variants: HashMap::new(),
+            generic_method_schemes_by_span: HashMap::new(),
             type_param_bounds: HashMap::new(),
             neg_type_param_bounds: HashMap::new(),
             type_param_record_kinds: HashMap::new(),
@@ -1745,7 +1750,10 @@ impl TypeDefinitionRegistry {
         scheme: TypeScheme,
         struct_tvars: Vec<TypeVar>,
         aspect_name: Option<String>,
+        method_span: Span,
     ) {
+        self.generic_method_schemes_by_span
+            .insert(method_span, scheme.clone());
         self.method_scheme_variants
             .entry(type_name)
             .or_default()
@@ -1778,11 +1786,20 @@ impl TypeDefinitionRegistry {
         scheme: TypeScheme,
         element_tvars: Vec<TypeVar>,
         aspect_name: Option<String>,
+        method_span: Span,
     ) {
+        self.generic_method_schemes_by_span
+            .insert(method_span, scheme.clone());
         self.array_method_scheme_variants
             .entry(method_name)
             .or_default()
             .push((scheme, element_tvars, aspect_name));
+    }
+
+    /// Return the exact scheme inferred for one generic method declaration.
+    #[must_use]
+    pub fn generic_method_scheme_for_decl(&self, method_span: &Span) -> Option<&TypeScheme> {
+        self.generic_method_schemes_by_span.get(method_span)
     }
 
     /// All registered schemes for `method_name` on a structural array target
@@ -2634,6 +2651,11 @@ impl TypeDefinitionRegistry {
                 .or_default()
                 .extend(variants.iter().cloned());
         }
+        for (span, scheme) in &other.generic_method_schemes_by_span {
+            self.generic_method_schemes_by_span
+                .entry(span.clone())
+                .or_insert_with(|| scheme.clone());
+        }
         for (k, v) in &other.type_param_bounds {
             self.type_param_bounds
                 .entry(k.clone())
@@ -3291,6 +3313,7 @@ impl InferContext {
         scheme: TypeScheme,
         struct_tvars: Vec<TypeVar>,
         aspect_name: Option<String>,
+        method_span: Span,
     ) {
         self.registry.register_method_scheme_variant(
             type_name,
@@ -3298,6 +3321,7 @@ impl InferContext {
             scheme,
             struct_tvars,
             aspect_name,
+            method_span,
         );
     }
 
@@ -3307,12 +3331,14 @@ impl InferContext {
         scheme: TypeScheme,
         element_tvars: Vec<TypeVar>,
         aspect_name: Option<String>,
+        method_span: Span,
     ) {
         self.registry.register_array_method_scheme_variant(
             method_name,
             scheme,
             element_tvars,
             aspect_name,
+            method_span,
         );
     }
 

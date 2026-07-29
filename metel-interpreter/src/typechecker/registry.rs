@@ -835,6 +835,7 @@ fn register_generic_impl_method_schemes(
             scheme,
             struct_tvars,
             ib.aspect_name.clone(),
+            method.span.clone(),
         );
         registry.register_method_receiver(target_name.to_string(), method.name.clone(), receiver);
     }
@@ -920,6 +921,7 @@ fn register_array_impl_method_schemes(
             scheme,
             vec![element_tv],
             ib.aspect_name.clone(),
+            method.span.clone(),
         );
         registry.register_array_method_receiver(method.name.clone(), receiver);
     }

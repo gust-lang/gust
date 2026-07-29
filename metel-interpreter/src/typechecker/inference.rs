@@ -1828,6 +1828,7 @@ fn infer_impl_method(
                 scheme,
                 struct_tvars_resolved,
                 ib.aspect_name.clone(),
+                method.span.clone(),
             );
         } else {
             ctx.register_method_scheme(
@@ -1842,6 +1843,7 @@ fn infer_impl_method(
                 scheme,
                 struct_tvars_resolved,
                 ib.aspect_name.clone(),
+                method.span.clone(),
             );
         }
     } else if array_target_generic_name.is_some() {

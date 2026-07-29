@@ -1,0 +1,32 @@
+// Two nominal generic impls provide the same method name under disjoint bounds.
+// Move checking must reconstruct each body with that declaration's own scheme,
+// not the last name-keyed scheme registered for `Box::describe`.
+aspect NonCopyTake {
+    fun describe(self) -> String;
+}
+
+aspect CopyTake {
+    fun describe(self) -> String;
+}
+
+struct Box<T> {
+    value: T,
+}
+
+extend<T: !Copy> Box<T>: NonCopyTake {
+    fun describe(self) -> String {
+        let first = self.value;
+        let second = self.value;
+        "non-copy"
+    }
+}
+
+extend<T: Copy> Box<T>: CopyTake {
+    fun describe(self) -> String {
+        let first = self.value;
+        let second = self.value;
+        "copy"
+    }
+}
+
+fun main() { }

@@ -1,0 +1,16 @@
+// Registry merging prepends this module's method variants ahead of dependency
+// variants. Declaration-identity lookup must still pair boxed.mtl's body with
+// boxed.mtl's !Copy scheme.
+import boxed::*;
+
+aspect CopyTake {
+    fun describe(self) -> String;
+}
+
+extend<T: Copy> Box<T>: CopyTake {
+    fun describe(self) -> String {
+        "copy"
+    }
+}
+
+fun main() { }
