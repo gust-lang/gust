@@ -1,0 +1,13 @@
+aspect Marker {
+    fun mark(self) -> String;
+}
+
+extend<T> T: Marker {
+    fun mark(self) -> String {
+        let moved = self;
+        let moved_again = self;
+        "ok"
+    }
+}
+
+fun main() { }

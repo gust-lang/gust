@@ -305,12 +305,7 @@ impl<'a> Checker<'a> {
                             fn_state.pop_scope();
                         }
                         FunBody::Generic(body) => {
-                            self.check_generic_method_body(
-                                &method.params,
-                                body,
-                                &method.span,
-                                current_module,
-                            );
+                            self.check_generic_method_body(ib, method, body, current_module);
                         }
                         FunBody::Native(_) => {}
                     }
@@ -387,44 +382,62 @@ impl<'a> Checker<'a> {
 
     fn check_generic_method_body(
         &mut self,
-        params: &[crate::ast::Param],
+        impl_block: &crate::typed_ast::TypedImplBlock,
+        method: &crate::typed_ast::TypedFunDecl,
         body: &crate::ast::Block,
-        span: &Span,
         current_module: &[String],
     ) {
-        if params_contain_impl_aspect(params) {
-            self.record_skipped_generic_body(span);
+        if params_contain_impl_aspect(&method.params) {
+            self.record_skipped_generic_body(&method.span);
             return;
         }
         if self.type_ctx.is_none() {
-            self.record_skipped_generic_body(span);
+            self.record_skipped_generic_body(&method.span);
             return;
         }
-        let Some(scheme) = self.registry.generic_method_scheme_for_decl(span).cloned() else {
-            self.record_skipped_generic_body(span);
+        let raw_scheme = self
+            .registry
+            .generic_method_scheme_for_decl(&method.span)
+            .cloned()
+            .or_else(|| {
+                crate::typechecker::symbolic_impl_method_scheme(
+                    self.registry,
+                    &impl_block.generics,
+                    &method.generics,
+                    &impl_block.target_type,
+                    impl_block.aspect_name.as_deref(),
+                    &method.params,
+                    method.return_type.as_ref(),
+                )
+            });
+        let Some(raw_scheme) = raw_scheme else {
+            self.record_skipped_generic_body(&method.span);
             return;
         };
+        let mut source_generics = impl_block.generics.clone();
+        source_generics.extend_from_slice(&method.generics);
+        let scheme = scheme_with_source_generics(&raw_scheme, &source_generics);
         let Some(type_ctx) = self.type_ctx.as_ref() else {
-            self.record_skipped_generic_body(span);
+            self.record_skipped_generic_body(&method.span);
             return;
         };
         let Some((arg_types, generic_env)) = Self::generic_sample_args(&scheme) else {
-            self.record_skipped_generic_body(span);
+            self.record_skipped_generic_body(&method.span);
             return;
         };
         let symbolic_type_ctx = type_ctx_with_symbolic_aspect_methods(type_ctx, &generic_env);
         match crate::typechecker::construct_generic_body(
             &scheme,
-            params,
+            &method.params,
             &arg_types,
             body,
-            span,
+            &method.span,
             &symbolic_type_ctx,
         ) {
             Ok(typed_body) => {
                 let mut fn_state = FlowState::default();
                 fn_state.push_scope();
-                for (param, ty) in params.iter().zip(&generic_env.arg_types) {
+                for (param, ty) in method.params.iter().zip(&generic_env.arg_types) {
                     fn_state.bind_typed(&param.name, ty);
                 }
                 self.generic_envs.push(generic_env);
@@ -432,7 +445,7 @@ impl<'a> Checker<'a> {
                 fn_state.pop_scope();
                 self.generic_envs.pop();
             }
-            Err(_) => self.record_skipped_generic_body(span),
+            Err(_) => self.record_skipped_generic_body(&method.span),
         }
     }
 

@@ -671,6 +671,26 @@ pub(crate) fn symbolic_aspect_method_scheme(
     construction::symbolic_aspect_method_scheme(registry, aspect, method, placeholder, gen)
 }
 
+pub(crate) fn symbolic_impl_method_scheme(
+    registry: &crate::typeinference::TypeDefinitionRegistry,
+    impl_generics: &[crate::ast::GenericParam],
+    method_generics: &[crate::ast::GenericParam],
+    target_type: &crate::ast::TypeExpr,
+    aspect_name: Option<&str>,
+    params: &[crate::ast::Param],
+    return_type: Option<&crate::ast::TypeExpr>,
+) -> Option<crate::typeinference::TypeScheme> {
+    construction::symbolic_impl_method_scheme(
+        registry,
+        impl_generics,
+        method_generics,
+        target_type,
+        aspect_name,
+        params,
+        return_type,
+    )
+}
+
 /// Recover concrete type arguments for a generic struct/enum instance, given the
 /// already-computed `Type` of each of its fields (issue #267).
 ///

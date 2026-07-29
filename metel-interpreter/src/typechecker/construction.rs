@@ -475,6 +475,81 @@ pub(super) fn symbolic_aspect_method_scheme(
     })
 }
 
+pub(super) fn symbolic_impl_method_scheme(
+    registry: &TypeDefinitionRegistry,
+    impl_generics: &[crate::ast::GenericParam],
+    method_generics: &[crate::ast::GenericParam],
+    target_type: &TypeExpr,
+    aspect_name: Option<&str>,
+    params: &[crate::ast::Param],
+    return_type: Option<&TypeExpr>,
+) -> Option<TypeScheme> {
+    let mut gen = TypeVarGenerator::with_counter(5_000_000);
+    let generics: Vec<_> = impl_generics
+        .iter()
+        .chain(method_generics)
+        .cloned()
+        .collect();
+    let generic_map: HashMap<String, TypeVar> = generics
+        .iter()
+        .map(|generic| (generic.name.clone(), gen.fresh()))
+        .collect();
+    let assoc_ctx = super::conversions::AssocResolveCtx {
+        registry,
+        current_module: &[],
+        current_aspect: aspect_name,
+    };
+    let self_ty = super::conversions::type_expr_to_infer_with_assoc_ctx(
+        target_type,
+        &generic_map,
+        None,
+        &assoc_ctx,
+    );
+    let param_types = params
+        .iter()
+        .map(|param| {
+            if param.receiver.is_some() || param.name == "self" {
+                Some(self_ty.clone())
+            } else {
+                param.type_ann.as_ref().map(|annotation| {
+                    super::conversions::type_expr_to_infer_with_assoc_ctx(
+                        annotation,
+                        &generic_map,
+                        None,
+                        &assoc_ctx,
+                    )
+                })
+            }
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let ret = return_type.map_or_else(InferType::unit, |annotation| {
+        super::conversions::type_expr_to_infer_with_assoc_ctx(
+            annotation,
+            &generic_map,
+            None,
+            &assoc_ctx,
+        )
+    });
+    let quantified_vars = generics
+        .iter()
+        .filter_map(|generic| generic_map.get(&generic.name).copied())
+        .collect();
+    Some(TypeScheme {
+        quantified_vars,
+        param_names: generics
+            .iter()
+            .map(|generic| generic.name.clone())
+            .collect(),
+        bounds: super::registry::collect_type_param_bounds(&generics, None),
+        neg_bounds: super::registry::collect_negative_type_param_bounds(&generics, None),
+        record_kinds: super::registry::collect_type_param_record_kinds(&generics, None),
+        assoc_projections: vec![],
+        assoc_eq_constraints: vec![],
+        opaque_returns: vec![],
+        ty: InferType::Fun(param_types, Box::new(ret)),
+    })
+}
+
 pub(super) fn construct_generic_body(
     scheme: &TypeScheme,
     params: &[crate::ast::Param],
