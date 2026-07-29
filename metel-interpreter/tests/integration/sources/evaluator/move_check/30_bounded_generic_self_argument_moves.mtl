@@ -1,0 +1,10 @@
+aspect Merge {
+    fun merge(self, other: Self) -> Self;
+}
+
+fun merge_then_reuse_argument<T: Merge>(left: T, right: T) -> T {
+    let merged = left.merge(right);
+    right
+}
+
+fun main() { }

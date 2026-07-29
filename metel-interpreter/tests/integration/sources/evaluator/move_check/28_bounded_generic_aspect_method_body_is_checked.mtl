@@ -1,0 +1,11 @@
+aspect Inspect {
+    fun inspect(&self);
+}
+
+fun inspect_then_move_twice<T: Inspect>(value: T) -> T {
+    value.inspect();
+    let moved = value;
+    value
+}
+
+fun main() { }

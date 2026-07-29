@@ -1,0 +1,10 @@
+aspect GenericSink {
+    fun sink<U>(&self, other: U);
+}
+
+fun sink_then_reuse<T: GenericSink, U>(value: T, other: U) -> U {
+    value.sink(other);
+    other
+}
+
+fun main() { }

@@ -1,0 +1,10 @@
+aspect GenericSink {
+    fun take<U: Copy>(&self, other: U);
+}
+
+fun take_copy<T: GenericSink, U: Copy>(value: T, other: U) -> U {
+    value.take(other);
+    other
+}
+
+fun main() { }

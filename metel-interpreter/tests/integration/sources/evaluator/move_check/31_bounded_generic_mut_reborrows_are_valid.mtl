@@ -1,0 +1,12 @@
+aspect Blend {
+    fun blend(&var self, other: &var Self);
+}
+
+fun blend_twice<T: Blend>(value: T, other: T) {
+    var value = value;
+    var other = other;
+    value.blend(&var other);
+    value.blend(&var other);
+}
+
+fun main() { }

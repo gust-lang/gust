@@ -1,0 +1,10 @@
+aspect Consume {
+    fun consume(self);
+}
+
+fun consume_twice<T: Consume>(value: T) {
+    value.consume();
+    value.consume();
+}
+
+fun main() { }

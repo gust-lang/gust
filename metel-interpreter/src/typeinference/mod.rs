@@ -1400,6 +1400,9 @@ pub struct TypeDefinitionRegistry {
     aspect_decl_modules: HashMap<String, Vec<String>>,
     /// aspect name → full declared methods, including default bodies.
     aspect_method_defs: HashMap<String, Vec<AspectMethod>>,
+    /// Move-check reconstruction only: symbolic nominal placeholders and the
+    /// aspect bounds already proved for their source generic parameters.
+    symbolic_named_aspects: HashMap<String, HashSet<String>>,
     /// (`target_type_id`, `aspect_name`) → list of type-arg vectors, one per registered
     /// impl. E.g. (Int's id, "From") → [[`Type::F64`]] means `impl From<Float> for Int`.
     ///
@@ -1544,6 +1547,7 @@ impl TypeDefinitionRegistry {
             aspect_env: HashMap::new(),
             aspect_decl_modules: HashMap::new(),
             aspect_method_defs: HashMap::new(),
+            symbolic_named_aspects: HashMap::new(),
             impl_aspect_env: HashMap::new(),
             conditional_impl_bounds: HashMap::new(),
             bare_impl_bounds: HashMap::new(),
@@ -1883,6 +1887,14 @@ impl TypeDefinitionRegistry {
             .push((pos_bounds, neg_bounds));
     }
 
+    pub fn register_symbolic_named_aspects(
+        &mut self,
+        name: String,
+        aspects: HashSet<String>,
+    ) {
+        self.symbolic_named_aspects.insert(name, aspects);
+    }
+
     pub fn register_array_impl_bounds(
         &mut self,
         aspect: &str,
@@ -2043,6 +2055,16 @@ impl TypeDefinitionRegistry {
             return assumptions
                 .get(var)
                 .is_some_and(|assumed| assumed.contains(aspect_name));
+        }
+        if let InferType::Named(name, args) = ty {
+            if args.is_empty()
+                && self
+                    .symbolic_named_aspects
+                    .get(name)
+                    .is_some_and(|aspects| aspects.contains(aspect_name))
+            {
+                return true;
+            }
         }
         if let Some(entries) = self.bare_neg_impl_bounds.get(aspect_name) {
             for (pos_bounds, neg_bounds) in entries {
@@ -2745,6 +2767,11 @@ impl TypeDefinitionRegistry {
             self.aspect_method_defs
                 .entry(k.clone())
                 .or_insert_with(|| v.clone());
+        }
+        for (name, aspects) in &other.symbolic_named_aspects {
+            self.symbolic_named_aspects
+                .entry(name.clone())
+                .or_insert_with(|| aspects.clone());
         }
         for (k, v) in &other.impl_aspect_env {
             self.impl_aspect_env

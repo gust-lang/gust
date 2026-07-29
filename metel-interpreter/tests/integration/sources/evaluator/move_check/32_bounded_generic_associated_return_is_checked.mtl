@@ -1,0 +1,11 @@
+aspect IntoItem {
+    type Item;
+    fun into_item(self) -> Item;
+}
+
+fun consume_twice<T: IntoItem>(value: T) {
+    let first = value.into_item();
+    let second = value.into_item();
+}
+
+fun main() { }

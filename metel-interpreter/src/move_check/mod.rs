@@ -2,7 +2,7 @@ pub mod place;
 
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::{Pattern, ReceiverKind, Span, TypeExpr};
+use crate::ast::{GenericParam, Pattern, Polarity, ReceiverKind, Span, TypeExpr};
 use crate::error::{MetelError, TypeErrorCode};
 use crate::typed_ast::{
     FunBody, MethodDispatch, TypedBlock, TypedDecl, TypedExpr, TypedForInit, TypedModule,
@@ -10,7 +10,7 @@ use crate::typed_ast::{
 };
 use crate::typeinference::{
     type_to_infer, AspectAssumptions, GenericBound, InferType, Substitution, TypeCtx,
-    TypeDefinitionRegistry, TypeScheme, TypeVar,
+    TypeDefinitionRegistry, TypeScheme, TypeVar, TypeVarGenerator,
 };
 use crate::types::Type;
 
@@ -223,6 +223,7 @@ impl FlowState {
 struct GenericMoveEnv {
     placeholders: HashMap<String, TypeVar>,
     assumptions: AspectAssumptions,
+    arg_types: Vec<Type>,
 }
 
 struct Checker<'a> {
@@ -280,6 +281,7 @@ impl<'a> Checker<'a> {
                     FunBody::Generic(body) => {
                         self.check_generic_body(
                             &fun.name,
+                            &fun.generics,
                             &fun.params,
                             body,
                             &fun.span,
@@ -321,6 +323,7 @@ impl<'a> Checker<'a> {
     fn check_generic_body(
         &mut self,
         name: &str,
+        generics: &[GenericParam],
         params: &[crate::ast::Param],
         body: &crate::ast::Block,
         span: &Span,
@@ -331,14 +334,14 @@ impl<'a> Checker<'a> {
             return;
         }
         if let Some((typed_body, generic_env)) =
-            self.construct_generic_body_for_move(name, params, body, span)
+            self.construct_generic_body_for_move(name, generics, params, body, span)
         {
-            self.generic_envs.push(generic_env);
             let mut fn_state = FlowState::default();
             fn_state.push_scope();
-            for param in params {
-                fn_state.bind(&param.name);
+            for (param, ty) in params.iter().zip(&generic_env.arg_types) {
+                fn_state.bind_typed(&param.name, ty);
             }
+            self.generic_envs.push(generic_env);
             self.check_block(&typed_body, current_module, &mut fn_state);
             fn_state.pop_scope();
             self.generic_envs.pop();
@@ -348,6 +351,7 @@ impl<'a> Checker<'a> {
     fn construct_generic_body_for_move(
         &mut self,
         name: &str,
+        generics: &[GenericParam],
         params: &[crate::ast::Param],
         body: &crate::ast::Block,
         span: &Span,
@@ -356,17 +360,24 @@ impl<'a> Checker<'a> {
             self.record_skipped_generic_body(span);
             return None;
         };
-        let Some(scheme) = type_ctx.scheme_env.get(name) else {
+        let Some(raw_scheme) = type_ctx.scheme_env.get(name) else {
             self.record_skipped_generic_body(span);
             return None;
         };
-        let Some((arg_types, generic_env)) = Self::generic_sample_args(scheme) else {
+        let scheme = scheme_with_source_generics(raw_scheme, generics);
+        let Some((arg_types, generic_env)) = Self::generic_sample_args(&scheme) else {
             self.record_skipped_generic_body(span);
             return None;
         };
-        if let Ok(typed_body) =
-            crate::typechecker::construct_generic_body(scheme, params, &arg_types, body, span, type_ctx)
-        {
+        let symbolic_type_ctx = type_ctx_with_symbolic_aspect_methods(type_ctx, &generic_env);
+        if let Ok(typed_body) = crate::typechecker::construct_generic_body(
+            &scheme,
+            params,
+            &arg_types,
+            body,
+            span,
+            &symbolic_type_ctx,
+        ) {
             Some((typed_body, generic_env))
         } else {
             self.record_skipped_generic_body(span);
@@ -401,14 +412,22 @@ impl<'a> Checker<'a> {
             self.record_skipped_generic_body(span);
             return;
         };
-        match crate::typechecker::construct_generic_body(&scheme, params, &arg_types, body, span, type_ctx) {
+        let symbolic_type_ctx = type_ctx_with_symbolic_aspect_methods(type_ctx, &generic_env);
+        match crate::typechecker::construct_generic_body(
+            &scheme,
+            params,
+            &arg_types,
+            body,
+            span,
+            &symbolic_type_ctx,
+        ) {
             Ok(typed_body) => {
-                self.generic_envs.push(generic_env);
                 let mut fn_state = FlowState::default();
                 fn_state.push_scope();
-                for param in params {
-                    fn_state.bind(&param.name);
+                for (param, ty) in params.iter().zip(&generic_env.arg_types) {
+                    fn_state.bind_typed(&param.name, ty);
                 }
+                self.generic_envs.push(generic_env);
                 self.check_block(&typed_body, current_module, &mut fn_state);
                 fn_state.pop_scope();
                 self.generic_envs.pop();
@@ -420,9 +439,13 @@ impl<'a> Checker<'a> {
     fn generic_sample_args(scheme: &TypeScheme) -> Option<(Vec<Type>, GenericMoveEnv)> {
         let mut subst = Substitution::new();
         let mut generic_env = GenericMoveEnv::default();
+        let mut named_samples = HashMap::new();
         for (index, var) in scheme.quantified_vars.iter().enumerate() {
             let placeholder = generic_placeholder_name(*var);
             let sample = Type::Named(placeholder.clone(), Vec::new());
+            if let Some(name) = scheme.param_names.get(index) {
+                named_samples.insert(name.clone(), type_to_infer(&sample));
+            }
             generic_env.placeholders.insert(placeholder, *var);
             if let Some(bounds) = scheme.bounds.get(index) {
                 let assumed: HashSet<String> = bounds
@@ -441,8 +464,15 @@ impl<'a> Checker<'a> {
         };
         let arg_types = params
             .iter()
-            .map(|param| infer_to_type_lossy(&subst.apply(param)))
+            .map(|param| {
+                let substituted = subst.apply(param);
+                infer_to_type_lossy(&substitute_named_generics(
+                    &substituted,
+                    &named_samples,
+                ))
+            })
             .collect::<Option<Vec<_>>>()?;
+        generic_env.arg_types.clone_from(&arg_types);
         Some((arg_types, generic_env))
     }
 
@@ -730,18 +760,18 @@ impl<'a> Checker<'a> {
         state: &mut FlowState,
     ) {
         if let Some((typed_body, generic_env)) =
-            self.construct_generic_body_for_move(name, params, body, span)
+            self.construct_generic_body_for_move(name, &[], params, body, span)
         {
-            self.generic_envs.push(generic_env);
             self.capture_closure(&typed_body, params.iter().map(|param| param.name.as_str()), span, state);
             let mut closure_state = FlowState::default();
             closure_state.push_scope();
             for captured in collect_free_roots_from_typed_block(&typed_body, &HashSet::new()) {
                 closure_state.bind(&captured.name);
             }
-            for param in params {
-                closure_state.bind(&param.name);
+            for (param, ty) in params.iter().zip(&generic_env.arg_types) {
+                closure_state.bind_typed(&param.name, ty);
             }
+            self.generic_envs.push(generic_env);
             self.check_block(&typed_body, current_module, &mut closure_state);
             closure_state.pop_scope();
             self.generic_envs.pop();
@@ -760,17 +790,23 @@ impl<'a> Checker<'a> {
         cause: MoveCause,
     ) {
         if let Some(place) = place_from_expr(expr) {
-            let root_ty = root_place_ty_from_expr(expr).unwrap_or_else(|| expr.ty());
+            let root_ty = state
+                .binding_type(place.root())
+                .cloned()
+                .or_else(|| root_place_ty_from_expr(expr).cloned())
+                .unwrap_or_else(|| expr.ty().clone());
             match expr {
                 TypedExpr::Index { index, .. } => {
-                    self.consume_place(&place, root_ty, expr.span(), current_module, state, cause);
+                    self.consume_place(&place, &root_ty, expr.span(), current_module, state, cause);
                     self.observe_expr(index, current_module, state);
                 }
                 TypedExpr::FieldAccess { object, .. } | TypedExpr::TupleAccess { object, .. } => {
-                    self.consume_place(&place, root_ty, expr.span(), current_module, state, cause);
+                    self.consume_place(&place, &root_ty, expr.span(), current_module, state, cause);
                     self.observe_projection_base_expr(object, current_module, state);
                 }
-                _ => self.consume_place(&place, root_ty, expr.span(), current_module, state, cause),
+                _ => {
+                    self.consume_place(&place, &root_ty, expr.span(), current_module, state, cause);
+                }
             }
             return;
         }
@@ -1265,6 +1301,12 @@ impl<'a> Checker<'a> {
         _current_module: &[String],
         _dispatch: &MethodDispatch,
     ) -> Option<ReceiverKind> {
+        if let Some((_, method_def, _)) = self.symbolic_aspect_method(receiver_ty, method) {
+            return method_def
+                .params
+                .first()
+                .and_then(|param| param.receiver.clone());
+        }
         match peel_type_references(receiver_ty) {
             Type::Array(_) => self.registry.array_method_receiver_kind(method).cloned(),
             Type::Named(name, _) => self.registry.method_receiver_kind(name, method).cloned(),
@@ -1280,15 +1322,62 @@ impl<'a> Checker<'a> {
         _current_module: &[String],
         _dispatch: &MethodDispatch,
     ) -> Option<Vec<Type>> {
+        if let Some((aspect, method_def, placeholder)) =
+            self.symbolic_aspect_method(receiver_ty, method)
+        {
+            return crate::typechecker::symbolic_aspect_method_type(
+                self.registry,
+                &aspect,
+                &method_def,
+                &placeholder,
+            )
+            .as_ref()
+            .and_then(infer_method_arg_types);
+        }
         match peel_type_references(receiver_ty) {
             Type::Array(_) => self
                 .registry
                 .array_method_type(method)
-                .and_then(infer_fun_param_types),
-            Type::Named(name, _) => self.registry.method_type(name, method).and_then(infer_fun_param_types),
-            other => primitive_type_name(other)
-                .and_then(|name| self.registry.method_type(&name, method).and_then(infer_fun_param_types)),
+                .and_then(infer_method_arg_types),
+            Type::Named(name, _) => self
+                .registry
+                .method_type(name, method)
+                .and_then(infer_method_arg_types),
+            other => primitive_type_name(other).and_then(|name| {
+                self.registry
+                    .method_type(&name, method)
+                    .and_then(infer_method_arg_types)
+            }),
         }
+    }
+
+    fn symbolic_aspect_method(
+        &self,
+        receiver_ty: &Type,
+        method: &str,
+    ) -> Option<(String, crate::ast::AspectMethod, String)> {
+        let Type::Named(placeholder, args) = peel_type_references(receiver_ty) else {
+            return None;
+        };
+        if !args.is_empty() {
+            return None;
+        }
+        let generic_env = self.generic_envs.last()?;
+        let var = generic_env.placeholders.get(placeholder)?;
+        let aspects = generic_env.assumptions.get(var)?;
+        let mut matches = aspects.iter().filter_map(|aspect| {
+            self.registry
+                .aspect_method_defs(aspect)?
+                .iter()
+                .find(|method_def| method_def.name == method)
+                .cloned()
+                .map(|method_def| (aspect.clone(), method_def, placeholder.clone()))
+        });
+        let result = matches.next()?;
+        if matches.next().is_some() {
+            return None;
+        }
+        Some(result)
     }
 }
 
@@ -1336,15 +1425,189 @@ fn generic_placeholder_name(var: TypeVar) -> String {
     format!("__metel_move_check_generic_{}", var.0)
 }
 
-fn infer_fun_param_types(fun_ty: &crate::typeinference::InferType) -> Option<Vec<Type>> {
+fn scheme_with_source_generics(
+    scheme: &TypeScheme,
+    generics: &[GenericParam],
+) -> TypeScheme {
+    let mut repaired = scheme.clone();
+    let existing = repaired.quantified_vars.len();
+    repaired.bounds.resize_with(existing, Vec::new);
+    repaired.neg_bounds.resize_with(existing, Vec::new);
+    repaired.record_kinds.resize(existing, false);
+    repaired.assoc_projections.resize(existing, None);
+    repaired.assoc_eq_constraints.resize_with(existing, Vec::new);
+    repaired.opaque_returns.resize(existing, None);
+    let mut replacements = HashMap::new();
+    let mut gen = TypeVarGenerator::with_counter(4_000_000);
+    for generic in generics {
+        if repaired.param_names.contains(&generic.name) {
+            continue;
+        }
+        let var = gen.fresh();
+        replacements.insert(generic.name.clone(), InferType::Var(var));
+        repaired.quantified_vars.push(var);
+        repaired.param_names.push(generic.name.clone());
+        repaired.bounds.push(
+            generic
+                .bounds
+                .iter()
+                .filter(|bound| bound.polarity == Polarity::Positive)
+                .filter_map(GenericBound::from_ast)
+                .collect(),
+        );
+        repaired.neg_bounds.push(
+            generic
+                .bounds
+                .iter()
+                .filter(|bound| bound.polarity == Polarity::Negative)
+                .filter_map(GenericBound::from_ast)
+                .collect(),
+        );
+        repaired.record_kinds.push(generic.is_record);
+        repaired.assoc_projections.push(None);
+        repaired.assoc_eq_constraints.push(Vec::new());
+        repaired.opaque_returns.push(None);
+    }
+    repaired.ty = substitute_named_generics(&repaired.ty, &replacements);
+    repaired
+}
+
+fn type_ctx_with_symbolic_aspect_methods(
+    type_ctx: &TypeCtx,
+    generic_env: &GenericMoveEnv,
+) -> TypeCtx {
+    let mut enriched = type_ctx.clone();
+    let mut method_gen = TypeVarGenerator::with_counter(2_000_000);
+    for (placeholder, var) in &generic_env.placeholders {
+        let Some(aspects) = generic_env.assumptions.get(var) else {
+            continue;
+        };
+        enriched
+            .registry
+            .register_symbolic_named_aspects(placeholder.clone(), aspects.clone());
+        let mut methods: HashMap<String, Vec<(String, crate::ast::AspectMethod)>> =
+            HashMap::new();
+        for aspect in aspects {
+            let Some(method_defs) = enriched.registry.aspect_method_defs(aspect) else {
+                continue;
+            };
+            for method in method_defs {
+                methods
+                    .entry(method.name.clone())
+                    .or_default()
+                    .push((aspect.clone(), method.clone()));
+            }
+        }
+        for candidates in methods.into_values() {
+            let [(aspect, method)] = candidates.as_slice() else {
+                continue;
+            };
+            let Some(method_scheme) = crate::typechecker::symbolic_aspect_method_scheme(
+                &enriched.registry,
+                aspect,
+                method,
+                placeholder,
+                &mut method_gen,
+            ) else {
+                continue;
+            };
+            enriched.registry.register_method_scheme(
+                placeholder.clone(),
+                method.name.clone(),
+                method_scheme.clone(),
+                Vec::new(),
+            );
+            enriched.registry.register_method_scheme_variant(
+                placeholder.clone(),
+                method.name.clone(),
+                method_scheme,
+                Vec::new(),
+                Some(aspect.clone()),
+                method.span.clone(),
+            );
+            if let Some(receiver) = method
+                .params
+                .first()
+                .and_then(|param| param.receiver.clone())
+            {
+                enriched.registry.register_method_receiver(
+                    placeholder.clone(),
+                    method.name.clone(),
+                    receiver,
+                );
+            }
+        }
+    }
+    enriched
+}
+
+fn infer_method_arg_types(fun_ty: &crate::typeinference::InferType) -> Option<Vec<Type>> {
     match fun_ty {
         crate::typeinference::InferType::Fun(params, _) => Some(
             params
                 .iter()
+                .skip(1)
                 .filter_map(infer_to_type_lossy)
                 .collect(),
         ),
         _ => None,
+    }
+}
+
+fn substitute_named_generics(
+    ty: &InferType,
+    named_samples: &HashMap<String, InferType>,
+) -> InferType {
+    match ty {
+        InferType::Named(name, args) if args.is_empty() => named_samples
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| ty.clone()),
+        InferType::Named(name, args) => InferType::Named(
+            name.clone(),
+            args.iter()
+                .map(|arg| substitute_named_generics(arg, named_samples))
+                .collect(),
+        ),
+        InferType::Fun(params, ret) => InferType::Fun(
+            params
+                .iter()
+                .map(|param| substitute_named_generics(param, named_samples))
+                .collect(),
+            Box::new(substitute_named_generics(ret, named_samples)),
+        ),
+        InferType::Tuple(items) => InferType::Tuple(
+            items
+                .iter()
+                .map(|item| substitute_named_generics(item, named_samples))
+                .collect(),
+        ),
+        InferType::Record(fields) => InferType::Record(
+            fields
+                .iter()
+                .map(|(name, field_ty)| {
+                    (
+                        name.clone(),
+                        substitute_named_generics(field_ty, named_samples),
+                    )
+                })
+                .collect(),
+        ),
+        InferType::Array(item) => InferType::Array(Box::new(substitute_named_generics(
+            item,
+            named_samples,
+        ))),
+        InferType::SizedArray(item, len) => InferType::SizedArray(
+            Box::new(substitute_named_generics(item, named_samples)),
+            *len,
+        ),
+        InferType::Reference(inner) => InferType::Reference(Box::new(
+            substitute_named_generics(inner, named_samples),
+        )),
+        InferType::MutReference(inner) => InferType::MutReference(Box::new(
+            substitute_named_generics(inner, named_samples),
+        )),
+        InferType::Concrete(_) | InferType::Var(_) | InferType::Never => ty.clone(),
     }
 }
 
@@ -1921,12 +2184,85 @@ mod tests {
     fn unchecked_generic_body_is_reported_to_compiler_callers() {
         let warnings = move_warnings_for_source(
             r#"
-aspect Marker {
+aspect FirstMarker {
     fun inspect(&self);
 }
 
-fun inspect<T: Marker>(value: T) {
+aspect SecondMarker {
+    fun inspect(&self);
+}
+
+fun inspect<T: FirstMarker + SecondMarker>(value: T) {
     value.inspect();
+}
+
+fun main() { }
+"#,
+        );
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("move checking could not analyze generic body")),
+            "expected an unchecked-body warning, got {warnings:#?}"
+        );
+    }
+
+    #[test]
+    fn bounded_generic_mut_receiver_and_argument_are_reborrowed() {
+        let warnings = move_warnings_for_source(
+            r#"
+aspect Blend {
+    fun blend(&var self, other: &var Self);
+}
+
+fun blend_twice<T: Blend>(value: T, other: T) {
+    var value = value;
+    var other = other;
+    value.blend(&var other);
+    value.blend(&var other);
+}
+
+fun main() { }
+"#,
+        );
+        assert!(
+            warnings.is_empty(),
+            "bounded generic method body was not fully checked: {warnings:#?}"
+        );
+    }
+
+    #[test]
+    fn bounded_generic_method_generic_copy_bound_is_checked() {
+        let warnings = move_warnings_for_source(
+            r#"
+aspect GenericSink {
+    fun take<U: Copy>(&self, other: U);
+}
+
+fun take_copy<T: GenericSink, U: Copy>(value: T, other: U) -> U {
+    value.take(other);
+    other
+}
+
+fun main() { }
+"#,
+        );
+        assert!(
+            warnings.is_empty(),
+            "bounded method-generic body was not fully checked: {warnings:#?}"
+        );
+    }
+
+    #[test]
+    fn unmet_method_generic_bound_is_reported_unchecked() {
+        let warnings = move_warnings_for_source(
+            r#"
+aspect GenericSink {
+    fun take<U: Copy>(&self, other: U);
+}
+
+fun take_unbounded<T: GenericSink, U>(value: T, other: U) {
+    value.take(other);
 }
 
 fun main() { }

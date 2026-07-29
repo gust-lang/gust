@@ -652,6 +652,25 @@ pub(crate) fn construct_generic_body(
     construction::construct_generic_body(scheme, params, arg_types, body, span, type_ctx)
 }
 
+pub(crate) fn symbolic_aspect_method_type(
+    registry: &crate::typeinference::TypeDefinitionRegistry,
+    aspect: &str,
+    method: &crate::ast::AspectMethod,
+    placeholder: &str,
+) -> Option<crate::typeinference::InferType> {
+    construction::symbolic_aspect_method_type(registry, aspect, method, placeholder)
+}
+
+pub(crate) fn symbolic_aspect_method_scheme(
+    registry: &crate::typeinference::TypeDefinitionRegistry,
+    aspect: &str,
+    method: &crate::ast::AspectMethod,
+    placeholder: &str,
+    gen: &mut crate::typeinference::TypeVarGenerator,
+) -> Option<crate::typeinference::TypeScheme> {
+    construction::symbolic_aspect_method_scheme(registry, aspect, method, placeholder, gen)
+}
+
 /// Recover concrete type arguments for a generic struct/enum instance, given the
 /// already-computed `Type` of each of its fields (issue #267).
 ///

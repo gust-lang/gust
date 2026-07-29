@@ -385,6 +385,96 @@ fn construct_method_args(
     }
 }
 
+pub(super) fn symbolic_aspect_method_type(
+    registry: &TypeDefinitionRegistry,
+    aspect: &str,
+    method: &crate::ast::AspectMethod,
+    placeholder: &str,
+) -> Option<InferType> {
+    let mut gen = TypeVarGenerator::with_counter(3_000_000);
+    let scheme =
+        symbolic_aspect_method_scheme(registry, aspect, method, placeholder, &mut gen)?;
+    let mut subst = Substitution::new();
+    for (var, generic) in scheme.quantified_vars.iter().zip(&method.generics) {
+        subst.bind(
+            *var,
+            InferType::Named(
+                format!("__metel_move_check_method_generic_{}", generic.name),
+                Vec::new(),
+            ),
+        );
+    }
+    Some(subst.apply(&scheme.ty))
+}
+
+pub(super) fn symbolic_aspect_method_scheme(
+    registry: &TypeDefinitionRegistry,
+    aspect: &str,
+    method: &crate::ast::AspectMethod,
+    placeholder: &str,
+    gen: &mut TypeVarGenerator,
+) -> Option<TypeScheme> {
+    let assoc_ctx = super::conversions::AssocResolveCtx {
+        registry,
+        current_module: &[],
+        current_aspect: Some(aspect),
+    };
+    let generic_map: HashMap<String, TypeVar> = method
+        .generics
+        .iter()
+        .map(|generic| (generic.name.clone(), gen.fresh()))
+        .collect();
+    let params = method
+        .params
+        .iter()
+        .map(|param| {
+            if param.receiver.is_some() || param.name == "self" {
+                Some(InferType::Named(placeholder.to_string(), Vec::new()))
+            } else {
+                param.type_ann.as_ref().map(|ann| {
+                    super::conversions::type_expr_to_infer_with_assoc_ctx(
+                        ann,
+                        &generic_map,
+                        Some(placeholder),
+                        &assoc_ctx,
+                    )
+                })
+            }
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let ret = method
+        .return_type
+        .as_ref()
+        .map_or_else(InferType::unit, |ret| {
+            super::conversions::type_expr_to_infer_with_assoc_ctx(
+                ret,
+                &generic_map,
+                Some(placeholder),
+                &assoc_ctx,
+            )
+        });
+    let quantified_vars = method
+        .generics
+        .iter()
+        .filter_map(|generic| generic_map.get(&generic.name).copied())
+        .collect();
+    Some(TypeScheme {
+        quantified_vars,
+        param_names: method
+            .generics
+            .iter()
+            .map(|generic| generic.name.clone())
+            .collect(),
+        bounds: super::registry::collect_type_param_bounds(&method.generics, None),
+        neg_bounds: super::registry::collect_negative_type_param_bounds(&method.generics, None),
+        record_kinds: super::registry::collect_type_param_record_kinds(&method.generics, None),
+        assoc_projections: vec![],
+        assoc_eq_constraints: vec![],
+        opaque_returns: vec![],
+        ty: InferType::Fun(params, Box::new(ret)),
+    })
+}
+
 pub(super) fn construct_generic_body(
     scheme: &TypeScheme,
     params: &[crate::ast::Param],
