@@ -76,20 +76,25 @@ fn run_typecheck(path: &Path, options: &FixtureOptions) -> Result<(), MetelError
     coherence::check(&normalized, &names)?;
     let typed = typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())?;
     if options.move_check {
-        metel::move_check::check_graph(&typed)?;
+        for warning in metel::move_check::check_graph(&typed)? {
+            eprintln!("warning: {warning}");
+        }
     }
     Ok(())
 }
 
 fn run_evaluate(path: &Path, options: &FixtureOptions) -> Result<(), MetelError> {
-    pipeline::run_evaluator_fixture(
+    let report = pipeline::run_evaluator_fixture(
         &main_source_path(path).to_string_lossy(),
         &pipeline::RunOptions {
             move_check: options.move_check,
             ..pipeline::RunOptions::default()
         },
-    )
-    .map(|_| ())
+    )?;
+    for warning in report.move_check_warnings {
+        eprintln!("warning: {warning}");
+    }
+    Ok(())
 }
 
 fn run_load_program(path: &Path, checks: &ProgramChecks) -> Result<(), MetelError> {
@@ -132,7 +137,9 @@ fn run_full_pipeline(
     coherence::check(&normalized, &names)?;
     let typed = typechecker::check_graph(&normalized, &names, &std_prelude(prelude_mode))?;
     if options.move_check {
-        metel::move_check::check_graph(&typed)?;
+        for warning in metel::move_check::check_graph(&typed)? {
+            eprintln!("warning: {warning}");
+        }
     }
     let elaborated = elaborator::elaborate(typed, &names)?;
     evaluator::evaluate_graph(elaborated)

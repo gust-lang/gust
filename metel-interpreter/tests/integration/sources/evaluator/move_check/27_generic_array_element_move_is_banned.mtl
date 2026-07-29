@@ -1,0 +1,7 @@
+extend<T> T[] {
+    fun take_first(self) -> T {
+        self[0]
+    }
+}
+
+fun main() { }

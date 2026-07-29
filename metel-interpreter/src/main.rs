@@ -70,13 +70,16 @@ fn main() {
 
 fn run(filename: &str, debug_ast: bool, move_check: bool) -> Result<(), MetelError> {
     if !debug_ast {
-        pipeline::run_file(
+        let report = pipeline::run_file(
             filename,
             &pipeline::RunOptions {
                 move_check,
                 ..pipeline::RunOptions::default()
             },
         )?;
+        for warning in report.move_check_warnings {
+            eprintln!("warning: {warning}");
+        }
         return Ok(());
     }
 

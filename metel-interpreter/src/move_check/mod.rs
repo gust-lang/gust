@@ -87,11 +87,12 @@ pub fn collect_graph_violations(graph: &TypedModuleGraph) -> MoveCheckReport {
     checker.report
 }
 
-/// Run the move checker and convert the first violation into a user-facing type error.
+/// Run the move checker, convert the first violation into a user-facing type error,
+/// and return diagnostics for bodies that could not be checked.
 ///
 /// # Errors
 /// Returns `T0019` when the graph contains a move-checking violation.
-pub fn check_graph(graph: &TypedModuleGraph) -> Result<(), MetelError> {
+pub fn check_graph(graph: &TypedModuleGraph) -> Result<Vec<String>, MetelError> {
     let report = collect_graph_violations(graph);
     if let Some(violation) = report
         .violations
@@ -105,7 +106,16 @@ pub fn check_graph(graph: &TypedModuleGraph) -> Result<(), MetelError> {
             &span,
         ));
     }
-    Ok(())
+    Ok(report
+        .unchecked_generic_body_spans
+        .into_iter()
+        .map(|span| {
+            format!(
+                "move checking could not analyze generic body at {}:{}:{}",
+                span.filename, span.line, span.col
+            )
+        })
+        .collect())
 }
 
 #[derive(Debug, Clone)]
@@ -626,7 +636,7 @@ impl<'a> Checker<'a> {
             let reborrow = param_types
                 .and_then(|params| params.get(index))
                 .is_some_and(|param_ty| is_reborrow(arg, param_ty));
-            if reborrow || self.contains_active_generic_placeholder(arg.ty()) {
+            if reborrow {
                 self.observe_expr(arg, current_module, state);
             } else {
                 self.consume_expr(arg, current_module, state);
@@ -1143,9 +1153,6 @@ impl<'a> Checker<'a> {
             .iter()
             .any(|projection| matches!(projection, Projection::OpaqueIndex))
         {
-            if self.contains_active_generic_placeholder(root_ty) {
-                return None;
-            }
             return Some(MoveViolationKind::ArrayElementMove);
         }
 
@@ -1163,13 +1170,6 @@ impl<'a> Checker<'a> {
         if let TypedPlace::Ident(name, _) = typed_place {
             state.moved.remove(name);
         }
-    }
-
-    fn contains_active_generic_placeholder(&self, ty: &Type) -> bool {
-        let Some(generic_env) = self.generic_envs.last() else {
-            return false;
-        };
-        type_contains_generic_placeholder(ty, &generic_env.placeholders)
     }
 
     fn type_of_place(
@@ -1418,48 +1418,6 @@ fn type_to_infer_under_generic_env(ty: &Type, placeholders: &HashMap<String, Typ
                     .collect(),
             )
         }
-    }
-}
-
-fn type_contains_generic_placeholder(ty: &Type, placeholders: &HashMap<String, TypeVar>) -> bool {
-    match ty {
-        Type::Tuple(items) => items
-            .iter()
-            .any(|item| type_contains_generic_placeholder(item, placeholders)),
-        Type::Record(fields) => fields
-            .iter()
-            .any(|(_, field_ty)| type_contains_generic_placeholder(field_ty, placeholders)),
-        Type::Array(inner)
-        | Type::SizedArray(inner, _)
-        | Type::Reference(inner)
-        | Type::MutReference(inner) => type_contains_generic_placeholder(inner, placeholders),
-        Type::Fun(params, ret) => {
-            params
-                .iter()
-                .any(|param| type_contains_generic_placeholder(param, placeholders))
-                || type_contains_generic_placeholder(ret, placeholders)
-        }
-        Type::Named(name, args) => {
-            (args.is_empty() && placeholders.contains_key(name))
-                || args
-                    .iter()
-                    .any(|arg| type_contains_generic_placeholder(arg, placeholders))
-        }
-        Type::Boolean
-        | Type::Str
-        | Type::Char
-        | Type::Unit
-        | Type::Never
-        | Type::I8
-        | Type::I16
-        | Type::I32
-        | Type::I64
-        | Type::U8
-        | Type::U16
-        | Type::U32
-        | Type::U64
-        | Type::F32
-        | Type::F64 => false,
     }
 }
 
@@ -1930,6 +1888,56 @@ mod tests {
     fn assert_no_violations(source: &str) {
         let violations = move_violations_for_source(source);
         assert!(violations.is_empty(), "unexpected violations: {violations:#?}");
+    }
+
+    fn move_warnings_for_source(source: &str) -> Vec<String> {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "metel_move_check_warning_{}_{n}.mtl",
+            std::process::id()
+        ));
+        {
+            let mut file = std::fs::File::create(&path).expect("create temp fixture");
+            file.write_all(source.as_bytes())
+                .expect("write temp fixture");
+        }
+        let warnings = (|| {
+            let graph = module_loader::load_root(&path).expect("load temp fixture");
+            let names = name_resolver::resolve(&graph).expect("resolve temp fixture");
+            let normalized =
+                path_normalizer::normalize(graph, &names).expect("normalize temp fixture");
+            coherence::check(&normalized, &names).expect("coherence temp fixture");
+            let typed =
+                typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())
+                    .expect("typecheck temp fixture");
+            check_graph(&typed).expect("move-check temp fixture")
+        })();
+        let _ = std::fs::remove_file(&path);
+        warnings
+    }
+
+    #[test]
+    fn unchecked_generic_body_is_reported_to_compiler_callers() {
+        let warnings = move_warnings_for_source(
+            r#"
+aspect Marker {
+    fun inspect(&self);
+}
+
+fun inspect<T: Marker>(value: T) {
+    value.inspect();
+}
+
+fun main() { }
+"#,
+        );
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("move checking could not analyze generic body")),
+            "expected an unchecked-body warning, got {warnings:#?}"
+        );
     }
 
     #[test]
