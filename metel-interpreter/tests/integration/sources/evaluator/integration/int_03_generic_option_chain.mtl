@@ -80,9 +80,17 @@ fun pair_swap<A, B>(p: Pair<A, B>) -> Pair<B, A> {
 
 // ── Generic array utilities ───────────────────────────────────────────────────
 
-fun find_first<T>(arr: T[], pred: (&T) -> boolean) -> Option<T> {
-    for (x in arr) {
-        if (pred(&x)) { return Option::Some { value = x }; }
+// Ownership workaround (#328): T[] is a borrowed view, but generic for-in currently
+// exposes an owned T and can hide an illegal move from the view. Indexing plus an
+// explicit clone callback makes the result owned without relying on that loophole.
+// Keep the callback until borrowed iteration and standard Clone coverage land together.
+fun find_first<T>(arr: T[], pred: (&T) -> boolean, clone: (&T) -> T) -> Option<T> {
+    var i = 0;
+    while (i < arr.len()) {
+        if (pred(&arr[i as u64])) {
+            return Option::Some { value = clone(&arr[i as u64]) };
+        }
+        i += 1;
     }
     Option::None
 }
@@ -121,7 +129,16 @@ fun safe_get_int(arr: i64[], i: i64) -> Option<i64> {
 // ── String lookup in a Pair<String,i64>[] "map" ───────────────────────────────
 
 fun table_get(table: Pair<String, i64>[], key: String) -> Option<i64> {
-    let entry = find_first(table, (p: &Pair<String, i64>) -> boolean { p.first == key });
+    let entry = find_first(
+        table,
+        (p: &Pair<String, i64>) -> boolean { (*p).first == key },
+        (p: &Pair<String, i64>) -> Pair<String, i64> {
+            Pair {
+                first = (*p).first.substring(0, (*p).first.len()),
+                second = (*p).second,
+            }
+        },
+    );
     option_map(entry, (p: Pair<String, i64>) -> i64 { p.second })
 }
 
@@ -285,11 +302,15 @@ fun main() {
     // ── find_first and count_where on i64[] ──────────────────────────────────
     let nums: i64[] = [3, 1, 4, 1, 5, 9, 2, 6];
 
-    let first_big = find_first(nums, (x: &i64) -> boolean { *x > 4 });
+    let first_big = find_first(nums, (x: &i64) -> boolean { *x > 4 }, (x: &i64) -> i64 { *x });
     assert(option_or(first_big, 0) == 5);
 
     let nums_huge: i64[] = [3, 1, 4, 1, 5, 9, 2, 6];
-    let first_huge = find_first(nums_huge, (x: &i64) -> boolean { *x > 100 });
+    let first_huge = find_first(
+        nums_huge,
+        (x: &i64) -> boolean { *x > 100 },
+        (x: &i64) -> i64 { *x },
+    );
     assert(!option_is_some(first_huge));
 
     let nums_even_count: i64[] = [3, 1, 4, 1, 5, 9, 2, 6];
@@ -315,14 +336,32 @@ fun main() {
         Pair { first = "bananas", second = 7  },
         Pair { first = "cherries", second = 12 },
     ];
-    let rich_entry = find_first(table_rich, (p: &Pair<String, i64>) -> boolean { p.second > 5 });
+    let rich_entry = find_first(
+        table_rich,
+        (p: &Pair<String, i64>) -> boolean { (*p).second > 5 },
+        (p: &Pair<String, i64>) -> Pair<String, i64> {
+            Pair {
+                first = (*p).first.substring(0, (*p).first.len()),
+                second = (*p).second,
+            }
+        },
+    );
     assert(option_is_some(rich_entry));
     let table_rich_again: Pair<String, i64>[] = [
         Pair { first = "apples",  second = 3  },
         Pair { first = "bananas", second = 7  },
         Pair { first = "cherries", second = 12 },
     ];
-    let rich_entry_again = find_first(table_rich_again, (p: &Pair<String, i64>) -> boolean { p.second > 5 });
+    let rich_entry_again = find_first(
+        table_rich_again,
+        (p: &Pair<String, i64>) -> boolean { (*p).second > 5 },
+        (p: &Pair<String, i64>) -> Pair<String, i64> {
+            Pair {
+                first = (*p).first.substring(0, (*p).first.len()),
+                second = (*p).second,
+            }
+        },
+    );
     let rich_name = option_map(rich_entry_again, (p: Pair<String, i64>) -> String { p.first });
     assert(option_or(rich_name, "") == "bananas");
 

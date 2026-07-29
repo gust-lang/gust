@@ -59,10 +59,18 @@ fun record_swap<K, V>(r: Record<K, V>) -> Record<V, K> {
 
 // ── Generic pipeline combinators ──────────────────────────────────────────────
 
-fun filter_array<T>(arr: T[], pred: (&T) -> boolean) -> T[] {
+// Ownership workaround (#328): T[] is a borrowed view, but generic for-in currently
+// exposes an owned T and can hide an illegal move from the view. Indexing plus an
+// explicit clone callback makes filtered output owned. Keep the callback until borrowed
+// iteration and standard Clone coverage land together.
+fun filter_array<T>(arr: T[], pred: (&T) -> boolean, clone: (&T) -> T) -> T[] {
     var out: List<T> = List::new();
-    for (x in arr) {
-        if (pred(&x)) { out.push(x); }
+    var i = 0;
+    while (i < arr.len()) {
+        if (pred(&arr[i as u64])) {
+            out.push(clone(&arr[i as u64]));
+        }
+        i += 1;
     }
     out.as_slice()
 }
@@ -123,6 +131,13 @@ fun drop<T: Copy>(arr: T[], n: i64) -> T[] {
 struct Student {
     name:  String,
     grade: i64,
+}
+
+fun clone_student(student: &Student) -> Student {
+    Student {
+        name = (*student).name.substring(0, (*student).name.len()),
+        grade = (*student).grade,
+    }
 }
 
 fun student_passing(s: &Student) -> boolean {
@@ -202,13 +217,21 @@ fun main() {
 
     // ── filter_array ──────────────────────────────────────────────────────────
     let nums: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let evens = filter_array(nums, (x: &i64) -> boolean { *x % 2 == 0 });
+    let evens = filter_array(
+        nums,
+        (x: &i64) -> boolean { *x % 2 == 0 },
+        (x: &i64) -> i64 { *x },
+    );
     assert(evens.len() == 5);
     assert(evens[0] == 2);
     assert(evens[4] == 10);
 
     let nums_big: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let big = filter_array(nums_big, (x: &i64) -> boolean { *x > 7 });
+    let big = filter_array(
+        nums_big,
+        (x: &i64) -> boolean { *x > 7 },
+        (x: &i64) -> i64 { *x },
+    );
     assert(big.len() == 3);
 
     // ── map_array ─────────────────────────────────────────────────────────────
@@ -282,7 +305,11 @@ fun main() {
         Student { name = "Eve",     grade = 45 },
     ];
 
-    let passing = filter_array(students, (s: &Student) -> boolean { student_passing(s) });
+    let passing = filter_array(
+        students,
+        (s: &Student) -> boolean { (*s).grade >= 60 },
+        clone_student,
+    );
     assert(passing.len() == 3);
 
     let students_letters: Student[] = [
@@ -299,7 +326,11 @@ fun main() {
     assert(letters[3] == "B");
 
     // count A-grades
-    let a_grades = filter_array(letters, (l: &String) -> boolean { *l == "A" });
+    let a_grades = filter_array(
+        letters,
+        (l: &String) -> boolean { *l == "A" },
+        (l: &String) -> String { (*l).substring(0, (*l).len()) },
+    );
     assert(a_grades.len() == 1);
 
     let students_any: Student[] = [

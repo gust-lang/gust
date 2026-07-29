@@ -19,7 +19,8 @@ extend Record: Printable {
 
 extend Record: Serializable {
     fun serialize(&self) -> String {
-        self.name
+        // Build a fresh String; returning self.name would move through shared self.
+        self.name + ""
     }
 }
 

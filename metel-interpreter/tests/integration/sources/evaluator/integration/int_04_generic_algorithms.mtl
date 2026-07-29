@@ -88,10 +88,18 @@ fun stack_empty(s: &Stack) -> boolean {
 
 // ── Generic array combinators ─────────────────────────────────────────────────
 
-fun filter<T>(arr: T[], pred: (&T) -> boolean) -> T[] {
+// Ownership workaround (#328): T[] is a borrowed view, but generic for-in currently
+// exposes an owned T and can hide an illegal move from the view. Indexing plus an
+// explicit clone callback makes filter/find extraction owned. Keep the callback until
+// borrowed iteration and standard Clone coverage land together.
+fun filter<T>(arr: T[], pred: (&T) -> boolean, clone: (&T) -> T) -> T[] {
     var out: List<T> = List::new();
-    for (x in arr) {
-        if (pred(&x)) { out.push(x); }
+    var i = 0;
+    while (i < arr.len()) {
+        if (pred(&arr[i as u64])) {
+            out.push(clone(&arr[i as u64]));
+        }
+        i += 1;
     }
     out.as_slice()
 }
@@ -200,9 +208,13 @@ fun concat_int(a: i64[], b: i64[]) -> i64[] {
 
 // ── Perhaps<T> combinators ────────────────────────────────────────────────────
 
-fun find_first<T>(arr: T[], pred: (&T) -> boolean) -> Perhaps<T> {
-    for (x in arr) {
-        if (pred(&x)) { return Perhaps::Some { value = x }; }
+fun find_first<T>(arr: T[], pred: (&T) -> boolean, clone: (&T) -> T) -> Perhaps<T> {
+    var i = 0;
+    while (i < arr.len()) {
+        if (pred(&arr[i as u64])) {
+            return Perhaps::Some { value = clone(&arr[i as u64]) };
+        }
+        i += 1;
     }
     None
 }
@@ -307,17 +319,29 @@ fun main() {
 
     // ── filter ────────────────────────────────────────────────────────────────
     let nums: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let evens = filter(nums, (x: &i64) -> boolean { *x % 2 == 0 });
+    let evens = filter(
+        nums,
+        (x: &i64) -> boolean { *x % 2 == 0 },
+        (x: &i64) -> i64 { *x },
+    );
     assert(evens.len() == 5);
     assert(evens[0] == 2);
 
     let nums_big: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let big = filter(nums_big, (x: &i64) -> boolean { *x > 7 });
+    let big = filter(
+        nums_big,
+        (x: &i64) -> boolean { *x > 7 },
+        (x: &i64) -> i64 { *x },
+    );
     assert(big.len() == 3);
     assert(big[0] == 8);
 
     let strs: String[] = ["apple", "banana", "cherry", "date"];
-    let long_words = filter(strs, (s: &String) -> boolean { s.len() > 5 });
+    let long_words = filter(
+        strs,
+        (s: &String) -> boolean { (*s).len() > 5 },
+        (s: &String) -> String { (*s).substring(0, (*s).len()) },
+    );
     assert(long_words.len() == 2);
 
     // ── map_arr ───────────────────────────────────────────────────────────────
@@ -436,22 +460,42 @@ fun main() {
 
     // ── find_first (Perhaps<T>) ───────────────────────────────────────────────
     let nums_first_big: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let first_big = find_first(nums_first_big, (x: &i64) -> boolean { *x > 6 });
+    let first_big = find_first(
+        nums_first_big,
+        (x: &i64) -> boolean { *x > 6 },
+        (x: &i64) -> i64 { *x },
+    );
     assert(perhaps_is_some(first_big));
     let nums_first_big_again: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let first_big_again = find_first(nums_first_big_again, (x: &i64) -> boolean { *x > 6 });
+    let first_big_again = find_first(
+        nums_first_big_again,
+        (x: &i64) -> boolean { *x > 6 },
+        (x: &i64) -> i64 { *x },
+    );
     assert(perhaps_or(first_big_again, 0) == 7);
 
     let nums_none_found: i64[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let none_found = find_first(nums_none_found, (x: &i64) -> boolean { *x > 100 });
+    let none_found = find_first(
+        nums_none_found,
+        (x: &i64) -> boolean { *x > 100 },
+        (x: &i64) -> i64 { *x },
+    );
     assert(!perhaps_is_some(none_found));
 
     // find in string array
     let strs_first_long: String[] = ["apple", "banana", "cherry", "date"];
-    let first_long = find_first(strs_first_long, (s: &String) -> boolean { s.len() >= 6 });
+    let first_long = find_first(
+        strs_first_long,
+        (s: &String) -> boolean { (*s).len() >= 6 },
+        (s: &String) -> String { (*s).substring(0, (*s).len()) },
+    );
     assert(perhaps_is_some(first_long));
     let strs_first_long_again: String[] = ["apple", "banana", "cherry", "date"];
-    let first_long_again = find_first(strs_first_long_again, (s: &String) -> boolean { s.len() >= 6 });
+    let first_long_again = find_first(
+        strs_first_long_again,
+        (s: &String) -> boolean { (*s).len() >= 6 },
+        (s: &String) -> String { (*s).substring(0, (*s).len()) },
+    );
     assert(perhaps_or(first_long_again, "") == "banana");
 
     // ── Let-polymorphism: identity at multiple types ──────────────────────────

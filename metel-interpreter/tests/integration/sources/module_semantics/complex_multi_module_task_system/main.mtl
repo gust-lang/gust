@@ -57,11 +57,19 @@ fun main() {
 
     // 6. Generic filter_array with cross-module predicates
     let tasks_for_high = make_tasks();
-    let high = filter_array(tasks_for_high, (t: &Task) -> boolean { is_high_priority_ref(t) });
+    let high = filter_array(
+        tasks_for_high,
+        (t: &Task) -> boolean { is_high_priority_ref(&*t) },
+        clone_task,
+    );
     assert(high.len() == 3);
 
     let tasks_for_done_list = make_tasks();
-    let done_list = filter_array(tasks_for_done_list, (t: &Task) -> boolean { is_done_ref(t) });
+    let done_list = filter_array(
+        tasks_for_done_list,
+        (t: &Task) -> boolean { is_done_ref(&*t) },
+        clone_task_2,
+    );
     assert(done_list.len() == 1);
 
     // 7. map_array: extract efforts, sum via sum_ints
@@ -109,7 +117,11 @@ fun main() {
 
     // 13. find_first: locate the Done task (Deploy, effort=2)
     let tasks_for_first_done = make_tasks();
-    let first_done = find_first(tasks_for_first_done, (t: &Task) -> boolean { is_done_2(t) });
+    let first_done = find_first(
+        tasks_for_first_done,
+        (t: &Task) -> boolean { is_done_2(&*t) },
+        clone_task_3,
+    );
     match first_done {
         Perhaps::Some { value } => assert(value.title == "Deploy"),
         None                    => assert(false),
@@ -118,7 +130,11 @@ fun main() {
     // 14. Closure capturing outer variable (min_effort threshold)
     let min_effort = 3;
     let tasks_for_heavy = make_tasks();
-    let heavy = filter_array(tasks_for_heavy, (t: &Task) -> boolean { t.effort >= min_effort });
+    let heavy = filter_array(
+        tasks_for_heavy,
+        (t: &Task) -> boolean { (*t).effort >= min_effort },
+        clone_task_4,
+    );
     assert(heavy.len() == 3);
 
     // 15. C-style for: manual effort accumulation
@@ -159,7 +175,7 @@ fun main() {
     let tasks_for_doubled = make_tasks();
     let efforts_for_doubled = map_array(tasks_for_doubled, (t: Task) -> i64 { t.effort });
     let doubled = map_array(efforts_for_doubled, (x: i64) -> i64 { x * 2 });
-    let big = filter_array(doubled, (x: &i64) -> boolean { *x > 5 });
+    let big = filter_array(doubled, (x: &i64) -> boolean { *x > 5 }, clone_i64);
     assert(big.len() == 3);
 
     // 21. Let-polymorphism: identity closure used at two different types
