@@ -1694,15 +1694,21 @@ fn symbolic_method_ambiguity_reason(
     None
 }
 
+/// The declared parameter types of a method, excluding the receiver.
+///
+/// Returns `None` if any parameter cannot be resolved, rather than omitting it (#337).
+/// The result is consumed positionally by `observe_call_args` (`params.get(index)` against
+/// `args.iter().enumerate()`), so dropping one parameter would judge every later argument
+/// against the wrong type — and that judgement is borrow-vs-move. A short list is worse
+/// than no list: `observe_call_args` already treats `None` as "no reborrow information",
+/// which is the safe default.
 fn infer_method_arg_types(fun_ty: &crate::typeinference::InferType) -> Option<Vec<Type>> {
     match fun_ty {
-        crate::typeinference::InferType::Fun(params, _) => Some(
-            params
-                .iter()
-                .skip(1)
-                .filter_map(infer_to_type_lossy)
-                .collect(),
-        ),
+        crate::typeinference::InferType::Fun(params, _) => params
+            .iter()
+            .skip(1)
+            .map(infer_to_type_lossy)
+            .collect::<Option<Vec<_>>>(),
         _ => None,
     }
 }
@@ -1837,19 +1843,34 @@ fn type_to_infer_under_generic_env(ty: &Type, placeholders: &HashMap<String, Typ
     }
 }
 
+/// Convert an `InferType` to a `Type`, or `None` if any part of it is still an unresolved
+/// inference variable.
+///
+/// **All-or-nothing by construction (#337).** Every compound arm collects into
+/// `Option<Vec<_>>` rather than filtering, so a failure anywhere inside propagates out as
+/// `None`. Filtering would silently change arity — a tuple `(T, i64)` with an unresolved
+/// `T` would become the 1-tuple `(i64)`, a record would lose a field, and a `fun`'s
+/// parameter list would shift. That last one is not cosmetic: `observe_call_args` pairs a
+/// parameter list with arguments *positionally*, and the only thing it decides from a
+/// parameter type is borrow-vs-move, so a shifted list silently converts a reborrow into a
+/// move or vice versa. Returning `None` instead makes the caller record a skip with a
+/// reason, which is this module's existing convention for "could not analyse".
 fn infer_to_type_lossy(ty: &crate::typeinference::InferType) -> Option<Type> {
     use crate::typeinference::InferType;
     match ty {
         InferType::Concrete(inner) => Some(inner.clone()),
         InferType::Never => Some(Type::Never),
         InferType::Tuple(items) => Some(Type::Tuple(
-            items.iter().filter_map(infer_to_type_lossy).collect(),
+            items
+                .iter()
+                .map(infer_to_type_lossy)
+                .collect::<Option<Vec<_>>>()?,
         )),
         InferType::Record(fields) => Some(Type::Record(
             fields
                 .iter()
-                .filter_map(|(name, ty)| infer_to_type_lossy(ty).map(|ty| (name.clone(), ty)))
-                .collect(),
+                .map(|(name, ty)| infer_to_type_lossy(ty).map(|ty| (name.clone(), ty)))
+                .collect::<Option<Vec<_>>>()?,
         )),
         InferType::Array(inner) => infer_to_type_lossy(inner).map(|inner| Type::Array(Box::new(inner))),
         InferType::SizedArray(inner, len) => {
@@ -1862,12 +1883,17 @@ fn infer_to_type_lossy(ty: &crate::typeinference::InferType) -> Option<Type> {
             infer_to_type_lossy(inner).map(|inner| Type::MutReference(Box::new(inner)))
         }
         InferType::Fun(params, ret) => Some(Type::Fun(
-            params.iter().filter_map(infer_to_type_lossy).collect(),
+            params
+                .iter()
+                .map(infer_to_type_lossy)
+                .collect::<Option<Vec<_>>>()?,
             Box::new(infer_to_type_lossy(ret)?),
         )),
         InferType::Named(name, args) => Some(Type::Named(
             name.clone(),
-            args.iter().filter_map(infer_to_type_lossy).collect(),
+            args.iter()
+                .map(infer_to_type_lossy)
+                .collect::<Option<Vec<_>>>()?,
         )),
         InferType::Var(_) => None,
     }
@@ -3041,6 +3067,95 @@ fun main() {
     assert(apply(f) == 2);
 }
 "#,
+        );
+    }
+
+    // --- #337: type conversion must preserve arity or fail outright ---------------------
+    //
+    // These exercise the conversion helpers directly. The misalignment they guard against
+    // needs an unresolved `InferType::Var` to survive into a parameter list, which the
+    // reconstruction path does not currently produce from source -- it abandons a body
+    // wholesale instead. So there is no `.mtl` fixture that would fail without the fix;
+    // asserting on the helpers is what actually pins the invariant.
+
+    use crate::typeinference::{InferType, TypeVar};
+
+    fn var() -> InferType {
+        InferType::Var(TypeVar(0))
+    }
+
+    fn concrete() -> InferType {
+        InferType::Concrete(Type::I64)
+    }
+
+    #[test]
+    fn tuple_with_an_unresolved_element_converts_to_none_not_a_shorter_tuple() {
+        let ty = InferType::Tuple(vec![var(), concrete()]);
+        assert_eq!(infer_to_type_lossy(&ty), None);
+    }
+
+    #[test]
+    fn record_with_an_unresolved_field_converts_to_none_not_a_smaller_record() {
+        let ty = InferType::Record(vec![
+            ("a".to_string(), var()),
+            ("b".to_string(), concrete()),
+        ]);
+        assert_eq!(infer_to_type_lossy(&ty), None);
+    }
+
+    #[test]
+    fn fun_with_an_unresolved_param_converts_to_none_not_a_shorter_signature() {
+        let ty = InferType::Fun(vec![var(), concrete()], Box::new(concrete()));
+        assert_eq!(infer_to_type_lossy(&ty), None);
+    }
+
+    #[test]
+    fn named_with_an_unresolved_argument_converts_to_none_not_fewer_arguments() {
+        let ty = InferType::Named("Holder".to_string(), vec![var(), concrete()]);
+        assert_eq!(infer_to_type_lossy(&ty), None);
+    }
+
+    #[test]
+    fn fully_resolved_compounds_still_convert_and_keep_their_arity() {
+        let tuple = InferType::Tuple(vec![concrete(), concrete(), concrete()]);
+        assert_eq!(
+            infer_to_type_lossy(&tuple),
+            Some(Type::Tuple(vec![Type::I64, Type::I64, Type::I64]))
+        );
+
+        let fun = InferType::Fun(vec![concrete(), concrete()], Box::new(concrete()));
+        assert_eq!(
+            infer_to_type_lossy(&fun),
+            Some(Type::Fun(vec![Type::I64, Type::I64], Box::new(Type::I64)))
+        );
+    }
+
+    #[test]
+    fn method_arg_types_are_none_when_a_parameter_is_unresolved() {
+        // Receiver plus three parameters, the middle one unresolved. A filtered list would
+        // be `[i64, i64]`, and `observe_call_args` -- which indexes positionally -- would
+        // then judge the third argument against the second parameter's type. That decides
+        // borrow-vs-move, so the shift silently turns a reborrow into a move or back.
+        let fun_ty = InferType::Fun(
+            vec![concrete(), concrete(), var(), concrete()],
+            Box::new(concrete()),
+        );
+        assert_eq!(infer_method_arg_types(&fun_ty), None);
+    }
+
+    #[test]
+    fn method_arg_types_skip_the_receiver_and_keep_the_rest_in_order() {
+        let fun_ty = InferType::Fun(
+            vec![
+                InferType::Concrete(Type::Boolean),
+                InferType::Concrete(Type::I64),
+                InferType::Concrete(Type::MutReference(Box::new(Type::I64))),
+            ],
+            Box::new(concrete()),
+        );
+        assert_eq!(
+            infer_method_arg_types(&fun_ty),
+            Some(vec![Type::I64, Type::MutReference(Box::new(Type::I64))])
         );
     }
 }
