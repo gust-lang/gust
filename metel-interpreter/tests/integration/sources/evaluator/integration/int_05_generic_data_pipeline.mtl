@@ -62,7 +62,8 @@ fun record_swap<K, V>(r: Record<K, V>) -> Record<V, K> {
 // Ownership workaround (#328): `T[]` is a borrowed view, so a non-`Copy` element cannot be
 // moved out of it -- #329 enforces that. Indexing plus an explicit clone callback makes the
 // filtered output owned. The callback is scaffolding, not part of what this fixture tests;
-// it goes away once there is a real way to duplicate a non-`Copy` value (#335).
+// it goes away once `Clone` has stdlib coverage, or sooner via a `T: Copy` bound where
+// the elements are `Copy` (#335, #328).
 fun filter_array<T>(arr: T[], pred: (&T) -> boolean, clone: (&T) -> T) -> T[] {
     var out: List<T> = List::new();
     var i = 0;

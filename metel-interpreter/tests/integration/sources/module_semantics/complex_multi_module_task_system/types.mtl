@@ -7,8 +7,7 @@ public struct ValidationError { public message: String }
 // Ownership workaround (#328): `T[]` is a borrowed view, so a non-`Copy` element cannot be
 // moved out of it -- #329 enforces that. utils.mtl indexes and uses explicit clone callbacks
 // so filter/find results own their elements. These helpers are scaffolding, not part of what
-// this fixture tests; they go away once there is a real way to duplicate a non-`Copy` value
-// (#335).
+// this fixture tests; they go away once `Clone` has stdlib coverage (#335, #328).
 public fun clone_i64(value: &i64) -> i64 { *value }
 
 public fun clone_priority(value: &Priority) -> Priority {
