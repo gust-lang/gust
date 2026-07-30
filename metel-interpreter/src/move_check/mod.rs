@@ -2,7 +2,7 @@ pub mod place;
 
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::{GenericParam, Pattern, Polarity, ReceiverKind, Span, TypeExpr};
+use crate::ast::{GenericParam, Pattern, Polarity, ReceiverKind, Span};
 use crate::error::{MetelError, TypeErrorCode};
 use crate::typed_ast::{
     FunBody, MethodDispatch, TypedBlock, TypedDecl, TypedExpr, TypedForInit, TypedModule,
@@ -349,13 +349,6 @@ impl<'a> Checker<'a> {
         span: &Span,
         current_module: &[String],
     ) {
-        if params_contain_impl_aspect(params) {
-            self.record_skipped_generic_body(
-                span,
-                "parameters using `impl Aspect` cannot be reconstructed symbolically",
-            );
-            return;
-        }
         if let Some((typed_body, generic_env)) =
             self.construct_generic_body_for_move(name, generics, params, body, span)
         {
@@ -426,13 +419,6 @@ impl<'a> Checker<'a> {
         body: &crate::ast::Block,
         current_module: &[String],
     ) {
-        if params_contain_impl_aspect(&method.params) {
-            self.record_skipped_generic_body(
-                &method.span,
-                "parameters using `impl Aspect` cannot be reconstructed symbolically",
-            );
-            return;
-        }
         if self.type_ctx.is_none() {
             self.record_skipped_generic_body(&method.span, "type context was unavailable");
             return;
@@ -1499,35 +1485,6 @@ fn function_param_types(ty: &Type) -> Option<&[Type]> {
 
 fn is_embedded_std_span(span: &Span) -> bool {
     span.filename.starts_with("<embedded std::")
-}
-
-fn params_contain_impl_aspect(params: &[crate::ast::Param]) -> bool {
-    params
-        .iter()
-        .filter_map(|param| param.type_ann.as_ref())
-        .any(type_expr_contains_impl_aspect)
-}
-
-fn type_expr_contains_impl_aspect(type_expr: &TypeExpr) -> bool {
-    match type_expr {
-        TypeExpr::ImplAspect { .. } => true,
-        TypeExpr::Named(_, args) | TypeExpr::Tuple(args) => {
-            args.iter().any(type_expr_contains_impl_aspect)
-        }
-        TypeExpr::Record(fields) => fields
-            .iter()
-            .any(|(_, field_ty)| type_expr_contains_impl_aspect(field_ty)),
-        TypeExpr::Array(inner)
-        | TypeExpr::SizedArray(inner, _)
-        | TypeExpr::Reference(inner)
-        | TypeExpr::MutReference(inner) => type_expr_contains_impl_aspect(inner),
-        TypeExpr::Fun(params, ret) => {
-            params.iter().any(type_expr_contains_impl_aspect)
-                || ret.as_deref().is_some_and(type_expr_contains_impl_aspect)
-        }
-        TypeExpr::Projection { base, .. } => type_expr_contains_impl_aspect(base),
-        TypeExpr::RecordProjection { .. } | TypeExpr::Unit => false,
-    }
 }
 
 fn generic_placeholder_name(var: TypeVar) -> String {

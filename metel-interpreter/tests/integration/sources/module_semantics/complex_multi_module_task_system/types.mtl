@@ -4,10 +4,11 @@ public enum Status { Open, InProgress, Done }
 public struct Task { public title: String, public priority: Priority, public status: Status, public effort: i64 }
 public struct ValidationError { public message: String }
 
-// Ownership workaround (#328): T[] is a borrowed view, but generic for-in currently
-// exposes an owned T and can hide an illegal move from the view. utils.mtl indexes and
-// uses explicit clone callbacks so filter/find results own their elements. Keep these
-// helpers until borrowed iteration and standard Clone coverage land together.
+// Ownership workaround (#328): `T[]` is a borrowed view, so a non-`Copy` element cannot be
+// moved out of it -- #329 enforces that. utils.mtl indexes and uses explicit clone callbacks
+// so filter/find results own their elements. These helpers are scaffolding, not part of what
+// this fixture tests; they go away once there is a real way to duplicate a non-`Copy` value
+// (#335).
 public fun clone_i64(value: &i64) -> i64 { *value }
 
 public fun clone_priority(value: &Priority) -> Priority {
@@ -34,11 +35,3 @@ public fun clone_task(value: &Task) -> Task {
         effort = (*value).effort,
     }
 }
-
-// Function values are still treated as affine by move checking even though function
-// pointers are specified as Copy. These one-use aliases keep each callback explicit
-// without reusing a moved function value; remove them with that checker limitation.
-public fun clone_task_2(value: &Task) -> Task { clone_task(value) }
-public fun clone_task_3(value: &Task) -> Task { clone_task(value) }
-public fun clone_task_4(value: &Task) -> Task { clone_task(value) }
-public fun clone_task_5(value: &Task) -> Task { clone_task(value) }

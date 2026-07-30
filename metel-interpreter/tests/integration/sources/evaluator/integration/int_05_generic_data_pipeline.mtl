@@ -59,10 +59,10 @@ fun record_swap<K, V>(r: Record<K, V>) -> Record<V, K> {
 
 // ── Generic pipeline combinators ──────────────────────────────────────────────
 
-// Ownership workaround (#328): T[] is a borrowed view, but generic for-in currently
-// exposes an owned T and can hide an illegal move from the view. Indexing plus an
-// explicit clone callback makes filtered output owned. Keep the callback until borrowed
-// iteration and standard Clone coverage land together.
+// Ownership workaround (#328): `T[]` is a borrowed view, so a non-`Copy` element cannot be
+// moved out of it -- #329 enforces that. Indexing plus an explicit clone callback makes the
+// filtered output owned. The callback is scaffolding, not part of what this fixture tests;
+// it goes away once there is a real way to duplicate a non-`Copy` value (#335).
 fun filter_array<T>(arr: T[], pred: (&T) -> boolean, clone: (&T) -> T) -> T[] {
     var out: List<T> = List::new();
     var i = 0;

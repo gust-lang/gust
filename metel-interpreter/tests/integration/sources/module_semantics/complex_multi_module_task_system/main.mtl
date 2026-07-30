@@ -68,7 +68,7 @@ fun main() {
     let done_list = filter_array(
         tasks_for_done_list,
         (t: &Task) -> boolean { is_done_ref(&*t) },
-        clone_task_2,
+        clone_task,
     );
     assert(done_list.len() == 1);
 
@@ -120,7 +120,7 @@ fun main() {
     let first_done = find_first(
         tasks_for_first_done,
         (t: &Task) -> boolean { is_done_2(&*t) },
-        clone_task_3,
+        clone_task,
     );
     match first_done {
         Perhaps::Some { value } => assert(value.title == "Deploy"),
@@ -133,7 +133,7 @@ fun main() {
     let heavy = filter_array(
         tasks_for_heavy,
         (t: &Task) -> boolean { (*t).effort >= min_effort },
-        clone_task_4,
+        clone_task,
     );
     assert(heavy.len() == 3);
 

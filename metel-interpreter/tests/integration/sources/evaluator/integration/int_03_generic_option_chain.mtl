@@ -80,10 +80,10 @@ fun pair_swap<A, B>(p: Pair<A, B>) -> Pair<B, A> {
 
 // ── Generic array utilities ───────────────────────────────────────────────────
 
-// Ownership workaround (#328): T[] is a borrowed view, but generic for-in currently
-// exposes an owned T and can hide an illegal move from the view. Indexing plus an
-// explicit clone callback makes the result owned without relying on that loophole.
-// Keep the callback until borrowed iteration and standard Clone coverage land together.
+// Ownership workaround (#328): `T[]` is a borrowed view, so a non-`Copy` element cannot be
+// moved out of it -- #329 enforces that. Indexing plus an explicit clone callback makes the
+// result owned. The callback is scaffolding, not part of what this fixture tests; it goes
+// away once there is a real way to duplicate a non-`Copy` value (#335).
 fun find_first<T>(arr: T[], pred: (&T) -> boolean, clone: (&T) -> T) -> Option<T> {
     var i = 0;
     while (i < arr.len()) {
