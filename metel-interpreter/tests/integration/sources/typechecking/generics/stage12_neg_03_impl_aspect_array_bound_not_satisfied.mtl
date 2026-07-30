@@ -1,0 +1,23 @@
+// Negative: `impl Aspect[]` enforces the bound on the array's *element* type.
+//
+// This is the half that mattered. Before nested lowering (#331), `impl Printable[]`
+// parsed as a bound on the array type, which no aspect names — the bound was vacuous
+// and this program was accepted. Expect T0012.
+
+aspect Printable {
+    fun print(&self);
+}
+
+struct Plain { x: i64 }
+
+// Plain does not implement Printable.
+
+fun print_all(items: impl Printable[]) {
+    for (item in items) {
+        item.print()
+    }
+}
+
+fun bad(xs: Plain[]) {
+    print_all(xs) // ERROR[T0012]
+}

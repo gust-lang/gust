@@ -298,7 +298,7 @@ type_expr = {
 // the pre-existing `Never` identifier spelling already produces.
 never_type = { "!" }
 
-impl_type = { "impl" ~ type_expr }
+impl_type = { "impl" ~ named_type }
 
 unit_type  = { "()" }
 tuple_type = { "(" ~ type_expr ~ ("," ~ type_expr)+ ~ ")" }
@@ -312,7 +312,7 @@ sized_array_type = { "[" ~ type_expr ~ ";" ~ decimal_int ~ "]" }
 array_type = { array_atom ~ "[]" }
 // The element of a postfix `[]` array: a unit, tuple, or named type. Silent so
 // the matched inner rule flattens into `array_type` and the parser is unchanged.
-array_atom = _{ unit_type | tuple_type | record_projection_type | record_type | named_type }
+array_atom = _{ unit_type | tuple_type | record_projection_type | record_type | impl_type | named_type }
 named_type = { type_path ~ ("<" ~ type_args ~ ">")? }
 type_args  = { type_expr ~ ("," ~ type_expr)* }
 type_list  = { type_expr ~ ("," ~ type_expr)* }

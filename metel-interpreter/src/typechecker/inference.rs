@@ -4297,35 +4297,20 @@ pub(super) fn lower_impl_aspect(fun: &FunDecl, counter: &mut usize) -> FunDecl {
         .params
         .iter()
         .map(|p| {
-            match &p.type_ann {
-                Some(TypeExpr::ImplAspect {
-                    bound,
-                    source_spell: _,
-                    ..
-                }) => {
-                    let anon_name = format!("_ImplT{counter}");
-                    *counter += 1;
-                    extra_generics.push(GenericParam {
-                        name: anon_name.clone(),
-                        is_record: false,
-                        bounds: vec![Bound {
-                            polarity: Polarity::Positive,
-                            head: crate::ast::BoundHead::Aspect(*bound.clone()),
-                            assoc_bindings: vec![],
-                            span: p.span.clone(),
-                        }],
-                    });
-                    Param {
-                        mutable: p.mutable,
-                        receiver: p.receiver.clone(),
-                        name: p.name.clone(),
-                        type_ann: Some(TypeExpr::Named(anon_name, vec![])),
-                        // Store source spelling as a tag in the span source (best-effort).
-                        // The real error message metadata lives in GenericParam.bounds.
-                        span: p.span.clone(),
-                    }
+            if let Some(type_ann) = &p.type_ann {
+                Param {
+                    mutable: p.mutable,
+                    receiver: p.receiver.clone(),
+                    name: p.name.clone(),
+                    type_ann: Some(lower_impl_aspect_param_type(
+                        type_ann,
+                        counter,
+                        &mut extra_generics,
+                    )),
+                    span: p.span.clone(),
                 }
-                _ => p.clone(),
+            } else {
+                p.clone()
             }
         })
         .collect();
@@ -4343,6 +4328,93 @@ pub(super) fn lower_impl_aspect(fun: &FunDecl, counter: &mut usize) -> FunDecl {
         native: fun.native.clone(),
         body: fun.body.clone(),
         span: fun.span.clone(),
+    }
+}
+
+fn lower_impl_aspect_param_type(
+    type_expr: &TypeExpr,
+    counter: &mut usize,
+    extra_generics: &mut Vec<GenericParam>,
+) -> TypeExpr {
+    match type_expr {
+        TypeExpr::ImplAspect { bound, span, .. } => {
+            let anon_name = format!("_ImplT{counter}");
+            *counter += 1;
+            extra_generics.push(GenericParam {
+                name: anon_name.clone(),
+                is_record: false,
+                bounds: vec![Bound {
+                    polarity: Polarity::Positive,
+                    head: crate::ast::BoundHead::Aspect(bound.as_ref().clone()),
+                    assoc_bindings: vec![],
+                    span: span.clone(),
+                }],
+            });
+            TypeExpr::Named(anon_name, vec![])
+        }
+        TypeExpr::Named(name, args) => TypeExpr::Named(
+            name.clone(),
+            args.iter()
+                .map(|arg| lower_impl_aspect_param_type(arg, counter, extra_generics))
+                .collect(),
+        ),
+        TypeExpr::Tuple(items) => TypeExpr::Tuple(
+            items
+                .iter()
+                .map(|item| lower_impl_aspect_param_type(item, counter, extra_generics))
+                .collect(),
+        ),
+        TypeExpr::Record(fields) => TypeExpr::Record(
+            fields
+                .iter()
+                .map(|(name, field_ty)| {
+                    (
+                        name.clone(),
+                        lower_impl_aspect_param_type(field_ty, counter, extra_generics),
+                    )
+                })
+                .collect(),
+        ),
+        TypeExpr::Array(inner) => TypeExpr::Array(Box::new(lower_impl_aspect_param_type(
+            inner,
+            counter,
+            extra_generics,
+        ))),
+        TypeExpr::SizedArray(inner, len) => TypeExpr::SizedArray(
+            Box::new(lower_impl_aspect_param_type(inner, counter, extra_generics)),
+            *len,
+        ),
+        TypeExpr::Reference(inner) => TypeExpr::Reference(Box::new(lower_impl_aspect_param_type(
+            inner,
+            counter,
+            extra_generics,
+        ))),
+        TypeExpr::MutReference(inner) => TypeExpr::MutReference(Box::new(
+            lower_impl_aspect_param_type(inner, counter, extra_generics),
+        )),
+        TypeExpr::Fun(params, ret) => TypeExpr::Fun(
+            params
+                .iter()
+                .map(|param| lower_impl_aspect_param_type(param, counter, extra_generics))
+                .collect(),
+            ret.as_ref().map(|ret_ty| {
+                Box::new(lower_impl_aspect_param_type(
+                    ret_ty,
+                    counter,
+                    extra_generics,
+                ))
+            }),
+        ),
+        TypeExpr::Projection {
+            base,
+            assoc_name,
+            span,
+        } => TypeExpr::Projection {
+            base: Box::new(lower_impl_aspect_param_type(base, counter, extra_generics)),
+            assoc_name: assoc_name.clone(),
+            span: span.clone(),
+        },
+        TypeExpr::RecordProjection { .. } | TypeExpr::Unit => type_expr.clone(),
     }
 }
 

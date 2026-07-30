@@ -1,0 +1,29 @@
+// Positive: `impl Aspect` nested as an array element lowers to an array of a fresh
+// aspect-bounded type parameter, so the parameter is still an array and the bound's
+// methods resolve on the loop binding.
+//
+// Before nested lowering (#331) this was rejected with a spurious T0002 "cannot infer
+// receiver type": `impl Printable[]` parsed as a bound on the *array* type, so the
+// parameter became a bare type variable with no element type to iterate.
+
+aspect Printable {
+    fun print(&self);
+}
+
+struct Label {
+    text: String,
+}
+
+extend Label: Printable {
+    fun print(&self) {}
+}
+
+fun print_all(items: impl Printable[]) {
+    for (item in items) {
+        item.print()
+    }
+}
+
+fun run(labels: Label[]) {
+    print_all(labels)
+}
