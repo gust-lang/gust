@@ -527,7 +527,7 @@ impl<'a> Checker<'a> {
             .iter()
             .map(|param| {
                 let substituted = subst.apply(param);
-                infer_to_type_lossy(&substitute_named_generics(
+                infer_to_type(&substitute_named_generics(
                     &substituted,
                     &named_samples,
                 ))
@@ -1354,7 +1354,7 @@ impl<'a> Checker<'a> {
                     } else {
                         raw_ty
                     };
-                    infer_to_type_lossy(&infer_ty)
+                    infer_to_type(&infer_ty)
                 }
                 _ => None,
             },
@@ -1700,14 +1700,15 @@ fn symbolic_method_ambiguity_reason(
 /// The result is consumed positionally by `observe_call_args` (`params.get(index)` against
 /// `args.iter().enumerate()`), so dropping one parameter would judge every later argument
 /// against the wrong type — and that judgement is borrow-vs-move. A short list is worse
-/// than no list: `observe_call_args` already treats `None` as "no reborrow information",
-/// which is the safe default.
+/// than no list: with `None`, `observe_call_args` recognises no reborrows and consumes
+/// every argument, which can only over-report moves, never miss one. A shifted list can do
+/// either.
 fn infer_method_arg_types(fun_ty: &crate::typeinference::InferType) -> Option<Vec<Type>> {
     match fun_ty {
         crate::typeinference::InferType::Fun(params, _) => params
             .iter()
             .skip(1)
-            .map(infer_to_type_lossy)
+            .map(infer_to_type)
             .collect::<Option<Vec<_>>>(),
         _ => None,
     }
@@ -1853,9 +1854,16 @@ fn type_to_infer_under_generic_env(ty: &Type, placeholders: &HashMap<String, Typ
 /// parameter list would shift. That last one is not cosmetic: `observe_call_args` pairs a
 /// parameter list with arguments *positionally*, and the only thing it decides from a
 /// parameter type is borrow-vs-move, so a shifted list silently converts a reborrow into a
-/// move or vice versa. Returning `None` instead makes the caller record a skip with a
-/// reason, which is this module's existing convention for "could not analyse".
-fn infer_to_type_lossy(ty: &crate::typeinference::InferType) -> Option<Type> {
+/// move or vice versa.
+///
+/// The two callers handle `None` differently, and neither is harmed by it:
+///
+/// - `generic_sample_args` propagates it, and the generic-body path records a skip with a
+///   reason — this module's convention for "could not analyse".
+/// - `infer_method_arg_types` propagates it to `observe_call_args`, which records *no*
+///   diagnostic and simply proceeds without reborrow information, consuming each argument.
+///   That is more conservative than a shifted list, not less.
+fn infer_to_type(ty: &crate::typeinference::InferType) -> Option<Type> {
     use crate::typeinference::InferType;
     match ty {
         InferType::Concrete(inner) => Some(inner.clone()),
@@ -1863,36 +1871,36 @@ fn infer_to_type_lossy(ty: &crate::typeinference::InferType) -> Option<Type> {
         InferType::Tuple(items) => Some(Type::Tuple(
             items
                 .iter()
-                .map(infer_to_type_lossy)
+                .map(infer_to_type)
                 .collect::<Option<Vec<_>>>()?,
         )),
         InferType::Record(fields) => Some(Type::Record(
             fields
                 .iter()
-                .map(|(name, ty)| infer_to_type_lossy(ty).map(|ty| (name.clone(), ty)))
+                .map(|(name, ty)| infer_to_type(ty).map(|ty| (name.clone(), ty)))
                 .collect::<Option<Vec<_>>>()?,
         )),
-        InferType::Array(inner) => infer_to_type_lossy(inner).map(|inner| Type::Array(Box::new(inner))),
+        InferType::Array(inner) => infer_to_type(inner).map(|inner| Type::Array(Box::new(inner))),
         InferType::SizedArray(inner, len) => {
-            infer_to_type_lossy(inner).map(|inner| Type::SizedArray(Box::new(inner), *len))
+            infer_to_type(inner).map(|inner| Type::SizedArray(Box::new(inner), *len))
         }
         InferType::Reference(inner) => {
-            infer_to_type_lossy(inner).map(|inner| Type::Reference(Box::new(inner)))
+            infer_to_type(inner).map(|inner| Type::Reference(Box::new(inner)))
         }
         InferType::MutReference(inner) => {
-            infer_to_type_lossy(inner).map(|inner| Type::MutReference(Box::new(inner)))
+            infer_to_type(inner).map(|inner| Type::MutReference(Box::new(inner)))
         }
         InferType::Fun(params, ret) => Some(Type::Fun(
             params
                 .iter()
-                .map(infer_to_type_lossy)
+                .map(infer_to_type)
                 .collect::<Option<Vec<_>>>()?,
-            Box::new(infer_to_type_lossy(ret)?),
+            Box::new(infer_to_type(ret)?),
         )),
         InferType::Named(name, args) => Some(Type::Named(
             name.clone(),
             args.iter()
-                .map(infer_to_type_lossy)
+                .map(infer_to_type)
                 .collect::<Option<Vec<_>>>()?,
         )),
         InferType::Var(_) => None,
@@ -3091,7 +3099,7 @@ fun main() {
     #[test]
     fn tuple_with_an_unresolved_element_converts_to_none_not_a_shorter_tuple() {
         let ty = InferType::Tuple(vec![var(), concrete()]);
-        assert_eq!(infer_to_type_lossy(&ty), None);
+        assert_eq!(infer_to_type(&ty), None);
     }
 
     #[test]
@@ -3100,32 +3108,32 @@ fun main() {
             ("a".to_string(), var()),
             ("b".to_string(), concrete()),
         ]);
-        assert_eq!(infer_to_type_lossy(&ty), None);
+        assert_eq!(infer_to_type(&ty), None);
     }
 
     #[test]
     fn fun_with_an_unresolved_param_converts_to_none_not_a_shorter_signature() {
         let ty = InferType::Fun(vec![var(), concrete()], Box::new(concrete()));
-        assert_eq!(infer_to_type_lossy(&ty), None);
+        assert_eq!(infer_to_type(&ty), None);
     }
 
     #[test]
     fn named_with_an_unresolved_argument_converts_to_none_not_fewer_arguments() {
         let ty = InferType::Named("Holder".to_string(), vec![var(), concrete()]);
-        assert_eq!(infer_to_type_lossy(&ty), None);
+        assert_eq!(infer_to_type(&ty), None);
     }
 
     #[test]
     fn fully_resolved_compounds_still_convert_and_keep_their_arity() {
         let tuple = InferType::Tuple(vec![concrete(), concrete(), concrete()]);
         assert_eq!(
-            infer_to_type_lossy(&tuple),
+            infer_to_type(&tuple),
             Some(Type::Tuple(vec![Type::I64, Type::I64, Type::I64]))
         );
 
         let fun = InferType::Fun(vec![concrete(), concrete()], Box::new(concrete()));
         assert_eq!(
-            infer_to_type_lossy(&fun),
+            infer_to_type(&fun),
             Some(Type::Fun(vec![Type::I64, Type::I64], Box::new(Type::I64)))
         );
     }
