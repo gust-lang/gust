@@ -1,0 +1,20 @@
+// Negative: `impl Aspect[]` behind a reference still enforces the bound on the array's
+// element type. Expect T0012.
+
+aspect Printable {
+    fun print(&self);
+}
+
+struct Plain { x: i64 }
+
+// Plain does not implement Printable.
+
+fun in_reference(xs: &impl Printable[]) {
+    for (item in *xs) {
+        item.print()
+    }
+}
+
+fun bad(xs: Plain[]) {
+    in_reference(&xs) // ERROR[T0012]
+}

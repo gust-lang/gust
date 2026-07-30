@@ -1,0 +1,42 @@
+// Positive: two `impl Aspect[]` parameters are independent type variables, so they may
+// be called with arrays of two different element types. The array counterpart of
+// stage12_04.
+//
+// This guards the `counter` threading in the recursive lowering walk: if the counter did
+// not advance per occurrence, both parameters would collapse onto one `_ImplT` generic
+// and this call would fail to unify `Tag[]` with `Label[]`.
+//
+// Before #331 this failed with T0002 "cannot infer receiver type for method call".
+
+aspect Printable {
+    fun print(&self);
+}
+
+struct Label {
+    text: String,
+}
+
+struct Tag {
+    n: i64,
+}
+
+extend Label: Printable {
+    fun print(&self) {}
+}
+
+extend Tag: Printable {
+    fun print(&self) {}
+}
+
+fun print_both(a: impl Printable[], b: impl Printable[]) {
+    for (x in a) {
+        x.print()
+    }
+    for (y in b) {
+        y.print()
+    }
+}
+
+fun run(labels: Label[], tags: Tag[]) {
+    print_both(labels, tags)
+}

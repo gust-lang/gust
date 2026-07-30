@@ -1,0 +1,46 @@
+// Positive: `impl Aspect` is lowered in nested type positions, not only as a
+// parameter's outermost type. Each function below reaches the bound's method through a
+// different `TypeExpr` constructor, so each exercises a distinct arm of the recursive
+// lowering walk.
+//
+// Every one of these was broken before #331, and each failed differently — the aspect
+// name leaked through as if it were a nominal type:
+//
+//   tuple member     -> T0003 no method `print` on `Printable`
+//   reference        -> T0003 no method `print` on `Printable`
+//   generic argument -> T0001 cannot unify `List<Printable>` with `List<Label>`
+//
+// The bodies matter: a signature whose parameter is never used in a way that requires
+// the bound typechecks even with a vacuous bound, and guards nothing.
+
+aspect Printable {
+    fun print(&self);
+}
+
+struct Label {
+    text: String,
+}
+
+extend Label: Printable {
+    fun print(&self) {}
+}
+
+fun in_tuple(p: (impl Printable[], i64)) {
+    for (item in p.0) {
+        item.print()
+    }
+}
+
+fun in_reference(xs: &impl Printable[]) {
+    for (item in *xs) {
+        item.print()
+    }
+}
+
+fun in_generic_arg(xs: List<impl Printable>) {}
+
+fun run(labels: Label[], list: List<Label>) {
+    in_tuple((labels, 1));
+    in_reference(&labels);
+    in_generic_arg(list)
+}

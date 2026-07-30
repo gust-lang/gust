@@ -1,0 +1,20 @@
+// Negative: `impl Aspect` nested in a generic argument still enforces the bound on the
+// argument type. Expect T0012.
+//
+// Before #331 this was T0001 "cannot unify `(List<Printable>) -> ()` with
+// `(List<Plain>) -> ()`" — the aspect name leaked through as a nominal type, so the
+// diagnostic never mentioned the bound at all.
+
+aspect Printable {
+    fun print(&self);
+}
+
+struct Plain { x: i64 }
+
+// Plain does not implement Printable.
+
+fun in_generic_arg(xs: List<impl Printable>) {}
+
+fun bad(xs: List<Plain>) {
+    in_generic_arg(xs) // ERROR[T0012]
+}
