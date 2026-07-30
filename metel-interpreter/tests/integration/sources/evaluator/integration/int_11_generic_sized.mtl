@@ -7,7 +7,12 @@ fun clamp<T>(v: T, lo: T, hi: T) -> T {
     else { v }
 }
 
-fun map_to_list<T, U>(src: T[], f: (T) -> U) -> List<U> {
+// `T: Copy` because `src` is a borrowed `T[]` view: passing the `for-in` binding to `f`
+// by value consumes an element, which a view does not own. Every caller here maps `i32`,
+// so requiring `Copy` keeps the callbacks and the turbofish call sites exactly as they
+// were — the alternative, `f: (&T) -> U`, would put a deref in every closure of a fixture
+// that is about sized numeric types, not references.
+fun map_to_list<T: Copy, U>(src: T[], f: (T) -> U) -> List<U> {
     var out: List<U> = List::new();
     for (x in src) {
         out.push(f(x));
