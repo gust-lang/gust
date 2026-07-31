@@ -229,7 +229,31 @@ always pass them.
 
 Each of these was reproduced against the built interpreter, not inferred.
 
+*Corrected 2026-07-31, after review: this list was published as complete and was not.
+Item 0 was found by an adversarial review of the change and is the most serious entry
+here — a false negative in the core analysis, not a precision limit like the rest.*
+
 **False negatives — a real violation is accepted:**
+
+0. **Shadowing erases the shadowed binding's moved state permanently** (#343).
+   `FlowState::bind` clears `moved` for the name it binds — correct for a fresh binding —
+   and `pop_scope` cannot restore what the shadow displaced. A shadow inside a loop body
+   therefore launders a carried move:
+
+   ```metel
+   loop {
+       let moved = s;
+       let s = "replacement";   // erases the carried move
+       …
+   }
+   ```
+
+   Pre-existing rather than introduced here — `develop` accepts the use-after-loop form
+   too, which is fixture `09_move_in_loop_body_observed_after_loop` plus one line. But the
+   fixed point would otherwise catch the loop-carried case, so this change makes a worse
+   instance of it reachable. A shadow inside an `if` branch does not launder, because that
+   join is taken from a clone that still holds the record; it needs a scope the state
+   flows through linearly.
 
 1. **Calling a closure never consumes its captures**, and every `Type::Fun` is treated as
    `Copy` (#330). A loop that calls such a closure every iteration is accepted:
@@ -263,7 +287,14 @@ Each of these was reproduced against the built interpreter, not inferred.
    asking whether the branch can be taken, so `if (false) { let moved = s; }` still counts.
    Divergence is the only reachability fact the checker uses, and (5) is what that costs.
 
-(1)–(4) are tracked elsewhere or are inherent to a bounded analysis. (5) and (6) are the
-deliberate price of not building a CFG, and are the first things to revisit if the
-conservatism proves annoying in practice — a trip-count analysis for the common
+(0) is a bug and should be fixed; it is the only entry here that is not a deliberate
+trade-off. (1)–(4) are tracked elsewhere or are inherent to a bounded analysis. (5) and
+(6) are the deliberate price of not building a CFG, and are the first things to revisit if
+the conservatism proves annoying in practice — a trip-count analysis for the common
 `while (i < k)` shape would close (5) without a CFG.
+
+**On the process, since it generalises:** items 1–6 were found by probing the analysis
+against shapes I had thought of. Item 0 was found by handing the change to a reviewer with
+the standing instruction to find a gap the list did not contain. The list was published
+as complete after the first method and was not complete. Enumerating one's own blind spots
+does not find them.
