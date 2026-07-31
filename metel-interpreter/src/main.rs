@@ -25,6 +25,7 @@ mod name_resolver;
 mod native_keys;
 mod parser;
 mod path_normalizer;
+mod place;
 mod pipeline;
 mod reference_resolver;
 mod stdlib;

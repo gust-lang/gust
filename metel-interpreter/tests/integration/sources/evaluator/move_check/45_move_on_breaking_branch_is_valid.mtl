@@ -1,0 +1,12 @@
+fun main() {
+    let s = "hello";
+    var i = 0;
+    loop {
+        i += 1;
+        if (i == 2) {
+            let moved = s;
+            assert(moved == "hello");
+            break;
+        }
+    }
+}

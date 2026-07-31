@@ -1,6 +1,4 @@
-pub mod place;
-
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::ast::{GenericParam, Pattern, Polarity, ReceiverKind, Span};
 use crate::error::{MetelError, TypeErrorCode};
@@ -14,7 +12,7 @@ use crate::typeinference::{
 };
 use crate::types::Type;
 
-use self::place::{from_expr as place_from_expr, from_typed_place, Place, Projection};
+use crate::place::{from_expr as place_from_expr, from_typed_place, Place, Projection};
 
 #[derive(Debug, Clone)]
 pub struct MoveViolation {
@@ -27,6 +25,10 @@ pub struct MoveViolation {
     /// violations would disappear if a given type became `Copy`. Notably
     /// `T[]`, whose ownership is RFC-0124's open question.
     pub moved_type: String,
+    /// Whether the move happened on an earlier iteration of an enclosing loop.
+    /// When it did, `use_span` and `moved_span` are often the same site, and the
+    /// message has to say so or it reads as pointing at itself.
+    pub moved_in_previous_iteration: bool,
     pub use_span: Span,
     pub moved_span: Span,
 }
@@ -73,10 +75,38 @@ pub struct UncheckedGenericBody {
     pub reason: String,
 }
 
+/// Everything a report accumulates, captured so a speculative pass can be undone.
+#[derive(Debug, Clone, Copy)]
+struct ReportMark {
+    violations: usize,
+    skipped_user: usize,
+    skipped_embedded_std: usize,
+    unchecked: usize,
+}
+
 impl MoveCheckReport {
     #[must_use]
     pub fn violation_count(&self) -> usize {
         self.violations.len()
+    }
+
+    fn mark(&self) -> ReportMark {
+        ReportMark {
+            violations: self.violations.len(),
+            skipped_user: self.skipped_generic_bodies_user,
+            skipped_embedded_std: self.skipped_generic_bodies_embedded_std,
+            unchecked: self.unchecked_generic_bodies.len(),
+        }
+    }
+
+    /// Drop everything recorded since `mark`. Used for the probe passes a loop
+    /// makes while widening its entry state: those walk the same code the final
+    /// pass will walk, and must not report it twice.
+    fn rewind_to(&mut self, mark: ReportMark) {
+        self.violations.truncate(mark.violations);
+        self.skipped_generic_bodies_user = mark.skipped_user;
+        self.skipped_generic_bodies_embedded_std = mark.skipped_embedded_std;
+        self.unchecked_generic_bodies.truncate(mark.unchecked);
     }
 
     #[must_use]
@@ -134,6 +164,22 @@ struct MoveRecord {
     moved_span: Span,
     cause: MoveCause,
     moved_type: String,
+    /// Whether this move reached the current state around a loop's back edge.
+    /// A loop-carried move is usually its own use — the same expression, one
+    /// iteration later — so the diagnostic has to say which iteration it means.
+    from_previous_iteration: bool,
+}
+
+/// A move identified by where it happened, ignoring how it was reached.
+type FingerprintKey = (Place, String, u32, u32);
+
+fn fingerprint_key(record: &MoveRecord) -> FingerprintKey {
+    (
+        record.place.clone(),
+        record.moved_span.filename.clone(),
+        record.moved_span.line,
+        record.moved_span.col,
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,6 +196,11 @@ struct FlowState {
     /// borrowed, but a non-Copy value cannot be moved out through the binding.
     borrowed_array_bindings: HashSet<String>,
     scopes: Vec<Vec<String>>,
+    /// Whether the path walked so far has left the enclosing loop iteration
+    /// through `break`, `continue`, or `return`. Only the loop driver reads it,
+    /// to decide whether this state reaches the back edge; it is not part of the
+    /// moved-state lattice and `union_from` deliberately leaves it alone.
+    diverged: bool,
 }
 
 impl FlowState {
@@ -198,12 +249,30 @@ impl FlowState {
         let root = place.root().to_string();
         let records = self.moved.entry(root).or_default();
         if place.projections().is_empty() {
+            // Moving the whole value subsumes every partial move of it.
             records.clear();
-            records.push(MoveRecord { place, moved_span, cause, moved_type });
-            return;
+        } else {
+            records.retain(|existing| !place.is_prefix_of(&existing.place));
         }
-        records.retain(|record| !place.is_prefix_of(&record.place));
-        records.push(MoveRecord { place, moved_span, cause, moved_type });
+        records.push(MoveRecord {
+            place,
+            moved_span,
+            cause,
+            moved_type,
+            from_previous_iteration: false,
+        });
+    }
+
+    /// Mark every move that was not already in `before` as loop-carried. Called
+    /// once a loop has folded its back edge into the state the body starts from:
+    /// anything new got there by completing an iteration.
+    fn mark_moves_as_carried_from(&mut self, before: &Self) {
+        let previous = before.moved_fingerprint();
+        for record in self.moved.values_mut().flatten() {
+            if !previous.contains(&fingerprint_key(record)) {
+                record.from_previous_iteration = true;
+            }
+        }
     }
 
     fn moved_record_for_descendant_use(&self, place: &Place) -> Option<&MoveRecord> {
@@ -241,6 +310,13 @@ impl FlowState {
             }
         }
     }
+
+    /// A stable, order-independent summary of the moved state, for deciding when
+    /// a loop's entry state has stopped growing. `moved` is a `HashMap` of
+    /// `Vec`s, so comparing it directly would compare iteration order too.
+    fn moved_fingerprint(&self) -> BTreeSet<FingerprintKey> {
+        self.moved.values().flatten().map(fingerprint_key).collect()
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -256,7 +332,24 @@ struct Checker<'a> {
     report: MoveCheckReport,
     type_ctx: Option<TypeCtx>,
     generic_envs: Vec<GenericMoveEnv>,
+    /// One accumulator per enclosing loop body currently being walked, innermost
+    /// last. A `continue` merges the state it reaches into the innermost one,
+    /// because that state reaches the loop's back edge without falling out of
+    /// the bottom of the body.
+    loop_back_edges: Vec<FlowState>,
+    /// The mirror of `loop_back_edges` for the way out: a `break` merges its
+    /// state into the innermost one. Those moves are invisible to the next
+    /// iteration but visible after the loop, so they are kept apart from the
+    /// state that keeps flowing through the body.
+    loop_exits: Vec<FlowState>,
 }
+
+/// How many times a loop body may be re-walked while its entry state grows.
+///
+/// Widening is monotone, so a body converges in one extra pass unless moves
+/// cascade through several bindings. Stopping at the cap can only lose a
+/// violation the next pass would have found, never invent one.
+const MAX_LOOP_PASSES: usize = 8;
 
 impl<'a> Checker<'a> {
     fn new(registry: &'a TypeDefinitionRegistry) -> Self {
@@ -265,6 +358,8 @@ impl<'a> Checker<'a> {
             report: MoveCheckReport::default(),
             type_ctx: None,
             generic_envs: Vec::new(),
+            loop_back_edges: Vec::new(),
+            loop_exits: Vec::new(),
         }
     }
 
@@ -537,14 +632,85 @@ impl<'a> Checker<'a> {
         Some((arg_types, generic_env))
     }
 
+    /// Walk a loop body until the state *entering* it stops growing, then walk it
+    /// once more with reporting enabled.
+    ///
+    /// A single pass cannot see a move that only becomes a violation on the
+    /// second iteration: the body's exit state was unioned outwards but never fed
+    /// back in, so `loop { let n = eat(s); }` looked clean (#291). Each pass here
+    /// therefore collects the state that reaches the loop's *back edge* — the
+    /// bottom of the body when control falls through it, plus every `continue`
+    /// site — and folds that into the entry state for the next pass.
+    ///
+    /// Paths that leave through `break` or `return` are excluded from the back
+    /// edge, so `loop { let n = eat(s); break; }` stays accepted: the move
+    /// happens, but no second iteration observes it.
+    ///
+    /// Only the final pass reports. The intermediate ones walk the same code and
+    /// would otherwise duplicate every diagnostic inside the body.
+    fn check_loop_body(
+        &mut self,
+        current_module: &[String],
+        state: &mut FlowState,
+        mut pass: impl FnMut(&mut Self, &[String], &mut FlowState),
+    ) {
+        let mut entry = state.clone();
+        for iteration in 0..MAX_LOOP_PASSES {
+            let mark = self.report.mark();
+            let mut body_state = entry.clone();
+            body_state.diverged = false;
+            self.loop_back_edges.push(FlowState::default());
+            self.loop_exits.push(FlowState::default());
+            pass(self, current_module, &mut body_state);
+            let mut back_edge = self.loop_back_edges.pop().unwrap_or_default();
+            let exit = self.loop_exits.pop().unwrap_or_default();
+            if !body_state.diverged {
+                back_edge.union_from(&body_state);
+            }
+
+            let mut widened = entry.clone();
+            widened.union_from(&back_edge);
+            if widened.moved_fingerprint() == entry.moved_fingerprint()
+                || iteration + 1 == MAX_LOOP_PASSES
+            {
+                // Settled: this pass saw everything a further one would, so its
+                // diagnostics are the ones to keep.
+                //
+                // After the loop, both ways out are possible: falling out of the
+                // bottom (unless every path diverged) and every `break`.
+                if !body_state.diverged {
+                    state.union_from(&body_state);
+                }
+                state.union_from(&exit);
+                return;
+            }
+            self.report.rewind_to(mark);
+            widened.mark_moves_as_carried_from(&entry);
+            entry = widened;
+        }
+    }
+
+    /// Route the current state to the innermost loop's back edge, as `continue`
+    /// does: it reaches the next iteration without falling out of the bottom of
+    /// the body, and then this path goes no further.
+    fn reach_back_edge(&mut self, state: &mut FlowState) {
+        if let Some(back_edge) = self.loop_back_edges.last_mut() {
+            back_edge.union_from(state);
+        }
+        state.diverged = true;
+    }
+
     fn check_stmt(&mut self, stmt: &TypedStmt, current_module: &[String], state: &mut FlowState) {
         match stmt {
             TypedStmt::Expr(expr) => self.observe_expr(expr, current_module, state),
+            // The condition is walked inside the pass because the back edge
+            // returns to it: `while (peek(s)) { eat(s); }` reads `s` after the
+            // first iteration moved it.
             TypedStmt::While(while_stmt) => {
-                self.observe_expr(&while_stmt.condition, current_module, state);
-                let mut body_state = state.clone();
-                self.check_block(&while_stmt.body, current_module, &mut body_state);
-                state.union_from(&body_state);
+                self.check_loop_body(current_module, state, |checker, module, body_state| {
+                    checker.observe_expr(&while_stmt.condition, module, body_state);
+                    checker.check_block(&while_stmt.body, module, body_state);
+                });
             }
             TypedStmt::For(for_stmt) => {
                 state.push_scope();
@@ -561,34 +727,36 @@ impl<'a> Checker<'a> {
                         TypedForInit::Expr(expr) => self.observe_expr(expr, current_module, state),
                     }
                 }
-                if let Some(condition) = &for_stmt.condition {
-                    self.observe_expr(condition, current_module, state);
-                }
-                let mut body_state = state.clone();
-                self.check_block(&for_stmt.body, current_module, &mut body_state);
-                if let Some(step) = &for_stmt.step {
-                    self.observe_expr(step, current_module, &mut body_state);
-                }
-                state.union_from(&body_state);
+                // `init` ran once above; condition, body and step all repeat.
+                self.check_loop_body(current_module, state, |checker, module, body_state| {
+                    if let Some(condition) = &for_stmt.condition {
+                        checker.observe_expr(condition, module, body_state);
+                    }
+                    checker.check_block(&for_stmt.body, module, body_state);
+                    if let Some(step) = &for_stmt.step {
+                        checker.observe_expr(step, module, body_state);
+                    }
+                });
                 state.pop_scope();
             }
             TypedStmt::ForIn(for_in) => {
+                // The iterable is evaluated once, before any iteration.
                 self.observe_expr(&for_in.iterable, current_module, state);
-                let mut body_state = state.clone();
-                body_state.push_scope();
                 let iterable_ty = peel_type_references(for_in.iterable.ty());
-                match iterable_ty {
-                    Type::Array(element_ty) => {
-                        body_state.bind_borrowed_array_element(&for_in.binding, element_ty);
+                self.check_loop_body(current_module, state, |checker, module, body_state| {
+                    body_state.push_scope();
+                    match iterable_ty {
+                        Type::Array(element_ty) => {
+                            body_state.bind_borrowed_array_element(&for_in.binding, element_ty);
+                        }
+                        Type::SizedArray(element_ty, _) => {
+                            body_state.bind_typed(&for_in.binding, element_ty);
+                        }
+                        _ => body_state.bind(&for_in.binding),
                     }
-                    Type::SizedArray(element_ty, _) => {
-                        body_state.bind_typed(&for_in.binding, element_ty);
-                    }
-                    _ => body_state.bind(&for_in.binding),
-                }
-                self.check_block(&for_in.body, current_module, &mut body_state);
-                body_state.pop_scope();
-                state.union_from(&body_state);
+                    checker.check_block(&for_in.body, module, body_state);
+                    body_state.pop_scope();
+                });
             }
         }
     }
@@ -609,10 +777,8 @@ impl<'a> Checker<'a> {
             self.record_whole_use_if_moved(&place, expr.span(), state);
         }
         match expr {
-            TypedExpr::Literal(..)
-            | TypedExpr::Ident(..)
-            | TypedExpr::Path(..)
-            | TypedExpr::Continue(_) => {}
+            TypedExpr::Literal(..) | TypedExpr::Ident(..) | TypedExpr::Path(..) => {}
+            TypedExpr::Continue(_) => self.reach_back_edge(state),
             TypedExpr::Tuple(items, ..) | TypedExpr::Array(items, ..) => {
                 for item in items {
                     self.observe_expr(item, current_module, state);
@@ -690,15 +856,22 @@ impl<'a> Checker<'a> {
                     );
                 }
             }
+            // `return` and `break` both leave the loop iteration, so whatever
+            // they moved never reaches a following iteration.
             TypedExpr::Return(ret) => {
                 if let Some(value) = &ret.value {
                     self.consume_expr_with_cause(value, current_module, state, MoveCause::Other);
                 }
+                state.diverged = true;
             }
             TypedExpr::Break(brk) => {
                 if let Some(value) = &brk.value {
                     self.consume_expr(value, current_module, state);
                 }
+                if let Some(exit) = self.loop_exits.last_mut() {
+                    exit.union_from(state);
+                }
+                state.diverged = true;
             }
         }
     }
@@ -756,6 +929,10 @@ impl<'a> Checker<'a> {
         self.observe_expr(&m.scrutinee, current_module, state);
         let mut joined = state.clone();
         joined.moved.clear();
+        // Control reaches the code after a `match` only if some arm falls out of
+        // it. An empty match has no arm to fall out of, but it also cannot be
+        // entered, so treat it as not diverging rather than as diverging.
+        let mut every_arm_diverged = !m.arms.is_empty();
         for arm in &m.arms {
             let mut arm_state = state.clone();
             arm_state.push_scope();
@@ -765,9 +942,13 @@ impl<'a> Checker<'a> {
             }
             self.check_block(&arm.body, current_module, &mut arm_state);
             arm_state.pop_scope();
-            joined.union_from(&arm_state);
+            if !arm_state.diverged {
+                joined.union_from(&arm_state);
+            }
+            every_arm_diverged = every_arm_diverged && arm_state.diverged;
         }
         state.union_from(&joined);
+        state.diverged = state.diverged || every_arm_diverged;
     }
 
     fn observe_if_expr(
@@ -782,13 +963,25 @@ impl<'a> Checker<'a> {
         let mut then_state = state.clone();
         self.check_block(then_branch, current_module, &mut then_state);
         let mut joined = state.clone();
-        joined.union_from(&then_state);
+        // A branch that ends in `break`, `continue` or `return` never reaches
+        // the code after the `if`, so what it moved must not be joined into it.
+        // Its moves were already routed to the loop's exit or back edge.
+        if !then_state.diverged {
+            joined.union_from(&then_state);
+        }
+        // Without an `else`, the false path always falls through, so the `if` as
+        // a whole cannot divert control.
+        let mut both_branches_diverged = false;
         if let Some(else_branch) = else_branch {
             let mut else_state = state.clone();
             self.check_block(else_branch, current_module, &mut else_state);
-            joined.union_from(&else_state);
+            if !else_state.diverged {
+                joined.union_from(&else_state);
+            }
+            both_branches_diverged = then_state.diverged && else_state.diverged;
         }
         state.union_from(&joined);
+        state.diverged = state.diverged || both_branches_diverged;
     }
 
     fn observe_loop_expr(
@@ -797,9 +990,9 @@ impl<'a> Checker<'a> {
         current_module: &[String],
         state: &mut FlowState,
     ) {
-        let mut body_state = state.clone();
-        self.check_block(body, current_module, &mut body_state);
-        state.union_from(&body_state);
+        self.check_loop_body(current_module, state, |checker, module, body_state| {
+            checker.check_block(body, module, body_state);
+        });
     }
 
     fn observe_closure_expr(
@@ -1201,6 +1394,7 @@ impl<'a> Checker<'a> {
                 kind: Self::violation_kind(place, record),
                 moved_by_value_receiver: record.cause == MoveCause::ByValueReceiver,
                 moved_type: record.moved_type.clone(),
+                moved_in_previous_iteration: record.from_previous_iteration,
                 use_span: use_span.clone(),
                 moved_span: record.moved_span.clone(),
             });
@@ -1218,6 +1412,7 @@ impl<'a> Checker<'a> {
                 kind: Self::violation_kind(place, record),
                 moved_by_value_receiver: record.cause == MoveCause::ByValueReceiver,
                 moved_type: record.moved_type.clone(),
+                moved_in_previous_iteration: record.from_previous_iteration,
                 use_span: use_span.clone(),
                 moved_span: record.moved_span.clone(),
             });
@@ -1333,6 +1528,9 @@ impl<'a> Checker<'a> {
                 Type::Array(item) | Type::SizedArray(item, _) => Some((**item).clone()),
                 _ => None,
             },
+            // `peel_type_references` has already stripped the reference, so the
+            // peeled type *is* the pointee.
+            Projection::Deref => Some(peeled.clone()),
             Projection::Field(field) => match peeled {
                 Type::Record(fields) => fields
                     .iter()
@@ -1375,6 +1573,7 @@ impl<'a> Checker<'a> {
             kind,
             moved_by_value_receiver: false,
             moved_type,
+            moved_in_previous_iteration: false,
             use_span,
             moved_span: dummy_span_from_place(place),
         });
@@ -2189,16 +2388,16 @@ impl FreeRootCollector {
 fn violation_message(violation: &MoveViolation) -> String {
     match violation.kind {
         MoveViolationKind::UseAfterMove => format!(
-            "use of moved value `{}`: `{}` was moved at {}",
+            "use of moved value `{}`: `{}` was {}",
             violation.binding,
             format_place(&violation.moved_place),
-            format_span(&violation.moved_span)
+            moved_at_clause(violation)
         ),
         MoveViolationKind::PartialMoveUsedAsWhole => format!(
-            "use of partially moved value `{}`: field or element `{}` was moved at {}",
+            "use of partially moved value `{}`: field or element `{}` was {}",
             violation.binding,
             format_place(&violation.moved_place),
-            format_span(&violation.moved_span)
+            moved_at_clause(violation)
         ),
         // No trailing location for the outright-banned rules: the offending
         // expression *is* the diagnostic's own span, so citing it again only
@@ -2225,22 +2424,25 @@ fn violation_message(violation: &MoveViolation) -> String {
     }
 }
 
-fn format_place(place: &Place) -> String {
-    let mut rendered = place.root().to_string();
-    for projection in place.projections() {
-        match projection {
-            Projection::Field(field) => {
-                rendered.push('.');
-                rendered.push_str(field);
-            }
-            Projection::TupleIndex(index) => {
-                rendered.push('.');
-                rendered.push_str(&index.to_string());
-            }
-            Projection::OpaqueIndex => rendered.push_str("[_]"),
-        }
+/// Where the move happened, phrased from where the reader is standing.
+///
+/// A loop-carried move is usually its own use — the same expression, one
+/// iteration earlier — so naming the location without naming the iteration
+/// would point the reader back at the line they are already looking at.
+fn moved_at_clause(violation: &MoveViolation) -> String {
+    let same_site = violation.use_span == violation.moved_span;
+    match (violation.moved_in_previous_iteration, same_site) {
+        (true, true) => "moved here on an earlier iteration".to_string(),
+        (true, false) => format!(
+            "moved at {} on an earlier iteration",
+            format_span(&violation.moved_span)
+        ),
+        (false, _) => format!("moved at {}", format_span(&violation.moved_span)),
     }
-    rendered
+}
+
+fn format_place(place: &Place) -> String {
+    place.to_string()
 }
 
 fn format_span(span: &Span) -> String {
@@ -3165,6 +3367,205 @@ fun main() {
             infer_method_arg_types(&fun_ty),
             Some(vec![Type::I64, Type::MutReference(Box::new(Type::I64))])
         );
+    }
+
+    // ── Loop-carried moves (#291) ────────────────────────────────────────────
+    //
+    // A loop body is walked more than once while its entry state grows. These
+    // pin the two things that are easy to get wrong about that: what reaches the
+    // next iteration, and that walking twice does not report twice.
+
+    #[test]
+    fn a_loop_carried_move_is_reported_once_not_once_per_pass() {
+        let violations = assert_has_violation(
+            r#"
+fun main() {
+    let s = "hello";
+    var i = 0;
+    loop {
+        i += 1;
+        let moved = s;
+        if (i == 2) { break; }
+    }
+}
+"#,
+            "s",
+        );
+        assert_eq!(
+            violations.len(),
+            1,
+            "the body is walked once per widening pass; only the last may report"
+        );
+        assert!(violations[0].moved_in_previous_iteration);
+    }
+
+    #[test]
+    fn nested_loops_report_a_carried_move_once_each_not_once_per_outer_pass() {
+        let violations = assert_has_violation(
+            r#"
+fun main() {
+    let s = "hello";
+    var i = 0;
+    while (i < 3) {
+        i += 1;
+        var j = 0;
+        while (j < 2) {
+            j += 1;
+            let moved = s;
+        }
+    }
+}
+"#,
+            "s",
+        );
+        assert_eq!(violations.len(), 1, "got {violations:#?}");
+    }
+
+    #[test]
+    fn a_move_reached_only_by_breaking_out_does_not_reach_the_next_iteration() {
+        assert_no_violations(
+            r#"
+fun main() {
+    let s = "hello";
+    var i = 0;
+    loop {
+        i += 1;
+        if (i == 2) {
+            let moved = s;
+            break;
+        }
+    }
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn a_move_reached_only_by_returning_does_not_reach_the_next_iteration() {
+        assert_no_violations(
+            r#"
+fun main() {
+    let s = "hello";
+    var i = 0;
+    loop {
+        i += 1;
+        if (i == 2) {
+            let moved = s;
+            return;
+        }
+    }
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn a_move_before_continue_reaches_the_next_iteration() {
+        let violations = assert_has_violation(
+            r#"
+fun main() {
+    let s = "hello";
+    var i = 0;
+    loop {
+        i += 1;
+        let moved = s;
+        if (i < 3) { continue; }
+        break;
+    }
+}
+"#,
+            "s",
+        );
+        assert!(violations[0].moved_in_previous_iteration);
+    }
+
+    #[test]
+    fn a_move_that_breaks_out_is_still_visible_after_the_loop() {
+        assert_has_violation(
+            r#"
+fun main() {
+    let s = "hello";
+    var i = 0;
+    loop {
+        i += 1;
+        if (i == 2) {
+            let moved = s;
+            break;
+        }
+    }
+    let again = s;
+}
+"#,
+            "s",
+        );
+    }
+
+    #[test]
+    fn a_binding_declared_inside_the_body_is_fresh_each_iteration() {
+        assert_no_violations(
+            r#"
+fun main() {
+    var i = 0;
+    while (i < 3) {
+        i += 1;
+        let local = "fresh";
+        let moved = local;
+    }
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn a_move_on_a_returning_branch_does_not_reach_the_code_after_the_if() {
+        // The `return` leaves the function, so the move never happened on the
+        // path that reaches `again`.
+        assert_no_violations(
+            r#"
+fun main() {
+    let s = "hello";
+    if (true) {
+        let moved = s;
+        return;
+    }
+    let again = s;
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn a_move_on_a_branch_that_falls_through_still_reaches_the_code_after_the_if() {
+        assert_has_violation(
+            r#"
+fun main() {
+    let s = "hello";
+    if (true) {
+        let moved = s;
+    }
+    let again = s;
+}
+"#,
+            "s",
+        );
+    }
+
+    #[test]
+    fn a_repeated_move_through_a_dereference_is_a_violation() {
+        let violations = assert_has_violation(
+            r#"
+fun eat(s: String) -> i64 { 1 }
+
+fun main() {
+    let s = "hello";
+    let p = &s;
+    let first = eat(*p);
+    let second = eat(*p);
+}
+"#,
+            "p",
+        );
+        assert_eq!(format_place(&violations[0].moved_place), "(*p)");
     }
 }
 

@@ -1,0 +1,8 @@
+fun eat(s: String) -> i64 { 1 }
+
+fun main() {
+    let s = "hello";
+    let p = &s;
+    let first = eat(*p);
+    let second = eat(*p);
+}

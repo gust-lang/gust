@@ -35,6 +35,7 @@ pub mod name_resolver;
 pub mod native_keys;
 pub mod parser;
 pub mod path_normalizer;
+pub mod place;
 pub mod pipeline;
 pub mod reference_resolver;
 pub mod stdlib;

@@ -1,0 +1,9 @@
+fun main() {
+    let s = "hello";
+    var i = 0;
+    loop {
+        i += 1;
+        let moved = s;
+        if (i == 2) { break; }
+    }
+}

@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use metel::move_check::place::Projection;
 use metel::{coherence, module_loader, move_check, name_resolver, path_normalizer, typechecker};
 
 fn main() {
@@ -52,10 +51,15 @@ fn main() {
                 embedded_std_violation_count += 1;
                 continue;
             }
-            assert_ne!(
-                violation.use_span, violation.moved_span,
+            // A loop-carried move legitimately *is* its own use: the same
+            // expression, one iteration later. Anywhere else it is a bug.
+            assert!(
+                violation.use_span != violation.moved_span
+                    || violation.moved_in_previous_iteration,
                 "checker bug: move site reported as its own use for `{}` at {}:{}",
-                violation.binding, violation.use_span.filename, violation.use_span.line
+                violation.binding,
+                violation.use_span.filename,
+                violation.use_span.line
             );
             assert!(
                 !is_projection_base_only_violation(&violation),
@@ -179,22 +183,8 @@ fn is_projection_base_only_violation(violation: &move_check::MoveViolation) -> b
             .all(|(used, moved)| used == moved)
 }
 
-fn format_place(place: &move_check::place::Place) -> String {
-    let mut rendered = place.root().to_string();
-    for projection in place.projections() {
-        match projection {
-            Projection::Field(field) => {
-                rendered.push('.');
-                rendered.push_str(field);
-            }
-            Projection::TupleIndex(index) => {
-                rendered.push('.');
-                rendered.push_str(&index.to_string());
-            }
-            Projection::OpaqueIndex => rendered.push_str("[_]"),
-        }
-    }
-    rendered
+fn format_place(place: &metel::place::Place) -> String {
+    place.to_string()
 }
 
 fn collect_sources(path: &Path, out: &mut Vec<PathBuf>) {

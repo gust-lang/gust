@@ -1,0 +1,10 @@
+fun peek(s: &String) -> i64 { 1 }
+
+fun main() {
+    let s = "hello";
+    var i = 0;
+    while (peek(&s) > i) {
+        i += 1;
+        let moved = s;
+    }
+}
