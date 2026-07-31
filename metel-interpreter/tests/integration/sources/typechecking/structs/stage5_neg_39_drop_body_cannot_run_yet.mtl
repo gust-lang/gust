@@ -1,0 +1,9 @@
+struct Handle {
+    fd: u64,
+}
+
+extend Handle: Drop {
+    fun drop(self) {
+        println("closing");
+    }
+}

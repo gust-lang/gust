@@ -1,0 +1,4 @@
+[expect]
+status = "typecheck_error"
+code = "T0001"
+contains = "a `drop` body cannot run yet"

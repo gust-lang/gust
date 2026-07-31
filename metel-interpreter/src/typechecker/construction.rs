@@ -997,7 +997,65 @@ fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl
     }))
 }
 
+/// Reject a `Drop` impl that supplies a destructor body, while still allowing a
+/// type to *declare* itself `Drop`.
+///
+/// RFC-0071 §9c gates #290 (the `Drop` aspect) on #292 (destructor invocation):
+/// between them, a `drop` body compiles and never runs — "a feature that looks
+/// functional and silently does nothing". #292 moved to v0.13.0, so the gate
+/// fired and that state must not ship (#345).
+///
+/// The rejection is narrower than "reject `Drop` impls", deliberately. Declaring
+/// `Drop` has type-level effects that are implemented and correct *today*, and
+/// none of them involve the destructor running: `Copy`/`Drop` exclusion,
+/// `T: !Drop` bounds, the ban on `Drop` for anonymous records, and the move
+/// checker's refusal to partially move a `Drop` value. An empty `fun drop(self)
+/// {}` claims nothing that is not delivered. A body with statements in it does.
+fn reject_inert_destructor(ib: &ImplBlock, ctx: &ConstructCtx) -> Result<(), MetelError> {
+    if ib.polarity != crate::ast::Polarity::Positive {
+        return Ok(());
+    }
+    // Match the stdlib aspect by its declaring module, not by name, so a user
+    // module's own unrelated `Drop` aspect is unaffected — the same discipline
+    // `coherence.rs` uses for the `Copy`/`Drop` exclusion.
+    let Some(aspect_name) = ib.aspect_name.as_deref() else {
+        return Ok(());
+    };
+    if aspect_name != "Drop" {
+        return Ok(());
+    }
+    let is_std_core_drop = ctx
+        .registry
+        .aspect_declaring_module(aspect_name)
+        .is_some_and(|module| module.as_slice() == ["std".to_string(), "core".to_string()]);
+    if !is_std_core_drop {
+        return Ok(());
+    }
+
+    for method in &ib.methods {
+        if method.name != "drop" {
+            continue;
+        }
+        let body_is_empty = method.body.stmts.is_empty() && method.body.tail.is_none();
+        if body_is_empty {
+            continue;
+        }
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0001,
+            "a `drop` body cannot run yet: destructor invocation is not implemented \
+             (metel-core#292), so this cleanup would silently never happen. Leave the \
+             body empty to declare the type `Drop` for its type-level effects — \
+             `Copy` exclusion, `!Drop` bounds, and the partial-move ban — or move the \
+             cleanup into an ordinary method the caller invokes"
+                .to_string(),
+            &method.span,
+        ));
+    }
+    Ok(())
+}
+
 fn construct_impl_decl(ib: &ImplBlock, ctx: &mut ConstructCtx) -> Result<TypedDecl, MetelError> {
+    reject_inert_destructor(ib, ctx)?;
     // An impl block that declares its own generics (RFC-0036 conditional impls,
     // RFC-0061 structural blanket impls: `impl<T: Bound> Aspect for Type<T>` /
     // `impl<T: Display> Display for T[]`) can't have its methods eagerly constructed

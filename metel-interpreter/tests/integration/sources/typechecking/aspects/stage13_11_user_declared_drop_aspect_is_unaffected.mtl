@@ -1,0 +1,22 @@
+// The restriction on `drop` bodies (metel-core#345) matches `std::core::Drop` by
+// its declaring module, not by name, so a user module's own unrelated `Drop`
+// aspect keeps working — including with a non-empty body, since nothing about it
+// promises destructor semantics.
+aspect Drop {
+    fun drop(self) -> i64;
+}
+
+struct Mine {
+    v: i64,
+}
+
+extend Mine: Drop {
+    fun drop(self) -> i64 {
+        return self.v + 1;
+    }
+}
+
+fun main() {
+    let m = Mine { v = 41 };
+    assert(m.drop() == 42);
+}

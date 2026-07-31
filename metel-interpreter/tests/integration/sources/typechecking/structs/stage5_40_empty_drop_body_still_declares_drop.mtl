@@ -1,0 +1,23 @@
+struct Handle {
+    fd: u64,
+}
+
+// An empty body claims nothing that is not delivered, so it stays legal: the
+// type-level effects of `Drop` are implemented today, only invocation is not.
+extend Handle: Drop {
+    fun drop(self) {}
+}
+
+fun takes_non_drop<T: !Drop>(value: T) -> i64 { 1 }
+
+struct Plain {
+    v: i64,
+}
+
+fun main() {
+    let h = Handle { fd = 1 };
+    assert(h.fd == 1);
+    // `Handle` is genuinely `Drop`, so it is excluded from a `!Drop` bound,
+    // while a plain struct satisfies it.
+    assert(takes_non_drop(Plain { v = 2 }) == 1);
+}
