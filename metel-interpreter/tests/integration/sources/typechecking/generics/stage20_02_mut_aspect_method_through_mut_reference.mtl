@@ -1,0 +1,23 @@
+aspect Bump {
+    fun bump(&var self);
+}
+
+struct C {
+    v: i64,
+}
+
+extend C: Bump {
+    fun bump(&var self) {
+        self.v = self.v + 1;
+    }
+}
+
+fun go<T: Bump>(x: &var T) {
+    x.bump();
+}
+
+fun main() {
+    var c = C { v = 0 };
+    go(&var c);
+    assert(c.v == 1);
+}

@@ -2902,7 +2902,14 @@ fn infer_expr(
             }
 
             // Slow path: TypeVar receiver — may be a bounded generic type param.
-            if let InferType::Var(tv) = &recv_ty {
+            //
+            // Peeled first, so `x: &T` under `T: Show` reaches the same bound
+            // lookup as `x: T` (#334). The concrete-receiver path above already
+            // peels; without it here, a borrowing generic could not call an
+            // aspect method on its own parameter, which is the shape every
+            // read-only generic wants once move checking pushes it to borrow.
+            let peeled_recv_for_bounds = peel_all_references(&recv_ty);
+            if let InferType::Var(tv) = &peeled_recv_for_bounds {
                 if let Some(aspect_names) = ctx.bounds_for_type_var(*tv) {
                     let self_generic_map: HashMap<String, TypeVar> =
                         std::iter::once(("Self".to_string(), *tv)).collect();
@@ -2969,6 +2976,25 @@ fn infer_expr(
                                         let param_ty =
                                             type_expr_to_infer_with_generics(ann, &self_generic_map);
                                         ctx.add_constraint(arg_ty.clone(), param_ty, span.clone());
+                                    }
+                                }
+
+                                // Mutable-access guard, mirroring the concrete-receiver
+                                // path above. Peeling the receiver (#334) is what makes
+                                // this reachable at all: without it a `&var self` method
+                                // on a bounded `T` was rejected for the wrong reason —
+                                // "cannot infer receiver type" — and peeling alone would
+                                // have made `x.bump()` legal through a shared `&T`.
+                                let receiver_kind = method_def
+                                    .params
+                                    .iter()
+                                    .find(|p| p.name == "self")
+                                    .and_then(|p| p.receiver.clone());
+                                if matches!(receiver_kind, Some(crate::ast::ReceiverKind::RefMut))
+                                    && !chain_provides_mut_access(&recv_ty)
+                                {
+                                    if let Expr::Ident(name, recv_span) = receiver.as_ref() {
+                                        let _ = ctx.lookup_for_write(name, recv_span)?;
                                     }
                                 }
 

@@ -1,0 +1,3 @@
+[expect]
+status = "typecheck_error"
+contains = "immutable binding"

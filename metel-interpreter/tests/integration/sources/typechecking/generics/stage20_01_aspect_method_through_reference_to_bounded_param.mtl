@@ -1,0 +1,24 @@
+aspect Show {
+    fun show(&self) -> String;
+}
+
+struct B {
+    v: i64,
+}
+
+extend B: Show {
+    fun show(&self) -> String {
+        return "b";
+    }
+}
+
+// The shape every read-only generic wants once move checking pushes it to
+// borrow: take `&T`, call an aspect method on it, move nothing.
+fun render<T: Show>(x: &T) -> String {
+    return x.show();
+}
+
+fun main() {
+    let b = B { v = 1 };
+    assert(render(&b) == "b");
+}

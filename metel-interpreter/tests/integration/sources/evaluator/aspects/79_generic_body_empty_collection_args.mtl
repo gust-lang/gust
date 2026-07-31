@@ -80,12 +80,12 @@ extend B: Show {
 // the caller below reaches this through a borrowed `T[]` view that cannot give an element
 // away. `B` is not `Copy`, so borrowing is the only option — and making it `Copy` would
 // change what this fixture is about.
-// The deref is explicit because `x.show()` does not resolve when `x: &T` and `T` is a
-// bounded type parameter -- auto-deref does not reach an aspect method through a
-// reference to a type variable (metel-core#334). `(*x).show()` is the workaround; drop
-// it once that lands.
+// Calls the aspect method straight through the reference: auto-deref reaches an
+// aspect method through a reference to a bounded type parameter since
+// metel-core#334, so the `(*x).show()` workaround this fixture used to carry is
+// gone.
 fun render<T: Show>(x: &T) -> String {
-    return (*x).show();
+    return x.show();
 }
 
 extend<T: Show> T[]: Show {

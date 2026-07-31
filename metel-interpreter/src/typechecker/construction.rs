@@ -1868,7 +1868,16 @@ fn construct_expr(
             span,
         } => {
             let typed_receiver = construct_expr(receiver, None, ctx)?;
-            if matches!(typed_receiver.ty(), Type::Array(_) | Type::SizedArray(_, _)) {
+            // Peel references before the builtin-pattern gate, matching what the
+            // scheme-based path below already does and what
+            // `builtin_pattern_method_expr` itself checks. Without this, `.len()`
+            // on a `&T[]` fell past the builtin and into the scheme lookup, which
+            // has no entry for it, so the diagnostic claimed the method did not
+            // exist on arrays at all (#314).
+            if matches!(
+                peel_type_references(typed_receiver.ty()),
+                Type::Array(_) | Type::SizedArray(_, _)
+            ) {
                 let typed_args: Vec<TypedExpr> = args
                     .iter()
                     .map(|arg| construct_expr(arg, None, ctx))
