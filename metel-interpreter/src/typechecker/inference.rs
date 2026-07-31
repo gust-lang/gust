@@ -2798,10 +2798,14 @@ fn infer_expr(
                     Some(crate::ast::ReceiverKind::RefMut)
                 ) && !chain_provides_mut_access(&recv_ty)
                 {
+                    // T0006, not T0008 — T0008 is "non-exhaustive match". This site
+                    // has been miscoding the error since it was written; no fixture
+                    // covered it, so nothing caught it. The spelling is `&var self`
+                    // too: `&mut` is not syntax this language has (#301).
                     return Err(MetelError::type_error(
-                        TypeErrorCode::T0008,
+                        TypeErrorCode::T0006,
                         format!(
-                            "cannot call `&mut self` method `{method}` through shared receiver"
+                            "cannot call `&var self` method `{method}` through a shared reference"
                         ),
                         span,
                     ));
@@ -2884,6 +2888,19 @@ fn infer_expr(
                     Some(crate::ast::ReceiverKind::RefMut)
                 ) && !chain_provides_mut_access(&recv_ty)
                 {
+                    // Reached through a shared reference: reject outright, the way
+                    // the array-method site above already does. The binding check
+                    // below cannot speak for a receiver that is not a binding
+                    // (`pair.0.bump()`), which let mutation through a `&T` past.
+                    if is_shared_reference_chain(&recv_ty) {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0006,
+                            format!(
+                                "cannot call `&var self` method `{method}` through a shared reference"
+                            ),
+                            span,
+                        ));
+                    }
                     if let Expr::Ident(name, recv_span) = receiver.as_ref() {
                         let _ = ctx.lookup_for_write(name, recv_span)?;
                     }
@@ -2993,6 +3010,15 @@ fn infer_expr(
                                 if matches!(receiver_kind, Some(crate::ast::ReceiverKind::RefMut))
                                     && !chain_provides_mut_access(&recv_ty)
                                 {
+                                    if is_shared_reference_chain(&recv_ty) {
+                                        return Err(MetelError::type_error(
+                                            TypeErrorCode::T0006,
+                                            format!(
+                                                "cannot call `&var self` method `{method}` through a shared reference"
+                                            ),
+                                            span,
+                                        ));
+                                    }
                                     if let Expr::Ident(name, recv_span) = receiver.as_ref() {
                                         let _ = ctx.lookup_for_write(name, recv_span)?;
                                     }
@@ -3495,6 +3521,16 @@ fn peel_all_references(ty: &InferType) -> InferType {
 /// shared reference to a `&mut T` still carries that inner `&mut T`'s own write
 /// capability; reading it out doesn't downgrade it). All-`Reference` chains with
 /// no `MutReference` anywhere have no write access at all.
+/// Whether the receiver is reached *through a shared reference* — a reference
+/// chain, none of whose layers grants mutable access.
+///
+/// Distinct from `!chain_provides_mut_access`, which is also true of an owned
+/// receiver. An owned receiver may still be mutated when its binding is `var`,
+/// so it must fall through to the binding check rather than be rejected here.
+fn is_shared_reference_chain(ty: &InferType) -> bool {
+    matches!(ty, InferType::Reference(_)) && !chain_provides_mut_access(ty)
+}
+
 fn chain_provides_mut_access(ty: &InferType) -> bool {
     match ty {
         InferType::MutReference(_) => true,

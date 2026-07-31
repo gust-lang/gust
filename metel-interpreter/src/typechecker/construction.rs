@@ -1874,10 +1874,19 @@ fn construct_expr(
             // on a `&T[]` fell past the builtin and into the scheme lookup, which
             // has no entry for it, so the diagnostic claimed the method did not
             // exist on arrays at all (#314).
-            if matches!(
-                peel_type_references(typed_receiver.ty()),
-                Type::Array(_) | Type::SizedArray(_, _)
-            ) {
+            //
+            // `args.is_empty()` guards the *construction* below, not the builtin
+            // match: every builtin pattern is nullary, so a call with arguments can
+            // never match one, and constructing its arguments here only to discard
+            // them advances `ctx.gen` — the shared TypeVar generator — a second
+            // time before the real path constructs them again. That shifts `?tN`
+            // numbering for everything downstream (#307).
+            if args.is_empty()
+                && matches!(
+                    peel_type_references(typed_receiver.ty()),
+                    Type::Array(_) | Type::SizedArray(_, _)
+                )
+            {
                 let typed_args: Vec<TypedExpr> = args
                     .iter()
                     .map(|arg| construct_expr(arg, None, ctx))

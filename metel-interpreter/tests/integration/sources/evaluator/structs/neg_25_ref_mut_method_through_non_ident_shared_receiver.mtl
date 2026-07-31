@@ -1,0 +1,19 @@
+// TYPECHECK_ERROR[T0006]
+// The concrete counterpart of stage20_neg_02: a non-identifier receiver reached
+// through a shared reference. Both paths must agree.
+
+struct Counter {
+    value: i64,
+}
+
+extend Counter {
+    fun increment(&var self) {
+        self.value += 1;
+    }
+}
+
+fun main() {
+    var c = Counter { value = 0 };
+    let pair: (&Counter, i64) = (&c, 1);
+    pair.0.increment();
+}
