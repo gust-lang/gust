@@ -7,7 +7,8 @@
 //! second analysis over the *same* places without rebuilding them and without the
 //! two analyses disagreeing about partial moves.
 //!
-//! Policy lives with each analysis, not here. That a move out of an
+//! It lives at the crate root, not inside `move_check`, for that reason
+//! (adr-0045). Policy lives with each analysis, not here. That a move out of an
 //! [`Projection::OpaqueIndex`] element is rejected, or that a move through a
 //! [`Projection::Deref`] needs a reborrow, are facts about *moves*; this module
 //! only says such a place exists and how it relates to its prefixes.

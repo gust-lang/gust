@@ -52,7 +52,8 @@ fn main() {
                 continue;
             }
             // A loop-carried move legitimately *is* its own use: the same
-            // expression, one iteration later. Anywhere else it is a bug.
+            // expression, one iteration later (adr-0045). Anywhere else it is
+            // a bug.
             assert!(
                 violation.use_span != violation.moved_span
                     || violation.moved_in_previous_iteration,

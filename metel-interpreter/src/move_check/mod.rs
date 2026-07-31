@@ -644,7 +644,8 @@ impl<'a> Checker<'a> {
     ///
     /// Paths that leave through `break` or `return` are excluded from the back
     /// edge, so `loop { let n = eat(s); break; }` stays accepted: the move
-    /// happens, but no second iteration observes it.
+    /// happens, but no second iteration observes it. Widening with the body's
+    /// whole exit state instead would reject that program — see adr-0045.
     ///
     /// Only the final pass reports. The intermediate ones walk the same code and
     /// would otherwise duplicate every diagnostic inside the body.
@@ -964,8 +965,9 @@ impl<'a> Checker<'a> {
         self.check_block(then_branch, current_module, &mut then_state);
         let mut joined = state.clone();
         // A branch that ends in `break`, `continue` or `return` never reaches
-        // the code after the `if`, so what it moved must not be joined into it.
-        // Its moves were already routed to the loop's exit or back edge.
+        // the code after the `if`, so what it moved must not be joined into it
+        // (adr-0045). Its moves were already routed to the loop's exit or back
+        // edge, so dropping them here loses nothing.
         if !then_state.diverged {
             joined.union_from(&then_state);
         }
