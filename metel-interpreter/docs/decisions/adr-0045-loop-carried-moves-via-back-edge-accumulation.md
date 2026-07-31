@@ -267,11 +267,11 @@ here — a false negative in the core analysis, not a precision limit like the r
    *at creation* inside a loop is caught, because that is an ordinary move. This is #330's
    scope, not the loop analysis's, and it must close before `--move-check` becomes the
    default (#310).
-2. **`MAX_LOOP_PASSES` stops widening after 8 passes.** A cascade needing more would lose
+2. **`MAX_LOOP_PASSES` stops widening after 8 passes** (#341). A cascade needing more would lose
    the violations the next pass would have found. Theoretical: the deepest cascade
    constructed for the tests (a field's partial move, then the whole struct) settles in
    one extra pass.
-3. **A generic body whose reconstruction fails is skipped**, with a warning and a count in
+3. **A generic body whose reconstruction fails is skipped** (#342), with a warning and a count in
    the report. Pre-existing and visible, but still a route past every loop inside such a
    body.
 4. **Only the first violation is reported** (#338), so a loop body with several distinct
@@ -279,7 +279,7 @@ here — a false negative in the core analysis, not a precision limit like the r
 
 **False positives — a valid program is rejected:**
 
-5. **A loop bounded by its condition rather than by `break`.** `while (i < 1) { let moved
+5. **A loop bounded by its condition rather than by `break`** (#341). `while (i < 1) { let moved
    = s; }` runs once, but nothing proves that, so the back edge looks live and the move
    reads as loop-carried. Writing the exit as a `break` avoids it. This is the one place
    the fixed point rejects something develop accepted for a reason other than a real bug.
@@ -298,3 +298,8 @@ against shapes I had thought of. Item 0 was found by handing the change to a rev
 the standing instruction to find a gap the list did not contain. The list was published
 as complete after the first method and was not complete. Enumerating one's own blind spots
 does not find them.
+
+Each tracked entry above carries a checkbox on its issue to come back and update this
+section, and the matching list in the status report, when it closes. A documented gap that
+no longer exists is worse than an undocumented one: it teaches a workaround for a problem
+that is gone.
