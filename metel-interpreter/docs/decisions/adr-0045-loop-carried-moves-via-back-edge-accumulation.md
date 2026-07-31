@@ -202,6 +202,35 @@ enclosing loop stops treating its own back edge as live. `while`, `for` and `for
 never marked this way — their condition may be false on the first test, so control can
 always pass them.
 
+### 7. Binding a name restores what it shadowed when its scope ends
+
+`FlowState::bind` clears the moved state for the name it binds, which is correct for the
+new binding — it is a fresh value. Before #343 that clear also destroyed the *shadowed*
+binding's state, and `pop_scope` had nothing to put back, so a shadow inside a loop body
+laundered a carried move:
+
+```metel
+loop {
+    let moved = s;
+    let s = "replacement";   // erased the carried move
+    …
+}
+```
+
+Each scope now records what its bindings displaced (`ShadowedBinding`) and `pop_scope`
+restores it, **in reverse order** — a name bound twice in one scope displaced the earlier
+binding, so unwinding forwards would leave the later shadow's empty state rather than what
+the scope was entered with.
+
+The delicate half is that `break` and `continue` record their state *before* those scopes
+are popped. A jump out of a loop body therefore has to unwind first, or the recorded state
+still has the shadow in effect and hides the outer binding it displaced. `LoopFrame` keeps
+the scope depth the body's pass began at, and both jumps record
+`state.unwound_to(frame.scope_depth)`. Getting this wrong in either direction is
+observable: without unwinding, a `break` launders the outer binding's move; unwinding the
+wrong state pins the *shadow's* move on the outer binding, which was never moved. There is
+a regression test for each.
+
 ## Consequences
 
 - Criterion 3 is met. A move in a `loop`, `while`, `for` or `for-in` body is now caught
@@ -230,30 +259,12 @@ always pass them.
 Each of these was reproduced against the built interpreter, not inferred.
 
 *Corrected 2026-07-31, after review: this list was published as complete and was not.
-Item 0 was found by an adversarial review of the change and is the most serious entry
-here — a false negative in the core analysis, not a precision limit like the rest.*
+An adversarial review found a seventh gap — shadowing a binding erased the shadowed
+binding's moved state permanently, laundering a carried move (#343). That one was a bug
+rather than a precision limit, so it was **fixed in this change** rather than listed; see
+decision 7. Everything below is a deliberate trade-off or is tracked elsewhere.*
 
 **False negatives — a real violation is accepted:**
-
-0. **Shadowing erases the shadowed binding's moved state permanently** (#343).
-   `FlowState::bind` clears `moved` for the name it binds — correct for a fresh binding —
-   and `pop_scope` cannot restore what the shadow displaced. A shadow inside a loop body
-   therefore launders a carried move:
-
-   ```metel
-   loop {
-       let moved = s;
-       let s = "replacement";   // erases the carried move
-       …
-   }
-   ```
-
-   Pre-existing rather than introduced here — `develop` accepts the use-after-loop form
-   too, which is fixture `09_move_in_loop_body_observed_after_loop` plus one line. But the
-   fixed point would otherwise catch the loop-carried case, so this change makes a worse
-   instance of it reachable. A shadow inside an `if` branch does not launder, because that
-   join is taken from a clone that still holds the record; it needs a scope the state
-   flows through linearly.
 
 1. **Calling a closure never consumes its captures**, and every `Type::Fun` is treated as
    `Copy` (#330). A loop that calls such a closure every iteration is accepted:
@@ -287,17 +298,16 @@ here — a false negative in the core analysis, not a precision limit like the r
    asking whether the branch can be taken, so `if (false) { let moved = s; }` still counts.
    Divergence is the only reachability fact the checker uses, and (5) is what that costs.
 
-(0) is a bug and should be fixed; it is the only entry here that is not a deliberate
-trade-off. (1)–(4) are tracked elsewhere or are inherent to a bounded analysis. (5) and
+(1)–(4) are tracked elsewhere or are inherent to a bounded analysis. (5) and
 (6) are the deliberate price of not building a CFG, and are the first things to revisit if
 the conservatism proves annoying in practice — a trip-count analysis for the common
 `while (i < k)` shape would close (5) without a CFG.
 
-**On the process, since it generalises:** items 1–6 were found by probing the analysis
-against shapes I had thought of. Item 0 was found by handing the change to a reviewer with
-the standing instruction to find a gap the list did not contain. The list was published
-as complete after the first method and was not complete. Enumerating one's own blind spots
-does not find them.
+**On the process, since it generalises:** the gaps below were found by probing the
+analysis against shapes I had thought of. The shadowing bug was found by handing the change
+to a reviewer with the standing instruction to find a gap the list did not contain. The
+list was published as complete after the first method and was not complete. Enumerating
+one's own blind spots does not find them.
 
 Each tracked entry above carries a checkbox on its issue to come back and update this
 section, and the matching list in the status report, when it closes. A documented gap that

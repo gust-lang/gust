@@ -188,6 +188,16 @@ enum MoveCause {
     ByValueReceiver,
 }
 
+/// What introducing a binding displaced, so that leaving its scope restores the
+/// binding it shadowed rather than deleting both.
+#[derive(Debug, Clone)]
+struct ShadowedBinding {
+    name: String,
+    moved: Option<Vec<MoveRecord>>,
+    binding_type: Option<Type>,
+    borrowed_array: bool,
+}
+
 #[derive(Debug, Clone, Default)]
 struct FlowState {
     moved: HashMap<String, Vec<MoveRecord>>,
@@ -195,7 +205,7 @@ struct FlowState {
     /// Loop bindings sourced from a `T[]` borrowed view. They may be read or
     /// borrowed, but a non-Copy value cannot be moved out through the binding.
     borrowed_array_bindings: HashSet<String>,
-    scopes: Vec<Vec<String>>,
+    scopes: Vec<Vec<ShadowedBinding>>,
     /// Whether the path walked so far has left the enclosing loop iteration
     /// through `break`, `continue`, or `return`. Only the loop driver reads it,
     /// to decide whether this state reaches the back edge; it is not part of the
@@ -209,22 +219,52 @@ impl FlowState {
     }
 
     fn pop_scope(&mut self) {
-        if let Some(bindings) = self.scopes.pop() {
-            for binding in bindings {
-                self.moved.remove(&binding);
-                self.binding_types.remove(&binding);
-                self.borrowed_array_bindings.remove(&binding);
+        let Some(bindings) = self.scopes.pop() else {
+            return;
+        };
+        // Reverse order: a name bound twice in one scope displaced the earlier
+        // binding, so unwinding forwards would leave the *later* shadow's empty
+        // state in place instead of what the scope was entered with.
+        for shadowed in bindings.into_iter().rev() {
+            let ShadowedBinding {
+                name,
+                moved,
+                binding_type,
+                borrowed_array,
+            } = shadowed;
+            match moved {
+                Some(records) => self.moved.insert(name.clone(), records),
+                None => self.moved.remove(&name),
+            };
+            match binding_type {
+                Some(ty) => self.binding_types.insert(name.clone(), ty),
+                None => self.binding_types.remove(&name),
+            };
+            if borrowed_array {
+                self.borrowed_array_bindings.insert(name);
+            } else {
+                self.borrowed_array_bindings.remove(&name);
             }
         }
     }
 
+    /// Introduce `name`, remembering whatever it displaced so leaving the scope
+    /// can put it back.
+    ///
+    /// Clearing the moved state is right for the *new* binding — it is a fresh
+    /// value. What was wrong before #343 was that the clear also destroyed the
+    /// shadowed binding's state, which `pop_scope` then had nothing to restore:
+    /// a shadow inside a loop body laundered a carried move.
     fn bind(&mut self, name: &str) {
+        let displaced = ShadowedBinding {
+            name: name.to_string(),
+            moved: self.moved.remove(name),
+            binding_type: self.binding_types.remove(name),
+            borrowed_array: self.borrowed_array_bindings.remove(name),
+        };
         if let Some(scope) = self.scopes.last_mut() {
-            scope.push(name.to_string());
+            scope.push(displaced);
         }
-        self.moved.remove(name);
-        self.binding_types.remove(name);
-        self.borrowed_array_bindings.remove(name);
     }
 
     fn bind_typed(&mut self, name: &str, ty: &Type) {
@@ -311,6 +351,17 @@ impl FlowState {
         }
     }
 
+    /// This state as it would be after leaving every scope opened since the
+    /// stack was `depth` deep — what a `break` or `continue` out of a loop body
+    /// actually hands to its destination.
+    fn unwound_to(&self, depth: usize) -> Self {
+        let mut unwound = self.clone();
+        while unwound.scopes.len() > depth {
+            unwound.pop_scope();
+        }
+        unwound
+    }
+
     /// A stable, order-independent summary of the moved state, for deciding when
     /// a loop's entry state has stopped growing. `moved` is a `HashMap` of
     /// `Vec`s, so comparing it directly would compare iteration order too.
@@ -332,27 +383,29 @@ struct Checker<'a> {
     report: MoveCheckReport,
     type_ctx: Option<TypeCtx>,
     generic_envs: Vec<GenericMoveEnv>,
-    /// One accumulator per enclosing loop body currently being walked, innermost
-    /// last. A `continue` merges the state it reaches into the innermost one,
-    /// because that state reaches the loop's back edge without falling out of
-    /// the bottom of the body.
-    loop_back_edges: Vec<FlowState>,
-    /// The mirror of `loop_back_edges` for the way out: a `break` merges its
-    /// state into the innermost one. Those moves are invisible to the next
-    /// iteration but visible after the loop, so they are kept apart from the
-    /// state that keeps flowing through the body.
-    loop_exits: Vec<LoopExit>,
+    /// One frame per enclosing loop body currently being walked, innermost last.
+    loop_frames: Vec<LoopFrame>,
 }
 
-/// What the `break`s in one loop body contributed.
-///
-/// `reached` is not the same as `state` being non-empty: a `break` that moved
-/// nothing still means the loop can be left, which is what decides whether a
-/// `loop` hands control back at all.
+/// The two ways out of one loop body, plus what a jump out of it has to unwind.
 #[derive(Debug, Clone, Default)]
-struct LoopExit {
-    reached: bool,
-    state: FlowState,
+struct LoopFrame {
+    /// How deep the scope stack was when this body's pass began. A `break` or
+    /// `continue` jumps out of every scope opened since, and the state it
+    /// contributes has to be unwound to here first — otherwise a binding that
+    /// *shadows* one from outside the loop is still in effect in the recorded
+    /// state, hiding the outer binding it displaced (#343).
+    scope_depth: usize,
+    /// States that reach the loop's back edge through a `continue`, so they
+    /// enter the next iteration without falling out of the bottom of the body.
+    back_edge: FlowState,
+    /// Whether any `break` was reached. Not the same as `exit` being non-empty:
+    /// a `break` that moved nothing still means the loop can be left, which is
+    /// what decides whether a `loop` hands control back at all.
+    exit_reached: bool,
+    /// States that leave through a `break` — invisible to the next iteration,
+    /// visible after the loop.
+    exit: FlowState,
 }
 
 /// How many times a loop body may be re-walked while its entry state grows.
@@ -369,8 +422,7 @@ impl<'a> Checker<'a> {
             report: MoveCheckReport::default(),
             type_ctx: None,
             generic_envs: Vec::new(),
-            loop_back_edges: Vec::new(),
-            loop_exits: Vec::new(),
+            loop_frames: Vec::new(),
         }
     }
 
@@ -672,13 +724,20 @@ impl<'a> Checker<'a> {
             let mark = self.report.mark();
             let mut body_state = entry.clone();
             body_state.diverged = false;
-            self.loop_back_edges.push(FlowState::default());
-            self.loop_exits.push(LoopExit::default());
+            let scope_depth = body_state.scopes.len();
+            self.loop_frames.push(LoopFrame {
+                scope_depth,
+                ..LoopFrame::default()
+            });
             pass(self, current_module, &mut body_state);
-            let mut back_edge = self.loop_back_edges.pop().unwrap_or_default();
-            let exit = self.loop_exits.pop().unwrap_or_default();
+            let frame = self.loop_frames.pop().unwrap_or_default();
+            let mut back_edge = frame.back_edge;
+            let exit = frame.exit;
+            // Falling out of the bottom of the body reaches the back edge too.
+            // Its scopes are already balanced by the pass, so unwinding is a
+            // no-op here — done anyway so the two routes agree by construction.
             if !body_state.diverged {
-                back_edge.union_from(&body_state);
+                back_edge.union_from(&body_state.unwound_to(scope_depth));
             }
 
             let mut widened = entry.clone();
@@ -694,12 +753,12 @@ impl<'a> Checker<'a> {
                 if !body_state.diverged {
                     state.union_from(&body_state);
                 }
-                state.union_from(&exit.state);
+                state.union_from(&exit);
                 // A `loop` with no reachable `break` never hands control back,
                 // so the code around it inherits that. Without this, an outer
                 // loop treats its own back edge as live even though an inner
                 // `loop { return; }` guarantees it is never taken.
-                if !exits_without_break && !exit.reached {
+                if !exits_without_break && !frame.exit_reached {
                     state.diverged = true;
                 }
                 return;
@@ -714,10 +773,26 @@ impl<'a> Checker<'a> {
     /// does: it reaches the next iteration without falling out of the bottom of
     /// the body, and then this path goes no further.
     fn reach_back_edge(&mut self, state: &mut FlowState) {
-        if let Some(back_edge) = self.loop_back_edges.last_mut() {
-            back_edge.union_from(state);
+        if let Some(depth) = self.loop_frames.last().map(|frame| frame.scope_depth) {
+            let unwound = state.unwound_to(depth);
+            if let Some(frame) = self.loop_frames.last_mut() {
+                frame.back_edge.union_from(&unwound);
+            }
         }
         state.diverged = true;
+    }
+
+    /// Record a `break`: this path leaves the innermost loop, so what it moved
+    /// is visible after the loop but not to the next iteration.
+    fn reach_loop_exit(&mut self, state: &FlowState) {
+        let Some(depth) = self.loop_frames.last().map(|frame| frame.scope_depth) else {
+            return;
+        };
+        let unwound = state.unwound_to(depth);
+        if let Some(frame) = self.loop_frames.last_mut() {
+            frame.exit_reached = true;
+            frame.exit.union_from(&unwound);
+        }
     }
 
     fn check_stmt(&mut self, stmt: &TypedStmt, current_module: &[String], state: &mut FlowState) {
@@ -888,10 +963,7 @@ impl<'a> Checker<'a> {
                 if let Some(value) = &brk.value {
                     self.consume_expr(value, current_module, state);
                 }
-                if let Some(exit) = self.loop_exits.last_mut() {
-                    exit.reached = true;
-                    exit.state.union_from(state);
-                }
+                self.reach_loop_exit(state);
                 state.diverged = true;
             }
         }
@@ -3710,6 +3782,93 @@ fun main() {
         i += 1;
         let moved = s;
         loop { break; }
+    }
+}
+"#,
+            "s",
+        );
+    }
+
+    // ── Shadowing (#343) ─────────────────────────────────────────────────────
+    //
+    // Binding a name clears its moved state, which is right for the new binding
+    // and must not destroy the one it shadows. The delicate part is that a
+    // `break` or `continue` records its state *before* the shadow's scope is
+    // popped, so the recorded state has to be unwound first.
+
+    #[test]
+    fn a_shadow_does_not_launder_a_loop_carried_move() {
+        assert_has_violation(
+            r#"
+fun main() {
+    let s = "original";
+    var i = 0;
+    loop {
+        i += 1;
+        let moved = s;
+        let s = "replacement";
+        if (i == 2) { break; }
+    }
+}
+"#,
+            "s",
+        );
+    }
+
+    #[test]
+    fn a_shadow_does_not_launder_a_move_carried_out_through_break() {
+        assert_has_violation(
+            r#"
+fun main() {
+    let s = "original";
+    loop {
+        let moved = s;
+        let s = "replacement";
+        break;
+    }
+    let again = s;
+}
+"#,
+            "s",
+        );
+    }
+
+    #[test]
+    fn a_move_of_a_shadow_does_not_escape_its_scope_through_break() {
+        // The inverse error: unwinding must not carry the *shadow's* move out
+        // and pin it on the outer binding, which was never moved.
+        assert_no_violations(
+            r#"
+fun main() {
+    let s = "original";
+    var i = 0;
+    loop {
+        i += 1;
+        let s = "shadow";
+        let moved = s;
+        if (i == 2) { break; }
+    }
+    let outer = s;
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn rebinding_the_same_name_twice_in_one_scope_restores_the_outermost() {
+        // `pop_scope` unwinds in reverse; forwards would leave the second
+        // shadow's empty state instead of what the scope was entered with.
+        assert_has_violation(
+            r#"
+fun main() {
+    let s = "original";
+    var i = 0;
+    loop {
+        i += 1;
+        let moved = s;
+        let s = "first";
+        let s = "second";
+        if (i == 2) { break; }
     }
 }
 "#,
