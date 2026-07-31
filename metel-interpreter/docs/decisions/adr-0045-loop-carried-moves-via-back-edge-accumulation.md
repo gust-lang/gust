@@ -51,6 +51,15 @@ would import from the move checker's namespace; and `from_typed_place` ended
 expression-side deref too. It could not represent `*p` at all — and extending it later
 is exactly the rework §9b exists to prevent.
 
+**Two false positives, found by probing the fixed point once it worked.** Checking loops
+properly made two existing weaknesses reachable that had not mattered before:
+
+- Writing to a moved binding was reported as a *use* of it. `let moved = s; s = "again";`
+  was rejected, with no loop involved — but move-then-replace is the idiomatic loop body,
+  so the fixed point turned a latent bug into the first thing a user would hit.
+- Divergence did not propagate out of a nested loop, so an outer loop treated its back
+  edge as live even when an inner `loop { return; }` guaranteed it was never taken.
+
 ## Alternatives considered
 
 **A naive fixed point** — widen the body's entry state with its whole exit state and
@@ -174,6 +183,25 @@ and remain in `move_check`; `place` only says such a place exists and how it rel
 its prefixes. Rendering moves to `Display for Place` — analysis-neutral, and previously
 duplicated between `move_check` and the `move-check-count` binary.
 
+### 5. A write reinitializes its target and does not read it
+
+`observe_assignment_target` (formerly `observe_typed_place`) checks only what the
+assignment *reads* — everything under the final step. `s = v` reads nothing;
+`p.f = v` requires a reachable `p`; `*p = v` requires a valid `p` but does not read the
+pointee. `reinitialize_assigned_place` then clears the target's moved record along with
+everything under it, since writing `p.f` replaces `p.f.g` too. A move of a strict
+*ancestor* survives — replacing one field does not revive the whole value — and that case
+is already an error at the write itself.
+
+### 6. A `loop` with no reachable `break` diverges
+
+`loop_exits` records whether any `break` was reached, not just what it moved: a `break`
+that moves nothing still means the loop can be left. A `loop` whose exit was never
+reached cannot hand control back, so the state after it is marked diverged, and an
+enclosing loop stops treating its own back edge as live. `while`, `for` and `for-in` are
+never marked this way — their condition may be false on the first test, so control can
+always pass them.
+
 ## Consequences
 
 - Criterion 3 is met. A move in a `loop`, `while`, `for` or `for-in` body is now caught
@@ -191,14 +219,51 @@ duplicated between `move_check` and the `move-check-count` binary.
 - `move-check-count` over the pre-change corpus is byte-identical — 30 fixtures, 32 user
   violations, 4590 embedded-std, same spans and places. Neither change moves an existing
   diagnostic.
-- Divergence does not propagate outward through a nested loop: a `return` inside an inner
-  loop does not mark the outer body's path as diverged, so the outer loop's back edge may
-  include moves that only happen on a returning path. This is conservative in the
-  false-positive direction and is the price of not building a CFG. No corpus program hits
-  it.
-- The join itself remains conservative: a branch's moves are unioned without asking
-  whether the branch can be taken. Divergence is the only reachability fact the checker
-  uses.
+- Move-then-replace is writable again, in a loop body and anywhere else, and a moved
+  field can be reassigned to make its owner whole.
 - `MoveViolation` gains a public field, so any consumer constructing one exhaustively
   must supply it. The two in-tree consumers are `move_check` itself and
   `move-check-count`.
+
+### What loop checking still misses
+
+Each of these was reproduced against the built interpreter, not inferred.
+
+**False negatives — a real violation is accepted:**
+
+1. **Calling a closure never consumes its captures**, and every `Type::Fun` is treated as
+   `Copy` (#330). A loop that calls such a closure every iteration is accepted:
+
+   ```metel
+   let f = () -> String { s };   // captures a non-`Copy` value
+   loop { let got = f(); … }     // accepted; `f` is once-callable under affine rules
+   ```
+
+   Both the direct-call and the through-a-higher-order-function forms are missed. Capture
+   *at creation* inside a loop is caught, because that is an ordinary move. This is #330's
+   scope, not the loop analysis's, and it must close before `--move-check` becomes the
+   default (#310).
+2. **`MAX_LOOP_PASSES` stops widening after 8 passes.** A cascade needing more would lose
+   the violations the next pass would have found. Theoretical: the deepest cascade
+   constructed for the tests (a field's partial move, then the whole struct) settles in
+   one extra pass.
+3. **A generic body whose reconstruction fails is skipped**, with a warning and a count in
+   the report. Pre-existing and visible, but still a route past every loop inside such a
+   body.
+4. **Only the first violation is reported** (#338), so a loop body with several distinct
+   loop-carried moves surfaces one at a time.
+
+**False positives — a valid program is rejected:**
+
+5. **A loop bounded by its condition rather than by `break`.** `while (i < 1) { let moved
+   = s; }` runs once, but nothing proves that, so the back edge looks live and the move
+   reads as loop-carried. Writing the exit as a `break` avoids it. This is the one place
+   the fixed point rejects something develop accepted for a reason other than a real bug.
+6. **The join is otherwise reachability-blind**: a branch's moves are unioned without
+   asking whether the branch can be taken, so `if (false) { let moved = s; }` still counts.
+   Divergence is the only reachability fact the checker uses, and (5) is what that costs.
+
+(1)–(4) are tracked elsewhere or are inherent to a bounded analysis. (5) and (6) are the
+deliberate price of not building a CFG, and are the first things to revisit if the
+conservatism proves annoying in practice — a trip-count analysis for the common
+`while (i < k)` shape would close (5) without a CFG.

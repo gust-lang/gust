@@ -341,7 +341,18 @@ struct Checker<'a> {
     /// state into the innermost one. Those moves are invisible to the next
     /// iteration but visible after the loop, so they are kept apart from the
     /// state that keeps flowing through the body.
-    loop_exits: Vec<FlowState>,
+    loop_exits: Vec<LoopExit>,
+}
+
+/// What the `break`s in one loop body contributed.
+///
+/// `reached` is not the same as `state` being non-empty: a `break` that moved
+/// nothing still means the loop can be left, which is what decides whether a
+/// `loop` hands control back at all.
+#[derive(Debug, Clone, Default)]
+struct LoopExit {
+    reached: bool,
+    state: FlowState,
 }
 
 /// How many times a loop body may be re-walked while its entry state grows.
@@ -653,6 +664,7 @@ impl<'a> Checker<'a> {
         &mut self,
         current_module: &[String],
         state: &mut FlowState,
+        exits_without_break: bool,
         mut pass: impl FnMut(&mut Self, &[String], &mut FlowState),
     ) {
         let mut entry = state.clone();
@@ -661,7 +673,7 @@ impl<'a> Checker<'a> {
             let mut body_state = entry.clone();
             body_state.diverged = false;
             self.loop_back_edges.push(FlowState::default());
-            self.loop_exits.push(FlowState::default());
+            self.loop_exits.push(LoopExit::default());
             pass(self, current_module, &mut body_state);
             let mut back_edge = self.loop_back_edges.pop().unwrap_or_default();
             let exit = self.loop_exits.pop().unwrap_or_default();
@@ -682,7 +694,14 @@ impl<'a> Checker<'a> {
                 if !body_state.diverged {
                     state.union_from(&body_state);
                 }
-                state.union_from(&exit);
+                state.union_from(&exit.state);
+                // A `loop` with no reachable `break` never hands control back,
+                // so the code around it inherits that. Without this, an outer
+                // loop treats its own back edge as live even though an inner
+                // `loop { return; }` guarantees it is never taken.
+                if !exits_without_break && !exit.reached {
+                    state.diverged = true;
+                }
                 return;
             }
             self.report.rewind_to(mark);
@@ -708,7 +727,7 @@ impl<'a> Checker<'a> {
             // returns to it: `while (peek(s)) { eat(s); }` reads `s` after the
             // first iteration moved it.
             TypedStmt::While(while_stmt) => {
-                self.check_loop_body(current_module, state, |checker, module, body_state| {
+                self.check_loop_body(current_module, state, true, |checker, module, body_state| {
                     checker.observe_expr(&while_stmt.condition, module, body_state);
                     checker.check_block(&while_stmt.body, module, body_state);
                 });
@@ -729,7 +748,7 @@ impl<'a> Checker<'a> {
                     }
                 }
                 // `init` ran once above; condition, body and step all repeat.
-                self.check_loop_body(current_module, state, |checker, module, body_state| {
+                self.check_loop_body(current_module, state, true, |checker, module, body_state| {
                     if let Some(condition) = &for_stmt.condition {
                         checker.observe_expr(condition, module, body_state);
                     }
@@ -744,7 +763,7 @@ impl<'a> Checker<'a> {
                 // The iterable is evaluated once, before any iteration.
                 self.observe_expr(&for_in.iterable, current_module, state);
                 let iterable_ty = peel_type_references(for_in.iterable.ty());
-                self.check_loop_body(current_module, state, |checker, module, body_state| {
+                self.check_loop_body(current_module, state, true, |checker, module, body_state| {
                     body_state.push_scope();
                     match iterable_ty {
                         Type::Array(element_ty) => {
@@ -801,7 +820,7 @@ impl<'a> Checker<'a> {
             // it is not itself a place being read, so it's consumed, not observed.
             TypedExpr::RefTemp { init, .. } => self.consume_expr(init, current_module, state),
             TypedExpr::Assign { target, value, .. } => {
-                self.observe_typed_place(target, current_module, state);
+                self.observe_assignment_target(target, current_module, state);
                 self.consume_expr(value, current_module, state);
                 Self::reinitialize_assigned_place(target, state);
             }
@@ -870,7 +889,8 @@ impl<'a> Checker<'a> {
                     self.consume_expr(value, current_module, state);
                 }
                 if let Some(exit) = self.loop_exits.last_mut() {
-                    exit.union_from(state);
+                    exit.reached = true;
+                    exit.state.union_from(state);
                 }
                 state.diverged = true;
             }
@@ -992,7 +1012,7 @@ impl<'a> Checker<'a> {
         current_module: &[String],
         state: &mut FlowState,
     ) {
-        self.check_loop_body(current_module, state, |checker, module, body_state| {
+        self.check_loop_body(current_module, state, false, |checker, module, body_state| {
             checker.check_block(body, module, body_state);
         });
     }
@@ -1094,16 +1114,24 @@ impl<'a> Checker<'a> {
         self.observe_expr(expr, current_module, state);
     }
 
-    fn observe_typed_place(
+    /// Check what an assignment *reads*, which is everything under the final
+    /// step but not the target itself.
+    ///
+    /// Writing to a place does not read it — that is how a moved binding is
+    /// made valid again (`let moved = s; s = "again";`), and RFC-0071 allows it.
+    /// This previously reported the target as a use, so a moved binding could
+    /// never be reassigned; the pattern is idiomatic in a loop body, where the
+    /// fixed point now makes it the first thing anyone hits.
+    ///
+    /// What must still hold is that the write can be *reached*: `p.f = v`
+    /// requires a valid `p`, and `*p = v` a valid `p`, both handled by the
+    /// per-variant recursion below.
+    fn observe_assignment_target(
         &mut self,
         typed_place: &TypedPlace,
         current_module: &[String],
         state: &mut FlowState,
     ) {
-        if let Some(place) = from_typed_place(typed_place) {
-            let span = typed_place_span(typed_place);
-            self.record_whole_use_if_moved(&place, span, state);
-        }
         match typed_place {
             TypedPlace::Ident(_, _) => {}
             TypedPlace::Deref { object, .. } => self.observe_expr(object, current_module, state),
@@ -1495,9 +1523,22 @@ impl<'a> Checker<'a> {
         None
     }
 
+    /// A write makes its target valid again, along with everything under it:
+    /// assigning `p.f` replaces `p.f.g` too.
+    ///
+    /// A move of a strict *ancestor* survives — replacing one field does not
+    /// revive the whole value — but that case is already an error at the write
+    /// itself, which needs a reachable base.
     fn reinitialize_assigned_place(typed_place: &TypedPlace, state: &mut FlowState) {
-        if let TypedPlace::Ident(name, _) = typed_place {
-            state.moved.remove(name);
+        let Some(place) = from_typed_place(typed_place) else {
+            return;
+        };
+        let Some(records) = state.moved.get_mut(place.root()) else {
+            return;
+        };
+        records.retain(|record| !place.is_prefix_of(&record.place));
+        if records.is_empty() {
+            state.moved.remove(place.root());
         }
     }
 
@@ -3546,6 +3587,130 @@ fun main() {
         let moved = s;
     }
     let again = s;
+}
+"#,
+            "s",
+        );
+    }
+
+    // ── Writing to a moved place reinitializes it ────────────────────────────
+    //
+    // A write does not read its target. These matter most inside a loop, where
+    // move-then-replace is the idiomatic body, but the rule is not loop-specific.
+
+    #[test]
+    fn reassigning_a_moved_binding_makes_it_valid_again() {
+        assert_no_violations(
+            r#"
+fun main() {
+    var s = "hello";
+    let moved = s;
+    s = "again";
+    let ok = s;
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn reassigning_a_moved_binding_inside_a_loop_is_not_loop_carried() {
+        assert_no_violations(
+            r#"
+fun main() {
+    var s = "hello";
+    var i = 0;
+    loop {
+        i += 1;
+        let moved = s;
+        s = "again";
+        if (i == 3) { break; }
+    }
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn reassigning_a_moved_field_makes_the_whole_value_usable_again() {
+        assert_no_violations(
+            r#"
+struct Pair { left: String, right: String }
+
+fun main() {
+    var p = Pair { left = "a", right = "b" };
+    let taken = p.left;
+    p.left = "c";
+    let whole = p;
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn assigning_a_field_does_not_revive_a_wholly_moved_value() {
+        // The write needs a base it can reach, and `p` is gone.
+        assert_has_violation(
+            r#"
+struct Pair { left: String, right: String }
+
+fun main() {
+    var p = Pair { left = "a", right = "b" };
+    let whole = p;
+    p.left = "c";
+}
+"#,
+            "p",
+        );
+    }
+
+    #[test]
+    fn assigning_one_field_leaves_a_sibling_field_moved() {
+        assert_has_violation(
+            r#"
+struct Pair { left: String, right: String }
+
+fun main() {
+    var p = Pair { left = "a", right = "b" };
+    let taken = p.right;
+    p.left = "c";
+    let whole = p;
+}
+"#,
+            "p",
+        );
+    }
+
+    #[test]
+    fn a_loop_with_no_reachable_break_diverges() {
+        // The inner `loop` always returns, so the outer loop's back edge is
+        // never taken and its body's move happens at most once.
+        assert_no_violations(
+            r#"
+fun main() {
+    let s = "hello";
+    var i = 0;
+    while (i < 3) {
+        i += 1;
+        let moved = s;
+        loop { return; }
+    }
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn an_inner_loop_that_can_break_leaves_the_outer_back_edge_live() {
+        assert_has_violation(
+            r#"
+fun main() {
+    let s = "hello";
+    var i = 0;
+    while (i < 3) {
+        i += 1;
+        let moved = s;
+        loop { break; }
+    }
 }
 "#,
             "s",

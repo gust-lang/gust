@@ -1,0 +1,10 @@
+fun main() {
+    let s = "hello";
+    var i = 0;
+    while (i < 3) {
+        i += 1;
+        let moved = s;
+        assert(moved == "hello");
+        loop { return; }
+    }
+}

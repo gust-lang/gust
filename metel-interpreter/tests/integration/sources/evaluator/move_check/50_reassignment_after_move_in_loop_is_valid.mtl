@@ -1,0 +1,16 @@
+fun consume(s: String) -> i64 { 1 }
+
+fun main() {
+    var s = "hello";
+    var i = 0;
+    var seen = 0;
+    loop {
+        i += 1;
+        let moved = s;
+        seen += consume(moved);
+        s = "again";
+        if (i == 3) { break; }
+    }
+    assert(seen == 3);
+    assert(s == "again");
+}
