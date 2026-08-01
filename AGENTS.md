@@ -592,6 +592,11 @@ Rules (content lives in `OBJECTIVES.md` itself, not duplicated here):
   alone: the verification discipline (every claim checked against a primary source, not
   restated from memory or frontmatter), the trigger append-only lifecycle and closure
   bar, and the dated overview's structural template.
+- **If the user makes an explicit priority call or redirect at any point — not only
+  during a strategic-overview cycle — log it immediately to `OBJECTIVES.md` §0's
+  Operator Directives**, rather than waiting for the next cycle to reconstruct it after
+  the fact. This is the one place operator intent enters the process as a first-class
+  input rather than inferred evidence; see `docs/reports/strategy/PROCESS.md` §1.
 
 ---
 
