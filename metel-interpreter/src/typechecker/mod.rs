@@ -692,19 +692,35 @@ pub(crate) fn reject_unregisterable_impl_target(
     if impl_target_head(&ib.target_type).is_some() || !ib.generics.is_empty() {
         return Ok(());
     }
-    let (kind, example) = match &ib.target_type {
-        TypeExpr::Array(_) => ("an array type", "extend<T> T[]: Aspect { … }"),
-        TypeExpr::Tuple(_) => ("a tuple type", "extend<A, B> (A, B): Aspect { … }"),
-        TypeExpr::Record(_) => ("an anonymous record type", "extend<T> { field: T }: Aspect { … }"),
-        TypeExpr::Fun(_, _) => ("a function type", "extend<A, B> fun(A) -> B: Aspect { … }"),
-        _ => ("a structural type", "extend<T> …: Aspect { … }"),
+    // The generic form is only *usable* for arrays. A generic tuple or record
+    // impl typechecks and then has no effect in either the call or the bound
+    // position (metel-core#353), so recommending it there would send the reader
+    // one step down a path that dead-ends.
+    let (kind, fix) = match &ib.target_type {
+        TypeExpr::Array(_) => (
+            "an array type",
+            "write it as `extend<T> T[]: Aspect { … }`, or use a named struct".to_string(),
+        ),
+        other => {
+            let kind = match other {
+                TypeExpr::Tuple(_) => "a tuple type",
+                TypeExpr::Record(_) => "an anonymous record type",
+                TypeExpr::Fun(_, _) => "a function type",
+                _ => "a structural type",
+            };
+            (
+                kind,
+                "use a named struct — the generic form parses but does not take effect \
+                 for this target either (metel-core#353)"
+                    .to_string(),
+            )
+        }
     };
     Err(crate::error::MetelError::type_error(
         crate::error::TypeErrorCode::T0003,
         format!(
-            "cannot `extend` {kind} without type parameters: only the generic form is \
-             implemented, so this block's methods could never be found. Write it as \
-             `{example}`, or use a named struct"
+            "cannot `extend` {kind} without type parameters: this block's methods could \
+             never be found. To fix it, {fix}"
         ),
         &ib.span,
     ))
