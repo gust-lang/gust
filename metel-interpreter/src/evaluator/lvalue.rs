@@ -121,15 +121,15 @@ pub(super) fn eval_typed_place_value(
         } => {
             let parent = eval_typed_place_value(object, env, runtime)?;
             match parent {
-                Value::Record { fields } | Value::Struct { fields, .. } | Value::Enum { fields, .. } => {
-                    fields.get(field).cloned().ok_or_else(|| {
-                        MetelError::panic(
-                            RuntimeErrorCode::R0008,
-                            format!("field access: no field `{field}`"),
-                            tspan,
-                        )
-                    })
-                }
+                Value::Record { fields }
+                | Value::Struct { fields, .. }
+                | Value::Enum { fields, .. } => fields.get(field).cloned().ok_or_else(|| {
+                    MetelError::panic(
+                        RuntimeErrorCode::R0008,
+                        format!("field access: no field `{field}`"),
+                        tspan,
+                    )
+                }),
                 _ => Err(MetelError::internal(format!(
                     "field `{field}`: receiver is not a record/struct/enum"
                 ))),

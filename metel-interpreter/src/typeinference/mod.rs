@@ -1887,11 +1887,7 @@ impl TypeDefinitionRegistry {
             .push((pos_bounds, neg_bounds));
     }
 
-    pub fn register_symbolic_named_aspects(
-        &mut self,
-        name: String,
-        aspects: HashSet<String>,
-    ) {
+    pub fn register_symbolic_named_aspects(&mut self, name: String, aspects: HashSet<String>) {
         self.symbolic_named_aspects.insert(name, aspects);
     }
 

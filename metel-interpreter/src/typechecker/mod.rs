@@ -707,15 +707,19 @@ pub(crate) fn reject_unregisterable_impl_target(
         return Ok(());
     }
     let fix = match &ib.target_type {
-        TypeExpr::Array(_) => "write it as `extend<T> T[]: Aspect { … }`, where `T` is the \
-             array's own element type, or use a named struct",
+        TypeExpr::Array(_) => {
+            "write it as `extend<T> T[]: Aspect { … }`, where `T` is the \
+             array's own element type, or use a named struct"
+        }
         _ => "use a named struct",
     };
     let kind = match &ib.target_type {
         // Same message for "no generics" and "generics that do not name the
         // element" — both fail the one check that actually registers an array
         // impl (`registry::array_target_generic_name`), so the fix is the same.
-        TypeExpr::Array(_) => "an array type whose element is not one of the impl's own type parameters",
+        TypeExpr::Array(_) => {
+            "an array type whose element is not one of the impl's own type parameters"
+        }
         TypeExpr::Tuple(_) => "a tuple type",
         TypeExpr::Record(_) => "an anonymous record type",
         TypeExpr::Fun(_, _) => "a function type",
@@ -947,7 +951,8 @@ fn check_impl_with_report(
     // hoist function names. The overload table must be installed before hoisting
     // so hoisting can skip overloaded names (they are dispatched by SymbolId).
     registry::register_primitive_type_bindings(&mut ctx, std_prelude);
-    let overloads = overload::build_overload_table(&program.decls, ctx.registry(), current_module_path)?;
+    let overloads =
+        overload::build_overload_table(&program.decls, ctx.registry(), current_module_path)?;
     ctx.set_overloads(overloads.clone());
     inference::hoist_fun_decls(&program.decls, &mut ctx);
     let registry_ns = elapsed_ns(started);

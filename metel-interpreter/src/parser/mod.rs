@@ -2383,7 +2383,8 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
         }
         Rule::record_pattern => {
             let span = Span::of(&pair, filename);
-            let mut fields: Vec<String> = pair.into_inner().map(|p| p.as_str().to_string()).collect();
+            let mut fields: Vec<String> =
+                pair.into_inner().map(|p| p.as_str().to_string()).collect();
             sort_record_labels(&mut fields, filename, &span, "record pattern")?;
             Ok(Pattern::Record { fields, span })
         }
@@ -2772,7 +2773,9 @@ fn sort_record_labels(
     fields.sort();
     for pair in fields.windows(2) {
         if pair[0] == pair[1] {
-            return Err(record_duplicate_label_error(&pair[0], filename, span, context));
+            return Err(record_duplicate_label_error(
+                &pair[0], filename, span, context,
+            ));
         }
     }
     Ok(())
@@ -2907,10 +2910,9 @@ fn parse_bound(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Boun
                         let name = collect_path_components(first)?.join("::");
                         let mut args = vec![];
                         for arg in inner.filter(|q| q.as_rule() == Rule::bound_arg) {
-                            let inner_arg = arg
-                                .into_inner()
-                                .next()
-                                .ok_or_else(|| MetelError::internal("bound_arg: expected content"))?;
+                            let inner_arg = arg.into_inner().next().ok_or_else(|| {
+                                MetelError::internal("bound_arg: expected content")
+                            })?;
                             match inner_arg.as_rule() {
                                 Rule::assoc_binding => {
                                     let mut it = inner_arg.into_inner();

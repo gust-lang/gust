@@ -1,8 +1,6 @@
 use crate::ast::{Span, TypeExpr};
 use crate::error::{MetelError, TypeErrorCode};
-use crate::typeinference::{
-    InferType, Substitution, TypeDefinitionRegistry, TypeVar,
-};
+use crate::typeinference::{InferType, Substitution, TypeDefinitionRegistry, TypeVar};
 use crate::types::Type;
 use std::collections::HashMap;
 

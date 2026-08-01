@@ -149,10 +149,7 @@ pub fn check_graph(graph: &TypedModuleGraph) -> Result<Vec<String>, MetelError> 
         .map(|unchecked| {
             format!(
                 "move checking could not analyze generic body at {}:{}:{}: {}",
-                unchecked.span.filename,
-                unchecked.span.line,
-                unchecked.span.col,
-                unchecked.reason
+                unchecked.span.filename, unchecked.span.line, unchecked.span.col, unchecked.reason
             )
         })
         .collect())
@@ -285,7 +282,13 @@ impl FlowState {
         self.binding_types.get(name)
     }
 
-    fn record_move(&mut self, place: Place, moved_span: Span, cause: MoveCause, moved_type: String) {
+    fn record_move(
+        &mut self,
+        place: Place,
+        moved_span: Span,
+        cause: MoveCause,
+        moved_type: String,
+    ) {
         let root = place.root().to_string();
         let records = self.moved.entry(root).or_default();
         if place.projections().is_empty() {
@@ -323,19 +326,19 @@ impl FlowState {
     }
 
     fn moved_record_for_whole_use(&self, place: &Place) -> Option<&MoveRecord> {
-        self.moved.get(place.root())?.iter().find(|record| {
-            record.place.is_prefix_of(place) || place.is_prefix_of(&record.place)
-        })
+        self.moved
+            .get(place.root())?
+            .iter()
+            .find(|record| record.place.is_prefix_of(place) || place.is_prefix_of(&record.place))
     }
 
     fn union_from(&mut self, other: &Self) {
         for (root, incoming) in &other.moved {
             let records = self.moved.entry(root.clone()).or_default();
             for record in incoming {
-                if records
-                    .iter()
-                    .any(|existing| existing.place == record.place && existing.moved_span == record.moved_span)
-                {
+                if records.iter().any(|existing| {
+                    existing.place == record.place && existing.moved_span == record.moved_span
+                }) {
                     continue;
                 }
                 if record.place.projections().is_empty() {
@@ -343,7 +346,10 @@ impl FlowState {
                     records.push(record.clone());
                     continue;
                 }
-                if records.iter().any(|existing| existing.place.projections().is_empty()) {
+                if records
+                    .iter()
+                    .any(|existing| existing.place.projections().is_empty())
+                {
                     continue;
                 }
                 records.push(record.clone());
@@ -558,12 +564,9 @@ impl<'a> Checker<'a> {
         ) {
             Ok(typed_body) => Some((typed_body, generic_env)),
             Err(error) => {
-                let reason = symbolic_method_ambiguity_reason(
-                    &error,
-                    &generic_env,
-                    &type_ctx.registry,
-                )
-                .unwrap_or_else(|| error.to_string());
+                let reason =
+                    symbolic_method_ambiguity_reason(&error, &generic_env, &type_ctx.registry)
+                        .unwrap_or_else(|| error.to_string());
                 self.record_skipped_generic_body(span, reason);
                 None
             }
@@ -636,12 +639,9 @@ impl<'a> Checker<'a> {
                 self.generic_envs.pop();
             }
             Err(error) => {
-                let reason = symbolic_method_ambiguity_reason(
-                    &error,
-                    &generic_env,
-                    &type_ctx.registry,
-                )
-                .unwrap_or_else(|| error.to_string());
+                let reason =
+                    symbolic_method_ambiguity_reason(&error, &generic_env, &type_ctx.registry)
+                        .unwrap_or_else(|| error.to_string());
                 self.record_skipped_generic_body(&method.span, reason);
             }
         }
@@ -685,10 +685,7 @@ impl<'a> Checker<'a> {
             .iter()
             .map(|param| {
                 let substituted = subst.apply(param);
-                infer_to_type(&substitute_named_generics(
-                    &substituted,
-                    &named_samples,
-                ))
+                infer_to_type(&substitute_named_generics(&substituted, &named_samples))
             })
             .collect::<Option<Vec<_>>>()?;
         generic_env.arg_types.clone_from(&arg_types);
@@ -802,10 +799,15 @@ impl<'a> Checker<'a> {
             // returns to it: `while (peek(s)) { eat(s); }` reads `s` after the
             // first iteration moved it.
             TypedStmt::While(while_stmt) => {
-                self.check_loop_body(current_module, state, true, |checker, module, body_state| {
-                    checker.observe_expr(&while_stmt.condition, module, body_state);
-                    checker.check_block(&while_stmt.body, module, body_state);
-                });
+                self.check_loop_body(
+                    current_module,
+                    state,
+                    true,
+                    |checker, module, body_state| {
+                        checker.observe_expr(&while_stmt.condition, module, body_state);
+                        checker.check_block(&while_stmt.body, module, body_state);
+                    },
+                );
             }
             TypedStmt::For(for_stmt) => {
                 state.push_scope();
@@ -823,40 +825,55 @@ impl<'a> Checker<'a> {
                     }
                 }
                 // `init` ran once above; condition, body and step all repeat.
-                self.check_loop_body(current_module, state, true, |checker, module, body_state| {
-                    if let Some(condition) = &for_stmt.condition {
-                        checker.observe_expr(condition, module, body_state);
-                    }
-                    checker.check_block(&for_stmt.body, module, body_state);
-                    if let Some(step) = &for_stmt.step {
-                        checker.observe_expr(step, module, body_state);
-                    }
-                });
+                self.check_loop_body(
+                    current_module,
+                    state,
+                    true,
+                    |checker, module, body_state| {
+                        if let Some(condition) = &for_stmt.condition {
+                            checker.observe_expr(condition, module, body_state);
+                        }
+                        checker.check_block(&for_stmt.body, module, body_state);
+                        if let Some(step) = &for_stmt.step {
+                            checker.observe_expr(step, module, body_state);
+                        }
+                    },
+                );
                 state.pop_scope();
             }
             TypedStmt::ForIn(for_in) => {
                 // The iterable is evaluated once, before any iteration.
                 self.observe_expr(&for_in.iterable, current_module, state);
                 let iterable_ty = peel_type_references(for_in.iterable.ty());
-                self.check_loop_body(current_module, state, true, |checker, module, body_state| {
-                    body_state.push_scope();
-                    match iterable_ty {
-                        Type::Array(element_ty) => {
-                            body_state.bind_borrowed_array_element(&for_in.binding, element_ty);
+                self.check_loop_body(
+                    current_module,
+                    state,
+                    true,
+                    |checker, module, body_state| {
+                        body_state.push_scope();
+                        match iterable_ty {
+                            Type::Array(element_ty) => {
+                                body_state.bind_borrowed_array_element(&for_in.binding, element_ty);
+                            }
+                            Type::SizedArray(element_ty, _) => {
+                                body_state.bind_typed(&for_in.binding, element_ty);
+                            }
+                            _ => body_state.bind(&for_in.binding),
                         }
-                        Type::SizedArray(element_ty, _) => {
-                            body_state.bind_typed(&for_in.binding, element_ty);
-                        }
-                        _ => body_state.bind(&for_in.binding),
-                    }
-                    checker.check_block(&for_in.body, module, body_state);
-                    body_state.pop_scope();
-                });
+                        checker.check_block(&for_in.body, module, body_state);
+                        body_state.pop_scope();
+                    },
+                );
             }
         }
     }
 
-    fn check_block(&mut self, block: &TypedBlock, current_module: &[String], state: &mut FlowState) {
+    fn check_block(
+        &mut self,
+        block: &TypedBlock,
+        current_module: &[String],
+        state: &mut FlowState,
+    ) {
         state.push_scope();
         for decl in &block.stmts {
             self.check_decl(decl, current_module, state);
@@ -867,6 +884,11 @@ impl<'a> Checker<'a> {
         state.pop_scope();
     }
 
+    // One exhaustive match over every `TypedExpr` variant; splitting it does not
+    // shrink the logic, only hides the exhaustiveness check that matters here.
+    // Same precedent as `evaluator/display.rs`, `coherence.rs`, `typechecker/
+    // conversions.rs`, `path_normalizer.rs`, `evaluator/lvalue.rs`.
+    #[allow(clippy::too_many_lines)]
     fn observe_expr(&mut self, expr: &TypedExpr, current_module: &[String], state: &mut FlowState) {
         if let Some(place) = place_from_expr(expr) {
             self.record_whole_use_if_moved(&place, expr.span(), state);
@@ -909,7 +931,14 @@ impl<'a> Checker<'a> {
                 dispatch,
                 ..
             } => {
-                self.observe_method_call_expr(receiver, method, args, dispatch, current_module, state);
+                self.observe_method_call_expr(
+                    receiver,
+                    method,
+                    args,
+                    dispatch,
+                    current_module,
+                    state,
+                );
             }
             TypedExpr::FieldAccess { object, .. } | TypedExpr::TupleAccess { object, .. } => {
                 self.observe_projection_base_expr(object, current_module, state);
@@ -927,13 +956,16 @@ impl<'a> Checker<'a> {
                 then_branch,
                 else_branch,
                 ..
-            } => self.observe_if_expr(condition, then_branch, else_branch.as_ref(), current_module, state),
+            } => self.observe_if_expr(
+                condition,
+                then_branch,
+                else_branch.as_ref(),
+                current_module,
+                state,
+            ),
             TypedExpr::Loop { body, .. } => self.observe_loop_expr(body, current_module, state),
             TypedExpr::Closure {
-                params,
-                body,
-                span,
-                ..
+                params, body, span, ..
             } => self.observe_closure_expr(params, body, span, current_module, state),
             TypedExpr::GenericClosure {
                 name,
@@ -943,7 +975,14 @@ impl<'a> Checker<'a> {
                 ..
             } => {
                 if let Some(name) = name {
-                    self.observe_generic_closure_expr(name, params, body, span, current_module, state);
+                    self.observe_generic_closure_expr(
+                        name,
+                        params,
+                        body,
+                        span,
+                        current_module,
+                        state,
+                    );
                 } else {
                     self.record_skipped_generic_body(
                         span,
@@ -977,7 +1016,12 @@ impl<'a> Checker<'a> {
         state: &mut FlowState,
     ) {
         self.observe_expr(callee, current_module, state);
-        self.observe_call_args(args, function_param_types(callee.ty()), current_module, state);
+        self.observe_call_args(
+            args,
+            function_param_types(callee.ty()),
+            current_module,
+            state,
+        );
     }
 
     fn observe_method_call_expr(
@@ -1084,9 +1128,14 @@ impl<'a> Checker<'a> {
         current_module: &[String],
         state: &mut FlowState,
     ) {
-        self.check_loop_body(current_module, state, false, |checker, module, body_state| {
-            checker.check_block(body, module, body_state);
-        });
+        self.check_loop_body(
+            current_module,
+            state,
+            false,
+            |checker, module, body_state| {
+                checker.check_block(body, module, body_state);
+            },
+        );
     }
 
     fn observe_closure_expr(
@@ -1097,7 +1146,12 @@ impl<'a> Checker<'a> {
         current_module: &[String],
         state: &mut FlowState,
     ) {
-        self.capture_closure(body, params.iter().map(|param| param.name.as_str()), span, state);
+        self.capture_closure(
+            body,
+            params.iter().map(|param| param.name.as_str()),
+            span,
+            state,
+        );
         let mut closure_state = FlowState::default();
         closure_state.push_scope();
         for captured in collect_free_roots_from_typed_block(body, &HashSet::new()) {
@@ -1122,7 +1176,12 @@ impl<'a> Checker<'a> {
         if let Some((typed_body, generic_env)) =
             self.construct_generic_body_for_move(name, &[], params, body, span)
         {
-            self.capture_closure(&typed_body, params.iter().map(|param| param.name.as_str()), span, state);
+            self.capture_closure(
+                &typed_body,
+                params.iter().map(|param| param.name.as_str()),
+                span,
+                state,
+            );
             let mut closure_state = FlowState::default();
             closure_state.push_scope();
             for captured in collect_free_roots_from_typed_block(&typed_body, &HashSet::new()) {
@@ -1274,10 +1333,16 @@ impl<'a> Checker<'a> {
         current_module: &[String],
         state: &mut FlowState,
     ) {
-        let receiver_kind = self.method_receiver_kind(receiver.ty(), method, current_module, dispatch);
+        let receiver_kind =
+            self.method_receiver_kind(receiver.ty(), method, current_module, dispatch);
         match receiver_kind {
             Some(ReceiverKind::Value) => {
-                self.consume_expr_with_cause(receiver, current_module, state, MoveCause::ByValueReceiver);
+                self.consume_expr_with_cause(
+                    receiver,
+                    current_module,
+                    state,
+                    MoveCause::ByValueReceiver,
+                );
             }
             Some(ReceiverKind::Ref | ReceiverKind::RefMut) | None => {
                 self.observe_expr(receiver, current_module, state);
@@ -1338,12 +1403,21 @@ impl<'a> Checker<'a> {
             Pattern::Tuple(items, _) => {
                 for (index, item) in items.iter().enumerate() {
                     let child = place.clone().with_projection(Projection::TupleIndex(index));
-                    self.apply_pattern_place_move(item, &child, root_ty, use_span, current_module, state);
+                    self.apply_pattern_place_move(
+                        item,
+                        &child,
+                        root_ty,
+                        use_span,
+                        current_module,
+                        state,
+                    );
                 }
             }
             Pattern::Record { fields, .. } => {
                 for field in fields {
-                    let child = place.clone().with_projection(Projection::Field(field.clone()));
+                    let child = place
+                        .clone()
+                        .with_projection(Projection::Field(field.clone()));
                     self.consume_place(
                         &child,
                         root_ty,
@@ -1373,7 +1447,14 @@ impl<'a> Checker<'a> {
             Pattern::Array { elems, rest, .. } => {
                 for item in elems {
                     let child = place.clone().with_projection(Projection::OpaqueIndex);
-                    self.apply_pattern_place_move(item, &child, root_ty, use_span, current_module, state);
+                    self.apply_pattern_place_move(
+                        item,
+                        &child,
+                        root_ty,
+                        use_span,
+                        current_module,
+                        state,
+                    );
                 }
                 if let Some(rest) = rest {
                     state.bind(rest);
@@ -1526,10 +1607,12 @@ impl<'a> Checker<'a> {
             self.report.skipped_generic_bodies_embedded_std += 1;
         } else {
             self.report.skipped_generic_bodies_user += 1;
-            self.report.unchecked_generic_bodies.push(UncheckedGenericBody {
-                span: span.clone(),
-                reason: reason.into(),
-            });
+            self.report
+                .unchecked_generic_bodies
+                .push(UncheckedGenericBody {
+                    span: span.clone(),
+                    reason: reason.into(),
+                });
         }
     }
 
@@ -1542,7 +1625,12 @@ impl<'a> Checker<'a> {
         self.type_satisfies_aspect(current_module, ty, "Drop")
     }
 
-    fn type_satisfies_aspect(&self, current_module: &[String], ty: &Type, aspect_name: &str) -> bool {
+    fn type_satisfies_aspect(
+        &self,
+        current_module: &[String],
+        ty: &Type,
+        aspect_name: &str,
+    ) -> bool {
         let Some(generic_env) = self.generic_envs.last() else {
             return self
                 .registry
@@ -1652,8 +1740,9 @@ impl<'a> Checker<'a> {
                     .find(|(name, _)| name == field)
                     .map(|(_, ty)| ty.clone()),
                 Type::Named(name, args) => {
-                    let (resolved_name, fields) =
-                        self.registry.projection_struct_fields(current_module, name)?;
+                    let (resolved_name, fields) = self
+                        .registry
+                        .projection_struct_fields(current_module, name)?;
                     let field_entry = fields.iter().find(|entry| entry.name == *field)?;
                     let raw_ty = field_entry.ty.clone();
                     let infer_ty = if let Some(type_params) =
@@ -1805,17 +1894,16 @@ fn generic_placeholder_name(var: TypeVar) -> String {
     format!("__metel_move_check_generic_{}", var.0)
 }
 
-fn scheme_with_source_generics(
-    scheme: &TypeScheme,
-    generics: &[GenericParam],
-) -> TypeScheme {
+fn scheme_with_source_generics(scheme: &TypeScheme, generics: &[GenericParam]) -> TypeScheme {
     let mut repaired = scheme.clone();
     let existing = repaired.quantified_vars.len();
     repaired.bounds.resize_with(existing, Vec::new);
     repaired.neg_bounds.resize_with(existing, Vec::new);
     repaired.record_kinds.resize(existing, false);
     repaired.assoc_projections.resize(existing, None);
-    repaired.assoc_eq_constraints.resize_with(existing, Vec::new);
+    repaired
+        .assoc_eq_constraints
+        .resize_with(existing, Vec::new);
     repaired.opaque_returns.resize(existing, None);
     let mut replacements = HashMap::new();
     let mut gen = TypeVarGenerator::with_counter(4_000_000);
@@ -1862,8 +1950,7 @@ fn type_ctx_with_symbolic_aspect_methods(
         enriched
             .registry
             .register_symbolic_named_aspects(placeholder.clone(), aspects.clone());
-        let mut methods: HashMap<String, Vec<(String, crate::ast::AspectMethod)>> =
-            HashMap::new();
+        let mut methods: HashMap<String, Vec<(String, crate::ast::AspectMethod)>> = HashMap::new();
         for aspect in aspects {
             let Some(method_defs) = enriched.registry.aspect_method_defs(aspect) else {
                 continue;
@@ -2067,25 +2154,27 @@ fn substitute_named_generics(
                 })
                 .collect(),
         ),
-        InferType::Array(item) => InferType::Array(Box::new(substitute_named_generics(
-            item,
-            named_samples,
-        ))),
+        InferType::Array(item) => {
+            InferType::Array(Box::new(substitute_named_generics(item, named_samples)))
+        }
         InferType::SizedArray(item, len) => InferType::SizedArray(
             Box::new(substitute_named_generics(item, named_samples)),
             *len,
         ),
-        InferType::Reference(inner) => InferType::Reference(Box::new(
-            substitute_named_generics(inner, named_samples),
-        )),
-        InferType::MutReference(inner) => InferType::MutReference(Box::new(
-            substitute_named_generics(inner, named_samples),
-        )),
+        InferType::Reference(inner) => {
+            InferType::Reference(Box::new(substitute_named_generics(inner, named_samples)))
+        }
+        InferType::MutReference(inner) => {
+            InferType::MutReference(Box::new(substitute_named_generics(inner, named_samples)))
+        }
         InferType::Concrete(_) | InferType::Var(_) | InferType::Never => ty.clone(),
     }
 }
 
-fn type_to_infer_under_generic_env(ty: &Type, placeholders: &HashMap<String, TypeVar>) -> InferType {
+fn type_to_infer_under_generic_env(
+    ty: &Type,
+    placeholders: &HashMap<String, TypeVar>,
+) -> InferType {
     match ty {
         Type::Boolean
         | Type::Str
@@ -2131,10 +2220,9 @@ fn type_to_infer_under_generic_env(ty: &Type, placeholders: &HashMap<String, Typ
             inner,
             placeholders,
         ))),
-        Type::MutReference(inner) => InferType::MutReference(Box::new(type_to_infer_under_generic_env(
-            inner,
-            placeholders,
-        ))),
+        Type::MutReference(inner) => InferType::MutReference(Box::new(
+            type_to_infer_under_generic_env(inner, placeholders),
+        )),
         Type::Fun(params, ret) => InferType::Fun(
             params
                 .iter()
@@ -2213,9 +2301,7 @@ fn infer_to_type(ty: &crate::typeinference::InferType) -> Option<Type> {
         )),
         InferType::Named(name, args) => Some(Type::Named(
             name.clone(),
-            args.iter()
-                .map(infer_to_type)
-                .collect::<Option<Vec<_>>>()?,
+            args.iter().map(infer_to_type).collect::<Option<Vec<_>>>()?,
         )),
         InferType::Var(_) => None,
     }
@@ -2302,7 +2388,10 @@ impl FreeRootCollector {
                 self.bind(&fun.name);
             }
             TypedDecl::Stmt(stmt) => self.stmt(stmt),
-            TypedDecl::Impl(_) | TypedDecl::Struct(_) | TypedDecl::Enum(_) | TypedDecl::Aspect(_) => {}
+            TypedDecl::Impl(_)
+            | TypedDecl::Struct(_)
+            | TypedDecl::Enum(_)
+            | TypedDecl::Aspect(_) => {}
         }
     }
 
@@ -2396,7 +2485,10 @@ impl FreeRootCollector {
                 self.expr(&m.scrutinee);
                 for arm in &m.arms {
                     self.scope_stack.push(HashSet::new());
-                    bind_pattern_names(&arm.pattern, self.scope_stack.last_mut().expect("scope exists"));
+                    bind_pattern_names(
+                        &arm.pattern,
+                        self.scope_stack.last_mut().expect("scope exists"),
+                    );
                     if let Some(guard) = &arm.guard {
                         self.expr(guard);
                     }
@@ -2450,7 +2542,9 @@ impl FreeRootCollector {
         match place {
             TypedPlace::Ident(name, _) => self.capture_free_name(name),
             TypedPlace::Deref { object, .. } => self.expr(object),
-            TypedPlace::Field { object, .. } | TypedPlace::Tuple { object, .. } => self.place(object),
+            TypedPlace::Field { object, .. } | TypedPlace::Tuple { object, .. } => {
+                self.place(object);
+            }
             TypedPlace::Index { object, index, .. } => {
                 self.place(object);
                 self.expr(index);
@@ -2621,10 +2715,8 @@ mod tests {
     fn move_violations_for_source(source: &str) -> Vec<MoveViolation> {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "metel_move_check_{}_{n}.mtl",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("metel_move_check_{}_{n}.mtl", std::process::id()));
         {
             let mut file = std::fs::File::create(&path).expect("create temp fixture");
             file.write_all(source.as_bytes())
@@ -2633,10 +2725,12 @@ mod tests {
         let violations = (|| {
             let graph = module_loader::load_root(&path).expect("load temp fixture");
             let names = name_resolver::resolve(&graph).expect("resolve temp fixture");
-            let normalized = path_normalizer::normalize(graph, &names).expect("normalize temp fixture");
+            let normalized =
+                path_normalizer::normalize(graph, &names).expect("normalize temp fixture");
             coherence::check(&normalized, &names).expect("coherence temp fixture");
-            let typed = typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())
-                .expect("typecheck temp fixture");
+            let typed =
+                typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())
+                    .expect("typecheck temp fixture");
             collect_graph_violations(&typed)
                 .violations
                 .into_iter()
@@ -2650,7 +2744,9 @@ mod tests {
     fn assert_has_violation(source: &str, binding: &str) -> Vec<MoveViolation> {
         let violations = move_violations_for_source(source);
         assert!(
-            violations.iter().any(|violation| violation.binding == binding),
+            violations
+                .iter()
+                .any(|violation| violation.binding == binding),
             "expected a move violation for `{binding}`, got {violations:#?}"
         );
         violations
@@ -2658,7 +2754,10 @@ mod tests {
 
     fn assert_no_violations(source: &str) {
         let violations = move_violations_for_source(source);
-        assert!(violations.is_empty(), "unexpected violations: {violations:#?}");
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:#?}"
+        );
     }
 
     fn move_warnings_for_source(source: &str) -> Vec<String> {
@@ -2714,12 +2813,10 @@ fun main() { }
 "#,
         );
         assert!(
-            warnings
-                .iter()
-                .any(|warning| {
-                    warning.contains("ambiguous aspect method `inspect`")
-                        && warning.contains("FirstMarker, SecondMarker")
-                }),
+            warnings.iter().any(|warning| {
+                warning.contains("ambiguous aspect method `inspect`")
+                    && warning.contains("FirstMarker, SecondMarker")
+            }),
             "expected the reconstruction failure reason, got {warnings:#?}"
         );
     }

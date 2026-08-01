@@ -256,12 +256,15 @@ branch and run again.
 1. **Tests** - `cargo test --release` from `metel-interpreter/` must pass with zero failures.
    Confirm by reading the `test result:` lines, not by the command exiting — a wrapper shell
    exiting has been mistaken for a finished test run more than once.
-2. **Code quality** - `cargo clippy --release --lib -- -W clippy::pedantic` from
+2. **Formatting** - `cargo fmt --check` from `metel-interpreter/` must pass with no diff.
+   Run `cargo fmt` before committing whenever it reports drift. Formatting is repository-wide:
+   do not hand-format only the touched hunks or leave pre-existing drift for the next branch.
+3. **Code quality** - `cargo clippy --release --lib -- -W clippy::pedantic` from
    `metel-interpreter/` must end at **0 warnings**. The `--lib` scope is deliberate: `--all-targets`
    also lints measurement binaries and test harnesses, which are held to a looser bar. Then review
    every file in `git diff develop..HEAD --name-only` for stale code, dead branches, accidental
    `todo!()`, `unimplemented!()`, `unreachable!()`, and fallible `unwrap()`/`expect()` paths.
-3. **Coverage** - every feature or fix needs a focused regression test. Fixtures live under
+4. **Coverage** - every feature or fix needs a focused regression test. Fixtures live under
    `metel-interpreter/tests/integration/sources/`:
    - Parser or grammar changes: `parsing/`, or a typechecking fixture.
    - Type system changes: `typechecking/`.
@@ -271,11 +274,11 @@ branch and run again.
    A directory fixture's sidecar is `test.toml`; a single-file fixture's is `<name>.toml`.
    Getting this wrong makes the sidecar silently inert — the fixture passes while checking
    nothing, which is how six migrated fixtures skipped move checking entirely.
-4. **Spec accuracy** - every language-visible change is documented in `docs/public/reference/spec.md` and the linked spec section.
-5. **Changelog** - `tools/changelog-status.sh` reports no unlogged commits for this branch's
+5. **Spec accuracy** - every language-visible change is documented in `docs/public/reference/spec.md` and the linked spec section.
+6. **Changelog** - `tools/changelog-status.sh` reports no unlogged commits for this branch's
    work. This is a completeness check, not first authorship — see "While the Branch Is Open"
    above. A failure here means entries were batched, not that the check is noisy.
-6. **Acceptance criteria** - every criterion in the issue is actually satisfied. Deferred
+7. **Acceptance criteria** - every criterion in the issue is actually satisfied. Deferred
    work is a new open issue, not an unchecked box or a comment.
 
 Then open a pull request to `develop` (never to `main` — see "Release Workflow" below for
