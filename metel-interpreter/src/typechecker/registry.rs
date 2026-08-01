@@ -147,7 +147,7 @@ fn bare_target_generic_name(ib: &crate::ast::ImplBlock) -> Option<&str> {
         .map(|gp| gp.name.as_str())
 }
 
-fn array_target_generic_name(ib: &crate::ast::ImplBlock) -> Option<&str> {
+pub(super) fn array_target_generic_name(ib: &crate::ast::ImplBlock) -> Option<&str> {
     let TypeExpr::Array(inner) = &ib.target_type else {
         return None;
     };

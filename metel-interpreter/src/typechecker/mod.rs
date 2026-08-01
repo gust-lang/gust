@@ -696,16 +696,26 @@ pub(crate) fn reject_unregisterable_impl_target(
         return Ok(());
     }
     // The one structural target that is genuinely implemented: a generic array
-    // impl registers via `array_target_generic_name` and dispatches.
-    if matches!(&ib.target_type, TypeExpr::Array(_)) && !ib.generics.is_empty() {
+    // impl whose *element* is one of the impl's own type parameters —
+    // `extend<T> T[]: Aspect`, which is what `registry::array_target_generic_name`
+    // actually registers. `extend<T> i64[]: Aspect` also matches
+    // `Array(_) && !generics.is_empty()` but has an unused `T` and a concrete
+    // element, so it registers nothing and is exactly as inert as the targets
+    // this function rejects — found by adversarial review of the first cut,
+    // which checked only "is an array with generics" and not this.
+    if registry::array_target_generic_name(ib).is_some() {
         return Ok(());
     }
     let fix = match &ib.target_type {
-        TypeExpr::Array(_) => "write it as `extend<T> T[]: Aspect { … }`, or use a named struct",
+        TypeExpr::Array(_) => "write it as `extend<T> T[]: Aspect { … }`, where `T` is the \
+             array's own element type, or use a named struct",
         _ => "use a named struct",
     };
     let kind = match &ib.target_type {
-        TypeExpr::Array(_) => "an array type without type parameters",
+        // Same message for "no generics" and "generics that do not name the
+        // element" — both fail the one check that actually registers an array
+        // impl (`registry::array_target_generic_name`), so the fix is the same.
+        TypeExpr::Array(_) => "an array type whose element is not one of the impl's own type parameters",
         TypeExpr::Tuple(_) => "a tuple type",
         TypeExpr::Record(_) => "an anonymous record type",
         TypeExpr::Fun(_, _) => "a function type",
