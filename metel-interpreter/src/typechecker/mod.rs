@@ -669,58 +669,57 @@ pub(crate) fn impl_defers_method_bodies(ib: &crate::ast::ImplBlock) -> bool {
     !ib.generics.is_empty() || impl_target_head(&ib.target_type).is_none()
 }
 
-/// Reject an `extend` on a *concrete* structural target, which parses and is
-/// specified but has nowhere to register (metel-core#296).
+/// Reject an `extend` on a structural target that has nowhere to register
+/// (metel-core#296, metel-core#353).
 ///
 /// RFC-0061 grants aspect impls for structural types and RFC-0116 §3 relies on
-/// it for records, but only the **generic** form is implemented:
-/// `extend<T> T[]: Display` registers because `array_target_generic_name` keys
-/// it on the impl's own type parameter. `extend i64[]: Display` has no such key,
-/// so the block would be accepted and its methods would never be found.
+/// it for records, but only one form is actually implemented:
+/// `extend<T> T[]: Display` registers via `array_target_generic_name` and
+/// dispatches. Everything else — a concrete array, and a tuple, record or `fun`
+/// target in *either* form — is accepted by the parser and then invisible to
+/// both method dispatch and bound satisfaction.
 ///
-/// This is deliberately an error rather than silent acceptance. A declaration
-/// that compiles and does nothing is the failure mode RFC-0071 §9c exists to
-/// prevent, and the same judgement was applied to inert `Drop` impls in
-/// metel-core#345.
+/// All of it is an error rather than silent acceptance. A declaration that
+/// compiles and does nothing is the failure mode RFC-0071 §9c exists to prevent,
+/// and the same judgement was applied to inert `Drop` impls in metel-core#345.
+/// Rejecting the generic tuple/record form costs nothing: nobody can depend on
+/// the current behaviour, because the current behaviour is that the impl has no
+/// effect.
 ///
 /// # Errors
-/// Returns `T0003` naming the target kind and the generic form that does work.
+/// Returns `T0003` naming the target kind and the way forward for it.
 pub(crate) fn reject_unregisterable_impl_target(
     ib: &crate::ast::ImplBlock,
 ) -> Result<(), crate::error::MetelError> {
     use crate::ast::TypeExpr;
-    if impl_target_head(&ib.target_type).is_some() || !ib.generics.is_empty() {
+    if impl_target_head(&ib.target_type).is_some() {
         return Ok(());
     }
-    // The generic form is only *usable* for arrays. A generic tuple or record
-    // impl typechecks and then has no effect in either the call or the bound
-    // position (metel-core#353), so recommending it there would send the reader
-    // one step down a path that dead-ends.
-    let (kind, fix) = match &ib.target_type {
-        TypeExpr::Array(_) => (
-            "an array type",
-            "write it as `extend<T> T[]: Aspect { … }`, or use a named struct".to_string(),
-        ),
-        other => {
-            let kind = match other {
-                TypeExpr::Tuple(_) => "a tuple type",
-                TypeExpr::Record(_) => "an anonymous record type",
-                TypeExpr::Fun(_, _) => "a function type",
-                _ => "a structural type",
-            };
-            (
-                kind,
-                "use a named struct — the generic form parses but does not take effect \
-                 for this target either (metel-core#353)"
-                    .to_string(),
-            )
-        }
+    // The one structural target that is genuinely implemented: a generic array
+    // impl registers via `array_target_generic_name` and dispatches.
+    if matches!(&ib.target_type, TypeExpr::Array(_)) && !ib.generics.is_empty() {
+        return Ok(());
+    }
+    let fix = match &ib.target_type {
+        TypeExpr::Array(_) => "write it as `extend<T> T[]: Aspect { … }`, or use a named struct",
+        _ => "use a named struct",
+    };
+    let kind = match &ib.target_type {
+        TypeExpr::Array(_) => "an array type without type parameters",
+        TypeExpr::Tuple(_) => "a tuple type",
+        TypeExpr::Record(_) => "an anonymous record type",
+        TypeExpr::Fun(_, _) => "a function type",
+        _ => "a structural type",
+    };
+    let tracking = match &ib.target_type {
+        TypeExpr::Array(_) => String::new(),
+        _ => " (metel-core#353)".to_string(),
     };
     Err(crate::error::MetelError::type_error(
         crate::error::TypeErrorCode::T0003,
         format!(
-            "cannot `extend` {kind} without type parameters: this block's methods could \
-             never be found. To fix it, {fix}"
+            "cannot `extend` {kind}: this block's methods could never be found{tracking}. \
+             To fix it, {fix}"
         ),
         &ib.span,
     ))
