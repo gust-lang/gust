@@ -1,0 +1,26 @@
+aspect Consume {
+    fun eat(self) -> String;
+}
+
+struct B {
+    v: String,
+}
+
+extend B: Consume {
+    fun eat(self) -> String {
+        return self.v;
+    }
+}
+
+// The receiver is `pair.0`, not an identifier — the same non-identifier shape
+// #347 found unguarded for `&var self`. The check here is keyed on the
+// receiver's type and place, not on `Expr::Ident`, so it needs no separate
+// case for this.
+fun consume_sneak<T: Consume>(pair: (&T, i64)) -> String {
+    return pair.0.eat();
+}
+
+fun main() {
+    let b = B { v = "owned" };
+    let result = consume_sneak((&b, 1));
+}

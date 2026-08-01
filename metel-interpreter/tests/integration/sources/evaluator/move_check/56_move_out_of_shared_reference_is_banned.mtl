@@ -1,0 +1,23 @@
+aspect Consume {
+    fun eat(self) -> String;
+}
+
+struct B {
+    v: String,
+}
+
+extend B: Consume {
+    fun eat(self) -> String {
+        return self.v;
+    }
+}
+
+// A by-value `self` method reached through a shared reference has nowhere to
+// take the value from: `r` only borrows `b`, so `eat` cannot consume it. This
+// is rejected at the *first* call, not the second (#348) — moving out of a
+// reference is illegal regardless of how many times it is attempted.
+fun main() {
+    let b = B { v = "owned" };
+    let r = &b;
+    let first = r.eat();
+}

@@ -1,0 +1,23 @@
+aspect Consume {
+    fun eat(self) -> String;
+}
+
+struct B {
+    v: String,
+}
+
+extend B: Consume {
+    fun eat(self) -> String {
+        return self.v;
+    }
+}
+
+// The `&var` form used to be rejected too, but on the second call only, as a
+// reuse of the moved *reference* rather than a move of its pointee (`&var T`
+// is not `Copy`, unlike `&T`). Rejected at the first call now, for the actual
+// reason: a by-value method cannot be called through any reference.
+fun main() {
+    var b = B { v = "owned" };
+    let r = &var b;
+    let first = r.eat();
+}

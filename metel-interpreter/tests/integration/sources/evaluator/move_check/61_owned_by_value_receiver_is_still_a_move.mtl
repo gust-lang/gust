@@ -1,0 +1,23 @@
+aspect Consume {
+    fun eat(self) -> String;
+}
+
+struct B {
+    v: String,
+}
+
+extend B: Consume {
+    fun eat(self) -> String {
+        return self.v;
+    }
+}
+
+// The rule is specifically about a reference in the way, not about by-value
+// receivers in general: an owned value can still be consumed by value, and
+// using it again afterward is the ordinary use-after-move check, unaffected
+// by #348.
+fun main() {
+    let b = B { v = "owned" };
+    let out = b.eat();
+    let again = b.v;
+}

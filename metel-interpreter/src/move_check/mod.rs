@@ -41,6 +41,7 @@ pub enum MoveViolationKind {
     ArrayElementMove,
     BorrowedArrayElementMove,
     MovedMutReferenceWithoutReborrow,
+    MoveOutOfReference,
 }
 
 /// A coarse bucket for `ty`, enough to separate the sequence types from
@@ -1337,6 +1338,10 @@ impl<'a> Checker<'a> {
             self.method_receiver_kind(receiver.ty(), method, current_module, dispatch);
         match receiver_kind {
             Some(ReceiverKind::Value) => {
+                if Self::receiver_place_is_behind_a_reference(receiver) {
+                    self.report_move_out_of_reference(receiver, current_module, state);
+                    return;
+                }
                 self.consume_expr_with_cause(
                     receiver,
                     current_module,
@@ -1348,6 +1353,72 @@ impl<'a> Checker<'a> {
                 self.observe_expr(receiver, current_module, state);
             }
         }
+    }
+
+    /// Whether a by-value `self` method's receiver names a place reached
+    /// through *any* reference — shared or mutable, and regardless of whether
+    /// the deref is implicit (`r.eat()`, where `r: &B`) or written out
+    /// (`(*r).eat()`). Both are the same operation: dispatch always resolves
+    /// to the same by-value method, and either spelling would move `B` out of
+    /// memory this scope does not own.
+    ///
+    /// Two independent signals, because a reference can appear at either end
+    /// of the receiver expression: the receiver's own *type* is still a
+    /// reference when the deref has not happened yet (`r`, `pair.0`), or the
+    /// receiver's *place* already carries a `Deref` projection when it has
+    /// (`*r`, `(*pair.0)`). Checking only one leaves the other spelling as an
+    /// unguarded sibling — the exact shape #347's review found in the `&var`
+    /// case, so both are checked together here rather than added on demand.
+    fn receiver_place_is_behind_a_reference(receiver: &TypedExpr) -> bool {
+        if matches!(receiver.ty(), Type::Reference(_) | Type::MutReference(_)) {
+            return true;
+        }
+        place_from_expr(receiver).is_some_and(|place| {
+            place
+                .projections()
+                .iter()
+                .any(|projection| matches!(projection, Projection::Deref))
+        })
+    }
+
+    /// A by-value `self` method cannot be called through a reference: there is
+    /// no way to give up a value that lives in memory this scope only
+    /// borrows. Rejected outright rather than recorded as a move — this is not
+    /// about *prior* move history, so under `--move-check` the value is never
+    /// legally observed even once, the same as `illegal_move_kind`'s other
+    /// unconditional bans (an array element, a partial move of a `Drop`
+    /// type).
+    ///
+    /// The receiver is still observed first, so a non-identifier receiver
+    /// (`pair.0.eat()`) still checks its base object (`pair`) for a prior
+    /// move — the same side effect `consume_expr_with_cause`'s own
+    /// `FieldAccess`/`TupleAccess` arm produces for an ordinary consumption,
+    /// reused here via `observe_expr` rather than re-implemented.
+    fn report_move_out_of_reference(
+        &mut self,
+        receiver: &TypedExpr,
+        current_module: &[String],
+        state: &mut FlowState,
+    ) {
+        self.observe_expr(receiver, current_module, state);
+        let Some(place) = place_from_expr(receiver) else {
+            return;
+        };
+        // Name the value actually being moved, not the reference: `r.eat()`
+        // reports `(*r)`, matching how the explicit-deref spelling already
+        // reads. `place_from_expr` already added the `Deref` itself for that
+        // spelling, so only the implicit case needs one appended here.
+        let moved_place = if matches!(receiver.ty(), Type::Reference(_) | Type::MutReference(_)) {
+            place.with_projection(Projection::Deref)
+        } else {
+            place
+        };
+        self.report_illegal_move(
+            &moved_place,
+            receiver.span().clone(),
+            type_bucket(receiver.ty()),
+            MoveViolationKind::MoveOutOfReference,
+        );
     }
 
     fn apply_pattern_moves(
@@ -2629,6 +2700,11 @@ fn violation_message(violation: &MoveViolation) -> String {
             violation.binding,
             violation.binding,
             format_span(&violation.moved_span)
+        ),
+        MoveViolationKind::MoveOutOfReference => format!(
+            "cannot move `{}` out of a reference: a by-value `self` method cannot be called \
+             through a reference",
+            format_place(&violation.use_place),
         ),
     }
 }
@@ -3989,6 +4065,175 @@ fun main() {
             "p",
         );
         assert_eq!(format_place(&violations[0].moved_place), "(*p)");
+    }
+
+    // ── By-value receivers through a reference (#348) ───────────────────────
+    //
+    // `&T` and `&var T` are both `Copy` at the reference-place level, so
+    // consuming the receiver *place* records nothing — the checker has to
+    // recognise a by-value `self` method reached through a reference and
+    // reject it directly, not by tracking a move of the place that never
+    // happens. Rejected at the first call, not the second.
+
+    #[test]
+    fn a_by_value_method_through_a_shared_reference_is_rejected_at_the_first_call() {
+        let violations = assert_has_violation(
+            r#"
+aspect Consume { fun eat(self) -> String; }
+struct B { v: String }
+extend B: Consume { fun eat(self) -> String { return self.v; } }
+
+fun main() {
+    let b = B { v = "owned" };
+    let r = &b;
+    let first = r.eat();
+}
+"#,
+            "r",
+        );
+        assert_eq!(violations.len(), 1);
+        assert_eq!(format_place(&violations[0].moved_place), "(*r)");
+    }
+
+    #[test]
+    fn a_by_value_method_through_an_explicit_deref_is_rejected_identically() {
+        // Auto-deref (`r.eat()`) and an explicit `*` (`(*r).eat()`) dispatch to
+        // the same method and must be rejected the same way — checking only
+        // the receiver's static type would miss this spelling, since the
+        // deref has already happened by the time `self.ty()` is read.
+        let violations = assert_has_violation(
+            r#"
+aspect Consume { fun eat(self) -> String; }
+struct B { v: String }
+extend B: Consume { fun eat(self) -> String { return self.v; } }
+
+fun main() {
+    let b = B { v = "owned" };
+    let r = &b;
+    let first = (*r).eat();
+}
+"#,
+            "r",
+        );
+        assert_eq!(format_place(&violations[0].moved_place), "(*r)");
+    }
+
+    #[test]
+    fn a_by_value_method_through_a_mut_reference_is_rejected_at_the_first_call() {
+        // `&var T` is not `Copy`, so before this fix the second call was
+        // rejected as reuse of the moved *reference* — the wrong reason. The
+        // first call must be rejected now, for the actual reason.
+        let violations = assert_has_violation(
+            r#"
+aspect Consume { fun eat(self) -> String; }
+struct B { v: String }
+extend B: Consume { fun eat(self) -> String { return self.v; } }
+
+fun main() {
+    var b = B { v = "owned" };
+    let r = &var b;
+    let first = r.eat();
+}
+"#,
+            "r",
+        );
+        assert_eq!(violations[0].kind, MoveViolationKind::MoveOutOfReference);
+    }
+
+    #[test]
+    fn a_by_value_method_through_a_generic_bound_reference_is_rejected() {
+        // Concrete and generic dispatch resolve through the same
+        // `consume_method_receiver`, so there is no second copy of this rule
+        // that could disagree with the concrete case above.
+        assert_has_violation(
+            r#"
+aspect Consume { fun eat(self) -> String; }
+struct B { v: String }
+extend B: Consume { fun eat(self) -> String { return self.v; } }
+
+fun twice<T: Consume>(x: &T) -> String {
+    let a = x.eat();
+    return x.eat();
+}
+
+fun main() {
+    let b = B { v = "owned" };
+    let result = twice(&b);
+}
+"#,
+            "x",
+        );
+    }
+
+    #[test]
+    fn a_by_value_method_through_a_non_ident_receiver_is_rejected() {
+        // The receiver is `pair.0`, not an identifier — the same shape #347
+        // found unguarded for `&var self`. The check is keyed on the
+        // receiver's type and place, not on `Expr::Ident`.
+        let violations = assert_has_violation(
+            r#"
+aspect Consume { fun eat(self) -> String; }
+struct B { v: String }
+extend B: Consume { fun eat(self) -> String { return self.v; } }
+
+fun consume_sneak<T: Consume>(pair: (&T, i64)) -> String {
+    return pair.0.eat();
+}
+
+fun main() {
+    let b = B { v = "owned" };
+    let result = consume_sneak((&b, 1));
+}
+"#,
+            "pair",
+        );
+        assert_eq!(format_place(&violations[0].moved_place), "(*pair.0)");
+    }
+
+    #[test]
+    fn an_owned_by_value_receiver_is_still_an_ordinary_move() {
+        // The rule is about a reference in the way, not about by-value
+        // receivers in general.
+        assert_has_violation(
+            r#"
+aspect Consume { fun eat(self) -> String; }
+struct B { v: String }
+extend B: Consume { fun eat(self) -> String { return self.v; } }
+
+fun main() {
+    let b = B { v = "owned" };
+    let out = b.eat();
+    let again = b.v;
+}
+"#,
+            "b",
+        );
+    }
+
+    #[test]
+    fn ref_and_mut_ref_methods_through_a_reference_are_unaffected() {
+        assert_no_violations(
+            r#"
+aspect Show { fun show(&self) -> String; }
+aspect Bump { fun bump(&var self); }
+struct B { v: String }
+extend B: Show { fun show(&self) -> String { return self.v; } }
+struct C { v: i64 }
+extend C: Bump { fun bump(&var self) { self.v = self.v + 1; } }
+
+fun main() {
+    let b = B { v = "x" };
+    let r = &b;
+    let a = r.show();
+    let c = r.show();
+
+    var cc = C { v = 0 };
+    let rc = &var cc;
+    rc.bump();
+    rc.bump();
+}
+"#,
+        );
     }
 }
 

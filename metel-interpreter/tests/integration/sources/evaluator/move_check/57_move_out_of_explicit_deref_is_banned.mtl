@@ -1,0 +1,23 @@
+aspect Consume {
+    fun eat(self) -> String;
+}
+
+struct B {
+    v: String,
+}
+
+extend B: Consume {
+    fun eat(self) -> String {
+        return self.v;
+    }
+}
+
+// Same rule as #56, spelled with the deref written out. Auto-deref and an
+// explicit `*` dispatch to the same method and must be rejected identically —
+// checking only the receiver's static type and missing an explicit `Deref`
+// projection would leave this spelling as an unguarded sibling.
+fun main() {
+    let b = B { v = "owned" };
+    let r = &b;
+    let first = (*r).eat();
+}
