@@ -50,25 +50,35 @@ extend Maybe<T> {
     }
 }
 
+// get_or/map/get/is_just/or_else all take `self` by value (RFC-0067a SS3a: a
+// value can never be moved out of a reference), and neither Box<T> nor
+// Maybe<T> is Copy here, so each by-value call below gets its own instance
+// rather than reusing one binding across several such calls.
 fun main() {
     // Generic struct methods.
-    let b = Box { value = 21 };
-    assert((&b).get_or(0) == 21);
-    let doubled = (&b).map((x: i64) -> i64 { x * 2 });
+    let b1 = Box { value = 21 };
+    assert(b1.get_or(0) == 21);
+    let b2 = Box { value = 21 };
+    let doubled = b2.map((x: i64) -> i64 { x * 2 });
     assert(doubled.get() == 42);
     // Method-level generic changing the element type.
-    let labelled = (&b).map((x: i64) -> String { "n" });
+    let b3 = Box { value = 21 };
+    let labelled = b3.map((x: i64) -> String { "n" });
     assert(labelled.get() == "n");
 
     // Generic enum methods, including match-on-self and chaining.
-    let j = Maybe::Just { value = 10 };
-    assert((&j).is_just());
-    assert((&j).or_else(0) == 10);
-    let n: Maybe<i64> = Maybe::Nothing;
-    assert(!(&n).is_just());
-    assert((&n).or_else(7) == 7);
-    assert((&j).map((x: i64) -> i64 { x + 5 }).or_else(0) == 15);
-    assert((&n).map((x: i64) -> i64 { x + 5 }).or_else(99) == 99);
+    let j1 = Maybe::Just { value = 10 };
+    assert(j1.is_just());
+    let j2 = Maybe::Just { value = 10 };
+    assert(j2.or_else(0) == 10);
+    let n1: Maybe<i64> = Maybe::Nothing;
+    assert(!n1.is_just());
+    let n2: Maybe<i64> = Maybe::Nothing;
+    assert(n2.or_else(7) == 7);
+    let j3 = Maybe::Just { value = 10 };
+    assert(j3.map((x: i64) -> i64 { x + 5 }).or_else(0) == 15);
+    let n3: Maybe<i64> = Maybe::Nothing;
+    assert(n3.map((x: i64) -> i64 { x + 5 }).or_else(99) == 99);
 
     println("ok");
 }

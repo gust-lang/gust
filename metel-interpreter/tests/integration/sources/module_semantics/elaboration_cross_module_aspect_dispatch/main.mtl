@@ -3,21 +3,27 @@ import geometry::*;
 // Regression: aspect method calls on types whose aspect is declared in another module.
 // The elaborator resolves dispatch using the declaring module's SymbolId so that
 // two aspects with the same name from different modules are kept distinct.
-
+//
+// describe/scale take `self` by value (RFC-0067a SS3a: a value can never be
+// moved out of a reference), so each call gets its own instance rather than
+// reusing one binding across both.
 fun main() {
     let c = Circle { radius = 5 };
     let r = Rectangle { width = 3, height = 4 };
 
     // Aspect method dispatch on Circle
-    assert((&c).describe() == "Circle(r=5)");
-    assert((&c).scale(2) == 10);
+    assert(c.describe() == "Circle(r=5)");
+    let c_scale = Circle { radius = 5 };
+    assert(c_scale.scale(2) == 10);
 
     // Aspect method dispatch on Rectangle — same method name, different receiver type
-    assert((&r).describe() == "Rect(3x4)");
-    assert((&r).scale(3) == 36);
+    assert(r.describe() == "Rect(3x4)");
+    let r_scale = Rectangle { width = 3, height = 4 };
+    assert(r_scale.scale(3) == 36);
 
     // Second instance
     let c2 = Circle { radius = 10 };
-    assert((&c2).describe() == "Circle(r=10)");
-    assert((&c2).scale(5) == 50);
+    assert(c2.describe() == "Circle(r=10)");
+    let c2_scale = Circle { radius = 10 };
+    assert(c2_scale.scale(5) == 50);
 }

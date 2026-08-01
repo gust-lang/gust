@@ -1338,7 +1338,16 @@ impl<'a> Checker<'a> {
             self.method_receiver_kind(receiver.ty(), method, current_module, dispatch);
         match receiver_kind {
             Some(ReceiverKind::Value) => {
-                if Self::receiver_place_is_behind_a_reference(receiver) {
+                // Mirrors `illegal_move_kind`'s own `is_copy` gate (the other
+                // unconditional-ban mechanism `report_move_out_of_reference`
+                // reuses): a reference to a `Copy` pointee can be read back by
+                // value freely (RFC-0067a SS3a), so the gate is checked on the
+                // *pointee* type (`peel_type_references`), not the reference's
+                // own type, which is always `Copy` regardless of what it
+                // points to and would otherwise defeat this check entirely.
+                if Self::receiver_place_is_behind_a_reference(receiver)
+                    && !self.is_copy(current_module, peel_type_references(receiver.ty()))
+                {
                     self.report_move_out_of_reference(receiver, current_module, state);
                     return;
                 }
@@ -1401,17 +1410,27 @@ impl<'a> Checker<'a> {
         state: &mut FlowState,
     ) {
         self.observe_expr(receiver, current_module, state);
-        let Some(place) = place_from_expr(receiver) else {
-            return;
-        };
-        // Name the value actually being moved, not the reference: `r.eat()`
-        // reports `(*r)`, matching how the explicit-deref spelling already
-        // reads. `place_from_expr` already added the `Deref` itself for that
-        // spelling, so only the implicit case needs one appended here.
-        let moved_place = if matches!(receiver.ty(), Type::Reference(_) | Type::MutReference(_)) {
-            place.with_projection(Projection::Deref)
-        } else {
-            place
+        // Name the value actually being moved, not the reference. `r.eat()`
+        // reports `(*r)`; `place_from_expr` already added the `Deref` itself
+        // for an explicit `(*r).eat()`, so only the remaining *implicit*
+        // layers need appending here — `deref_layers` counts them from the
+        // receiver's own (already-partially-dereffed) type, so an auto-deref
+        // chain more than one layer deep (`rr: &&B`) is still named in full
+        // rather than left one layer short.
+        //
+        // A receiver with **no** nameable place at all — the result of a
+        // call, an `if`, a `match`, or a cast, none of which is a place — is
+        // still exactly as much a reference as a named one: the borrow is a
+        // property of the *type*, not of whether anything binds it. An
+        // earlier version of this function returned here without reporting
+        // anything, silently accepting `get_ref(&b).eat()` — found by
+        // adversarial review of this same commit.
+        let moved_place = match place_from_expr(receiver) {
+            Some(place) => {
+                let layers = deref_layers(receiver.ty());
+                (0..layers).fold(place, |p, _| p.with_projection(Projection::Deref))
+            }
+            None => Place::new("<temporary>".to_string()),
         };
         self.report_illegal_move(
             &moved_place,
@@ -2386,6 +2405,18 @@ fn peel_type_references(ty: &Type) -> &Type {
     match ty {
         Type::Reference(inner) | Type::MutReference(inner) => peel_type_references(inner),
         _ => ty,
+    }
+}
+
+/// How many layers of `&`/`&var` wrap `ty` — the number of implicit derefs an
+/// auto-deref chain still has left to do to reach the non-reference type
+/// underneath. Companion to `peel_type_references`, which strips them but
+/// throws the count away; `report_move_out_of_reference` needs the count to
+/// name the full chain (`(*(*rr))` for `rr: &&B`), not just its first layer.
+fn deref_layers(ty: &Type) -> usize {
+    match ty {
+        Type::Reference(inner) | Type::MutReference(inner) => 1 + deref_layers(inner),
+        _ => 0,
     }
 }
 
@@ -4234,6 +4265,84 @@ fun main() {
 }
 "#,
         );
+    }
+
+    #[test]
+    fn a_by_value_method_through_a_reference_is_allowed_when_the_pointee_is_copy() {
+        // `illegal_move_kind` (the pre-existing "outright ban" mechanism this
+        // check reuses via `report_illegal_move`) already gates every one of
+        // its bans on `is_copy` first — a Copy value can always be read back
+        // out. `receiver_place_is_behind_a_reference` must not skip that same
+        // gate, or a Copy struct's by-value method becomes uncallable through
+        // a reference at all, which RFC-0067a SS3a explicitly allows ("only
+        // copied, and only when the referent's type actually permits
+        // copying"). Called twice through the same reference to confirm
+        // nothing is consumed either.
+        assert_no_violations(
+            r#"
+struct Pair { a: i64, b: i64 }
+extend Pair: Copy;
+extend Pair { fun sum(self) -> i64 { self.a + self.b } }
+
+fun main() {
+    let p = Pair { a = 1, b = 2 };
+    let r = &p;
+    let first = r.sum();
+    let second = r.sum();
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn a_by_value_method_on_a_non_place_reference_receiver_is_rejected() {
+        // A call result, `if`, `match`, or cast has no nameable `Place` at
+        // all, so `receiver_place_is_behind_a_reference`'s second signal
+        // (a `Deref` projection) can never fire for it — only the first
+        // signal (the receiver's own static type) can. An earlier version of
+        // `report_move_out_of_reference` returned early when `place_from_expr`
+        // gave `None`, silently accepting this; found by adversarial review.
+        let violations = assert_has_violation(
+            r#"
+aspect Consume { fun eat(self) -> String; }
+struct B { v: String }
+extend B: Consume { fun eat(self) -> String { return self.v; } }
+
+fun get_ref(x: &B) -> &B { return x; }
+
+fun main() {
+    let b = B { v = "owned" };
+    let out = get_ref(&b).eat();
+}
+"#,
+            "<temporary>",
+        );
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn a_by_value_method_through_a_double_reference_names_every_layer() {
+        // `deref_layers` must count every implicit layer from the receiver's
+        // own type, not just append one `Deref` unconditionally — otherwise
+        // `rr: &&B` reports `(*rr)` (still a reference, not the `B` actually
+        // moved) instead of `(*(*rr))`. Found by adversarial review.
+        let violations = assert_has_violation(
+            r#"
+aspect Consume { fun eat(self) -> String; }
+struct B { v: String }
+extend B: Consume { fun eat(self) -> String { return self.v; } }
+
+fun main() {
+    let b = B { v = "owned" };
+    let r = &b;
+    let rr = &r;
+    let out = rr.eat();
+}
+"#,
+            "rr",
+        );
+        assert_eq!(violations.len(), 1);
+        assert_eq!(format_place(&violations[0].moved_place), "(*(*rr))");
     }
 }
 

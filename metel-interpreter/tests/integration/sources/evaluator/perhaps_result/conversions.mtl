@@ -1,4 +1,8 @@
 // issue #232: Perhaps<->Result conversion methods.
+//
+// map_err/ok take `self` by value (RFC-0067a SS3a: a value can never be moved
+// out of a reference), so `ok`/`err` get a fresh binding per consuming call
+// rather than being reused across both.
 fun main() {
     // Perhaps::ok_or
     let some: Perhaps<i64> = Perhaps::Some { value = 5 };
@@ -17,21 +21,24 @@ fun main() {
     let ok: Result<i64, i64> = Result::Ok { value = 10 };
     let err: Result<i64, i64> = Result::Err { error = 2 };
 
-    match (&ok).map_err((e: i64) -> String { e.to_string() }) {
+    match ok.map_err((e: i64) -> String { e.to_string() }) {
         Result::Ok { value } => assert(value == 10),
         Result::Err { error } => assert(false),
     }
-    match (&err).map_err((e: i64) -> String { e.to_string() }) {
+    match err.map_err((e: i64) -> String { e.to_string() }) {
         Result::Ok { value } => assert(false),
         Result::Err { error } => assert(error == "2"),
     }
 
     // Result::ok
-    match (&ok).ok() {
+    let ok2: Result<i64, i64> = Result::Ok { value = 10 };
+    let err2: Result<i64, i64> = Result::Err { error = 2 };
+
+    match ok2.ok() {
         Perhaps::Some { value } => assert(value == 10),
         Perhaps::None => assert(false),
     }
-    match (&err).ok() {
+    match err2.ok() {
         Perhaps::Some { value } => assert(false),
         Perhaps::None => assert(true),
     }
