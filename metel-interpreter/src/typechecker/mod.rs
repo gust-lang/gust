@@ -709,7 +709,15 @@ pub(crate) fn reject_unregisterable_impl_target(
         TypeExpr::Tuple(_) => "a tuple type",
         TypeExpr::Record(_) => "an anonymous record type",
         TypeExpr::Fun(_, _) => "a function type",
-        _ => "a structural type",
+        TypeExpr::SizedArray(_, _) => "a fixed-size array type",
+        TypeExpr::Reference(_) | TypeExpr::MutReference(_) => "a reference type",
+        TypeExpr::Unit => "the unit type",
+        TypeExpr::Projection { .. } => "an associated-type projection",
+        TypeExpr::ImplAspect { .. } => "an `impl Aspect` type",
+        // RFC-0116's row projection (`Handle.{ fd }`) — a residual, not a fresh
+        // nominal type, so it has no registry key of its own either.
+        TypeExpr::RecordProjection { .. } => "a record projection",
+        TypeExpr::Named(_, _) => unreachable!("nominal targets returned early"),
     };
     let tracking = match &ib.target_type {
         TypeExpr::Array(_) => String::new(),
