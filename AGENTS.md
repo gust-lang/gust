@@ -34,6 +34,7 @@ The repository remote is Codeberg (`codeberg.org/metel-lang/metel-core`). Task t
 | `docs/internal/rfcs/5-superseded/` | RFCs replaced by later RFCs |
 | `docs/internal/rfcs/6-refused/` | RFCs refused with a recorded decision |
 | `docs/reports/strategy/OBJECTIVES.md` | **Living long-term objectives, current priorities, and open triggers** — persists across planning cycles; see "Strategic Planning" below. |
+| `docs/reports/strategy/PROCESS.md` | **How to run a strategic-overview cycle** — verification discipline, trigger lifecycle, and the dated overview's structural template. Read before running one. |
 | `docs/reports/` | Design reports and longer-form research notes |
 | `metel-interpreter/docs/architecture.md` | Interpreter pipeline and component boundaries |
 | `metel-interpreter/docs/typechecker.md` | Typechecker theory and implementation notes |
@@ -581,10 +582,16 @@ Rules (content lives in `OBJECTIVES.md` itself, not duplicated here):
 - A strategic-overview cycle checks triggers against real progress, updates priorities
   in place, adds anything new, and appends to the review log — *then* decides whether a
   new dated snapshot is warranted. Triggering a new dated snapshot is event-based (a
-  real inflection point), not calendar-based.
+  real inflection point), not calendar-based, and stays human-prompted rather than
+  agent-initiated — see `docs/reports/strategy/PROCESS.md` §5.
 - `OBJECTIVES.md` does not replace `docs/internal/rfcs/INDEX.md` (RFC-level thematic
   state) or `PROCESS.md` (RFC lifecycle mechanics) — it's the layer above both, tracking
   why priorities are what they are, not RFC-by-RFC status.
+- **`docs/reports/strategy/PROCESS.md` is the methodology reference — read it before
+  running a strategic-overview cycle.** It covers what's not obvious from `OBJECTIVES.md`
+  alone: the verification discipline (every claim checked against a primary source, not
+  restated from memory or frontmatter), the trigger append-only lifecycle and closure
+  bar, and the dated overview's structural template.
 
 ---
 
