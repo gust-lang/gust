@@ -1,4 +1,4 @@
 [expect]
 status = "typecheck_error"
-code = "T0003"
+code = "T0001"
 contains = "could never be found"

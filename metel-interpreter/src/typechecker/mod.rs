@@ -715,8 +715,12 @@ pub(crate) fn reject_unregisterable_impl_target(
         TypeExpr::Array(_) => String::new(),
         _ => " (metel-core#353)".to_string(),
     };
+    // T0001, not T0003 — T0003 is "undefined name", and nothing here is
+    // undefined. T0001 is what `coherence.rs` already uses for the structurally
+    // identical "anonymous records cannot implement `Drop`" rejection, and what
+    // metel-core#345 used for an inert `drop` body: this impl is not allowed.
     Err(crate::error::MetelError::type_error(
-        crate::error::TypeErrorCode::T0003,
+        crate::error::TypeErrorCode::T0001,
         format!(
             "cannot `extend` {kind}: this block's methods could never be found{tracking}. \
              To fix it, {fix}"
