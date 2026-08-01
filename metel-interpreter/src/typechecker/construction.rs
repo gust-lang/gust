@@ -1063,24 +1063,20 @@ fn construct_impl_decl(ib: &ImplBlock, ctx: &mut ConstructCtx) -> Result<TypedDe
     // already defer to `FunBody::Generic` below. Real bound-satisfaction checking at
     // each instantiation is issue #241/#245's job, not this one's; this only needs to
     // not crash on construction.
-    let impl_has_generics = !ib.generics.is_empty();
-    let target_name = match &ib.target_type {
-        TypeExpr::Named(name, _) => name.clone(),
-        // Structural targets (`T[]`, tuples, `fun` types) have no nominal name to key
-        // registry lookups on. Only reachable when the impl declares its own
-        // generics — RFC-0061's blanket impls are always written this way — so
-        // `construct_impl_method` below always takes the deferred path for these.
-        _ if impl_has_generics => String::new(),
-        _ => {
-            return Err(MetelError::not_implemented(
-                "generic impl blocks not yet supported",
-            ))
-        }
-    };
+    // Structural targets (`T[]`, tuples, `fun` types, anonymous records) have no
+    // nominal name to key registry lookups on, so they key on the empty string
+    // and their methods take the deferred path below. This used to be reachable
+    // only when the impl also declared generics; a structural target *without*
+    // them fell through to an internal error (metel-core#296).
+    super::reject_unregisterable_impl_target(ib)?;
+    let defers_bodies = super::impl_defers_method_bodies(ib);
+    let target_name = super::impl_target_head(&ib.target_type)
+        .map(ToString::to_string)
+        .unwrap_or_default();
     let mut methods = ib
         .methods
         .iter()
-        .map(|m| construct_impl_method(m, &target_name, impl_has_generics, ctx))
+        .map(|m| construct_impl_method(m, &target_name, defers_bodies, ctx))
         .collect::<Result<Vec<_>, _>>()?;
     // Default aspect-method bodies are constructed eagerly against a concrete `self`
     // type today (see `construct_default_aspect_method`) — not sound to do against a
@@ -1092,7 +1088,7 @@ fn construct_impl_decl(ib: &ImplBlock, ctx: &mut ConstructCtx) -> Result<TypedDe
     // Type {}` declares non-implementation, so it must not inherit the aspect's
     // default method bodies — that would make the type appear to implement the
     // aspect via inherited defaults, the opposite of what a negative impl means.
-    if !impl_has_generics && ib.polarity == crate::ast::Polarity::Positive {
+    if !defers_bodies && ib.polarity == crate::ast::Polarity::Positive {
         methods.extend(construct_default_aspect_methods(ib, &target_name, ctx)?);
     }
 

@@ -888,15 +888,13 @@ fn infer_decl(
             // Structural blanket impl targets (`T[]`) have no nominal head. As in
             // construction, keep a nominal target name only when one exists; generic
             // structural impl bodies are inferred against their own type-parameter map.
-            let target_name = match &ib.target_type {
-                TypeExpr::Named(name, _) => name.rsplit("::").next().unwrap_or(name).to_string(),
-                _ if !ib.generics.is_empty() => String::new(),
-                _ => {
-                    return Err(MetelError::internal(
-                        "generic impl blocks not yet supported",
-                    ))
-                }
-            };
+            crate::typechecker::reject_unregisterable_impl_target(ib)?;
+            // Same classification as construction, but keyed on the *last*
+            // segment — inference's registries are, and unifying the spelling
+            // would change what they look up.
+            let target_name = crate::typechecker::impl_target_head(&ib.target_type)
+                .map(|name| name.rsplit("::").next().unwrap_or(name).to_string())
+                .unwrap_or_default();
             if ib.polarity == Polarity::Positive {
                 if let Some(aspect_name) = &ib.aspect_name {
                     if aspect_name == "Copy" {

@@ -637,6 +637,79 @@ fn enforce_native_stdlib_only(program: &Program, module_path: &[String]) -> Resu
 }
 
 /// Construct a `TypedBlock` for a generic (polymorphic) function body at call time.
+/// The nominal head of an `extend` block's target, or `None` when the target is
+/// structural — `T[]`, a tuple, a `fun` type, an anonymous record (RFC-0061,
+/// RFC-0116 §3).
+///
+/// Both the inference and construction passes need this decision, and both used
+/// to make it inline. They disagreed: construction kept the whole path while
+/// inference took the last segment, and each carried its own copy of the
+/// "is this structural" test. Only the *classification* is shared here — how a
+/// pass spells the name it gets back is still its own business, because
+/// collapsing that difference would silently change what the registries are
+/// keyed on.
+pub(crate) fn impl_target_head(target: &crate::ast::TypeExpr) -> Option<&str> {
+    match target {
+        crate::ast::TypeExpr::Named(name, _) => Some(name),
+        _ => None,
+    }
+}
+
+/// Whether an `extend` block has no single concrete `self` type to construct its
+/// method bodies against, so they must be deferred to `FunBody::Generic` and
+/// checked per instantiation instead.
+///
+/// True for two reasons that are really one: the impl declares its own generics
+/// (`extend<T> Box<T>: …`), or the target is structural and so has no nominal
+/// type to resolve `self` to (`extend i64[]: …`). Treating only the first as a
+/// reason is what made a structural target with no generics reach an internal
+/// error — it fell through to eager construction against a type named `""`
+/// (metel-core#296).
+pub(crate) fn impl_defers_method_bodies(ib: &crate::ast::ImplBlock) -> bool {
+    !ib.generics.is_empty() || impl_target_head(&ib.target_type).is_none()
+}
+
+/// Reject an `extend` on a *concrete* structural target, which parses and is
+/// specified but has nowhere to register (metel-core#296).
+///
+/// RFC-0061 grants aspect impls for structural types and RFC-0116 §3 relies on
+/// it for records, but only the **generic** form is implemented:
+/// `extend<T> T[]: Display` registers because `array_target_generic_name` keys
+/// it on the impl's own type parameter. `extend i64[]: Display` has no such key,
+/// so the block would be accepted and its methods would never be found.
+///
+/// This is deliberately an error rather than silent acceptance. A declaration
+/// that compiles and does nothing is the failure mode RFC-0071 §9c exists to
+/// prevent, and the same judgement was applied to inert `Drop` impls in
+/// metel-core#345.
+///
+/// # Errors
+/// Returns `T0003` naming the target kind and the generic form that does work.
+pub(crate) fn reject_unregisterable_impl_target(
+    ib: &crate::ast::ImplBlock,
+) -> Result<(), crate::error::MetelError> {
+    use crate::ast::TypeExpr;
+    if impl_target_head(&ib.target_type).is_some() || !ib.generics.is_empty() {
+        return Ok(());
+    }
+    let (kind, example) = match &ib.target_type {
+        TypeExpr::Array(_) => ("an array type", "extend<T> T[]: Aspect { … }"),
+        TypeExpr::Tuple(_) => ("a tuple type", "extend<A, B> (A, B): Aspect { … }"),
+        TypeExpr::Record(_) => ("an anonymous record type", "extend<T> { field: T }: Aspect { … }"),
+        TypeExpr::Fun(_, _) => ("a function type", "extend<A, B> fun(A) -> B: Aspect { … }"),
+        _ => ("a structural type", "extend<T> …: Aspect { … }"),
+    };
+    Err(crate::error::MetelError::type_error(
+        crate::error::TypeErrorCode::T0003,
+        format!(
+            "cannot `extend` {kind} without type parameters: only the generic form is \
+             implemented, so this block's methods could never be found. Write it as \
+             `{example}`, or use a named struct"
+        ),
+        &ib.span,
+    ))
+}
+
 ///
 /// Called by the evaluator when it encounters `ClosureBody::Untyped` with a `type_ctx`.
 /// Instantiates the function's `TypeScheme` using the runtime argument types, builds
