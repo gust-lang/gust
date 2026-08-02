@@ -43,7 +43,7 @@ The repository remote is Codeberg (`codeberg.org/metel-lang/metel-core`). Task t
 
 Public docs no longer live at `docs/public/spec.md`, `docs/public/spec/`, or `docs/public/changelog.md`. Those paths are stale.
 
-**Known stale content, not yet fixed:** `docs/public/reference/spec.md`'s frontmatter still says `version: v0.7.0` and its Overview still describes the memory model as "reference counting, no ownership semantics required" — both predate the affine-ownership/allocator RFC cluster (RFC-0063/0065/0066/0067/0068/0071/0073/0077, accepted; RFC-0067a/0072/0078/0081/0082/0083, integrated) and need a real update pass, tracked as its own piece of work, not folded into this one.
+*(Removed 2026-08-02, during the v0.12.0 pre-release review: this slot previously warned that `spec.md`'s frontmatter said `version: v0.7.0` and that its Overview described the memory model as "reference counting, no ownership semantics required". **Both were fixed some releases ago and the warning outlived them** — verified directly against the file. Kept as a note rather than deleted silently, because a stale warning is worse than none: it trains readers to skip warnings. `internal/versioning.md`'s release checklist now carries a standing item to re-check notes like this one each release.)*
 
 ---
 
