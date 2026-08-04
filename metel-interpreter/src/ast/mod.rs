@@ -1,4 +1,3 @@
-use crate::parser::Rule;
 use crate::symbols::SymbolId;
 
 // ── Span ──────────────────────────────────────────────────────────────────────
@@ -29,7 +28,10 @@ impl Span {
 }
 
 impl Span {
-    pub fn of(pair: &pest::iterators::Pair<Rule>, filename: impl Into<String>) -> Self {
+    pub fn of<R: pest::RuleType>(
+        pair: &pest::iterators::Pair<R>,
+        filename: impl Into<String>,
+    ) -> Self {
         let s = pair.as_span();
         let (line, col) = s.start_pos().line_col();
         Span {
