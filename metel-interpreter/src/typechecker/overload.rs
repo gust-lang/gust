@@ -54,7 +54,8 @@ pub(super) fn core_overload_table() -> &'static OverloadTable {
 /// if the declaration's name is not overloaded in `std::core`. Used by the
 /// evaluator's embedded-core seeding to register host impls under the same
 /// ids the typechecker stamps into call sites.
-pub(crate) fn core_native_symbol(fun: &FunDecl) -> Option<SymbolId> {
+#[must_use]
+pub fn core_native_symbol(fun: &FunDecl) -> Option<SymbolId> {
     entry_for_decl(core_overload_table(), fun).map(|e| e.symbol_id)
 }
 

@@ -21,7 +21,7 @@ mod conversions;
 mod inference;
 mod overload;
 mod projections;
-pub(crate) use overload::core_native_symbol;
+pub use overload::core_native_symbol;
 mod registry;
 
 type SchemeEnv = HashMap<String, TypeScheme>;
@@ -755,7 +755,12 @@ pub(crate) fn reject_unregisterable_impl_target(
 /// Called by the evaluator when it encounters `ClosureBody::Untyped` with a `type_ctx`.
 /// Instantiates the function's `TypeScheme` using the runtime argument types, builds
 /// a `ConstructCtx`, and runs the typechecker's construction pass on the raw block.
-pub(crate) fn construct_generic_body(
+///
+/// # Errors
+///
+/// Returns a typechecking error when the body cannot be constructed for the supplied
+/// runtime argument types.
+pub fn construct_generic_body(
     scheme: &TypeScheme,
     params: &[crate::ast::Param],
     arg_types: &[crate::types::Type],
@@ -826,7 +831,9 @@ pub(crate) fn symbolic_impl_method_scheme(
 /// tolerance for the same underlying reason — a field that doesn't mention a
 /// given type param at all (e.g. `Perhaps::None`, no payload) leaves it
 /// unresolved, defaulted to `Unit` exactly as before this fix for that case.
-pub(crate) fn infer_named_type_args(
+#[must_use]
+#[allow(clippy::implicit_hasher)]
+pub fn infer_named_type_args(
     name: &str,
     variant: Option<&str>,
     field_types: &HashMap<String, crate::types::Type>,
