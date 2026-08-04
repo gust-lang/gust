@@ -12,7 +12,7 @@ The repository remote is Codeberg (`codeberg.org/metel-lang/metel-core`). Task t
 
 ## Current Documentation Structure
 
-`docs/` is the shared `metel-docs` submodule. Update it as a real submodule: make docs edits in the submodule, commit them there, then update the pointer in this repo.
+`docs/` is the private `metel-docs-internal` submodule. Update it as a real submodule: make docs edits in the submodule, commit them there, then update the pointer in this repo.
 
 | Location | Purpose |
 |---|---|
@@ -23,23 +23,23 @@ The repository remote is Codeberg (`codeberg.org/metel-lang/metel-core`). Task t
 | `docs/public/reference/error-codes.md` | Error code reference |
 | `docs/public/release-notes/changelog.md` | Version changelog and release notes |
 | `docs/internal/versioning.md` | Version numbering and doc/changelog conventions. **Not** the RFC lifecycle — see below. |
-| `docs/internal/rfcs/PROCESS.md` | **Authoritative RFC lifecycle, working rules, and tooling reference.** Read this before touching any RFC. |
-| `docs/internal/rfcs/INDEX.md` | Thematic snapshot of all RFCs by cluster and status — check before opening a new RFC to avoid duplicating one that already exists. |
-| `docs/internal/rfcs/tools/rfc.py` | The lifecycle tool (`new`/`transition`/`supersede`/`check`/`index`) — mechanizes the procedural parts of PROCESS.md. Run `rfc.py check` after any manual RFC edit. |
-| `docs/internal/rfcs/0-draft/` | Draft RFCs being written |
-| `docs/internal/rfcs/1-under-review/` | RFCs ready for evaluation |
-| `docs/internal/rfcs/2-accepted/` | Design settled; not yet integrated into the spec |
-| `docs/internal/rfcs/3-integrated/` | Merged into `docs/public/reference/spec/` with worked examples checked for soundness against everything else already integrated; not yet implemented — see `impl_status`/`impl_tracking` below |
-| `docs/internal/rfcs/4-implemented/` | Implemented and shipped |
-| `docs/internal/rfcs/5-superseded/` | RFCs replaced by later RFCs |
-| `docs/internal/rfcs/6-refused/` | RFCs refused with a recorded decision |
+| `docs/public/rfcs/PROCESS.md` | **Authoritative RFC lifecycle, working rules, and tooling reference.** Read this before touching any RFC. |
+| `docs/public/rfcs/INDEX.md` | Thematic snapshot of all RFCs by cluster and status — check before opening a new RFC to avoid duplicating one that already exists. |
+| `docs/public/rfcs/tools/rfc.py` | The lifecycle tool (`new`/`transition`/`supersede`/`check`/`index`) — mechanizes the procedural parts of PROCESS.md. Run `rfc.py check` after any manual RFC edit. |
+| `docs/public/rfcs/0-draft/` | Draft RFCs being written |
+| `docs/public/rfcs/1-under-review/` | RFCs ready for evaluation |
+| `docs/public/rfcs/2-accepted/` | Design settled; not yet integrated into the spec |
+| `docs/public/rfcs/3-integrated/` | Merged into `docs/public/reference/spec/` with worked examples checked for soundness against everything else already integrated; not yet implemented — see `impl_status`/`impl_tracking` below |
+| `docs/public/rfcs/4-implemented/` | Implemented and shipped |
+| `docs/public/rfcs/5-superseded/` | RFCs replaced by later RFCs |
+| `docs/public/rfcs/6-refused/` | RFCs refused with a recorded decision |
 | `docs/reports/strategy/OBJECTIVES.md` | **Living long-term objectives, current priorities, and open triggers** — persists across planning cycles; see "Strategic Planning" below. |
 | `docs/reports/strategy/PROCESS.md` | **How to run a strategic-overview cycle** — verification discipline, trigger lifecycle, and the dated overview's structural template. Read before running one. |
 | `docs/reports/` | Design reports and longer-form research notes |
-| `metel-interpreter/docs/architecture.md` | Interpreter pipeline and component boundaries |
-| `metel-interpreter/docs/typechecker.md` | Typechecker theory and implementation notes |
+| `docs/architecture/architecture.md` | Interpreter pipeline and component boundaries |
+| `metel-frontend/docs/typechecker.md` | Typechecker theory and implementation notes |
 | `metel-interpreter/docs/evaluator.md` | Runtime values, signals, environment, and evaluator notes |
-| `metel-interpreter/docs/decisions/` | Architectural decision records |
+| `docs/architecture/decisions/` | Architectural decision records |
 
 Public docs no longer live at `docs/public/spec.md`, `docs/public/spec/`, or `docs/public/changelog.md`. Those paths are stale.
 
@@ -62,7 +62,7 @@ kept in sync with the RFC file by hand (or by API call) because Plane had no nat
 notion of "this issue's status lives in a git file." Codeberg issues don't try to
 mirror RFC status at all — the RFC file's own directory and frontmatter (`status`,
 and from `3-integrated` onward, `impl_status`/`impl_tracking`) are already the single
-source of truth, per `docs/internal/rfcs/PROCESS.md`. An RFC gets an issue only once
+source of truth, per `docs/public/rfcs/PROCESS.md`. An RFC gets an issue only once
 it reaches `3-integrated` and needs real implementation tracked — one issue per RFC
 (or per tightly-coupled cluster), linked back via that RFC's `impl_tracking` field.
 There is nothing to keep in sync in the other direction; the issue never needs to
@@ -213,11 +213,11 @@ git push -u origin feat/<issue>-<slug>
 - **Rebase onto `develop`, never merge `develop` in.** If `develop` moved, rebase and
   force-push *your* branch. See "Merging: Fast-Forward Only" above — this is what makes
   the fast-forward possible at all.
-- If public docs changed, commit in `docs/` first — straight to `metel-docs main`; that
+- If public docs changed, commit in `docs/` first — straight to `metel-docs-internal main`; that
   repo is trunk-based with no branch tier of its own, see its `README.md` — then commit
   the updated submodule pointer here, on the issue branch. The pointer is never bumped
   directly on `develop` or `main`: `develop`'s pointer only moves as a side effect of a
-  branch merging in (it's fine for it to lag `metel-docs main` — treat it like a
+  branch merging in (it's fine for it to lag `metel-docs-internal main` — treat it like a
   dependency pin, not a freshness target), and `main`'s only moves at release time (see
   "Release Workflow" below).
 - **Update `docs/public/release-notes/changelog.md` as each feature or fix lands, not later.**
@@ -225,7 +225,7 @@ git push -u origin feat/<issue>-<slug>
   on `develop` — not yet released", if this is the first change targeting a new version).
 
   **The changelog is in the `docs/` submodule, so this can never be one commit** — the code
-  commit lands here, the entry lands in `metel-docs`, and the pointer bump lands here again.
+  commit lands here, the entry lands in `metel-docs-internal`, and the pointer bump lands here again.
   That split is why this rule quietly failed for the whole of v0.12.0: an instruction to write
   the entry "in the same commit" describes something impossible, so it degraded into "later",
   which meant never. Treat it as a **pair**: the code commit, then immediately the docs commit
@@ -254,14 +254,14 @@ label), and 6–9 became release-gate items (they were always periodic sweeps).
 Run the per-PR gate before opening the pull request. If any check fails, fix it on the
 branch and run again.
 
-1. **Tests** - `cargo test --release` from `metel-interpreter/` must pass with zero failures.
+1. **Tests** - `cargo test --release --workspace` from the repository root must pass with zero failures.
    Confirm by reading the `test result:` lines, not by the command exiting — a wrapper shell
    exiting has been mistaken for a finished test run more than once.
-2. **Formatting** - `cargo fmt --check` from `metel-interpreter/` must pass with no diff.
+2. **Formatting** - `cargo fmt --check --all` from the repository root must pass with no diff.
    Run `cargo fmt` before committing whenever it reports drift. Formatting is repository-wide:
    do not hand-format only the touched hunks or leave pre-existing drift for the next branch.
-3. **Code quality** - `cargo clippy --release --lib -- -W clippy::pedantic` from
-   `metel-interpreter/` must end at **0 warnings**. The `--lib` scope is deliberate: `--all-targets`
+3. **Code quality** - `cargo clippy --release --workspace --lib -- -W clippy::pedantic` from
+   the repository root must end at **0 warnings**. The `--lib` scope is deliberate: `--all-targets`
    also lints measurement binaries and test harnesses, which are held to a looser bar. Then review
    every file in `git diff develop..HEAD --name-only` for stale code, dead branches, accidental
    `todo!()`, `unimplemented!()`, `unreachable!()`, and fallible `unwrap()`/`expect()` paths.
@@ -319,24 +319,25 @@ checks already passed on every branch that landed.
    rule (spec changes require at least a minor bump; a patch must not touch
    language-visible behavior at all). Bump `metel-interpreter/Cargo.toml`'s
    `version` to match, in the same commit as the changelog finalization.
-3. **RFC state** - `python3 docs/internal/rfcs/tools/rfc.py check` reports clean.
+3. **RFC state** - `python3 docs/public/rfcs/tools/rfc.py check` reports clean.
    Any RFC the release actually implements end-to-end should be at `4-implemented`
    (`rfc.py transition <id> --to implemented`), not left at `3-integrated` with
    stale "Not yet implemented" spec callouts.
 4. **Docs submodule in lockstep** - bump the `docs` submodule pointer to
-   `metel-docs main`'s current tip as part of the release commit (this is the
-   only time `main`'s pointer moves at all). Since `metel-docs` is trunk-based
+   `metel-docs-internal main`'s current tip as part of the release commit (this is the
+   only time `main`'s pointer moves at all). Since `metel-docs-internal` is trunk-based
    with no long-lived branches of its own, its `main` should already hold
    everything the changelog/spec entries above were written against — this step
    should never require reconciling an unmerged docs branch first.
 5. **Spec correctness** - spot-check that `docs/public/reference/spec.md` and its
    linked sections actually describe the behavior being released, not a stale or
    aspirational version of it.
-6. **Internal docs** - `metel-interpreter/docs/architecture.md`, `typechecker.md`, and
-   `evaluator.md` reflect the pipeline, inference, construction, runtime, and builtin
-   behavior as it now is. Read them against the release's diff rather than from memory.
+6. **Internal docs** - `docs/architecture/architecture.md`,
+   `metel-frontend/docs/typechecker.md`, and `metel-interpreter/docs/evaluator.md`
+   reflect the pipeline, inference, construction, runtime, and builtin behavior as it
+   now is. Read them against the release's diff rather than from memory.
 7. **Decision records** - every non-obvious architectural decision, reversal, or
-   workaround this release introduced has an ADR in `metel-interpreter/docs/decisions/`.
+   workaround this release introduced has an ADR in `docs/architecture/decisions/`.
    A reversal especially: the reason a past decision stopped holding is the part that
    gets lost, and the part the next person needs.
 8. **Issue hygiene** - the milestone's issues are genuinely closed with acceptance
@@ -375,7 +376,7 @@ means beyond the checks passing.
 
 1. Retrieve and read the full issue, including acceptance criteria, dependencies (referenced issue numbers), labels, and milestone.
 2. Read every spec section the task touches. The spec entry point is `docs/public/reference/spec.md`.
-3. Read relevant RFCs in `docs/internal/rfcs/` and ADRs in `metel-interpreter/docs/decisions/`.
+3. Read relevant RFCs in `docs/public/rfcs/` and ADRs in `docs/architecture/decisions/`.
 4. Check dependency issues and confirm their implementation matches the contract this task depends on.
 5. If the spec is missing or ambiguous, update the spec first. If the choice is non-obvious, write an ADR before implementation.
 6. Note in the issue (a comment, or just the first commit) that work has started.
@@ -522,7 +523,7 @@ destructor invocation and notes the project has already hit that failure mode tw
 
 ## RFC Workflow
 
-RFCs live in `docs/internal/rfcs/`. **`docs/internal/rfcs/PROCESS.md` is the sole
+RFCs live in `docs/public/rfcs/`. **`docs/public/rfcs/PROCESS.md` is the sole
 authority on the RFC lifecycle, working rules, and tooling** — read it, don't rely on
 the summary below for anything beyond a quick orientation. `docs/internal/versioning.md`
 covers version numbering and changelog conventions only; it does **not** define the RFC
@@ -544,7 +545,7 @@ Rules:
 
 - The RFC document is the source of truth for design details.
 - The directory is the source of truth for the RFC's lifecycle state; frontmatter
-  `status` must match it. Run `python3 docs/internal/rfcs/tools/rfc.py check` after any
+  `status` must match it. Run `python3 docs/public/rfcs/tools/rfc.py check` after any
   manual edit — it validates this and more (dangling references, duplicate ids).
 - Accepted RFCs must reach `3-integrated` (spec updated, worked examples written) before
   implementation work begins — this is what used to be tracked by the now-retired
@@ -559,7 +560,7 @@ Rules:
   sets `impl_status: implemented`.
 
 If an existing RFC's folder, frontmatter status, or `impl_status` contradicts
-`docs/internal/rfcs/PROCESS.md`, stop and resolve the documentation workflow
+`docs/public/rfcs/PROCESS.md`, stop and resolve the documentation workflow
 inconsistency before implementing against it.
 
 ---
@@ -584,7 +585,7 @@ Rules (content lives in `OBJECTIVES.md` itself, not duplicated here):
   new dated snapshot is warranted. Triggering a new dated snapshot is event-based (a
   real inflection point), not calendar-based, and stays human-prompted rather than
   agent-initiated — see `docs/reports/strategy/PROCESS.md` §5.
-- `OBJECTIVES.md` does not replace `docs/internal/rfcs/INDEX.md` (RFC-level thematic
+- `OBJECTIVES.md` does not replace `docs/public/rfcs/INDEX.md` (RFC-level thematic
   state) or `PROCESS.md` (RFC lifecycle mechanics) — it's the layer above both, tracking
   why priorities are what they are, not RFC-by-RFC status.
 - **`docs/reports/strategy/PROCESS.md` is the methodology reference — read it before
@@ -671,13 +672,13 @@ Important module-system invariants:
 - `evaluator::evaluate_graph` consumes `TypedModuleGraph`.
 - Cross-module public APIs must be fully annotated; do not introduce cross-module type inference casually.
 
-If a change alters these boundaries, update `metel-interpreter/docs/architecture.md` and consider an ADR.
+If a change alters these boundaries, update `docs/architecture/architecture.md` and consider an ADR.
 
 ---
 
 ## Type System Stability
 
-The sensitive areas are `metel-interpreter/src/typeinference/` and `metel-interpreter/src/typechecker/`. Bugs here can produce silent wrong typing, not just crashes.
+The sensitive areas are `metel-frontend/src/typeinference/` and `metel-frontend/src/typechecker/`. Bugs here can produce silent wrong typing, not just crashes.
 
 ### Two-Pass Typechecker Boundary
 
@@ -707,7 +708,7 @@ Do not infer types in Pass 2. Do not build typed AST nodes in Pass 1. If a task 
 
 ### Before Finalizing Type System Changes
 
-1. Run `cargo test` from `metel-interpreter/`.
+1. Run `cargo test --workspace` from the repository root.
 2. Run or manually apply the `/review-typechecker` checklist.
 3. For every new `unify` call, verify expected-vs-actual argument order and substitution composition direction.
 4. For every `infer_type_to_type` call, verify all type variables are resolved and a useful span is available.
@@ -725,7 +726,7 @@ Stop and ask if:
 
 ## Decision Records
 
-Create an ADR in `metel-interpreter/docs/decisions/` when:
+Create an ADR in `docs/architecture/decisions/` when:
 
 - Multiple reasonable implementation options exist and the chosen tradeoff matters.
 - The decision changes or reverses a previous ADR or RFC.
@@ -742,7 +743,8 @@ When code intentionally encodes an ADR-backed invariant that may look wrong, add
 
 ## Wiki and Public Docs Release Workflow
 
-The public website consumes the same `metel-docs` content through the docs submodule.
+Core consumes `metel-docs-internal` through its docs submodule. The public website
+consumes the separately exported public `metel-docs` repository.
 
 When a task or release affects public documentation:
 
