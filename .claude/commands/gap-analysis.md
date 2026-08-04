@@ -17,7 +17,7 @@ analyse, and no cycle object anywhere.
 ## Step 1 — Load milestone context
 
 ```bash
-tea issues ls --milestones $ARGUMENTS --state open
+gh issue list --milestone  --state open
 ```
 
 Read each issue in full (`tea issue <N>`) — description, labels, referenced issue numbers.
@@ -179,13 +179,13 @@ Wait for answers to **all** questions before changing anything.
 Using the answers, for each flagged issue:
 
 ```bash
-tea issues edit <N> --description "<rewritten body>"
+gh issue edit <N> --body "<rewritten body>"
 ```
 
 - Extend the original intent; do not replace it.
 - Add explicit acceptance criteria, edge cases, and error behaviour.
 - Add `RFC: rfc-NNNN` and `Spec: docs/public/reference/spec/<section>.md` where identified.
-- Note the dependency direction explicitly (`Blocked by #N` / `Blocks #N`) — Codeberg
+- Note the dependency direction explicitly (`Blocked by #N` / `Blocks #N`) — GitHub
   renders these as links but does not enforce them, so they are documentation.
 
 ## Step 6 — Create new issues
@@ -193,20 +193,19 @@ tea issues edit <N> --description "<rewritten body>"
 For each confirmed gap:
 
 ```bash
-tea issues create --title "<title>" --description "<full body>" --milestone $ARGUMENTS
+gh issue create --title "<title>" --description "<full body>" --milestone $ARGUMENTS
 ```
 
 Write the body in full from Steps 2–4, not as a stub. For gaps deferred past this
 milestone, create them with a later milestone or none.
 
-**Rate limit:** Codeberg allows roughly 5 issue creates or ~15 comments per 5 minutes. For
-more than a handful, use `tools/tea-paced.sh` and pause 60–90s between creates. Run `tea`
-from the repository root, never from `docs/`.
+**Rate limit:** GitHub rate limits are reported by the API; inspect them before bulk operations.
+Run `gh` from the repository root, never from `docs/`.
 
 ## Step 7 — Verify and report
 
 ```bash
-tea issues ls --milestones $ARGUMENTS --state open
+gh issue list --milestone $ARGUMENTS --state open
 ```
 
 ```

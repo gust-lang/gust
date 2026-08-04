@@ -14,7 +14,7 @@ does not redefine it. If the two ever disagree, AGENTS.md wins.
 ## Step 1 — Re-read the issue
 
 ```bash
-tea issue $ARGUMENTS
+gh issue view $ARGUMENTS
 ```
 
 Walk each acceptance criterion and confirm it is actually met. If any is unmet, stop and
@@ -121,13 +121,13 @@ confidently wrong is worse than being incomplete — get an **adversarial review
 
 ## Step 5 — Merge by fast-forward
 
-`tea pr merge` cannot do this; its default style creates a merge commit. Use the API:
+GitHub hosted merges do not provide a true fast-forward. After review, fast-forward locally and push the target branch:
 
 ```bash
-curl -sS -X POST \
-  -H "Authorization: token $(grep -oP '^\s*token:\s*\K\S+' ~/.config/tea/config.yml | head -1)" \
-  -H 'Content-Type: application/json' -d '{"Do":"fast-forward-only"}' \
-  "https://codeberg.org/api/v1/repos/metel-lang/metel-core/pulls/<pr-index>/merge"
+git fetch origin <target> <branch>
+git switch <target>
+git merge --ff-only origin/<branch>
+git push origin <target>
 ```
 
 A non-fast-forwardable branch fails this call instead of silently growing a merge commit.
@@ -143,7 +143,7 @@ A non-fast-forwardable branch fails this call instead of silently growing a merg
 - If the issue resolved an RFC open question, record the resolution in the RFC and run
   `python3 docs/internal/rfcs/tools/rfc.py check`.
 - If implementation of an RFC completed here, `rfc.py transition <id> --to implemented`.
-- Codeberg rate-limits issue/comment creation (~5 creates or ~15 comments per 5 minutes).
+- GitHub rate limits issue/comment creation (~5 creates or ~15 comments per 5 minutes).
   For batches, use `tools/tea-paced.sh`.
 - Run `tea` from the repository root, not from `docs/` — that is a different repo and
   returns `IsErrIssueNotExist`.
