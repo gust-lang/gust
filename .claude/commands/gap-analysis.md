@@ -20,7 +20,7 @@ analyse, and no cycle object anywhere.
 gh issue list --milestone  --state open
 ```
 
-Read each issue in full (`tea issue <N>`) — description, labels, referenced issue numbers.
+Read each issue in full (`gh issue view <N>`) — description, labels, referenced issue numbers.
 Then read `docs/reports/strategy/OBJECTIVES.md` §2 (current priorities) and §3 (open
 triggers) for anything bearing on this milestone, and the spec sections in
 `docs/public/reference/spec/` the milestone's theme is likely to touch.
