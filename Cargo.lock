@@ -260,6 +260,15 @@ name = "metel"
 version = "0.12.0"
 dependencies = [
  "clap",
+ "metel-frontend",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "metel-frontend"
+version = "0.12.0"
+dependencies = [
  "miette",
  "pest",
  "pest_derive",
