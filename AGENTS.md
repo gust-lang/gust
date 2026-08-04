@@ -6,7 +6,7 @@ Metel is a statically typed, expression-oriented language. This repository conta
 
 The interpreter is the shipped runtime. Treat it as the current product surface, not as throwaway compiler scaffolding. The language specification is the contract the interpreter must satisfy.
 
-The repository remote is Codeberg (`codeberg.org/metel-lang/metel-core`). Task tracking is in **Codeberg Issues** on this repository, not GitHub Projects, and not Plane — see "Task Tracking: Codeberg Issues" below. This repo previously used Plane; that migration is complete and Plane is no longer the source of truth for anything.
+The canonical repository remote is GitHub (`github.com/metel-lang/metel-core`). Task tracking is in **GitHub Issues** — see "Task Tracking: GitHub Issues" below. Codeberg issue numbers are historical references preserved in the private tracker archive, not current GitHub issue numbers.
 
 ---
 
@@ -47,19 +47,16 @@ Public docs no longer live at `docs/public/spec.md`, `docs/public/spec/`, or `do
 
 ---
 
-## Task Tracking: Codeberg Issues
+## Task Tracking: GitHub Issues
 
-Codeberg Issues on this repository (`codeberg.org/metel-lang/metel-core`) are the source of
-truth for implementation tasks, labels, and version milestones. This replaces Plane
-(migrated away from for the same reason Plane replaced an earlier tool: avoid vendor
-lock-in on task state that lives nowhere in the repo itself). It also replaces
-ClickUp, which was used briefly between Plane and this migration but was never
-written down here.
+GitHub Issues on this repository are the source of truth for implementation tasks,
+labels, pull requests, and version milestones. Raw Codeberg issues, comments, and
+milestones are preserved privately in `metel-docs-internal/internal/archive/codeberg-tracker/`.
 
 **RFC lifecycle tracking no longer needs a mirrored issue type or synced custom
 property.** Plane needed a custom `RFC` work-item type plus an `RFC Status` property
 kept in sync with the RFC file by hand (or by API call) because Plane had no native
-notion of "this issue's status lives in a git file." Codeberg issues don't try to
+notion of "this issue's status lives in a git file." GitHub issues don't try to
 mirror RFC status at all — the RFC file's own directory and frontmatter (`status`,
 and from `3-integrated` onward, `impl_status`/`impl_tracking`) are already the single
 source of truth, per `docs/public/rfcs/PROCESS.md`. An RFC gets an issue only once
@@ -85,21 +82,13 @@ for," and unlike a sprint number it answers it in a way the changelog and the re
 gate both read from.
 
 **Dependencies** between issues: reference by number in the issue body (`Blocked by
-#42`, `Blocks #57`) — Gitea/Codeberg's issue references render these as links but
+#42`, `Blocks #57`) — GitHub issue references render these as links but
 don't enforce blocking; treat the same as Plane's `blocked_by`/`blocking` relations
 were treated, as documentation, not enforcement.
 
-**Rate limits on creating issues/comments.** Codeberg enforces a tight anti-spam
-guard on issue and comment creation — roughly 5 issue creates or ~15 comment posts
-per account per 5-minute window (observed empirically, not documented; not the
-general API rate limit, which is much higher). This is a nonprofit, donation- and
-membership-funded instance (Codeberg e.V.) with no paid tier that lifts it. Creating
-more than a handful of issues/comments in one sitting (a bulk migration, splitting a
-task into several subissues, closing out a batch of stale issues) **will** hit this.
-Use `tools/tea-paced.sh <tea subcommand and args>` instead of calling `tea` directly
-for any such batch — it retries with backoff specifically on a rate-limit response
-and fails fast (no retry) on any other error. It does not pre-emptively pace calls;
-a bulk loop should still put a pause (60-90s) between individual creates.
+Use `gh issue` and `gh pr` for GitHub tracker actions. For large scripted operations,
+use the GitHub API with pagination and inspect rate-limit responses rather than assuming
+historical Codeberg/Tea limits apply.
 
 Common actions:
 
@@ -109,8 +98,7 @@ Common actions:
 - Finish task work: close the issue only after acceptance criteria and tests pass.
 - Version planning: assign the milestone.
 
-Do not rely on `.github/` automation or GitHub issue labels — this is a Codeberg
-(Gitea/Forgejo) repository, not GitHub; there is no `.github/` directory here.
+GitHub labels and `.github/` automation are the canonical workflow surface.
 
 ---
 
@@ -172,17 +160,14 @@ force-push *the branch* — a topic branch you own, never the target. Do not mer
 the target back into the branch to catch up: that creates exactly the merge commit
 this rule exists to prevent.
 
-`tea pr merge` cannot do this. Its `--style` accepts only `merge`, `rebase`,
-`squash`, and `rebase-merge`, and it defaults to `merge` — which is how PR #311
-produced `5d5e561`, a merge commit for a branch that was already fast-forwardable.
-Both repositories permit the style server-side, so merge a pull request through the
-API instead:
+GitHub's hosted merge actions do not provide a true fast-forward merge. After review,
+fast-forward locally and push the target branch instead:
 
 ```bash
-curl -sS -X POST \
-  -H "Authorization: token $(grep -oP '^\s*token:\s*\K\S+' ~/.config/tea/config.yml | head -1)" \
-  -H 'Content-Type: application/json' -d '{"Do":"fast-forward-only"}' \
-  "https://codeberg.org/api/v1/repos/metel-lang/<repo>/pulls/<index>/merge"
+git fetch origin <target> <branch>
+git switch <target>
+git merge --ff-only origin/<branch>
+git push origin <target>
 ```
 
 A non-fast-forwardable branch fails this call rather than silently growing a merge
@@ -296,7 +281,7 @@ uncertainty about "is this merged?" that sprint branches did.
 
 ## Release Workflow
 
-A release is the `develop -> main` fast-forward, tag, and Codeberg Release together —
+A release is the `develop -> main` fast-forward, tag, and GitHub Release together —
 distinct from, and much less frequent than, an issue branch merging into `develop`.
 `develop` sits ahead of `main` across many closed issues before a release is cut. **A
 release is cut when a version milestone completes**, not on a calendar — that is the
@@ -357,7 +342,7 @@ checks already passed on every branch that landed.
    bracketing a range nobody had decided on. Merge nothing into `develop` between the
    gate passing and the tag being pushed.
 2. Tag `main` at its new tip: `git tag vX.Y.Z && git push origin vX.Y.Z`.
-3. Create a Codeberg Release from that tag, with the release body sourced from
+3. Create a GitHub Release from that tag, with the release body sourced from
    the changelog section just finalized (not regenerated separately — the
    changelog is the single source of truth for release notes).
 4. If public documentation changed, follow "Wiki and Public Docs Release
@@ -552,7 +537,7 @@ Rules:
   `spec_status: pending/done` field; `3-integrated` is the actual lifecycle stage that
   replaced it, not a parallel field to also keep in sync.
 - From `3-integrated` onward, the RFC's frontmatter carries `impl_status`
-  (`not-started`/`in-progress`/`implemented`) and `impl_tracking` (the Codeberg issue
+  (`not-started`/`in-progress`/`implemented`) and `impl_tracking` (the GitHub issue
   link). `rfc.py transition <id> --to integrated` refuses to run without
   `--tracking <issue-url>` — no RFC enters integrated without one.
 - Implementation issues should reference the RFC file they implement in the issue body.
@@ -621,7 +606,7 @@ test(#60): cover generic bound regressions
 
 Commits not tied to a tracked item may omit the reference, for example `docs: point CLAUDE.md to AGENTS.md`.
 
-When a commit is intended to close work after merge, include a body describing what changed and reference the issue — Codeberg closes an issue automatically on merge to `main` when the body contains `Closes #<number>` (or `Fixes`/`Resolves`):
+When a commit is intended to close work after merge, include a body describing what changed and reference the issue — GitHub closes it when the pull-request body contains `Closes #<number>` (or `Fixes`/`Resolves`):
 
 ```text
 feat(#57): enforce function aspect bounds
@@ -778,12 +763,12 @@ When stopping, explain what you found, the options, and the recommended path.
 - Do not implement behavior that is not in the spec.
 - Do not let implementation and docs diverge.
 - Do not add rationale or history to the spec.
-- Do not use GitHub Projects or `.github/` workflows as the current process — this is a Codeberg repo, GitHub tooling doesn't apply.
-- Do not create new tracking documents for open work; use Codeberg Issues.
+- Do not use Codeberg or Tea for current workflow; use GitHub Issues and pull requests.
+- Do not create new tracking documents for open work; use GitHub Issues.
 - Do not close an issue with unchecked acceptance criteria.
 - Do not commit directly to `develop` or `main`. Work reaches `develop` only by fast-forwarding an issue branch that passed the per-PR gate.
 - Do not put two issues in one pull request. If a second concern appeared mid-branch, it gets its own issue and its own branch.
 - Do not create a `sprint/N` branch, or reintroduce a sprint tier under another name — see "Why `sprint/N` was retired"; it was removed against measurement, not taste.
 - Do not merge `develop` into `main` outside the Release Workflow's gate — `main` only moves at an actual release.
-- Do not create a merge commit anywhere, at any tier. Rebase the branch and fast-forward — see "Merging: Fast-Forward Only". In particular, do not reach for `tea pr merge`, whose default style is exactly the thing this forbids.
+- Do not create a merge commit anywhere, at any tier. Rebase the branch and fast-forward — see "Merging: Fast-Forward Only".
 - Do not re-introduce a synced "RFC status" field on an issue or elsewhere — the RFC file's own directory/frontmatter is the only source of truth for RFC lifecycle state (see RFC Workflow above); this is a deliberate simplification versus how Plane was used, not an oversight.
