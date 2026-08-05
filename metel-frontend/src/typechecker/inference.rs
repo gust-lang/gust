@@ -788,6 +788,23 @@ pub(super) fn infer_program(
 }
 
 // Exhaustive match over every AST/type-system variant; splitting it up would
+fn aspect_impl_method_signature_matches(method: &FunDecl, declared: &AspectMethod) -> bool {
+    method.generics.len() == declared.generics.len()
+        && method.params.len() == declared.params.len()
+        && method.return_type.as_ref().map(|ty| format!("{ty:?}"))
+            == declared.return_type.as_ref().map(|ty| format!("{ty:?}"))
+        && method
+            .params
+            .iter()
+            .zip(&declared.params)
+            .all(|(actual, expected)| {
+                std::mem::discriminant(&actual.receiver)
+                    == std::mem::discriminant(&expected.receiver)
+                    && actual.type_ann.as_ref().map(|ty| format!("{ty:?}"))
+                        == expected.type_ann.as_ref().map(|ty| format!("{ty:?}"))
+            })
+}
+
 // scatter one coherent dispatch table across many small functions with no
 // real gain in clarity.
 #[allow(clippy::too_many_lines)]
@@ -933,12 +950,27 @@ fn infer_decl(
                         let declared: std::collections::HashSet<&str> =
                             methods.iter().map(|m| m.name.as_str()).collect();
                         for method in &ib.methods {
+                            let declared_method = methods
+                                .iter()
+                                .find(|declared_method| declared_method.name == method.name);
                             if !declared.contains(method.name.as_str()) {
                                 return Err(MetelError::type_error(
                                     TypeErrorCode::T0001,
                                     format!(
                                         "`{}::{}` is not declared by aspect `{}`; put it in an inherent `extend {}` block instead",
                                         target_name, method.name, aspect_name, target_name
+                                    ),
+                                    &method.span,
+                                ));
+                            }
+                            if !declared_method.is_some_and(|declared_method| {
+                                aspect_impl_method_signature_matches(method, declared_method)
+                            }) {
+                                return Err(MetelError::type_error(
+                                    TypeErrorCode::T0012,
+                                    format!(
+                                        "`{}::{}` does not match the signature declared by aspect `{}`",
+                                        target_name, method.name, aspect_name
                                     ),
                                     &method.span,
                                 ));
