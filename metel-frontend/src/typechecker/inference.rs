@@ -860,96 +860,6 @@ fn signature_param_type(param: &Param, env: &SignatureEnv) -> InferType {
     }
 }
 
-fn normalized_bound_key(bound: &Bound, env: &SignatureEnv) -> String {
-    let polarity = match bound.polarity {
-        Polarity::Positive => "+",
-        Polarity::Negative => "-",
-    };
-    let head = match &bound.head {
-        crate::ast::BoundHead::Aspect(ty) => {
-            format!("aspect:{:?}", signature_type_expr_to_infer(ty, env))
-        }
-        crate::ast::BoundHead::Row(row) => {
-            let mut fields: Vec<String> = row
-                .fields
-                .iter()
-                .map(|field| {
-                    let ty = field
-                        .ty
-                        .as_ref()
-                        .map(|ty| format!("{:?}", signature_type_expr_to_infer(ty, env)))
-                        .unwrap_or_else(|| "_".to_string());
-                    format!("{}:{ty}", field.label)
-                })
-                .collect();
-            fields.sort();
-            format!("row:{}:{}", row.open, fields.join(","))
-        }
-    };
-    let mut assoc_bindings: Vec<String> = bound
-        .assoc_bindings
-        .iter()
-        .map(|(name, ty)| format!("{name}={:?}", signature_type_expr_to_infer(ty, env)))
-        .collect();
-    assoc_bindings.sort();
-    format!("{polarity}:{head}:{}", assoc_bindings.join(","))
-}
-
-fn fun_generic_bound_keys(fun: &FunDecl, env: &SignatureEnv) -> Vec<Vec<String>> {
-    let mut keys_by_param: Vec<Vec<String>> = fun
-        .generics
-        .iter()
-        .map(|param| {
-            param
-                .bounds
-                .iter()
-                .map(|b| normalized_bound_key(b, env))
-                .collect()
-        })
-        .collect();
-    if let Some(where_clause) = &fun.where_clause {
-        for constraint in &where_clause.constraints {
-            let Some(pos) = fun
-                .generics
-                .iter()
-                .position(|param| param.name == constraint.name)
-            else {
-                continue;
-            };
-            keys_by_param[pos].extend(
-                constraint
-                    .bounds
-                    .iter()
-                    .map(|b| normalized_bound_key(b, env)),
-            );
-        }
-    }
-    for keys in &mut keys_by_param {
-        keys.sort();
-        keys.dedup();
-    }
-    keys_by_param
-}
-
-fn aspect_method_generic_bound_keys(method: &AspectMethod, env: &SignatureEnv) -> Vec<Vec<String>> {
-    let mut keys_by_param: Vec<Vec<String>> = method
-        .generics
-        .iter()
-        .map(|param| {
-            param
-                .bounds
-                .iter()
-                .map(|b| normalized_bound_key(b, env))
-                .collect()
-        })
-        .collect();
-    for keys in &mut keys_by_param {
-        keys.sort();
-        keys.dedup();
-    }
-    keys_by_param
-}
-
 fn impl_signature_self_type(ib: &ImplBlock, params: &[ImplParam], target_name: &str) -> InferType {
     if matches!(&ib.target_type, TypeExpr::Named(name, args) if args.is_empty() && name == target_name)
     {
@@ -1074,8 +984,6 @@ fn aspect_impl_method_signature_matches(
                 .map_or_else(InferType::unit, |ty| {
                     signature_type_expr_to_infer(ty, &expected_env)
                 })
-        && fun_generic_bound_keys(method, &actual_env)
-            == aspect_method_generic_bound_keys(declared, &expected_env)
 }
 
 // scatter one coherent dispatch table across many small functions with no

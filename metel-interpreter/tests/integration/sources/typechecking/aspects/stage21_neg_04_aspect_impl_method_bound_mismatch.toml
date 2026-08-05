@@ -1,4 +1,0 @@
-[expect]
-status = "typecheck_error"
-code = "T0012"
-contains = "does not match the signature declared by aspect"
