@@ -141,9 +141,7 @@ A non-fast-forwardable branch fails this call instead of silently growing a merg
 ## Notes
 
 - If the issue resolved an RFC open question, record the resolution in the RFC and run
-  `python3 docs/internal/rfcs/tools/rfc.py check`.
+  `python3 docs/public/rfcs/tools/rfc.py check`.
 - If implementation of an RFC completed here, `rfc.py transition <id> --to implemented`.
-- GitHub rate limits issue/comment creation (~5 creates or ~15 comments per 5 minutes).
-  For batches, use `tools/tea-paced.sh`.
-- Run `tea` from the repository root, not from `docs/` — that is a different repo and
-  returns `IsErrIssueNotExist`.
+- For large tracker changes, use the paginated GitHub API and inspect its rate-limit
+  responses; the former Codeberg/Tea pacing guidance no longer applies.
