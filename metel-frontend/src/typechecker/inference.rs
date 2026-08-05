@@ -930,13 +930,27 @@ fn infer_decl(
                     if let Some(methods) = ctx.aspect_method_defs(aspect_name).cloned() {
                         let provided: std::collections::HashSet<&str> =
                             ib.methods.iter().map(|m| m.name.as_str()).collect();
+                        let declared: std::collections::HashSet<&str> =
+                            methods.iter().map(|m| m.name.as_str()).collect();
+                        for method in &ib.methods {
+                            if !declared.contains(method.name.as_str()) {
+                                return Err(MetelError::type_error(
+                                    TypeErrorCode::T0001,
+                                    format!(
+                                        "`{}::{}` is not declared by aspect `{}`; put it in an inherent `extend {}` block instead",
+                                        target_name, method.name, aspect_name, target_name
+                                    ),
+                                    &method.span,
+                                ));
+                            }
+                        }
                         for method in methods {
                             if provided.contains(method.name.as_str()) {
                                 continue;
                             }
                             if method.default_body.is_none() {
                                 return Err(MetelError::type_error(
-                                    TypeErrorCode::T0003,
+                                    TypeErrorCode::T0012,
                                     format!(
                                         "`{}` does not implement `{}::{}` required by aspect `{}`",
                                         target_name, target_name, method.name, aspect_name

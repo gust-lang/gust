@@ -13,7 +13,7 @@ aspect Render {
     }
 }
 
-extend Widget: Render { // ERROR[T0003]
+extend Widget: Render { // ERROR[T0012]
     fun preview(self) -> String {
         return "overriding the default";
     }

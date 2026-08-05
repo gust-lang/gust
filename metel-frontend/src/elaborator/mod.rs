@@ -90,8 +90,15 @@ fn build_aspect_method_map(
                 else {
                     continue;
                 };
+                let Some(declared_methods) = registry.aspect_method_defs(aspect_name) else {
+                    continue;
+                };
                 let is_generic = !block.generics.is_empty();
-                for method in &block.methods {
+                for method in block.methods.iter().filter(|method| {
+                    declared_methods
+                        .iter()
+                        .any(|declared| declared.name == method.name)
+                }) {
                     let key = (type_name.clone(), method.name.clone());
                     let owner = AspectDispatchOwner {
                         aspect_id: id,
