@@ -181,7 +181,7 @@ impl std::fmt::Display for InferType {
             InferType::Array(t) => write!(f, "{t}[]"),
             InferType::SizedArray(t, n) => write!(f, "[{t}; {n}]"),
             InferType::Reference(t) => write!(f, "&{t}"),
-            InferType::MutReference(t) => write!(f, "&mut {t}"),
+            InferType::MutReference(t) => write!(f, "&var {t}"),
             InferType::Named(name, args) => {
                 write!(f, "{name}")?;
                 if !args.is_empty() {
@@ -1198,7 +1198,7 @@ impl fmt::Display for GenericBound {
                     write_type_expr(f, inner)
                 }
                 TypeExpr::MutReference(inner) => {
-                    f.write_str("&mut ")?;
+                    f.write_str("&var ")?;
                     write_type_expr(f, inner)
                 }
                 TypeExpr::Fun(params, ret) => {

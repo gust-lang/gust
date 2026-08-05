@@ -1941,7 +1941,7 @@ fn construct_expr(
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0008,
                         format!(
-                            "cannot call `&mut self` method `{method}` through shared receiver"
+                            "cannot call `&var self` method `{method}` through shared receiver"
                         ),
                         span,
                     ));

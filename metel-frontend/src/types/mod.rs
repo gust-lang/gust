@@ -104,7 +104,7 @@ impl std::fmt::Display for Type {
             Type::Array(t) => write!(f, "{t}[]"),
             Type::SizedArray(t, n) => write!(f, "[{t}; {n}]"),
             Type::Reference(t) => write!(f, "&{t}"),
-            Type::MutReference(t) => write!(f, "&mut {t}"),
+            Type::MutReference(t) => write!(f, "&var {t}"),
             Type::Fun(params, ret) => {
                 write!(f, "(")?;
                 for (i, t) in params.iter().enumerate() {
@@ -130,5 +130,18 @@ impl std::fmt::Display for Type {
                 Ok(())
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Type;
+
+    #[test]
+    fn mutable_reference_display_uses_language_spelling() {
+        assert_eq!(
+            Type::MutReference(Box::new(Type::I64)).to_string(),
+            "&var i64"
+        );
     }
 }

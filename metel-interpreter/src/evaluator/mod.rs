@@ -1076,7 +1076,7 @@ fn runtime_type_key(ty: &TypeExpr) -> String {
         TypeExpr::Array(inner) => format!("{}[]", runtime_type_key(inner)),
         TypeExpr::SizedArray(inner, size) => format!("[{}; {}]", runtime_type_key(inner), size),
         TypeExpr::Reference(inner) => format!("&{}", runtime_type_key(inner)),
-        TypeExpr::MutReference(inner) => format!("&mut {}", runtime_type_key(inner)),
+        TypeExpr::MutReference(inner) => format!("&var {}", runtime_type_key(inner)),
         TypeExpr::Fun(params, ret) => {
             let params = params
                 .iter()
@@ -1245,7 +1245,7 @@ fn build_mut_path(
                 _ => {
                     return Err(MetelError::panic(
                         RuntimeErrorCode::R0004,
-                        "&mut: array index must be a non-negative integer",
+                        "&var: array index must be a non-negative integer",
                         span,
                     ))
                 }
