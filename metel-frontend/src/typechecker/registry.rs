@@ -711,6 +711,7 @@ fn register_aspect_decl(
 ) {
     let method_names = ad.methods.iter().map(|m| m.name.clone()).collect();
     registry.register_aspect(ad.name.clone(), method_names);
+    registry.register_aspect_generics(ad.name.clone(), ad.generics.clone());
     registry.register_aspect_method_defs(ad.name.clone(), ad.methods.clone());
     registry.register_aspect_declaring_module(ad.name.clone(), declaring_module.to_vec());
     registry.register_aspect_assoc_types(ad.name.clone(), ad.assoc_types.clone());

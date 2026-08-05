@@ -787,22 +787,283 @@ pub(super) fn infer_program(
     Ok(())
 }
 
-// Exhaustive match over every AST/type-system variant; splitting it up would
-fn aspect_impl_method_signature_matches(method: &FunDecl, declared: &AspectMethod) -> bool {
-    method.generics.len() == declared.generics.len()
-        && method.params.len() == declared.params.len()
-        && method.return_type.as_ref().map(|ty| format!("{ty:?}"))
-            == declared.return_type.as_ref().map(|ty| format!("{ty:?}"))
+struct SignatureEnv {
+    generic_vars: HashMap<String, TypeVar>,
+    alias_types: HashMap<String, InferType>,
+    self_ty: InferType,
+}
+
+fn signature_type_expr_to_infer(te: &TypeExpr, env: &SignatureEnv) -> InferType {
+    let go = |ty: &TypeExpr| signature_type_expr_to_infer(ty, env);
+    match te {
+        TypeExpr::Named(name, args) if args.is_empty() => {
+            if let Some(&var) = env.generic_vars.get(name) {
+                InferType::Var(var)
+            } else if let Some(ty) = env.alias_types.get(name) {
+                ty.clone()
+            } else if name == "Self" {
+                env.self_ty.clone()
+            } else if let Some(prim) = primitive_type_from_name(name) {
+                InferType::Concrete(prim)
+            } else {
+                InferType::Named(name.clone(), vec![])
+            }
+        }
+        TypeExpr::Named(name, args) => {
+            InferType::Named(name.clone(), args.iter().map(go).collect())
+        }
+        TypeExpr::Unit => InferType::unit(),
+        TypeExpr::Tuple(items) => InferType::Tuple(items.iter().map(go).collect()),
+        TypeExpr::Record(fields) => InferType::Record(
+            fields
+                .iter()
+                .map(|(label, ty)| (label.clone(), go(ty)))
+                .collect(),
+        ),
+        TypeExpr::Array(inner) => InferType::Array(Box::new(go(inner))),
+        TypeExpr::SizedArray(inner, size) => InferType::SizedArray(Box::new(go(inner)), *size),
+        TypeExpr::Reference(inner) => InferType::Reference(Box::new(go(inner))),
+        TypeExpr::MutReference(inner) => InferType::MutReference(Box::new(go(inner))),
+        TypeExpr::Fun(params, ret) => InferType::Fun(
+            params.iter().map(go).collect(),
+            Box::new(ret.as_deref().map_or_else(InferType::unit, go)),
+        ),
+        TypeExpr::ImplAspect { bound, .. } => go(bound),
+        TypeExpr::Projection {
+            base, assoc_name, ..
+        } => {
+            if let TypeExpr::Named(base_name, args) = base.as_ref() {
+                if base_name == "Self" && args.is_empty() {
+                    if let Some(ty) = env.alias_types.get(assoc_name) {
+                        return ty.clone();
+                    }
+                }
+            }
+            let base_ty = go(base);
+            InferType::Named(format!("{base_ty:?}::{assoc_name}"), vec![])
+        }
+        TypeExpr::RecordProjection { path, fields, .. } => InferType::Named(
+            format!("{}.{{ {} }}", path.join("::"), fields.join(", ")),
+            vec![],
+        ),
+    }
+}
+
+fn signature_param_type(param: &Param, env: &SignatureEnv) -> InferType {
+    if param.name == "self" {
+        env.self_ty.clone()
+    } else {
+        param
+            .type_ann
+            .as_ref()
+            .map_or_else(InferType::unit, |ty| signature_type_expr_to_infer(ty, env))
+    }
+}
+
+fn normalized_bound_key(bound: &Bound, env: &SignatureEnv) -> String {
+    let polarity = match bound.polarity {
+        Polarity::Positive => "+",
+        Polarity::Negative => "-",
+    };
+    let head = match &bound.head {
+        crate::ast::BoundHead::Aspect(ty) => {
+            format!("aspect:{:?}", signature_type_expr_to_infer(ty, env))
+        }
+        crate::ast::BoundHead::Row(row) => {
+            let mut fields: Vec<String> = row
+                .fields
+                .iter()
+                .map(|field| {
+                    let ty = field
+                        .ty
+                        .as_ref()
+                        .map(|ty| format!("{:?}", signature_type_expr_to_infer(ty, env)))
+                        .unwrap_or_else(|| "_".to_string());
+                    format!("{}:{ty}", field.label)
+                })
+                .collect();
+            fields.sort();
+            format!("row:{}:{}", row.open, fields.join(","))
+        }
+    };
+    let mut assoc_bindings: Vec<String> = bound
+        .assoc_bindings
+        .iter()
+        .map(|(name, ty)| format!("{name}={:?}", signature_type_expr_to_infer(ty, env)))
+        .collect();
+    assoc_bindings.sort();
+    format!("{polarity}:{head}:{}", assoc_bindings.join(","))
+}
+
+fn fun_generic_bound_keys(fun: &FunDecl, env: &SignatureEnv) -> Vec<Vec<String>> {
+    let mut keys_by_param: Vec<Vec<String>> = fun
+        .generics
+        .iter()
+        .map(|param| {
+            param
+                .bounds
+                .iter()
+                .map(|b| normalized_bound_key(b, env))
+                .collect()
+        })
+        .collect();
+    if let Some(where_clause) = &fun.where_clause {
+        for constraint in &where_clause.constraints {
+            let Some(pos) = fun
+                .generics
+                .iter()
+                .position(|param| param.name == constraint.name)
+            else {
+                continue;
+            };
+            keys_by_param[pos].extend(
+                constraint
+                    .bounds
+                    .iter()
+                    .map(|b| normalized_bound_key(b, env)),
+            );
+        }
+    }
+    for keys in &mut keys_by_param {
+        keys.sort();
+        keys.dedup();
+    }
+    keys_by_param
+}
+
+fn aspect_method_generic_bound_keys(method: &AspectMethod, env: &SignatureEnv) -> Vec<Vec<String>> {
+    let mut keys_by_param: Vec<Vec<String>> = method
+        .generics
+        .iter()
+        .map(|param| {
+            param
+                .bounds
+                .iter()
+                .map(|b| normalized_bound_key(b, env))
+                .collect()
+        })
+        .collect();
+    for keys in &mut keys_by_param {
+        keys.sort();
+        keys.dedup();
+    }
+    keys_by_param
+}
+
+fn impl_signature_self_type(ib: &ImplBlock, params: &[ImplParam], target_name: &str) -> InferType {
+    if matches!(&ib.target_type, TypeExpr::Named(name, args) if args.is_empty() && name == target_name)
+    {
+        if let Some(prim) = primitive_type_from_name(target_name) {
+            return InferType::Concrete(prim);
+        }
+    }
+    type_expr_as_infer(&ib.target_type, params)
+}
+
+fn impl_signature_params(ib: &ImplBlock) -> Vec<ImplParam> {
+    ib.generics
+        .iter()
+        .enumerate()
+        .map(|(index, param)| ImplParam {
+            var: TypeVar(20_000 + index as u32),
+            name: param.name.clone(),
+        })
+        .collect()
+}
+
+fn aspect_impl_method_signature_matches(
+    method: &FunDecl,
+    declared: &AspectMethod,
+    ib: &ImplBlock,
+    aspect_name: &str,
+    target_name: &str,
+    ctx: &InferContext,
+) -> bool {
+    if method.generics.len() != declared.generics.len()
+        || method.params.len() != declared.params.len()
+    {
+        return false;
+    }
+
+    let Some(aspect_generics) = ctx.registry().aspect_generics(aspect_name).cloned() else {
+        return false;
+    };
+    if aspect_generics.len() != ib.aspect_type_args.len() {
+        return false;
+    }
+
+    let impl_params = impl_signature_params(ib);
+    let self_ty = impl_signature_self_type(ib, &impl_params, target_name);
+    let impl_generic_vars: HashMap<String, TypeVar> = impl_params
+        .iter()
+        .map(|param| (param.name.clone(), param.var))
+        .collect();
+    let method_generic_vars: HashMap<String, TypeVar> = method
+        .generics
+        .iter()
+        .zip(&declared.generics)
+        .enumerate()
+        .flat_map(|(index, (actual, expected))| {
+            let var = TypeVar(10_000 + index as u32);
+            [(actual.name.clone(), var), (expected.name.clone(), var)]
+        })
+        .collect();
+    let actual_generic_vars: HashMap<String, TypeVar> = impl_generic_vars
+        .iter()
+        .chain(method_generic_vars.iter())
+        .map(|(name, var)| (name.clone(), *var))
+        .collect();
+    let actual_env = SignatureEnv {
+        generic_vars: actual_generic_vars,
+        alias_types: HashMap::new(),
+        self_ty: self_ty.clone(),
+    };
+    let mut alias_types: HashMap<String, InferType> = aspect_generics
+        .iter()
+        .zip(&ib.aspect_type_args)
+        .map(|(name, arg)| (name.clone(), signature_type_expr_to_infer(arg, &actual_env)))
+        .collect();
+    for assoc_type in &ib.assoc_type_defs {
+        alias_types.insert(
+            assoc_type.name.clone(),
+            signature_type_expr_to_infer(&assoc_type.ty, &actual_env),
+        );
+    }
+    let declared_generic_vars: HashMap<String, TypeVar> = declared
+        .generics
+        .iter()
+        .enumerate()
+        .map(|(index, param)| (param.name.clone(), TypeVar(10_000 + index as u32)))
+        .collect();
+    let expected_env = SignatureEnv {
+        generic_vars: declared_generic_vars,
+        alias_types,
+        self_ty,
+    };
+
+    method
+        .params
+        .iter()
+        .zip(&declared.params)
+        .all(|(actual, expected)| {
+            std::mem::discriminant(&actual.receiver) == std::mem::discriminant(&expected.receiver)
+                && signature_param_type(actual, &actual_env)
+                    == signature_param_type(expected, &expected_env)
+        })
         && method
-            .params
-            .iter()
-            .zip(&declared.params)
-            .all(|(actual, expected)| {
-                std::mem::discriminant(&actual.receiver)
-                    == std::mem::discriminant(&expected.receiver)
-                    && actual.type_ann.as_ref().map(|ty| format!("{ty:?}"))
-                        == expected.type_ann.as_ref().map(|ty| format!("{ty:?}"))
+            .return_type
+            .as_ref()
+            .map_or_else(InferType::unit, |ty| {
+                signature_type_expr_to_infer(ty, &actual_env)
             })
+            == declared
+                .return_type
+                .as_ref()
+                .map_or_else(InferType::unit, |ty| {
+                    signature_type_expr_to_infer(ty, &expected_env)
+                })
+        && fun_generic_bound_keys(method, &actual_env)
+            == aspect_method_generic_bound_keys(declared, &expected_env)
 }
 
 // scatter one coherent dispatch table across many small functions with no
@@ -949,6 +1210,16 @@ fn infer_decl(
                             ib.methods.iter().map(|m| m.name.as_str()).collect();
                         let declared: std::collections::HashSet<&str> =
                             methods.iter().map(|m| m.name.as_str()).collect();
+                        let provided_assoc: std::collections::HashSet<&str> =
+                            ib.assoc_type_defs.iter().map(|d| d.name.as_str()).collect();
+                        let missing_assoc_type = ctx
+                            .registry()
+                            .aspect_assoc_type_decls(aspect_name)
+                            .is_some_and(|decls| {
+                                decls
+                                    .iter()
+                                    .any(|decl| !provided_assoc.contains(decl.name.as_str()))
+                            });
                         for method in &ib.methods {
                             let declared_method = methods
                                 .iter()
@@ -963,9 +1234,18 @@ fn infer_decl(
                                     &method.span,
                                 ));
                             }
-                            if !declared_method.is_some_and(|declared_method| {
-                                aspect_impl_method_signature_matches(method, declared_method)
-                            }) {
+                            if !missing_assoc_type
+                                && !declared_method.is_some_and(|declared_method| {
+                                    aspect_impl_method_signature_matches(
+                                        method,
+                                        declared_method,
+                                        ib,
+                                        aspect_name,
+                                        &target_name,
+                                        ctx,
+                                    )
+                                })
+                            {
                                 return Err(MetelError::type_error(
                                     TypeErrorCode::T0012,
                                     format!(

@@ -1398,6 +1398,8 @@ pub struct TypeDefinitionRegistry {
     aspect_env: HashMap<String, Vec<String>>,
     /// aspect name → declaring module path.
     aspect_decl_modules: HashMap<String, Vec<String>>,
+    /// aspect name → ordered generic parameter names declared by the aspect.
+    aspect_generics: HashMap<String, Vec<String>>,
     /// aspect name → full declared methods, including default bodies.
     aspect_method_defs: HashMap<String, Vec<AspectMethod>>,
     /// Move-check reconstruction only: symbolic nominal placeholders and the
@@ -1546,6 +1548,7 @@ impl TypeDefinitionRegistry {
             enum_decl_modules: HashMap::new(),
             aspect_env: HashMap::new(),
             aspect_decl_modules: HashMap::new(),
+            aspect_generics: HashMap::new(),
             aspect_method_defs: HashMap::new(),
             symbolic_named_aspects: HashMap::new(),
             impl_aspect_env: HashMap::new(),
@@ -2441,6 +2444,15 @@ impl TypeDefinitionRegistry {
         self.aspect_env.insert(name, methods);
     }
 
+    pub fn register_aspect_generics(&mut self, name: String, generics: Vec<String>) {
+        self.aspect_generics.insert(name, generics);
+    }
+
+    #[must_use]
+    pub fn aspect_generics(&self, name: &str) -> Option<&Vec<String>> {
+        self.aspect_generics.get(name)
+    }
+
     /// Record that aspect `name` was declared in `module`. Called once per `AspectDecl`
     /// during registry construction and once per builtin aspect in
     /// `typechecker::registry::register_primitive_type_bindings`.
@@ -2756,6 +2768,11 @@ impl TypeDefinitionRegistry {
         }
         for (k, v) in &other.aspect_decl_modules {
             self.aspect_decl_modules
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
+        }
+        for (k, v) in &other.aspect_generics {
+            self.aspect_generics
                 .entry(k.clone())
                 .or_insert_with(|| v.clone());
         }
