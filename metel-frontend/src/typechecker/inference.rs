@@ -960,12 +960,17 @@ fn impl_signature_self_type(ib: &ImplBlock, params: &[ImplParam], target_name: &
     type_expr_as_infer(&ib.target_type, params)
 }
 
-fn impl_signature_params(ib: &ImplBlock) -> Vec<ImplParam> {
+fn next_signature_type_var(next_id: &mut u32) -> TypeVar {
+    let var = TypeVar(*next_id);
+    *next_id += 1;
+    var
+}
+
+fn impl_signature_params(ib: &ImplBlock, next_type_var_id: &mut u32) -> Vec<ImplParam> {
     ib.generics
         .iter()
-        .enumerate()
-        .map(|(index, param)| ImplParam {
-            var: TypeVar(20_000 + index as u32),
+        .map(|param| ImplParam {
+            var: next_signature_type_var(next_type_var_id),
             name: param.name.clone(),
         })
         .collect()
@@ -992,26 +997,33 @@ fn aspect_impl_method_signature_matches(
         return false;
     }
 
-    let impl_params = impl_signature_params(ib);
+    let mut next_type_var_id = 0;
+    let impl_params = impl_signature_params(ib, &mut next_type_var_id);
     let self_ty = impl_signature_self_type(ib, &impl_params, target_name);
     let impl_generic_vars: HashMap<String, TypeVar> = impl_params
         .iter()
         .map(|param| (param.name.clone(), param.var))
         .collect();
-    let method_generic_vars: HashMap<String, TypeVar> = method
+    let method_generic_pairs: Vec<(&str, &str, TypeVar)> = method
         .generics
         .iter()
         .zip(&declared.generics)
-        .enumerate()
-        .flat_map(|(index, (actual, expected))| {
-            let var = TypeVar(10_000 + index as u32);
-            [(actual.name.clone(), var), (expected.name.clone(), var)]
+        .map(|(actual, expected)| {
+            (
+                actual.name.as_str(),
+                expected.name.as_str(),
+                next_signature_type_var(&mut next_type_var_id),
+            )
         })
         .collect();
     let actual_generic_vars: HashMap<String, TypeVar> = impl_generic_vars
         .iter()
-        .chain(method_generic_vars.iter())
         .map(|(name, var)| (name.clone(), *var))
+        .chain(
+            method_generic_pairs
+                .iter()
+                .map(|(actual_name, _, var)| ((*actual_name).to_string(), *var)),
+        )
         .collect();
     let actual_env = SignatureEnv {
         generic_vars: actual_generic_vars,
@@ -1032,8 +1044,8 @@ fn aspect_impl_method_signature_matches(
     let declared_generic_vars: HashMap<String, TypeVar> = declared
         .generics
         .iter()
-        .enumerate()
-        .map(|(index, param)| (param.name.clone(), TypeVar(10_000 + index as u32)))
+        .zip(&method_generic_pairs)
+        .map(|(param, (_, _, var))| (param.name.clone(), *var))
         .collect();
     let expected_env = SignatureEnv {
         generic_vars: declared_generic_vars,
