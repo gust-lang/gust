@@ -224,7 +224,10 @@ impl std::fmt::Display for InferType {
 /// falls back to the placeholder exactly as before, so passing an empty map
 /// reproduces the placeholder-only behavior unchanged.
 #[must_use]
-pub(crate) fn render_types(tys: &[&InferType], known_names: &HashMap<TypeVar, String>) -> Vec<String> {
+pub(crate) fn render_types(
+    tys: &[&InferType],
+    known_names: &HashMap<TypeVar, String>,
+) -> Vec<String> {
     let mut local_names: HashMap<TypeVar, String> = HashMap::new();
     let mut next = 1usize;
     for ty in tys {

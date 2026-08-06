@@ -3936,7 +3936,9 @@ fn infer_binop(
                             // i64/f64, so the diagnostic should say so instead of
                             // leaking an internal TypeVar identifier.
                             let (lhs_display, rhs_display) = match &lhs_resolved {
-                                InferType::Var(_) => (resolved_numeric.to_string(), rhs_resolved.to_string()),
+                                InferType::Var(_) => {
+                                    (resolved_numeric.to_string(), rhs_resolved.to_string())
+                                }
                                 _ => (lhs_resolved.to_string(), resolved_numeric.to_string()),
                             };
                             return Err(MetelError::type_error(

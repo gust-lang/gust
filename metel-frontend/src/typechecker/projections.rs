@@ -267,7 +267,7 @@ impl Cx<'_> {
     ///
     /// `field_of` is `Some(index)` only when this type is a struct field's annotation; see
     /// the forward-reference note in `check`.
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
     fn ty_at(
         &self,
         te: &TypeExpr,

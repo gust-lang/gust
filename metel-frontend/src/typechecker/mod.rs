@@ -749,7 +749,9 @@ pub(crate) fn reject_unregisterable_impl_target(
     // checked the way a doc comment or spec page would be.
     Err(crate::error::MetelError::type_error(
         crate::error::TypeErrorCode::T0001,
-        format!("cannot `extend` {kind}: this block's methods could never be found. To fix it, {fix}"),
+        format!(
+            "cannot `extend` {kind}: this block's methods could never be found. To fix it, {fix}"
+        ),
         &ib.span,
     ))
 }
