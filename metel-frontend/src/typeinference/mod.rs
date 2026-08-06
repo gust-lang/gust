@@ -3664,6 +3664,30 @@ impl InferContext {
         self.declared_var_names.insert(var, name);
     }
 
+    /// Instantiate a scheme and retain the source-to-fresh variable mapping for
+    /// callers that must subsequently pin or annotate a particular parameter.
+    /// Declared, non-empty parameter names follow their fresh variables so
+    /// diagnostics can render those variables using source-level names.
+    pub fn instantiate_with_renaming(
+        &mut self,
+        scheme: &TypeScheme,
+    ) -> (InferType, HashMap<TypeVar, TypeVar>) {
+        let (instance, renaming) = instantiate_with_renaming(scheme, &mut self.var_gen);
+        for (&original, name) in scheme.quantified_vars.iter().zip(&scheme.param_names) {
+            if !name.is_empty() {
+                if let Some(&fresh) = renaming.get(&original) {
+                    self.tag_declared_var_name(fresh, name.clone());
+                }
+            }
+        }
+        (instance, renaming)
+    }
+
+    /// Instantiate a scheme when the caller has no need for its renaming map.
+    pub fn instantiate(&mut self, scheme: &TypeScheme) -> InferType {
+        self.instantiate_with_renaming(scheme).0
+    }
+
     /// Bind a name to a monomorphic type in the current scope.
     /// `is_mutable` is `true` for `mut` bindings, `false` for `let` bindings and parameters.
     ///
@@ -3738,7 +3762,7 @@ impl InferContext {
             .find_map(|s| s.get(name))
             .cloned()
         {
-            Some(instantiate(&scheme, &mut self.var_gen))
+            Some(self.instantiate(&scheme))
         } else {
             self.mono_env
                 .iter()

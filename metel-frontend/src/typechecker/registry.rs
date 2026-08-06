@@ -789,10 +789,12 @@ fn register_generic_impl_method_schemes(
         // quantified vars in addition to the type's params.
         let mut gen_map = type_gen_map.clone();
         let mut quantified = type_params.clone();
+        let mut param_names = generic_names.clone();
         for g in &method.generics {
             let tv = gen.fresh();
             gen_map.insert(g.name.clone(), tv);
             quantified.push(tv);
+            param_names.push(g.name.clone());
         }
         let mut param_types = vec![self_ty.clone()];
         for p in method.params.iter().filter(|p| p.receiver.is_none()) {
@@ -810,7 +812,7 @@ fn register_generic_impl_method_schemes(
             });
         let scheme = TypeScheme {
             quantified_vars: quantified,
-            param_names: vec![],
+            param_names,
             bounds: vec![],
             neg_bounds: vec![],
             record_kinds: vec![],
@@ -876,10 +878,12 @@ fn register_array_impl_method_schemes(
         };
         let mut gen_map = type_gen_map.clone();
         let mut quantified = vec![element_tv];
+        let mut param_names = vec![element_name.to_string()];
         for g in &method.generics {
             let tv = gen.fresh();
             gen_map.insert(g.name.clone(), tv);
             quantified.push(tv);
+            param_names.push(g.name.clone());
         }
         let mut param_types = vec![self_ty.clone()];
         for p in method.params.iter().filter(|p| p.receiver.is_none()) {
@@ -899,7 +903,7 @@ fn register_array_impl_method_schemes(
             });
         let scheme = TypeScheme {
             quantified_vars: quantified,
-            param_names: vec![],
+            param_names,
             bounds: vec![],
             neg_bounds: vec![],
             record_kinds: vec![],
