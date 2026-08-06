@@ -1,0 +1,14 @@
+// #266 — see stability_01's comment. Identical body to stability_01, with one
+// unrelated generic struct prepended that the error does not mention at all.
+// Before the fix, adding this alone shifted the reported label (`?t18` ->
+// `?t19`) purely because the global TypeVar counter had run further by the
+// time the error site was reached — nothing about the error itself changed.
+// The .toml sidecar asserts the exact same `contains` string as stability_01.
+struct Unrelated<A> { a: A }
+struct Wrap<T> { v: T }
+enum E { A }
+
+fun main() {
+    let w = Wrap { v = 1 };
+    let n: E = w; // ERROR[T0001]
+}
