@@ -1,5 +1,5 @@
 // #266 — see stability_04's comment. Identical body, one unrelated generic
-// struct prepended. Asserts the exact same message as stability_04.
+// struct prepended. Asserts the same declared-name diagnostic as stability_04.
 struct Unrelated<A> { a: A }
 
 fun pair<A, B>(a: A, b: B) -> (A, B) { (a, b) }

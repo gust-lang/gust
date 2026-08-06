@@ -1682,7 +1682,21 @@ fn infer_fun_decl(
         return Ok(());
     }
 
-    let scheme = generalize(resolved_ty.clone(), &env_fvs);
+    let mut scheme = generalize(resolved_ty.clone(), &env_fvs);
+    let names_by_var: HashMap<TypeVar, String> = orig_name_map
+        .iter()
+        .filter_map(
+            |(&original, name)| match partial_subst.apply(&InferType::Var(original)) {
+                InferType::Var(resolved) => Some((resolved, name.clone())),
+                _ => None,
+            },
+        )
+        .collect();
+    scheme.param_names = scheme
+        .quantified_vars
+        .iter()
+        .map(|var| names_by_var.get(var).cloned().unwrap_or_default())
+        .collect();
     // Attach assoc_projections if any projections were recorded during body inference.
     // `proj_map` is already keyed by the FINAL (post-`partial_subst`) TypeVar (see
     // `build_assoc_projection_map`), so it's carried into `FunGeneralization` as-is,
@@ -2696,15 +2710,7 @@ fn infer_expr(
                         // by reproduction: three or more opaque-returning calls in
                         // one block, with .display() called on at least two of
                         // them before a third, corrupted the third's inferred type.
-                        let mut renaming: HashMap<TypeVar, TypeVar> =
-                            HashMap::with_capacity(scheme.quantified_vars.len());
-                        let mut rename_subst = Substitution::new();
-                        for &var in &scheme.quantified_vars {
-                            let fresh = ctx.fresh_type_var_raw();
-                            rename_subst.bind(var, InferType::Var(fresh));
-                            renaming.insert(var, fresh);
-                        }
-                        let instantiated_ty = rename_subst.apply(&scheme.ty);
+                        let (instantiated_ty, renaming) = ctx.instantiate_with_renaming(&scheme);
 
                         if let InferType::Fun(params, ret) = instantiated_ty {
                             // Constrain arguments to match the instantiated function type
@@ -2758,9 +2764,21 @@ fn infer_expr(
                 }
             }
             let ret_var = ctx.fresh_var();
+            // `callee_ty` on the right, the caller-built `Fun` on the left (#266
+            // continuation) -- not just style. `unify`'s `(Var, _)` case binds
+            // its *first* argument's var to its second, so whichever side ends
+            // up as `unify`'s `a` when this constraint's two `Fun`s are matched
+            // param-by-param loses its identity: a declared-name tag applied to
+            // one of `callee_ty`'s own fresh vars (via `ctx.instantiate`, tagged
+            // from `TypeScheme.param_names`) only survives into the solved
+            // substitution if `callee_ty`'s params end up as `unify`'s *second*
+            // argument at each position, not the first -- the same
+            // union-find-direction root cause diagnosed for #236's method-
+            // dispatch bug, here affecting name-tagging instead of literal
+            // defaulting. Swapping which side is `lhs` restores that.
             ctx.add_constraint(
-                callee_ty,
                 InferType::Fun(arg_tys, Box::new(ret_var.clone())),
+                callee_ty,
                 span.clone(),
             );
             Ok(ret_var)
@@ -3010,14 +3028,7 @@ fn infer_expr(
                     .array_method_scheme_for(method)
                     .map(|(s, t)| (s.clone(), t.clone()))
                 {
-                    let mut inst = Substitution::new();
-                    let mut renaming: HashMap<TypeVar, TypeVar> = HashMap::new();
-                    for &qv in &scheme.quantified_vars {
-                        let fresh = ctx.fresh_type_var_raw();
-                        inst.bind(qv, InferType::Var(fresh));
-                        renaming.insert(qv, fresh);
-                    }
-                    let instance = inst.apply(&scheme.ty);
+                    let (instance, renaming) = ctx.instantiate_with_renaming(&scheme);
                     let mut pin = Substitution::new();
                     for (&tv, arg) in struct_tvars.iter().zip(std::iter::once(elem.as_ref())) {
                         if let Some(&fresh) = renaming.get(&tv) {
@@ -3098,14 +3109,7 @@ fn infer_expr(
                     // only the struct tvars would leave the method-level generics
                     // as stale shared vars, so two call sites would collide and a
                     // single call could not resolve `U` from its arguments.
-                    let mut inst = Substitution::new();
-                    let mut renaming: HashMap<TypeVar, TypeVar> = HashMap::new();
-                    for &qv in &scheme.quantified_vars {
-                        let fresh = ctx.fresh_type_var_raw();
-                        inst.bind(qv, InferType::Var(fresh));
-                        renaming.insert(qv, fresh);
-                    }
-                    let instance = inst.apply(&scheme.ty);
+                    let (instance, renaming) = ctx.instantiate_with_renaming(&scheme);
                     // Pin the struct's (now fresh) type params to the receiver's
                     // concrete type args so `self`/return types line up.
                     let mut pin = Substitution::new();
@@ -3479,11 +3483,7 @@ fn infer_expr(
                     .method_scheme_for(type_name, member_name)
                     .map(|(s, t)| (s.clone(), t.clone()))
                 {
-                    let mut inst = Substitution::new();
-                    for &qv in &scheme.quantified_vars {
-                        inst.bind(qv, InferType::Var(ctx.fresh_type_var_raw()));
-                    }
-                    return Ok(inst.apply(&scheme.ty));
+                    return Ok(ctx.instantiate(&scheme));
                 }
                 if let Some(info) = ctx.get_enum(type_name).cloned() {
                     if let Some(variant) = info.variants.iter().find(|v| v.name == *member_name) {

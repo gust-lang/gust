@@ -1,4 +1,4 @@
 [expect]
 status = "typecheck_error"
 code = "T0001"
-contains = "cannot unify (?1, String) with boolean"
+contains = "cannot unify (A, String) with boolean"
