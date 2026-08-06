@@ -3480,16 +3480,6 @@ impl InferContext {
         extended
     }
 
-    #[must_use]
-    pub fn is_integer_literal_var(&self, tv: TypeVar) -> bool {
-        self.integer_literal_vars.contains(&tv)
-    }
-
-    #[must_use]
-    pub fn is_float_literal_var(&self, tv: TypeVar) -> bool {
-        self.float_literal_vars.contains(&tv)
-    }
-
     /// Bind a name to a monomorphic type in the current scope.
     /// `is_mutable` is `true` for `mut` bindings, `false` for `let` bindings and parameters.
     ///

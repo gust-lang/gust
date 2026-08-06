@@ -2975,22 +2975,22 @@ fn infer_expr(
             ..
         } => {
             let recv_ty = infer_expr(receiver, ctx, fun_generalizations)?;
-            let recv_ty = ctx.solve()?.apply(&recv_ty);
-            // If the receiver is a numeric literal TypeVar, default it to i64/f64
-            // so method dispatch can proceed with a concrete type.
-            let recv_ty = if let InferType::Var(tv) = &recv_ty {
-                if ctx.is_integer_literal_var(*tv) {
-                    ctx.add_constraint(recv_ty.clone(), InferType::int(), span.clone());
-                    InferType::int()
-                } else if ctx.is_float_literal_var(*tv) {
-                    ctx.add_constraint(recv_ty.clone(), InferType::float(), span.clone());
-                    InferType::float()
-                } else {
-                    recv_ty
-                }
-            } else {
-                recv_ty
-            };
+            let solved = ctx.solve()?;
+            let recv_ty = solved.apply(&recv_ty);
+            // If the receiver is (or resolves through a chain of unifications to)
+            // a numeric literal TypeVar, default it to i64/f64 so method dispatch
+            // can proceed with a concrete type. `default_literal_vars` walks that
+            // chain; a bare `is_integer_literal_var`/`is_float_literal_var` check
+            // on the post-`solve()` var only catches the receiver being the
+            // literal's own original TypeVar, not one merely unified with it —
+            // which is exactly what a generic struct field recovers to (#236:
+            // `Pair { first = 1, .. }.first` carries `A`'s own fresh TypeVar,
+            // constrained equal to the literal `1`'s TypeVar, not that TypeVar
+            // itself, so `p.first.to_string()` failed with T0002 even though
+            // `p.first + 1` — which goes through `default_literal_vars` via the
+            // arithmetic path below — already worked).
+            let defaulted = ctx.default_literal_vars(&solved);
+            let recv_ty = defaulted.apply(&recv_ty);
 
             let arg_tys: Vec<InferType> = args
                 .iter()
@@ -3919,8 +3919,20 @@ fn infer_binop(
                     }
                     (InferType::Concrete(Type::Str), InferType::Var(v))
                     | (InferType::Var(v), InferType::Concrete(Type::Str)) => {
-                        // Numeric literal TypeVars cannot be String — reject with T0005.
-                        if ctx.is_integer_literal_var(*v) || ctx.is_float_literal_var(*v) {
+                        // Numeric literal TypeVars cannot be String — reject with
+                        // T0005. Walk through `default_literal_vars` rather than a
+                        // bare `is_integer_literal_var`/`is_float_literal_var`
+                        // check (same fix as #236's method-dispatch case, above):
+                        // `v` may not be the literal's own TypeVar but one merely
+                        // unified with it, e.g. a generic struct field recovered
+                        // from an int literal — a direct containment check misses
+                        // that and would fall through to a confusing `cannot
+                        // unify` (T0001) instead of this dedicated T0005 message.
+                        let defaulted = ctx.default_literal_vars(&subst);
+                        if matches!(
+                            defaulted.apply(&InferType::Var(*v)),
+                            InferType::Concrete(Type::I64 | Type::F64)
+                        ) {
                             return Err(MetelError::type_error(
                                 TypeErrorCode::T0005,
                                 format!("`+` requires i64, f64, or String operands, got `{lhs_resolved}` and `{rhs_resolved}`"),
