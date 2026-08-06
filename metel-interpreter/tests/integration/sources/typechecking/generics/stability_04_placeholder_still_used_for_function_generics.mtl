@@ -1,0 +1,13 @@
+// #266: function-level generics are NOT covered by the declared-name half of
+// this fix (only struct/enum type parameters are, per stability_03) --
+// `pair`'s own `A`/`B` are tagged only inside `pair`'s own body, not at each
+// call site's fresh instantiation. A call's unresolved type argument must
+// still fall back to the stable placeholder (`?1`), not silently regress to
+// the pre-#266 unstable raw TypeVar id. Paired with stability_05 (one
+// unrelated declaration prepended) asserting the identical message.
+fun pair<A, B>(a: A, b: B) -> (A, B) { (a, b) }
+
+fun main() {
+    let x = pair(1, "s");
+    let n: boolean = x; // ERROR[T0001]
+}

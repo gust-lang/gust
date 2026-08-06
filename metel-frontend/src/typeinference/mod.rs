@@ -214,28 +214,38 @@ impl std::fmt::Display for InferType {
 /// ?1 with ?1` (an occurs-check-shaped message) still reads as "these two are
 /// the same still-unknown type," not two unrelated ones.
 ///
-/// This does not attempt the other half of #266 (rendering a var under a
-/// *declared* generic parameter's name, where one is known) — none of the
-/// call sites in this module have that context available; `display_type` in
-/// `typechecker/inference.rs` already does that separately, for the one
-/// place (impl blocks) that does have it.
+/// The other half of #266 — rendering a var under a *declared* generic
+/// parameter's name, where one is known — is covered too, via `known_names`
+/// (`TypeVar` → declared name, e.g. `InferContext::declared_var_names`).
+/// Consulted before the local placeholder, so a struct/enum literal's own
+/// type parameter shows as `T`, not `?1`. Only some instantiation sites tag
+/// `known_names` today (struct/enum literal construction; see
+/// `InferContext::tag_declared_var_name`'s callers) — a var with no tag
+/// falls back to the placeholder exactly as before, so passing an empty map
+/// reproduces the placeholder-only behavior unchanged.
 #[must_use]
-pub(crate) fn render_types(tys: &[&InferType]) -> Vec<String> {
+pub(crate) fn render_types(tys: &[&InferType], known_names: &HashMap<TypeVar, String>) -> Vec<String> {
     let mut local_names: HashMap<TypeVar, String> = HashMap::new();
     let mut next = 1usize;
     for ty in tys {
-        collect_free_vars_in_order(ty, &mut local_names, &mut next);
+        collect_free_vars_in_order(ty, known_names, &mut local_names, &mut next);
     }
-    tys.iter().map(|ty| render_with_local_names(ty, &local_names)).collect()
+    tys.iter()
+        .map(|ty| render_with_names(ty, known_names, &local_names))
+        .collect()
 }
 
 fn collect_free_vars_in_order(
     ty: &InferType,
+    known: &HashMap<TypeVar, String>,
     local: &mut HashMap<TypeVar, String>,
     next: &mut usize,
 ) {
     match ty {
         InferType::Var(v) => {
+            if known.contains_key(v) {
+                return;
+            }
             local.entry(*v).or_insert_with(|| {
                 let label = format!("?{next}");
                 *next += 1;
@@ -244,49 +254,57 @@ fn collect_free_vars_in_order(
         }
         InferType::Fun(params, ret) => {
             for p in params {
-                collect_free_vars_in_order(p, local, next);
+                collect_free_vars_in_order(p, known, local, next);
             }
-            collect_free_vars_in_order(ret, local, next);
+            collect_free_vars_in_order(ret, known, local, next);
         }
         InferType::Tuple(ts) => {
             for t in ts {
-                collect_free_vars_in_order(t, local, next);
+                collect_free_vars_in_order(t, known, local, next);
             }
         }
         InferType::Record(fields) => {
             for (_, t) in fields {
-                collect_free_vars_in_order(t, local, next);
+                collect_free_vars_in_order(t, known, local, next);
             }
         }
         InferType::Array(t)
         | InferType::SizedArray(t, _)
         | InferType::Reference(t)
-        | InferType::MutReference(t) => collect_free_vars_in_order(t, local, next),
+        | InferType::MutReference(t) => collect_free_vars_in_order(t, known, local, next),
         InferType::Named(_, args) => {
             for a in args {
-                collect_free_vars_in_order(a, local, next);
+                collect_free_vars_in_order(a, known, local, next);
             }
         }
         InferType::Concrete(_) | InferType::Never => {}
     }
 }
 
-fn render_with_local_names(ty: &InferType, local: &HashMap<TypeVar, String>) -> String {
+fn render_with_names(
+    ty: &InferType,
+    known: &HashMap<TypeVar, String>,
+    local: &HashMap<TypeVar, String>,
+) -> String {
     match ty {
-        InferType::Var(v) => local.get(v).cloned().unwrap_or_else(|| ty.to_string()),
+        InferType::Var(v) => known
+            .get(v)
+            .or_else(|| local.get(v))
+            .cloned()
+            .unwrap_or_else(|| ty.to_string()),
         InferType::Fun(params, ret) => format!(
             "({}) -> {}",
             params
                 .iter()
-                .map(|p| render_with_local_names(p, local))
+                .map(|p| render_with_names(p, known, local))
                 .collect::<Vec<_>>()
                 .join(", "),
-            render_with_local_names(ret, local)
+            render_with_names(ret, known, local)
         ),
         InferType::Tuple(ts) => format!(
             "({})",
             ts.iter()
-                .map(|t| render_with_local_names(t, local))
+                .map(|t| render_with_names(t, known, local))
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
@@ -294,18 +312,18 @@ fn render_with_local_names(ty: &InferType, local: &HashMap<TypeVar, String>) -> 
             "{{ {} }}",
             fields
                 .iter()
-                .map(|(n, t)| format!("{n}: {}", render_with_local_names(t, local)))
+                .map(|(n, t)| format!("{n}: {}", render_with_names(t, known, local)))
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        InferType::Array(t) => format!("{}[]", render_with_local_names(t, local)),
-        InferType::SizedArray(t, n) => format!("[{}; {n}]", render_with_local_names(t, local)),
-        InferType::Reference(t) => format!("&{}", render_with_local_names(t, local)),
-        InferType::MutReference(t) => format!("&var {}", render_with_local_names(t, local)),
+        InferType::Array(t) => format!("{}[]", render_with_names(t, known, local)),
+        InferType::SizedArray(t, n) => format!("[{}; {n}]", render_with_names(t, known, local)),
+        InferType::Reference(t) => format!("&{}", render_with_names(t, known, local)),
+        InferType::MutReference(t) => format!("&var {}", render_with_names(t, known, local)),
         InferType::Named(name, args) if !args.is_empty() => format!(
             "{name}<{}>",
             args.iter()
-                .map(|a| render_with_local_names(a, local))
+                .map(|a| render_with_names(a, known, local))
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
@@ -612,8 +630,15 @@ pub fn solve_constraints(
     float_literal_vars: &HashSet<TypeVar>,
 ) -> Result<Substitution, MetelError> {
     let mut subst = Substitution::new();
+    let no_declared_names = HashMap::new();
     for c in constraints {
-        apply_constraint(&mut subst, &c, integer_literal_vars, float_literal_vars)?;
+        apply_constraint(
+            &mut subst,
+            &c,
+            integer_literal_vars,
+            float_literal_vars,
+            &no_declared_names,
+        )?;
     }
     Ok(subst)
 }
@@ -622,8 +647,13 @@ pub fn solve_constraints(
 /// required the two sides to agree, report it the way `error-codes.md` documents for
 /// T0005 — naming the operator — rather than the bare `cannot unify`, which says the two
 /// types disagree but never says why they had to match in the first place.
-fn operand_mismatch_error(constraint: &Constraint, lhs: &InferType, rhs: &InferType) -> MetelError {
-    let mut rendered = render_types(&[lhs, rhs]);
+fn operand_mismatch_error(
+    constraint: &Constraint,
+    lhs: &InferType,
+    rhs: &InferType,
+    known_names: &HashMap<TypeVar, String>,
+) -> MetelError {
+    let mut rendered = render_types(&[lhs, rhs], known_names);
     let rhs = rendered.pop().unwrap_or_else(|| rhs.to_string());
     let lhs = rendered.pop().unwrap_or_else(|| lhs.to_string());
     match constraint.operator {
@@ -646,8 +676,11 @@ fn literal_mismatch_error(
     kind: &str,
     other: &InferType,
     span: &Span,
+    known_names: &HashMap<TypeVar, String>,
 ) -> MetelError {
-    let other = render_types(&[other]).pop().unwrap_or_else(|| other.to_string());
+    let other = render_types(&[other], known_names)
+        .pop()
+        .unwrap_or_else(|| other.to_string());
     match operator {
         Some(op) => MetelError::type_error(
             crate::error::TypeErrorCode::T0005,
@@ -667,10 +700,12 @@ fn apply_constraint(
     constraint: &Constraint,
     integer_literal_vars: &HashSet<TypeVar>,
     float_literal_vars: &HashSet<TypeVar>,
+    known_names: &HashMap<TypeVar, String>,
 ) -> Result<(), MetelError> {
     let lhs = subst.apply(&constraint.lhs);
     let rhs = subst.apply(&constraint.rhs);
-    let solved = unify(&lhs, &rhs).map_err(|_| operand_mismatch_error(constraint, &lhs, &rhs))?;
+    let solved = unify(&lhs, &rhs)
+        .map_err(|_| operand_mismatch_error(constraint, &lhs, &rhs, known_names))?;
     subst.compose_in_place(&solved);
     validate_literal_bindings(
         constraint.operator,
@@ -678,6 +713,7 @@ fn apply_constraint(
         integer_literal_vars,
         float_literal_vars,
         &constraint.span,
+        known_names,
     )
 }
 
@@ -698,6 +734,7 @@ fn apply_constraint_with_coercion(
     float_literal_vars: &HashSet<TypeVar>,
     opaque_return_vars: &HashSet<TypeVar>,
     registry: &TypeDefinitionRegistry,
+    known_names: &HashMap<TypeVar, String>,
 ) -> Result<(), MetelError> {
     let lhs = subst.apply(&constraint.lhs);
     let rhs = subst.apply(&constraint.rhs);
@@ -707,7 +744,7 @@ fn apply_constraint_with_coercion(
         let lhs_field = singleton_coerce_field_ty(registry, &lhs);
         let rhs_field = singleton_coerce_field_ty(registry, &rhs);
         let mk_err = || {
-            let mut rendered = render_types(&[&lhs, &rhs]);
+            let mut rendered = render_types(&[&lhs, &rhs], known_names);
             let rhs = rendered.pop().unwrap_or_else(|| rhs.to_string());
             let lhs = rendered.pop().unwrap_or_else(|| lhs.to_string());
             MetelError::type_error(
@@ -755,6 +792,7 @@ fn apply_constraint_with_coercion(
         integer_literal_vars,
         float_literal_vars,
         &constraint.span,
+        known_names,
     )?;
     // RFC-0037: an opaque-return marker var may unify with another type
     // variable (the ordinary case for threading it through further generic
@@ -772,7 +810,9 @@ fn apply_constraint_with_coercion(
     for &var in opaque_return_vars {
         let resolved = subst.apply(&InferType::Var(var));
         if !matches!(resolved, InferType::Var(_) | InferType::Never) {
-            let resolved = render_types(&[&resolved]).pop().unwrap_or_else(|| resolved.to_string());
+            let resolved = render_types(&[&resolved], known_names)
+                .pop()
+                .unwrap_or_else(|| resolved.to_string());
             return Err(MetelError::type_error(
                 crate::error::TypeErrorCode::T0018,
                 format!(
@@ -831,6 +871,7 @@ fn validate_literal_bindings(
     integer_literal_vars: &HashSet<TypeVar>,
     float_literal_vars: &HashSet<TypeVar>,
     span: &Span,
+    known_names: &HashMap<TypeVar, String>,
 ) -> Result<(), MetelError> {
     for &var in integer_literal_vars {
         match subst.apply(&InferType::Var(var)) {
@@ -842,6 +883,7 @@ fn validate_literal_bindings(
                     "an integer literal",
                     &other,
                     span,
+                    known_names,
                 ))
             }
         }
@@ -856,6 +898,7 @@ fn validate_literal_bindings(
                     "a float literal",
                     &other,
                     span,
+                    known_names,
                 ))
             }
         }
@@ -3020,6 +3063,16 @@ pub struct InferContext {
     /// `TypeVars` for opaque return values (RFC-0037). These vars must NOT be bound
     /// to concrete types by the caller - they should remain abstract to enforce opacity.
     opaque_return_vars: HashSet<TypeVar>,
+    /// `TypeVar` → the declared generic-parameter name it was minted for (#266),
+    /// e.g. the fresh var standing in for `Wrap<T>`'s `T` at one particular
+    /// construction site maps to `"T"` here. Consulted by `render_types` so a
+    /// diagnostic can show the name the programmer wrote instead of an anonymous
+    /// `?1`. Populated only where a fresh var is minted *for* a declared
+    /// parameter (struct/enum literal construction so far — see
+    /// `tag_declared_var_name`'s callers); an ordinary internal unification
+    /// variable that never corresponded to anything in source is never in this
+    /// map, and correctly falls back to the message-local placeholder instead.
+    declared_var_names: HashMap<TypeVar, String>,
     /// Inferred return type for each closure expression, keyed by the closure span.
     /// Pass 2 reuses this so unannotated closures keep their solved return type.
     closure_return_types: HashMap<Span, InferType>,
@@ -3091,6 +3144,7 @@ impl InferContext {
             deferred_glob_conflicts: HashMap::new(),
             integer_literal_vars: HashSet::new(),
             float_literal_vars: HashSet::new(),
+            declared_var_names: HashMap::new(),
             opaque_return_vars: HashSet::new(),
             closure_return_types: HashMap::new(),
             cached_subst: Substitution::new(),
@@ -3601,6 +3655,15 @@ impl InferContext {
         extended
     }
 
+    /// Record that `var` was minted for the declared generic parameter `name`
+    /// (#266) — e.g. a fresh var standing in for `Wrap<T>`'s `T` at one
+    /// particular struct-literal construction site. Overwrites any previous
+    /// tag for `var`, matching `Substitution::bind`'s own last-write semantics;
+    /// in practice each var is tagged at most once, right where it is minted.
+    pub fn tag_declared_var_name(&mut self, var: TypeVar, name: String) {
+        self.declared_var_names.insert(var, name);
+    }
+
     /// Bind a name to a monomorphic type in the current scope.
     /// `is_mutable` is `true` for `mut` bindings, `false` for `let` bindings and parameters.
     ///
@@ -3805,6 +3868,7 @@ impl InferContext {
                 &self.float_literal_vars,
                 &self.opaque_return_vars,
                 &self.registry,
+                &self.declared_var_names,
             )?;
         }
 
