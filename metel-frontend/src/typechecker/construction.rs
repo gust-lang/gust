@@ -5453,8 +5453,15 @@ fn typed_place_ty(
             let object_ty = peel_type_references(&typed_place_ty(object, ctx, span)?).clone();
             match object_ty {
                 Type::SizedArray(elem, _) => Ok((*elem).clone()),
+                // Not T0002 (#633): the element type is already known here --
+                // `values: i64[]` is fully annotated -- and no annotation
+                // could fix this. `T[]` views are unconditionally immutable
+                // through an index (RFC-0126), independent of whether the
+                // binding itself is `var`; that's a different failure shape
+                // than T0006's three forms (all of which name a `let`
+                // binding that a `var` would fix).
                 Type::Array(_) => Err(MetelError::type_error(
-                    TypeErrorCode::T0002,
+                    TypeErrorCode::T0023,
                     "cannot assign through `T[]`: array views are immutable; use `[T; N]` or `List<T>`",
                     span,
                 )),

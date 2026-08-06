@@ -1,0 +1,10 @@
+// Regression for #633: index assignment through `T[]` is rejected (RFC-0126
+// array views are unconditionally immutable through an index), but must be
+// T0023, not T0002 -- the element type is already fully known here, so no
+// annotation could ever fix it.
+
+fun main() {
+    var values: i64[] = [1, 2];
+    values[0] = 9; // ERROR[T0023]
+    println(values[0]);
+}
