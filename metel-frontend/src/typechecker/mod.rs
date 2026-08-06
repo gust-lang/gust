@@ -733,20 +733,23 @@ pub(crate) fn reject_unregisterable_impl_target(
         TypeExpr::RecordProjection { .. } => "a record projection",
         TypeExpr::Named(_, _) => unreachable!("nominal targets returned early"),
     };
-    let tracking = match &ib.target_type {
-        TypeExpr::Array(_) => String::new(),
-        _ => " (metel-core#239)".to_string(),
-    };
     // T0001, not T0003 — T0003 is "undefined name", and nothing here is
     // undefined. T0001 is what `coherence.rs` already uses for the structurally
     // identical "anonymous records cannot implement `Drop`" rejection, and what
     // metel-core#601 used for an inert `drop` body: this impl is not allowed.
+    //
+    // Deliberately no issue-number/tracking-link suffix in the message text
+    // itself (only in this function's own doc comment, for maintainers): a
+    // diagnostic a user pastes into a bug report or reads with no access to
+    // this project's tracker should be fully actionable on its own, and an
+    // embedded number is exactly the kind of thing that goes stale — this
+    // function used to append " (metel-core#239)" here, which cited the wrong
+    // repo's issue numbering for weeks after the Codeberg->GitHub migration
+    // before anyone noticed, because nothing forces a diagnostic string to be
+    // checked the way a doc comment or spec page would be.
     Err(crate::error::MetelError::type_error(
         crate::error::TypeErrorCode::T0001,
-        format!(
-            "cannot `extend` {kind}: this block's methods could never be found{tracking}. \
-             To fix it, {fix}"
-        ),
+        format!("cannot `extend` {kind}: this block's methods could never be found. To fix it, {fix}"),
         &ib.span,
     ))
 }
