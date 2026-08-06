@@ -104,6 +104,7 @@ struct ConstructCtx<'a> {
     current_return_ty: Option<Type>,
     /// Break value type of the innermost enclosing `loop` (None = no loop or bare break).
     current_break_ty: Option<Type>,
+    loop_depth: usize,
     /// Generic type param name → fresh `TypeVar`; populated during construction-at-call-time
     /// so type annotations like `T[]` in a generic body resolve to concrete types.
     generic_params: HashMap<String, TypeVar>,
@@ -151,6 +152,7 @@ impl<'a> ConstructCtx<'a> {
             gen,
             current_return_ty: None,
             current_break_ty: None,
+            loop_depth: 0,
             generic_params: HashMap::new(),
             symbols,
             overloads,
@@ -263,6 +265,23 @@ impl<'a> ConstructCtx<'a> {
     }
     fn pop_break_type(&mut self, prev: Option<Type>) {
         self.current_break_ty = prev;
+    }
+
+    fn enter_loop(&mut self) {
+        self.loop_depth += 1;
+    }
+    fn exit_loop(&mut self) {
+        debug_assert!(self.loop_depth > 0, "loop depth underflow");
+        self.loop_depth -= 1;
+    }
+    fn push_loop_depth_reset(&mut self) -> usize {
+        std::mem::replace(&mut self.loop_depth, 0)
+    }
+    fn pop_loop_depth(&mut self, prev: usize) {
+        self.loop_depth = prev;
+    }
+    fn is_in_loop(&self) -> bool {
+        self.loop_depth > 0
     }
 
     /// Convert a type expression to an `InferType`, substituting generic param names
@@ -1361,7 +1380,9 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
         Stmt::Expr(e) => Ok(TypedStmt::Expr(construct_expr(e, None, ctx)?)),
         Stmt::While(ws) => {
             let condition = construct_expr(&ws.condition, None, ctx)?;
+            ctx.enter_loop();
             let body = construct_block(&ws.body, None, ctx)?;
+            ctx.exit_loop();
             Ok(TypedStmt::While(TypedWhileStmt {
                 condition,
                 body,
@@ -1436,7 +1457,9 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
                 Some(s) => Some(construct_expr(s, None, ctx)?),
                 None => None,
             };
+            ctx.enter_loop();
             let body = construct_block(&fs.body, None, ctx)?;
+            ctx.exit_loop();
             ctx.pop_scope();
             Ok(TypedStmt::For(Box::new(TypedForStmt {
                 init,
@@ -1499,7 +1522,9 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
             };
             ctx.push_scope();
             ctx.bind(&fi.binding, elem_ty);
+            ctx.enter_loop();
             let body = construct_block(&fi.body, None, ctx)?;
+            ctx.exit_loop();
             ctx.pop_scope();
             Ok(TypedStmt::ForIn(Box::new(TypedForInStmt {
                 binding: fi.binding.clone(),
@@ -2399,7 +2424,9 @@ fn construct_expr(
             // this being correct — without it, `return`ing a reference out of a
             // closure declared to return the referent type silently skipped the copy).
             let saved_return = ctx.push_return_type(Some(ret_ty.clone()));
+            let saved_loop_depth = ctx.push_loop_depth_reset();
             let typed_body = construct_block(body, body_expected, ctx)?;
+            ctx.pop_loop_depth(saved_loop_depth);
             ctx.pop_return_type(saved_return);
             ctx.pop_scope();
             let ty = Type::Fun(param_types, Box::new(ret_ty));
@@ -2469,7 +2496,9 @@ fn construct_expr(
         }
         Expr::Loop { body, span } => {
             let saved_break = ctx.push_break_type(expected_ty.cloned());
+            ctx.enter_loop();
             let typed_body = construct_block(body, None, ctx)?;
+            ctx.exit_loop();
             ctx.pop_break_type(saved_break);
             let ty = find_loop_break_type(&typed_body).unwrap_or(Type::Never);
             Ok(TypedExpr::Loop {
@@ -2502,6 +2531,13 @@ fn construct_expr(
             }))
         }
         Expr::Break(b) => {
+            if !ctx.is_in_loop() {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0021,
+                    "`break` used with no enclosing loop",
+                    &b.span,
+                ));
+            }
             let break_ty = ctx.current_break_ty.clone();
             let value = match &b.value {
                 Some(e) => {
@@ -2521,7 +2557,16 @@ fn construct_expr(
                 span: b.span.clone(),
             }))
         }
-        Expr::Continue(span) => Ok(TypedExpr::Continue(span.clone())),
+        Expr::Continue(span) => {
+            if !ctx.is_in_loop() {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0021,
+                    "`continue` used with no enclosing loop",
+                    span,
+                ));
+            }
+            Ok(TypedExpr::Continue(span.clone()))
+        }
     }
 }
 

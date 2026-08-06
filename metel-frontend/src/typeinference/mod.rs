@@ -2871,6 +2871,7 @@ pub struct InferContext {
     constraints: Vec<Constraint>,
     current_return_type: Option<InferType>,
     current_break_type: Option<InferType>,
+    loop_depth: usize,
     registry: TypeDefinitionRegistry,
     /// Type-param name → `TypeVar` for the currently-being-inferred generic function.
     /// Empty when inferring a non-generic function or at top level.
@@ -2959,6 +2960,7 @@ impl InferContext {
             constraints: Vec::new(),
             current_return_type: None,
             current_break_type: None,
+            loop_depth: 0,
             registry,
             current_type_params: HashMap::new(),
             current_type_param_bounds: HashMap::new(),
@@ -3746,6 +3748,29 @@ impl InferContext {
     #[must_use]
     pub fn current_break_type(&self) -> Option<&InferType> {
         self.current_break_type.as_ref()
+    }
+
+    pub fn enter_loop(&mut self) {
+        self.loop_depth += 1;
+    }
+
+    pub fn exit_loop(&mut self) {
+        debug_assert!(self.loop_depth > 0, "loop depth underflow");
+        self.loop_depth -= 1;
+    }
+
+    #[must_use]
+    pub fn push_loop_depth_reset(&mut self) -> usize {
+        std::mem::replace(&mut self.loop_depth, 0)
+    }
+
+    pub fn pop_loop_depth(&mut self, prev: usize) {
+        self.loop_depth = prev;
+    }
+
+    #[must_use]
+    pub fn is_in_loop(&self) -> bool {
+        self.loop_depth > 0
     }
 }
 

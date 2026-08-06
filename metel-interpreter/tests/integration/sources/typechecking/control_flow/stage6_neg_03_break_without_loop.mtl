@@ -1,0 +1,3 @@
+fun bad() -> i64 {
+    break; // ERROR[T0021]
+}

@@ -40,6 +40,7 @@ pub enum TypeErrorCode {
     T0017, // Impl missing a required associated type definition (RFC-0082 §2)
     T0018, // Naming the concrete type of an opaque `impl Aspect` return value (RFC-0037)
     T0019, // Use of moved value
+    T0021, // `break` or `continue` outside an enclosing loop
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

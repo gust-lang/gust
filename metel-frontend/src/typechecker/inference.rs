@@ -2361,7 +2361,9 @@ fn infer_stmt(
         Stmt::While(ws) => {
             let cond_ty = infer_expr(&ws.condition, ctx, fun_generalizations)?;
             ctx.add_constraint(cond_ty, InferType::bool(), ws.span.clone());
+            ctx.enter_loop();
             infer_block(&ws.body, ctx, fun_generalizations)?;
+            ctx.exit_loop();
             Ok(InferType::unit())
         }
         Stmt::For(fs) => {
@@ -2400,7 +2402,9 @@ fn infer_stmt(
             if let Some(step) = &fs.step {
                 infer_expr(step, ctx, fun_generalizations)?;
             }
+            ctx.enter_loop();
             infer_block(&fs.body, ctx, fun_generalizations)?;
+            ctx.exit_loop();
             ctx.pop_scope();
             Ok(InferType::unit())
         }
@@ -2479,7 +2483,9 @@ fn infer_stmt(
             }
             ctx.push_scope();
             ctx.bind_mono(&fi.binding, elem_ty, fi.mutable);
+            ctx.enter_loop();
             infer_block(&fi.body, ctx, fun_generalizations)?;
+            ctx.exit_loop();
             ctx.pop_scope();
             Ok(InferType::unit())
         }
@@ -3446,7 +3452,9 @@ fn infer_expr(
         Expr::Loop { body, span } => {
             let break_var = ctx.fresh_var();
             let saved_break = ctx.push_break_type(break_var.clone());
+            ctx.enter_loop();
             infer_block(body, ctx, fun_generalizations)?;
+            ctx.exit_loop();
             ctx.pop_break_type(saved_break);
             let _ = span;
             Ok(break_var)
@@ -3523,7 +3531,9 @@ fn infer_expr(
                 ctx.bind_mono(&p.name, pt.clone(), p.mutable);
             }
             let saved_ret = ctx.push_return_type(ret_ty.clone());
+            let saved_loop_depth = ctx.push_loop_depth_reset();
             let body_ty = infer_block(body, ctx, fun_generalizations)?;
+            ctx.pop_loop_depth(saved_loop_depth);
             constrain_with_read_copy(ctx, body_ty, ret_ty.clone(), body.span.clone());
             ctx.pop_return_type(saved_ret);
             ctx.pop_scope();
@@ -3546,6 +3556,13 @@ fn infer_expr(
             Ok(InferType::never())
         }
         Expr::Break(b) => {
+            if !ctx.is_in_loop() {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0021,
+                    "`break` used with no enclosing loop",
+                    &b.span,
+                ));
+            }
             let break_ty = match &b.value {
                 Some(e) => infer_expr(e, ctx, fun_generalizations)?,
                 None => InferType::unit(),
@@ -3555,7 +3572,16 @@ fn infer_expr(
             }
             Ok(InferType::never())
         }
-        Expr::Continue(_) => Ok(InferType::never()),
+        Expr::Continue(span) => {
+            if !ctx.is_in_loop() {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0021,
+                    "`continue` used with no enclosing loop",
+                    span,
+                ));
+            }
+            Ok(InferType::never())
+        }
     }
 }
 
