@@ -1,4 +1,4 @@
 [expect]
 status = "typecheck_error"
 code = "T0001"
-contains = "could never be found (metel-core#353)"
+contains = "could never be found (metel-core#239)"

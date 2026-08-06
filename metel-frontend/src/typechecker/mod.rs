@@ -664,13 +664,13 @@ pub(crate) fn impl_target_head(target: &crate::ast::TypeExpr) -> Option<&str> {
 /// type to resolve `self` to (`extend i64[]: …`). Treating only the first as a
 /// reason is what made a structural target with no generics reach an internal
 /// error — it fell through to eager construction against a type named `""`
-/// (metel-core#296).
+/// (metel-core#581).
 pub(crate) fn impl_defers_method_bodies(ib: &crate::ast::ImplBlock) -> bool {
     !ib.generics.is_empty() || impl_target_head(&ib.target_type).is_none()
 }
 
 /// Reject an `extend` on a structural target that has nowhere to register
-/// (metel-core#296, metel-core#353).
+/// (metel-core#581, metel-core#239).
 ///
 /// RFC-0061 grants aspect impls for structural types and RFC-0116 §3 relies on
 /// it for records, but only one form is actually implemented:
@@ -681,7 +681,7 @@ pub(crate) fn impl_defers_method_bodies(ib: &crate::ast::ImplBlock) -> bool {
 ///
 /// All of it is an error rather than silent acceptance. A declaration that
 /// compiles and does nothing is the failure mode RFC-0071 §9c exists to prevent,
-/// and the same judgement was applied to inert `Drop` impls in metel-core#345.
+/// and the same judgement was applied to inert `Drop` impls in metel-core#601.
 /// Rejecting the generic tuple/record form costs nothing: nobody can depend on
 /// the current behaviour, because the current behaviour is that the impl has no
 /// effect.
@@ -735,12 +735,12 @@ pub(crate) fn reject_unregisterable_impl_target(
     };
     let tracking = match &ib.target_type {
         TypeExpr::Array(_) => String::new(),
-        _ => " (metel-core#353)".to_string(),
+        _ => " (metel-core#239)".to_string(),
     };
     // T0001, not T0003 — T0003 is "undefined name", and nothing here is
     // undefined. T0001 is what `coherence.rs` already uses for the structurally
     // identical "anonymous records cannot implement `Drop`" rejection, and what
-    // metel-core#345 used for an inert `drop` body: this impl is not allowed.
+    // metel-core#601 used for an inert `drop` body: this impl is not allowed.
     Err(crate::error::MetelError::type_error(
         crate::error::TypeErrorCode::T0001,
         format!(

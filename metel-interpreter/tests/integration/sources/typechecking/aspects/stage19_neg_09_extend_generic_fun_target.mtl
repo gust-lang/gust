@@ -2,11 +2,11 @@ aspect Area {
     fun area(&self) -> i64;
 }
 
-// The generic form is what makes an array impl work, but for a tuple or record
+// The generic form is what makes an array impl work, but for a function type
 // it typechecks and then has no effect in either the call or the bound position
 // (metel-core#239). Rejected rather than accepted-and-inert, on the same grounds
 // as the concrete form in metel-core#581.
-extend<T> { w: T }: Area {
+extend<A, B> (A) -> B: Area {
     fun area(&self) -> i64 { return 1; }
 }
 
