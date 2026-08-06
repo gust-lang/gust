@@ -1,4 +1,4 @@
 [expect]
 status = "typecheck_error"
 code = "T0001"
-contains = "cannot unify Wrap<?1> with E"
+contains = "cannot unify Wrap<T> with E"

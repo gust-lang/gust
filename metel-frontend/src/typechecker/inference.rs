@@ -4248,8 +4248,23 @@ fn infer_enum_variant_literal(
         })?
         .clone();
     let mut remap: HashMap<TypeVar, InferType> = HashMap::new();
-    for &tp in &enum_info.type_params {
-        remap.insert(tp, ctx.fresh_var());
+    // #266: tag each fresh var with the declared generic parameter it stands
+    // in for (e.g. `E<T>`'s `T`), so a diagnostic mentioning this value's type
+    // can show `T` instead of an anonymous placeholder. `struct_generic_names_for`
+    // covers enums too (registered under the enum's own name, same order as
+    // `type_params`) — see `registry.rs`'s enum-registration path.
+    let declared_names = ctx
+        .struct_generic_names_for(enum_name)
+        .cloned()
+        .unwrap_or_default();
+    for (i, &tp) in enum_info.type_params.iter().enumerate() {
+        let fresh = ctx.fresh_var();
+        if let InferType::Var(fresh_tv) = fresh {
+            if let Some(name) = declared_names.get(i) {
+                ctx.tag_declared_var_name(fresh_tv, name.clone());
+            }
+        }
+        remap.insert(tp, fresh);
     }
     for (fname, expr) in fields {
         let field = variant
@@ -4311,8 +4326,21 @@ fn infer_struct_literal(
     let type_params = ctx.get_struct_type_params(&struct_name).cloned();
     let mut remap: HashMap<TypeVar, InferType> = HashMap::new();
     if let Some(ref params) = type_params {
-        for &tp in params {
-            remap.insert(tp, ctx.fresh_var());
+        // #266: tag each fresh var with the declared generic parameter it
+        // stands in for (e.g. `Pair<A, B>`'s `A`), so a diagnostic mentioning
+        // this value's type can show `A` instead of an anonymous placeholder.
+        let declared_names = ctx
+            .struct_generic_names_for(&struct_name)
+            .cloned()
+            .unwrap_or_default();
+        for (i, &tp) in params.iter().enumerate() {
+            let fresh = ctx.fresh_var();
+            if let InferType::Var(fresh_tv) = fresh {
+                if let Some(name) = declared_names.get(i) {
+                    ctx.tag_declared_var_name(fresh_tv, name.clone());
+                }
+            }
+            remap.insert(tp, fresh);
         }
     }
     let apply_remap = |ty: &InferType| -> InferType {
