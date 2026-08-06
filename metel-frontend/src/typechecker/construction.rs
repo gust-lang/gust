@@ -1085,7 +1085,7 @@ fn construct_impl_decl(ib: &ImplBlock, ctx: &mut ConstructCtx) -> Result<TypedDe
     // nominal name to key registry lookups on, so they key on the empty string
     // and their methods take the deferred path below. This used to be reachable
     // only when the impl also declared generics; a structural target *without*
-    // them fell through to an internal error (metel-core#296).
+    // them fell through to an internal error (metel-core#581).
     super::reject_unregisterable_impl_target(ib)?;
     let defers_bodies = super::impl_defers_method_bodies(ib);
     let target_name = super::impl_target_head(&ib.target_type)
