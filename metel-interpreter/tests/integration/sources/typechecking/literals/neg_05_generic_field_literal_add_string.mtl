@@ -1,0 +1,11 @@
+// Sibling of neg_01/neg_02, one level of indirection removed (#236 follow-up):
+// the numeric literal here is recovered through a generic struct field rather
+// than written directly at the `+` site. The T0005 message must name the
+// concrete type this resolves to (`i64`), not the internal TypeVar it was
+// unified with — see .toml sidecar.
+struct Pair<A, B> { first: A, second: B }
+
+fun main() {
+    let p = Pair { first = 1, second = "x" };
+    let _bad = p.first + "y"; // ERROR[T0005]
+}
