@@ -200,6 +200,119 @@ impl std::fmt::Display for InferType {
     }
 }
 
+/// Render one or more `InferType`s together for a single diagnostic message,
+/// giving every distinct free `TypeVar` among them a stable, message-local
+/// name (`?1`, `?2`, ...) instead of leaking `TypeVar`'s raw, globally
+/// incrementing id (#266).
+///
+/// The label depends only on the *structure* of the types passed to one call,
+/// in left-to-right depth-first encounter order — never on how much unrelated
+/// inference ran earlier in the file, which is what made the raw id unstable
+/// under an edit nowhere near the error site (`?t18` becoming `?t19` because
+/// an unrelated struct was declared above it). The same `TypeVar` occurring in
+/// more than one of `tys` gets the same local label in both, so `cannot unify
+/// ?1 with ?1` (an occurs-check-shaped message) still reads as "these two are
+/// the same still-unknown type," not two unrelated ones.
+///
+/// This does not attempt the other half of #266 (rendering a var under a
+/// *declared* generic parameter's name, where one is known) — none of the
+/// call sites in this module have that context available; `display_type` in
+/// `typechecker/inference.rs` already does that separately, for the one
+/// place (impl blocks) that does have it.
+#[must_use]
+pub(crate) fn render_types(tys: &[&InferType]) -> Vec<String> {
+    let mut local_names: HashMap<TypeVar, String> = HashMap::new();
+    let mut next = 1usize;
+    for ty in tys {
+        collect_free_vars_in_order(ty, &mut local_names, &mut next);
+    }
+    tys.iter().map(|ty| render_with_local_names(ty, &local_names)).collect()
+}
+
+fn collect_free_vars_in_order(
+    ty: &InferType,
+    local: &mut HashMap<TypeVar, String>,
+    next: &mut usize,
+) {
+    match ty {
+        InferType::Var(v) => {
+            local.entry(*v).or_insert_with(|| {
+                let label = format!("?{next}");
+                *next += 1;
+                label
+            });
+        }
+        InferType::Fun(params, ret) => {
+            for p in params {
+                collect_free_vars_in_order(p, local, next);
+            }
+            collect_free_vars_in_order(ret, local, next);
+        }
+        InferType::Tuple(ts) => {
+            for t in ts {
+                collect_free_vars_in_order(t, local, next);
+            }
+        }
+        InferType::Record(fields) => {
+            for (_, t) in fields {
+                collect_free_vars_in_order(t, local, next);
+            }
+        }
+        InferType::Array(t)
+        | InferType::SizedArray(t, _)
+        | InferType::Reference(t)
+        | InferType::MutReference(t) => collect_free_vars_in_order(t, local, next),
+        InferType::Named(_, args) => {
+            for a in args {
+                collect_free_vars_in_order(a, local, next);
+            }
+        }
+        InferType::Concrete(_) | InferType::Never => {}
+    }
+}
+
+fn render_with_local_names(ty: &InferType, local: &HashMap<TypeVar, String>) -> String {
+    match ty {
+        InferType::Var(v) => local.get(v).cloned().unwrap_or_else(|| ty.to_string()),
+        InferType::Fun(params, ret) => format!(
+            "({}) -> {}",
+            params
+                .iter()
+                .map(|p| render_with_local_names(p, local))
+                .collect::<Vec<_>>()
+                .join(", "),
+            render_with_local_names(ret, local)
+        ),
+        InferType::Tuple(ts) => format!(
+            "({})",
+            ts.iter()
+                .map(|t| render_with_local_names(t, local))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        InferType::Record(fields) => format!(
+            "{{ {} }}",
+            fields
+                .iter()
+                .map(|(n, t)| format!("{n}: {}", render_with_local_names(t, local)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        InferType::Array(t) => format!("{}[]", render_with_local_names(t, local)),
+        InferType::SizedArray(t, n) => format!("[{}; {n}]", render_with_local_names(t, local)),
+        InferType::Reference(t) => format!("&{}", render_with_local_names(t, local)),
+        InferType::MutReference(t) => format!("&var {}", render_with_local_names(t, local)),
+        InferType::Named(name, args) if !args.is_empty() => format!(
+            "{name}<{}>",
+            args.iter()
+                .map(|a| render_with_local_names(a, local))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        _ => ty.to_string(),
+    }
+}
+
 // ── Phase 3: Substitution ─────────────────────────────────────────────────────
 
 /// A map from type variables to their resolved `InferType`s.
@@ -510,6 +623,9 @@ pub fn solve_constraints(
 /// T0005 — naming the operator — rather than the bare `cannot unify`, which says the two
 /// types disagree but never says why they had to match in the first place.
 fn operand_mismatch_error(constraint: &Constraint, lhs: &InferType, rhs: &InferType) -> MetelError {
+    let mut rendered = render_types(&[lhs, rhs]);
+    let rhs = rendered.pop().unwrap_or_else(|| rhs.to_string());
+    let lhs = rendered.pop().unwrap_or_else(|| lhs.to_string());
     match constraint.operator {
         Some(op) => MetelError::type_error(
             crate::error::TypeErrorCode::T0005,
@@ -531,6 +647,7 @@ fn literal_mismatch_error(
     other: &InferType,
     span: &Span,
 ) -> MetelError {
+    let other = render_types(&[other]).pop().unwrap_or_else(|| other.to_string());
     match operator {
         Some(op) => MetelError::type_error(
             crate::error::TypeErrorCode::T0005,
@@ -590,6 +707,9 @@ fn apply_constraint_with_coercion(
         let lhs_field = singleton_coerce_field_ty(registry, &lhs);
         let rhs_field = singleton_coerce_field_ty(registry, &rhs);
         let mk_err = || {
+            let mut rendered = render_types(&[&lhs, &rhs]);
+            let rhs = rendered.pop().unwrap_or_else(|| rhs.to_string());
+            let lhs = rendered.pop().unwrap_or_else(|| lhs.to_string());
             MetelError::type_error(
                 crate::error::TypeErrorCode::T0001,
                 format!("cannot unify {lhs} with {rhs}"),
@@ -652,6 +772,7 @@ fn apply_constraint_with_coercion(
     for &var in opaque_return_vars {
         let resolved = subst.apply(&InferType::Var(var));
         if !matches!(resolved, InferType::Var(_) | InferType::Never) {
+            let resolved = render_types(&[&resolved]).pop().unwrap_or_else(|| resolved.to_string());
             return Err(MetelError::type_error(
                 crate::error::TypeErrorCode::T0018,
                 format!(
