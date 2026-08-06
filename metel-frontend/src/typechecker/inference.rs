@@ -3929,13 +3929,19 @@ fn infer_binop(
                         // that and would fall through to a confusing `cannot
                         // unify` (T0001) instead of this dedicated T0005 message.
                         let defaulted = ctx.default_literal_vars(&subst);
-                        if matches!(
-                            defaulted.apply(&InferType::Var(*v)),
-                            InferType::Concrete(Type::I64 | Type::F64)
-                        ) {
+                        let resolved_numeric = defaulted.apply(&InferType::Var(*v));
+                        if matches!(resolved_numeric, InferType::Concrete(Type::I64 | Type::F64)) {
+                            // Report the concrete type this var just defaulted to,
+                            // not its raw `?tN` name — we've already proven it's
+                            // i64/f64, so the diagnostic should say so instead of
+                            // leaking an internal TypeVar identifier.
+                            let (lhs_display, rhs_display) = match &lhs_resolved {
+                                InferType::Var(_) => (resolved_numeric.to_string(), rhs_resolved.to_string()),
+                                _ => (lhs_resolved.to_string(), resolved_numeric.to_string()),
+                            };
                             return Err(MetelError::type_error(
                                 TypeErrorCode::T0005,
-                                format!("`+` requires i64, f64, or String operands, got `{lhs_resolved}` and `{rhs_resolved}`"),
+                                format!("`+` requires i64, f64, or String operands, got `{lhs_display}` and `{rhs_display}`"),
                                 span,
                             ));
                         }
