@@ -41,6 +41,7 @@ pub enum TypeErrorCode {
     T0018, // Naming the concrete type of an opaque `impl Aspect` return value (RFC-0037)
     T0019, // Use of moved value
     T0021, // `break` or `continue` outside an enclosing loop
+    T0022, // `impl Aspect` used outside parameter or return position
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

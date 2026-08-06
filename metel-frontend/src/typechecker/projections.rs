@@ -111,7 +111,7 @@ impl Cx<'_> {
                 for f in &sd.fields {
                     // `at` marks this struct's own position, so a field projecting a
                     // struct declared later can be reported precisely.
-                    self.ty_at(&f.type_ann, &f.span, at, &scope, false, local_types)?;
+                    self.ty_at(&f.type_ann, &f.span, at, &scope, false, false, local_types)?;
                 }
             }
             Decl::Enum(ed) => {
@@ -157,7 +157,7 @@ impl Cx<'_> {
             self.param(p, &generics, self_allowed, local_types)?;
         }
         if let Some(t) = &fun.return_type {
-            self.ty(t, &fun.span, &generics, self_allowed, local_types)?;
+            self.ty_return(t, &fun.span, &generics, self_allowed, local_types)?;
         }
         self.block(&fun.body, &generics, self_allowed, local_types)
     }
@@ -248,7 +248,18 @@ impl Cx<'_> {
         self_allowed: bool,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
-        self.ty_at(te, span, None, generics, self_allowed, local_types)
+        self.ty_at(te, span, None, generics, self_allowed, false, local_types)
+    }
+
+    fn ty_return(
+        &self,
+        te: &TypeExpr,
+        span: &Span,
+        generics: &HashSet<String>,
+        self_allowed: bool,
+        local_types: &[HashSet<String>],
+    ) -> Result<(), MetelError> {
+        self.ty_at(te, span, None, generics, self_allowed, true, local_types)
     }
 
     /// Recurse through a type expression, checking every projection inside it — so a
@@ -256,6 +267,7 @@ impl Cx<'_> {
     ///
     /// `field_of` is `Some(index)` only when this type is a struct field's annotation; see
     /// the forward-reference note in `check`.
+    #[allow(clippy::too_many_arguments)]
     fn ty_at(
         &self,
         te: &TypeExpr,
@@ -263,6 +275,7 @@ impl Cx<'_> {
         field_of: Option<usize>,
         generics: &HashSet<String>,
         self_allowed: bool,
+        impl_aspect_allowed: bool,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
         match te {
@@ -274,43 +287,102 @@ impl Cx<'_> {
                     return Err(Self::unknown_type(name, span));
                 }
                 for a in args {
-                    self.ty_at(a, span, field_of, generics, self_allowed, local_types)?;
+                    self.ty_at(
+                        a,
+                        span,
+                        field_of,
+                        generics,
+                        self_allowed,
+                        impl_aspect_allowed,
+                        local_types,
+                    )?;
                 }
                 Ok(())
             }
             TypeExpr::Tuple(items) => {
                 for t in items {
-                    self.ty_at(t, span, field_of, generics, self_allowed, local_types)?;
+                    self.ty_at(
+                        t,
+                        span,
+                        field_of,
+                        generics,
+                        self_allowed,
+                        impl_aspect_allowed,
+                        local_types,
+                    )?;
                 }
                 Ok(())
             }
             TypeExpr::Record(fields) => {
                 for (_, t) in fields {
-                    self.ty_at(t, span, field_of, generics, self_allowed, local_types)?;
+                    self.ty_at(
+                        t,
+                        span,
+                        field_of,
+                        generics,
+                        self_allowed,
+                        impl_aspect_allowed,
+                        local_types,
+                    )?;
                 }
                 Ok(())
             }
             TypeExpr::Array(inner)
             | TypeExpr::SizedArray(inner, _)
             | TypeExpr::Reference(inner)
-            | TypeExpr::MutReference(inner) => {
-                self.ty_at(inner, span, field_of, generics, self_allowed, local_types)
-            }
+            | TypeExpr::MutReference(inner) => self.ty_at(
+                inner,
+                span,
+                field_of,
+                generics,
+                self_allowed,
+                impl_aspect_allowed,
+                local_types,
+            ),
             TypeExpr::Fun(params, ret) => {
                 for p in params {
-                    self.ty_at(p, span, field_of, generics, self_allowed, local_types)?;
+                    self.ty_at(
+                        p,
+                        span,
+                        field_of,
+                        generics,
+                        self_allowed,
+                        impl_aspect_allowed,
+                        local_types,
+                    )?;
                 }
                 if let Some(r) = ret {
-                    self.ty_at(r, span, field_of, generics, self_allowed, local_types)?;
+                    self.ty_at(
+                        r,
+                        span,
+                        field_of,
+                        generics,
+                        self_allowed,
+                        impl_aspect_allowed,
+                        local_types,
+                    )?;
                 }
                 Ok(())
             }
             TypeExpr::ImplAspect { bound, .. } => {
+                if !impl_aspect_allowed {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0022,
+                        "`impl Aspect` is only allowed in parameter or return position".to_owned(),
+                        span,
+                    ));
+                }
                 self.aspect_type(bound, span, generics, self_allowed, local_types)
             }
-            TypeExpr::Projection { base, .. } => {
-                self.ty_at(base, span, field_of, generics, self_allowed, local_types)
-            }
+            TypeExpr::Projection { base, .. } => self.ty_at(
+                base,
+                span,
+                field_of,
+                generics,
+                self_allowed,
+                impl_aspect_allowed,
+                local_types,
+            ),
             TypeExpr::Unit => Ok(()),
         }
     }
@@ -387,7 +459,7 @@ impl Cx<'_> {
             self.param(param, &generics, true, local_types)?;
         }
         if let Some(ret) = &method.return_type {
-            self.ty(ret, &method.span, &generics, true, local_types)?;
+            self.ty_return(ret, &method.span, &generics, true, local_types)?;
         }
         if let Some(body) = &method.default_body {
             self.block(body, &generics, true, local_types)?;
@@ -605,7 +677,7 @@ impl Cx<'_> {
                     self.param(param, generics, self_allowed, local_types)?;
                 }
                 if let Some(ret) = return_type {
-                    self.ty(ret, span, generics, self_allowed, local_types)?;
+                    self.ty_return(ret, span, generics, self_allowed, local_types)?;
                 }
                 self.block(body, generics, self_allowed, local_types)
             }

@@ -1,0 +1,8 @@
+// Negative: `impl Aspect` is not permitted in a struct field type.
+aspect P { fun p(&self); }
+
+struct Holder {
+    values: impl P[], // ERROR[T0022]
+}
+
+fun main() {}
