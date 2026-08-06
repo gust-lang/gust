@@ -49,3 +49,31 @@ jobs:
 
       - name: cargo test
         run: cargo test --release --workspace
+
+  rfc-check:
+    name: rfc.py check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # `docs` is a private submodule (metel-docs-internal), linked via SSH in
+      # .gitmodules -- GitHub-hosted runners have no SSH key for it. Rewrite
+      # the URL to HTTPS so DOCS_REPO_TOKEN (a fine-grained PAT scoped
+      # read-only to metel-docs-internal alone -- it has no access to this
+      # repo, and no write access to that one either) can authenticate the
+      # clone. actions/checkout's own `token` input only covers the *main*
+      # repo checkout, which already uses the workflow's built-in
+      # GITHUB_TOKEN; a separate, differently-scoped credential is needed
+      # for the submodule specifically, since it's a different, private repo.
+      - name: point submodule fetch at HTTPS + the docs-only token
+        run: git config --global url."https://x-access-token:${{ secrets.DOCS_REPO_TOKEN }}@github.com/".insteadOf "git@github.com:"
+
+      - name: check out docs submodule
+        run: git submodule update --init docs
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: rfc.py check
+        run: python3 docs/public/rfcs/tools/rfc.py check
