@@ -42,6 +42,7 @@ pub enum TypeErrorCode {
     T0019, // Use of moved value
     T0021, // `break` or `continue` outside an enclosing loop
     T0022, // `impl Aspect` used outside parameter or return position
+    T0023, // Assignment through a non-owning view (`T[]`)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
