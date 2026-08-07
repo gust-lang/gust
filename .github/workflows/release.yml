@@ -1,0 +1,133 @@
+name: Release
+
+# Stage A of the release chain described in RELEASING.md: a release tag here syncs
+# the public docs into metel-docs, cuts a new docs version + tag in metel-website, and
+# lets that tag trigger metel-website's own build-and-deploy workflow (Stage B).
+#
+# Each step below writes to exactly one other repo, using a token scoped to that repo
+# alone -- no single credential spans all three. See RELEASING.md for the full
+# rationale and the exact secrets this needs.
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+jobs:
+  release-chain:
+    name: Sync docs, cut website release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout metel-core at the release tag
+        uses: actions/checkout@v4
+
+      # Same technique as .github/workflows/ci.yml's rfc-check job: docs/ is a
+      # private submodule (metel-docs-internal) linked via SSH in .gitmodules --
+      # GitHub-hosted runners have no SSH key for it. DOCS_REPO_TOKEN is read-only,
+      # scoped to metel-docs-internal alone (already exists, from #619).
+      - name: Point the docs submodule fetch at HTTPS + the docs-only token
+        run: git config --global url."https://x-access-token:${{ secrets.DOCS_REPO_TOKEN }}@github.com/".insteadOf "git@github.com:"
+
+      - name: Check out docs submodule
+        run: git submodule update --init docs
+
+      - name: Derive the release version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure bot commit identity
+        run: |
+          git config --global user.name "metel-release-bot"
+          git config --global user.email "release-bot@users.noreply.github.com"
+
+      # ── Step 1: sync metel-docs-internal's public/ into the public metel-docs repo ──
+      #
+      # metel-docs is an exact mirror of metel-docs-internal/public/ (verified: same
+      # five top-level dirs, same rfcs/ stage subdirectories down to 0-draft -- RFCs
+      # are public at every stage in this project, nothing to filter). This has been a
+      # manual, and frequently stale, step until now.
+      - name: Checkout metel-docs (public)
+        uses: actions/checkout@v4
+        with:
+          repository: metel-lang/metel-docs
+          token: ${{ secrets.DOCS_PUBLIC_TOKEN }}
+          path: metel-docs-public
+
+      - name: Sync public/ into metel-docs
+        id: sync-docs
+        run: |
+          set -e
+          rsync -a --delete --exclude='.git' docs/public/ metel-docs-public/
+          cd metel-docs-public
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No content changes to sync for v${{ steps.version.outputs.version }}"
+          else
+            git commit -q -m "sync: public docs for v${{ steps.version.outputs.version }}
+
+          Mirrors metel-docs-internal/public/ at the commit metel-core's own docs
+          submodule is pinned to for this release. Automated by metel-core's
+          release.yml (metel-core#614)."
+            git push origin main
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # ── Step 2: bump metel-website's docs pointer, cut a new docs version, tag ──
+      - name: Checkout metel-website
+        uses: actions/checkout@v4
+        with:
+          repository: metel-lang/metel-website
+          token: ${{ secrets.WEBSITE_TOKEN }}
+          path: metel-website
+          submodules: true
+
+      - name: Bump the docs submodule pointer to the just-synced commit
+        working-directory: metel-website
+        run: |
+          set -e
+          cd docs
+          git fetch origin main -q
+          git checkout "${{ steps.sync-docs.outputs.sha }}" -q
+          cd ..
+          git add docs
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: metel-website/package-lock.json
+
+      - name: Install website dependencies
+        working-directory: metel-website
+        run: npm ci
+
+      - name: Cut a new docs version
+        working-directory: metel-website
+        run: npm run docusaurus docs:version "${{ steps.version.outputs.version }}"
+
+      - name: Commit the version bump
+        working-directory: metel-website
+        run: |
+          set -e
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No content changes for v${{ steps.version.outputs.version }} -- docs submodule pointer and docs:version output already up to date"
+          else
+            git commit -q -m "release: v${{ steps.version.outputs.version }}
+
+          Bumps the docs submodule pointer to metel-docs@${{ steps.sync-docs.outputs.sha }}
+          and cuts a new versioned docs snapshot for this release. Automated by
+          metel-core's release.yml (metel-core#614)."
+            git push origin main
+          fi
+
+      - name: Tag the website release
+        working-directory: metel-website
+        run: |
+          set -e
+          tag="v${{ steps.version.outputs.version }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null 2>&1; then
+            echo "$tag already exists on metel-website -- not re-tagging (this run is likely a retry)"
+          else
+            git tag "$tag"
+            git push origin "$tag"
+          fi
