@@ -140,3 +140,80 @@ jobs:
             git tag "$tag"
             git push origin "$tag"
           fi
+
+  # Independent of release-chain above -- no shared dependency, so a failure in one
+  # doesn't block the other. Builds the metel binary and publishes a GitHub Release
+  # for this repo's own tag, with its body sourced from the changelog -- previously
+  # a fully manual step (/cut-release's Step 5.1). Needs only this repo's own
+  # GITHUB_TOKEN (contents: write) -- unlike release-chain, nothing here writes to
+  # another repository.
+  github-release:
+    name: Build binary and publish GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same technique as release-chain: docs/ is a private submodule, needs the
+      # read-only DOCS_REPO_TOKEN (from #619) to check out over HTTPS.
+      - name: Point the docs submodule fetch at HTTPS + the docs-only token
+        run: git config --global url."https://x-access-token:${{ secrets.DOCS_REPO_TOKEN }}@github.com/".insteadOf "git@github.com:"
+
+      - name: Check out docs submodule
+        run: git submodule update --init docs
+
+      - name: Derive the release version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # The changelog is already structured for exact extraction: "## vX.Y.Z"
+      # headings, content running to the next "## v" heading or EOF. Failing loudly
+      # on a still-"In progress" section catches exactly the mistake /cut-release's
+      # own Step 2.1 exists to prevent (tagging before finalizing the changelog) --
+      # without this check, an unfinalized changelog would silently become the
+      # Release's public body text.
+      - name: Extract this version's changelog section
+        run: |
+          python3 - "${{ steps.version.outputs.version }}" <<'PYEOF'
+          import re, sys
+          version = sys.argv[1]
+          text = open("docs/public/release-notes/changelog.md").read()
+          pattern = rf"^## v{re.escape(version)}\n(.*?)(?=^## v|\Z)"
+          m = re.search(pattern, text, re.DOTALL | re.MULTILINE)
+          if not m:
+              sys.exit(f"no changelog section found for v{version}")
+          body = m.group(1).strip()
+          if body.startswith("**In progress"):
+              sys.exit(f"changelog for v{version} is still marked in-progress -- finalize it before tagging")
+          open("release-notes.md", "w").write(body + "\n")
+          PYEOF
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build the release binary
+        run: cargo build --release -p metel
+
+      # Linux x86_64 only for now -- matches this runner, no cross-compilation. A
+      # build matrix (macOS/Windows) is a natural, separate follow-up once this is
+      # proven against a real release tag, not something to take on in the same
+      # pass as getting the mechanism working at all.
+      - name: Package the binary
+        run: |
+          cp target/release/metel metel-linux-x86_64
+          sha256sum metel-linux-x86_64 > metel-linux-x86_64.sha256
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "$tag" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            echo "Release $tag already exists -- not re-creating (this run is likely a retry)"
+          else
+            gh release create "$tag" --title "$tag" --notes-file release-notes.md \
+              metel-linux-x86_64 metel-linux-x86_64.sha256
+          fi
