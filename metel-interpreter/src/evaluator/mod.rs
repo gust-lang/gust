@@ -3103,7 +3103,6 @@ pub fn eval_expr(
             path,
             fields,
             type_id,
-            span: _,
             ..
         } => eval_struct_literal_expr(path, fields, *type_id, env, runtime),
 

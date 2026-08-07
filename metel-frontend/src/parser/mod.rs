@@ -2082,7 +2082,7 @@ fn parse_unary_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result
     let text = pair.as_str();
     let child = pair
         .into_inner()
-        .last()
+        .next_back()
         .ok_or_else(|| MetelError::internal("unary_expr: expected operand"))?;
     if text.starts_with('!') {
         Ok(Expr::UnaryOp(
