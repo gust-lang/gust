@@ -3053,6 +3053,13 @@ pub struct InferContext {
     current_assoc_projections: AssocProjectionMemo,
     /// Flat log of everything minted above, in insertion order.
     recorded_assoc_projections: AssocProjectionLog,
+    /// Memo for symbolic placeholders minted for an untyped row-bound field access
+    /// (`{ name, .. }` — no declared type) while inferring the CURRENT function/method
+    /// body. Key: (`base_tv`, field label) so two accesses to the same untyped field
+    /// agree on a type. Reset (swapped, like `current_type_param_bounds`) on entry/exit
+    /// of each function/method body. Unlike associated-type projections, nothing
+    /// downstream needs a flat log of these, so there's no matching "recorded" vec.
+    current_row_field_vars: HashMap<(TypeVar, String), TypeVar>,
     current_module_path: Vec<String>,
     /// Names that have same-tier glob conflicts deferred until use. (METEL-98)
     /// Maps name → list of source module paths that both export it.
@@ -3143,6 +3150,7 @@ impl InferContext {
             current_type_param_bounds: HashMap::new(),
             current_assoc_projections: HashMap::new(),
             recorded_assoc_projections: Vec::new(),
+            current_row_field_vars: HashMap::new(),
             current_module_path,
             deferred_glob_conflicts: HashMap::new(),
             integer_literal_vars: HashSet::new(),
@@ -3449,6 +3457,33 @@ impl InferContext {
     /// `assoc_projections` mapping.
     pub fn take_recorded_assoc_projections(&mut self) -> AssocProjectionLog {
         std::mem::take(&mut self.recorded_assoc_projections)
+    }
+
+    /// Swap in an empty row-field-var memo for a new function/method body, returning
+    /// the old state.
+    pub fn swap_row_field_vars(&mut self) -> HashMap<(TypeVar, String), TypeVar> {
+        std::mem::take(&mut self.current_row_field_vars)
+    }
+
+    /// Restore previously-saved row-field-var memo (call when leaving a function/method
+    /// body).
+    pub fn restore_row_field_vars(&mut self, memo: HashMap<(TypeVar, String), TypeVar>) {
+        self.current_row_field_vars = memo;
+    }
+
+    /// Mint a fresh `TypeVar` standing in for an untyped row-bound field's type (the
+    /// `{ name, .. }` form, which constrains the label but not the type). Reuses the
+    /// same placeholder if `field` on `base_tv` was already accessed earlier in the
+    /// current body, so repeated accesses agree on a type instead of each getting an
+    /// unrelated fresh var.
+    pub fn fresh_row_field_var(&mut self, base_tv: TypeVar, field: &str) -> TypeVar {
+        let key = (base_tv, field.to_string());
+        if let Some(&existing) = self.current_row_field_vars.get(&key) {
+            return existing;
+        }
+        let placeholder = self.var_gen.fresh();
+        self.current_row_field_vars.insert(key, placeholder);
+        placeholder
     }
 
     /// Returns the aspect method defs from the registry.
