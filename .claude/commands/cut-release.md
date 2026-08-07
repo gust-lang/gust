@@ -117,13 +117,20 @@ the version in the changelog and in `Cargo.toml`.
 
 ## Step 5 — Publish
 
-1. Create a GitHub Release from the tag, with the body sourced from the changelog
-   section just finalized — not regenerated separately. The changelog is the single source
-   of truth for release notes.
-2. If public documentation changed, follow AGENTS.md § Wiki and Public Docs Release
-   Workflow (`metel-website` pointer, versioned snapshot) as part of this release, not as
-   a later step.
-3. Lift the freeze on `develop`.
+Pushing the tag in Step 4 already triggers both of the following automatically
+(`.github/workflows/release.yml`, metel-core#614 and #643) — nothing to do here but
+verify they actually ran and succeeded:
+
+1. A GitHub Release is created from the tag, with the body sourced directly from the
+   changelog section just finalized — not regenerated separately. The changelog is the
+   single source of truth for release notes. A release binary (`metel`, Linux x86_64)
+   is attached alongside it.
+2. If public documentation changed: `metel-docs` is synced from `metel-docs-internal`,
+   `metel-website`'s `docs` pointer and versioned docs snapshot are bumped, and the
+   website is built and deployed to staging (see `RELEASING.md`). Production promotion
+   is still a deliberate manual step — review the staging URL and run `promote.yml`.
+
+Lift the freeze on `develop` once both are confirmed green.
 
 ## Step 6 — Report
 
