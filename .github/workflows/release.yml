@@ -34,10 +34,19 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Configure bot commit identity
+      # A distinct bot identity (e.g. metel-release-bot@users.noreply.github.com)
+      # was tried first and doesn't work here: Vercel's Hobby plan checks the git
+      # commit author against the account's own recognized email for deploy
+      # authorization on a private, org-owned repo -- an unrecognized author
+      # blocks the deploy with "did not have contributing access to the project
+      # on Vercel." Found the hard way testing this chain end-to-end. Using the
+      # real, Vercel-linked email instead; the commit messages themselves already
+      # say "Automated by metel-core's release.yml" so it's not misattributed in
+      # substance, just in the raw git author field.
+      - name: Configure commit identity
         run: |
-          git config --global user.name "metel-release-bot"
-          git config --global user.email "release-bot@users.noreply.github.com"
+          git config --global user.name "Vlad Parfeniuc"
+          git config --global user.email "vladislavparfeniuc@gmail.com"
 
       # ── Step 1: sync metel-docs-internal's public/ into the public metel-docs repo ──
       #
