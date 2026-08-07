@@ -27,10 +27,11 @@ release.yml (here, Stage A)
 deploy.yml (metel-website, Stage B)
   1. builds the site once
   2. deploys that build to Vercel staging, posts the URL to the run summary
-  3. pauses on metel-website's "production" GitHub Environment for a
-     required-reviewer approval
-  4. on approval: promotes that exact staged build (no rebuild) to production
-  5. verifies both the staging URL and https://metel-lang.org are reachable
+        │
+        ▼  (manual: a human reviews the staging URL, then runs promote.yml)
+promote.yml (metel-website, Stage C — workflow_dispatch only)
+  1. promotes that exact staged build (no rebuild) to production
+  2. verifies both the staging URL and https://metel-lang.org are reachable
 ```
 
 ## Why it's split this way
@@ -52,11 +53,15 @@ event, so `metel-website`'s pipeline stays independently triggerable — pushing
 pipeline on its own, useful for testing that side without cutting a `metel-core`
 release at all.
 
-Production promotion is gated on a human approval (`metel-website`'s `production`
-Environment) rather than fully unattended, specifically to preserve the review
-checkpoint the old manual process had implicitly (someone ran `docs:version`, looked
-at it, then deployed) — full automation shouldn't mean zero review before something
-goes live on `metel-lang.org`.
+Production promotion is a deliberate manual step (`promote.yml`, `workflow_dispatch`
+only) rather than fully unattended, specifically to preserve the review checkpoint the
+old manual process had implicitly (someone ran `docs:version`, looked at it, then
+deployed) — full automation shouldn't mean zero review before something goes live on
+`metel-lang.org`. This was originally designed as a GitHub Environment
+required-reviewer gate, but that feature needs a paid plan for private repos, which
+this org doesn't have (`422`: "Please ensure the billing plan supports the required
+reviewers protection rule") — a human manually running `promote.yml`, after reviewing
+the staging URL `deploy.yml`'s job summary prints, is the approval instead.
 
 ## Failure handling
 
@@ -84,6 +89,16 @@ scoped to this repo — each needs to be set up by hand, once:
 - **`VERCEL_ORG_ID`** / **`VERCEL_PROJECT_ID`**: from that same project's Vercel
   dashboard settings, or by running `vercel link` locally against it once and reading
   `.vercel/project.json`. Store as `metel-website` repo secrets.
-- **`metel-website`'s `production` Environment**: Settings → Environments → New
-  environment named `production`, with at least one required reviewer added under
-  "Deployment protection rules".
+
+No GitHub Environment or reviewer setup is needed — see the previous section for why.
+
+## Promoting a staged release to production
+
+After `deploy.yml` runs, its job summary (`metel-website`'s Actions tab → the run →
+Summary) prints the staging URL and the exact command to promote it. Review the
+staging URL, then either:
+
+- **Actions tab** → `metel-website` → "Promote to production" → Run workflow, filling
+  in `deployment_url` and `tag`, or
+- `gh workflow run promote.yml --repo metel-lang/metel-website -f
+  deployment_url=<url> -f tag=vX.Y.Z`
