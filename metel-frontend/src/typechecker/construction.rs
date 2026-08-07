@@ -4385,8 +4385,29 @@ fn check_type_does_not_satisfy_bound(
         }
     }
 
+    // Unlike `check_type_satisfies_bounds` above, this doesn't need a per-shape
+    // hint message (the negative-bound loop below never had one, even for
+    // `Type::Named`) — only a display string, so every structural shape can
+    // share one arm via `Type`'s own `Display` impl. Without these arms, any
+    // `concrete` that isn't `Type::Named` or a recognized primitive — every
+    // tuple, array, record, reference, and function type — fell through to
+    // `None => return Ok(())` below and skipped the aspect check entirely
+    // (#632). Observable today for tuples, fixed-size arrays, and shared
+    // references, which really are `Copy` — a `T: !Copy` bound silently
+    // accepted them. Records and function types aren't classified `Copy` by
+    // `type_satisfies_aspect` either way (confirmed: the positive `T: Copy`
+    // path already rejects both), so this closes the same hole for whichever
+    // aspect they do end up satisfying, without changing today's behavior for
+    // either shape.
     let type_name = match concrete {
         Type::Named(n, _) => n.clone(),
+        Type::Array(_)
+        | Type::SizedArray(_, _)
+        | Type::Tuple(_)
+        | Type::Reference(_)
+        | Type::MutReference(_)
+        | Type::Fun(_, _)
+        | Type::Record(_) => concrete.to_string(),
         other => match super::inference::primitive_type_name(other) {
             Some(n) => n,
             None => return Ok(()),
