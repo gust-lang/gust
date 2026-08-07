@@ -1,0 +1,4 @@
+[expect]
+status = "typecheck_error"
+code = "T0005"
+contains = "got `i64` and `String`"

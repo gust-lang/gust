@@ -1,0 +1,9 @@
+// #266: function-level generic variables preserve their declared names at a
+// call site's fresh instantiation. Paired with stability_05 (one unrelated
+// declaration prepended) asserting the identical message.
+fun pair<A, B>(a: A, b: B) -> (A, B) { (a, b) }
+
+fun main() {
+    let x = pair(1, "s");
+    let n: boolean = x; // ERROR[T0001]
+}

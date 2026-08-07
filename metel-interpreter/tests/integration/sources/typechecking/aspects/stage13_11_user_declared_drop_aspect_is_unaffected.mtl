@@ -1,4 +1,4 @@
-// The restriction on `drop` bodies (metel-core#345) matches `std::core::Drop` by
+// The restriction on `drop` bodies (metel-core#601) matches `std::core::Drop` by
 // its declaring module, not by name, so a user module's own unrelated `Drop`
 // aspect keeps working — including with a non-empty body, since nothing about it
 // promises destructor semantics.

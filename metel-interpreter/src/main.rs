@@ -13,29 +13,8 @@ use std::process;
 
 use clap::Parser;
 
-mod ast;
-mod coherence;
-mod elaborator;
-mod error;
-mod evaluator;
-mod module_loader;
-mod module_paths;
-mod move_check;
-mod name_resolver;
-mod native_keys;
-mod parser;
-mod path_normalizer;
-mod pipeline;
-mod place;
-mod reference_resolver;
-mod stdlib;
-mod symbols;
-mod typechecker;
-mod typed_ast;
-mod typeinference;
-mod types;
-
-use error::MetelError;
+use metel::error::MetelError;
+use metel::{module_loader, pipeline};
 
 #[derive(Parser)]
 #[command(name = "metel")]

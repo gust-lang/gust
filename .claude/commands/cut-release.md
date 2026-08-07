@@ -34,7 +34,7 @@ That range is what this release ships. Read it — it is the input to every gate
 ## Step 1 — Milestone is actually complete
 
 ```bash
-tea issues ls --milestones $ARGUMENTS --state open
+gh issue list --milestone  --state open
 ```
 
 Every remaining open issue is either genuinely done and needs closing, or is deferred and
@@ -117,7 +117,7 @@ the version in the changelog and in `Cargo.toml`.
 
 ## Step 5 — Publish
 
-1. Create a Codeberg Release from the tag, with the body sourced from the changelog
+1. Create a GitHub Release from the tag, with the body sourced from the changelog
    section just finalized — not regenerated separately. The changelog is the single source
    of truth for release notes.
 2. If public documentation changed, follow AGENTS.md § Wiki and Public Docs Release

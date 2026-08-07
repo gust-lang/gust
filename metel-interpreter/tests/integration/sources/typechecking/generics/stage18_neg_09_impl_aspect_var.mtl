@@ -1,0 +1,10 @@
+// Negative: `impl Aspect` is not permitted in a mutable annotation.
+aspect P { fun p(&self); }
+
+struct L { t: String }
+
+extend L: P { fun p(&self) {} }
+
+fun main() {
+    var value: impl P = L { t = "x" }; // ERROR[T0022]
+}

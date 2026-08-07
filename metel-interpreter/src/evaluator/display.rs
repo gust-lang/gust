@@ -132,8 +132,22 @@ pub(super) fn format_value(val: &Value) -> String {
             format!("<intrinsic:{label}>")
         }
         Value::Reference(rc) => format!("&{}", format_value(&rc.borrow())),
-        Value::MutReference(rc) => format!("&mut {}", format_value(&rc.borrow())),
+        Value::MutReference(rc) => format!("&var {}", format_value(&rc.borrow())),
         Value::FieldReference { .. } => "<& field-path>".to_string(),
-        Value::MutFieldReference { .. } => "<&mut field-path>".to_string(),
+        Value::MutFieldReference { .. } => "<&var field-path>".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_value;
+    use crate::evaluator::Value;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    #[test]
+    fn mutable_reference_value_display_uses_language_spelling() {
+        let value = Value::MutReference(Rc::new(RefCell::new(Value::I64(42))));
+        assert_eq!(format_value(&value), "&var 42");
     }
 }

@@ -1,0 +1,16 @@
+// #266: diagnostics printed raw inference variables (`?t18`), and the number
+// shifted whenever *anything* unrelated was added to the file, since it was
+// the TypeVar's own global, monotonically-increasing id. Paired with
+// stability_02 (identical body, one unrelated declaration prepended) — both
+// fixtures assert the exact same message text via their .toml sidecar's
+// `contains`, pinning that the message is unaffected by declarations that
+// have nothing to do with the error. Now shows `T`, `Wrap`'s own declared
+// parameter name, rather than even a stable placeholder — the fuller half of
+// #266's ask, covered for struct/enum type parameters specifically.
+struct Wrap<T> { v: T }
+enum E { A }
+
+fun main() {
+    let w = Wrap { v = 1 };
+    let n: E = w; // ERROR[T0001]
+}

@@ -1,0 +1,11 @@
+struct Point { x: i64 }
+
+aspect Describe {
+    fun describe(&self) -> String;
+}
+
+extend Point: Describe {
+    fun describe(&self, suffix: String) -> String { return suffix; }
+}
+
+fun main() {}
