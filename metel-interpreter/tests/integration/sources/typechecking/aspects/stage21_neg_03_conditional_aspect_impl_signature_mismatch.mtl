@@ -1,0 +1,11 @@
+struct Wrapper<T> { value: T }
+
+aspect Greet {
+    fun hello(&self) -> String;
+}
+
+extend<T: Copy> Wrapper<T>: Greet {
+    fun hello(&self, suffix: String) -> String { return suffix; }
+}
+
+fun main() {}

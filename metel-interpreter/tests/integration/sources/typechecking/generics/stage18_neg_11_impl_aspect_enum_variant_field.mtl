@@ -1,0 +1,8 @@
+// Negative: `impl Aspect` is not permitted in an enum variant field type.
+aspect P { fun p(&self); }
+
+enum Holder {
+    Value { value: impl P }, // ERROR[T0022]
+}
+
+fun main() {}

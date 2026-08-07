@@ -81,7 +81,7 @@ python3 docs/internal/rfcs/tools/rfc.py transition <id> --to <stage>
   updated and the examples being checked — not a formality.
 - `transition --to integrated` **refuses to run without `--tracking <issue-url>`**. From
   `3-integrated` onward the frontmatter carries `impl_status`
-  (`not-started`/`in-progress`/`implemented`) and `impl_tracking` (the Codeberg issue).
+  (`not-started`/`in-progress`/`implemented`) and `impl_tracking` (the GitHub issue).
   An RFC reaches integrated only with a real implementation issue behind it.
 - When implementation lands, `transition <id> --to implemented` also sets
   `impl_status: implemented`.
@@ -91,7 +91,7 @@ python3 docs/internal/rfcs/tools/rfc.py transition <id> --to <stage>
 - There is **no** mirrored RFC status on an issue, no custom property, and nothing to keep
   in sync in the other direction. The file is the record — this is a deliberate
   simplification versus how Plane was used, not an oversight.
-- An RFC gets a Codeberg issue only when it reaches `3-integrated` and needs real
+- An RFC gets a GitHub issue only when it reaches `3-integrated` and needs real
   implementation tracked: one issue per RFC, or per tightly-coupled cluster.
 - A `**Target:** vX.Y.0` in the file names the intended release; the issue's milestone is
   what the release gate actually reads.

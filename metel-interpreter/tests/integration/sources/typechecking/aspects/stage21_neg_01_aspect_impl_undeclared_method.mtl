@@ -1,0 +1,12 @@
+struct Point { x: i64 }
+
+aspect Describe {
+    fun describe(&self) -> String;
+}
+
+extend Point: Describe {
+    fun describe(&self) -> String { return "point"; }
+    fun stowaway(&self) -> i64 { return self.x; }
+}
+
+fun main() {}

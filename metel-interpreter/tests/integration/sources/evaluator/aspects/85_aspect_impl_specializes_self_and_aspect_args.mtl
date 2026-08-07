@@ -1,0 +1,11 @@
+struct Sink { value: i64 }
+
+aspect IntoSelf<S> {
+    fun make(x: S) -> Self;
+}
+
+extend Sink: IntoSelf<i16> {
+    fun make(x: i16) -> Sink { Sink { value = 1 } }
+}
+
+fun main() {}

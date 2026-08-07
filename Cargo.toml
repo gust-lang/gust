@@ -1,0 +1,3 @@
+[workspace]
+members = ["metel-frontend", "metel-interpreter"]
+resolver = "2"

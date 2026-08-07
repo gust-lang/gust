@@ -1,0 +1,30 @@
+// `break` and `continue` remain valid in every loop form.
+
+fun while_controls() {
+    var i = 0;
+    while (i < 3) {
+        i += 1;
+        if (i < 2) {
+            continue;
+        }
+        break;
+    }
+}
+
+fun for_controls() {
+    for (var i = 0; i < 3; i += 1) {
+        if (i < 2) {
+            continue;
+        }
+        break;
+    }
+}
+
+fun for_in_controls() {
+    for (item in [1, 2, 3]) {
+        if (item < 2) {
+            continue;
+        }
+        break;
+    }
+}

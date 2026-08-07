@@ -1,0 +1,11 @@
+// Negative: `T: !Copy` bound instantiated with a shared reference. `&i64`
+// implements Copy (all references do, regardless of the referent), so the
+// negative bound is violated. Expect T0012. Regression for #632 (see
+// stage16_neg_07 for detail).
+
+fun need_non_copy<T: !Copy>(x: T) -> i64 { 0 }
+
+fun bad() {
+    let value = 1;
+    need_non_copy(&value) // ERROR[T0012]
+}

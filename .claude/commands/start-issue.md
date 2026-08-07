@@ -1,6 +1,6 @@
 # /start-issue
 
-Begin work on a Codeberg issue: read it, verify its dependencies are real, create the
+Begin work on a GitHub issue: read it, verify its dependencies are real, create the
 issue branch, and summarise the work before any code is written.
 
 **Arguments:** `$ARGUMENTS` — issue number, e.g. `314`
@@ -13,7 +13,7 @@ mechanises those, it does not define them.
 1. **Read the issue.**
 
 ```bash
-tea issue $ARGUMENTS
+gh issue view $ARGUMENTS
 ```
 
 Surface its title, body, acceptance criteria, labels, and milestone. If it has no

@@ -55,7 +55,7 @@ pub(super) fn resolve_place_assign_root(
                     Value::MutReference(inner_rc) => Ok(inner_rc),
                     _ => Err(MetelError::panic(
                         RuntimeErrorCode::R0003,
-                        "assign: not a &mut reference",
+                        "assign: not a &var reference",
                         tspan,
                     )),
                 }

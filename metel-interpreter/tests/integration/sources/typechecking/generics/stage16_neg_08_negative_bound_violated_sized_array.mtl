@@ -1,0 +1,9 @@
+// Negative: `T: !Copy` bound instantiated with a fixed-size array of a Copy
+// element. `[i64; 2]` implements Copy, so the negative bound is violated.
+// Expect T0012. Regression for #632 (see stage16_neg_07 for detail).
+
+fun need_non_copy<T: !Copy>(x: T) -> i64 { 0 }
+
+fun bad() {
+    need_non_copy([1, 2]) // ERROR[T0012]
+}
