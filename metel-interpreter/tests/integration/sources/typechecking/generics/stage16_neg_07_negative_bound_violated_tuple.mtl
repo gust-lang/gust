@@ -1,0 +1,15 @@
+// Negative: `T: !Copy` bound instantiated with a tuple where every element
+// IS Copy. `(i64, i64)` implements Copy (all elements Copy), so the negative
+// bound is violated. Expect T0012.
+//
+// Regression for #632: the negative-bound checker used to extract a display
+// name via `Type::Named`/`primitive_type_name` before ever running the aspect
+// check, and bailed out early for every type that had neither — silently
+// skipping the check for tuples, arrays, records, references, and function
+// types.
+
+fun need_non_copy<T: !Copy>(x: T) -> i64 { 0 }
+
+fun bad() {
+    need_non_copy((1, 2)) // ERROR[T0012]
+}

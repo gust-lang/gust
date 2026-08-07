@@ -1,0 +1,19 @@
+struct Point { x: i64 }
+
+aspect Describe {
+    fun describe(&self) -> String;
+}
+
+extend Point: Describe {
+    fun describe(&self) -> String { return "point"; }
+}
+
+extend Point {
+    fun twice(&self) -> i64 { return self.x * 2; }
+}
+
+fun main() {
+    let p = Point { x = 21 };
+    assert(p.describe() == "point");
+    assert(p.twice() == 42);
+}

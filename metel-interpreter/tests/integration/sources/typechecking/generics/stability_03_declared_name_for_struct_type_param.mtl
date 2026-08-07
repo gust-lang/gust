@@ -1,0 +1,12 @@
+// #266, second half: a var that traces back to a declared generic parameter
+// is now shown under that name, not a placeholder. `Pair<A, B>`'s `second`
+// field is fully resolved (`String`, from the literal); `first` is not
+// (`i64`, never constrained against anything concrete) -- the message must
+// show the declared name `A` for the unresolved one and the concrete type
+// for the resolved one, side by side.
+struct Pair<A, B> { first: A, second: B }
+
+fun main() {
+    let p = Pair { first = 5, second = "x" };
+    let n: boolean = p; // ERROR[T0001]
+}
