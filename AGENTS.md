@@ -552,7 +552,7 @@ inconsistency before implementing against it.
 
 ## Strategic Planning
 
-Long-term objectives, current priorities, and open triggers (watch-list items that
+Goals, current priorities, and open triggers (watch-list items that
 should prompt a re-check when conditions change) live in
 `docs/reports/strategy/OBJECTIVES.md` — a living document, updated in place, not a
 dated snapshot. Periodic dated narrative snapshots (`docs/reports/strategy/
