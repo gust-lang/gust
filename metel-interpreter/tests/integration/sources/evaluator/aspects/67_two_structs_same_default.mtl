@@ -17,18 +17,15 @@ aspect Named {
     }
 }
 
-// #648: `return self.name;` would move a non-Copy value out of `&self` (no
-// `String: Clone` exists to reach for instead — see metel-core#650), so these
-// build a fresh, owned `String` via concatenation instead.
 extend Dog: Named {
     fun name(&self) -> String {
-        return self.name + "";
+        return self.name.clone();
     }
 }
 
 extend Cat: Named {
     fun name(&self) -> String {
-        return self.name + "";
+        return self.name.clone();
     }
 }
 
