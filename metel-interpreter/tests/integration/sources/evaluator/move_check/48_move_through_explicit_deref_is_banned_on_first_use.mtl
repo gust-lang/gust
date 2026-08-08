@@ -1,0 +1,12 @@
+// #648: a shared reference only ever grants access, never ownership (RFC-0071
+// SS7.1) -- moving `String` (non-Copy) out of `*p` is illegal on the *first*
+// call, not just a repeated one. Before #648 this compiled and only the
+// second `eat(*p)` was rejected, as an ordinary use-after-move -- the wrong
+// diagnosis, since the first move was never legal to begin with.
+fun eat(s: String) -> i64 { 1 }
+
+fun main() {
+    let s = "hello";
+    let p = &s;
+    let first = eat(*p);
+}

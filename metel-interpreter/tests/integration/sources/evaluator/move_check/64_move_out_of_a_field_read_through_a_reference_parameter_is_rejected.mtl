@@ -1,0 +1,13 @@
+// #648, no `self` involved: an ordinary `&T` parameter has the same rule.
+struct Name { value: String }
+struct Item { name: Name, count: i64 }
+
+fun peek(item: &Item) -> String {
+    let v = item.name.value;
+    v
+}
+
+fun main() {
+    let item = Item { name = Name { value = "n" }, count = 1 };
+    let _ = peek(&item);
+}
