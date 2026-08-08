@@ -1,0 +1,14 @@
+// TYPECHECK_ERROR[T0024]
+// #649: mirrors `02_read_copy_at_tail_expression.mtl`, but for a non-`Copy` type --
+// an implicit tail expression (through an if/else, here) is read-copy too.
+struct NotCopy { v: String }
+
+fun pick(cond: boolean, a: &NotCopy, b: &NotCopy) -> NotCopy {
+    if (cond) { a } else { b }
+}
+
+fun main() {
+    let x = NotCopy { v = "x" };
+    let y = NotCopy { v = "y" };
+    let _ = pick(true, &x, &y);
+}

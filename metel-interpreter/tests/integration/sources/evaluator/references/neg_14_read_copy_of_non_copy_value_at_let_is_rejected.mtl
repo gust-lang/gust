@@ -1,0 +1,11 @@
+// TYPECHECK_ERROR[T0024]
+// #649: RFC-0067a §3a's read-copy requires the referent to be `Copy` -- reading a
+// non-`Copy` value out of a shared reference at a `let` binding must be rejected,
+// not silently duplicated.
+struct NotCopy { v: String }
+
+fun main() {
+    let owned = NotCopy { v = "x" };
+    let r: &NotCopy = &owned;
+    let copy: NotCopy = r;
+}
