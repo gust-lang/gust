@@ -4319,17 +4319,12 @@ fun main() {
 
     #[test]
     fn ref_and_mut_ref_methods_through_a_reference_are_unaffected() {
-        // `self.v + ""` rather than `self.v`: #648 now rejects moving a
-        // non-Copy value out of `&self`, and this fixture has no `Clone` impl
-        // for `String`-shaped `v` to reach for instead — concatenation builds
-        // a fresh, owned value without needing one. See the identical note on
-        // `62_ref_and_mut_ref_methods_through_a_reference_are_unaffected.mtl`.
         assert_no_violations(
             r#"
 aspect Show { fun show(&self) -> String; }
 aspect Bump { fun bump(&var self); }
 struct B { v: String }
-extend B: Show { fun show(&self) -> String { return self.v + ""; } }
+extend B: Show { fun show(&self) -> String { return self.v.clone(); } }
 struct C { v: i64 }
 extend C: Bump { fun bump(&var self) { self.v = self.v + 1; } }
 
