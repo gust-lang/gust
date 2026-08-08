@@ -1,0 +1,12 @@
+// TYPECHECK_ERROR[T0024]
+// #649: the same `Copy` requirement applies no matter how many reference layers
+// are peeled through to reach the non-`Copy` referent -- mirrors
+// `07_read_copy_through_reference_chain.mtl`, but for a non-`Copy` type.
+struct NotCopy { v: String }
+
+fun main() {
+    let owned = NotCopy { v = "x" };
+    let r: &NotCopy = &owned;
+    let rr: &&NotCopy = &r;
+    let copy: NotCopy = rr;
+}

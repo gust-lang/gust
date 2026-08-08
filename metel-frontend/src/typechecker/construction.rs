@@ -780,7 +780,8 @@ fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<TypedDecl, Mete
             let value = construct_expr(&ld.value, expected_ty.as_ref(), ctx)?;
             let value = match &expected_ty {
                 Some(t) => {
-                    let value = maybe_read_copy(t, value, &ld.span);
+                    let value =
+                        maybe_read_copy(t, value, &ld.span, ctx.registry, ctx.current_module)?;
                     maybe_singleton_coerce(t, value, &ld.span, ctx.registry)?
                 }
                 None => value,
@@ -804,7 +805,8 @@ fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<TypedDecl, Mete
             let value = construct_expr(&md.value, expected_ty.as_ref(), ctx)?;
             let value = match &expected_ty {
                 Some(t) => {
-                    let value = maybe_read_copy(t, value, &md.span);
+                    let value =
+                        maybe_read_copy(t, value, &md.span, ctx.registry, ctx.current_module)?;
                     maybe_singleton_coerce(t, value, &md.span, ctx.registry)?
                 }
                 None => value,
@@ -1353,7 +1355,13 @@ fn construct_block(
             let constructed = construct_expr(e, expected_tail_ty, ctx)?;
             let constructed = match expected_tail_ty {
                 Some(t) => {
-                    let constructed = maybe_read_copy(t, constructed, e.span());
+                    let constructed = maybe_read_copy(
+                        t,
+                        constructed,
+                        e.span(),
+                        ctx.registry,
+                        ctx.current_module,
+                    )?;
                     maybe_singleton_coerce(t, constructed, e.span(), ctx.registry)?
                 }
                 None => constructed,
@@ -1403,7 +1411,13 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
                     let value = construct_expr(&ld.value, expected_ty.as_ref(), ctx)?;
                     let value = match &expected_ty {
                         Some(t) => {
-                            let value = maybe_read_copy(t, value, &ld.span);
+                            let value = maybe_read_copy(
+                                t,
+                                value,
+                                &ld.span,
+                                ctx.registry,
+                                ctx.current_module,
+                            )?;
                             maybe_singleton_coerce(t, value, &ld.span, ctx.registry)?
                         }
                         None => value,
@@ -1430,7 +1444,13 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
                     let value = construct_expr(&md.value, expected_ty.as_ref(), ctx)?;
                     let value = match &expected_ty {
                         Some(t) => {
-                            let value = maybe_read_copy(t, value, &md.span);
+                            let value = maybe_read_copy(
+                                t,
+                                value,
+                                &md.span,
+                                ctx.registry,
+                                ctx.current_module,
+                            )?;
                             maybe_singleton_coerce(t, value, &md.span, ctx.registry)?
                         }
                         None => value,
@@ -2443,7 +2463,8 @@ fn construct_expr(
         Expr::Ascribe { expr, ann, span } => {
             let ty = resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, span)?;
             let constructed = construct_expr(expr, Some(&ty), ctx)?;
-            let constructed = maybe_read_copy(&ty, constructed, span);
+            let constructed =
+                maybe_read_copy(&ty, constructed, span, ctx.registry, ctx.current_module)?;
             maybe_singleton_coerce(&ty, constructed, span, ctx.registry)
         }
 
@@ -2517,7 +2538,13 @@ fn construct_expr(
                     let constructed = construct_expr(e, return_ty.as_ref(), ctx)?;
                     Some(Box::new(match &return_ty {
                         Some(t) => {
-                            let constructed = maybe_read_copy(t, constructed, e.span());
+                            let constructed = maybe_read_copy(
+                                t,
+                                constructed,
+                                e.span(),
+                                ctx.registry,
+                                ctx.current_module,
+                            )?;
                             maybe_singleton_coerce(t, constructed, e.span(), ctx.registry)?
                         }
                         None => constructed,
@@ -2544,7 +2571,13 @@ fn construct_expr(
                     let constructed = construct_expr(e, break_ty.as_ref(), ctx)?;
                     Some(Box::new(match &break_ty {
                         Some(t) => {
-                            let constructed = maybe_read_copy(t, constructed, e.span());
+                            let constructed = maybe_read_copy(
+                                t,
+                                constructed,
+                                e.span(),
+                                ctx.registry,
+                                ctx.current_module,
+                            )?;
                             maybe_singleton_coerce(t, constructed, e.span(), ctx.registry)?
                         }
                         None => constructed,
@@ -5149,23 +5182,50 @@ fn type_chain_provides_mut_access(ty: &Type) -> bool {
 /// read-copy the same as ordinary auto-deref: `let x: i64 = rr;` where `rr: &&i64`
 /// synthesizes two nested internal `Deref` nodes, one per layer, matching how the
 /// evaluator already unwraps one `Value::Reference`/`MutReference` per node.
-fn maybe_read_copy(expected: &Type, actual: TypedExpr, span: &Span) -> TypedExpr {
+///
+/// #649: this is a *copy* — the referent is duplicated, not moved, and the reference
+/// keeps pointing at a still-valid original — so it's only sound when the fully
+/// peeled referent type is `Copy` (RFC-0067a §3a's own words: "a non-`Copy` `T`
+/// cannot be produced this way"). Checked once against the final, fully-dereferenced
+/// type, not each intermediate reference layer: a `&T`/`&var T` layer being read
+/// *through* isn't itself what's being duplicated, only the payload at the end of
+/// the chain is.
+fn maybe_read_copy(
+    expected: &Type,
+    actual: TypedExpr,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+) -> Result<TypedExpr, MetelError> {
     // If `expected` is itself a reference type, this isn't read-copy at all — it's the
     // ordinary `&mut T` -> `&T` widening coercion (unify() already accepts it; nothing
     // to synthesize here). Peeling anyway would over-run past the intended coercion
     // down to the fully-dereferenced value, which is wrong.
     if matches!(expected, Type::Reference(_) | Type::MutReference(_)) {
-        return actual;
+        return Ok(actual);
     }
     let mut current = actual;
+    let mut peeled_any = false;
     while current.ty() != expected {
         let inner = match current.ty() {
             Type::Reference(inner) | Type::MutReference(inner) => (**inner).clone(),
             _ => break,
         };
+        peeled_any = true;
         current = TypedExpr::UnaryOp(UnaryOp::Deref, Box::new(current), inner, span.clone());
     }
-    current
+    if peeled_any && !registry.type_satisfies_aspect(current_module, current.ty(), "Copy") {
+        let ty = current.ty();
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0024,
+            format!(
+                "cannot copy `{ty}` out of a reference: `{ty}` does not implement `Copy`\n\
+                 \x20      hint: use `.clone()` if `{ty}` implements `Clone`, or restructure to take ownership instead"
+            ),
+            span,
+        ));
+    }
+    Ok(current)
 }
 
 /// RFC-0078 §3.3: the inhabited-singleton coercion. If `actual`'s type is a named
