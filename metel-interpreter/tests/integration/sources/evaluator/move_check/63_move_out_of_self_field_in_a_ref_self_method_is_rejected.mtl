@@ -1,0 +1,16 @@
+// #648: `self` in a `&self` method is a reference like any other -- moving a
+// field's value out of it was never actually checked before this fix.
+struct Name { value: String }
+struct Item { name: Name, count: i64 }
+
+extend Item {
+    fun peek(&self) -> String {
+        let v = self.name.value;
+        v
+    }
+}
+
+fun main() {
+    let item = Item { name = Name { value = "n" }, count = 1 };
+    let _ = item.peek();
+}

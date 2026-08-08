@@ -1,0 +1,12 @@
+// #648, RFC-0071 SS7.1's other named example: `f(*r)`.
+struct B { v: String }
+
+fun takes(b: B) -> String {
+    b.v
+}
+
+fun main() {
+    let b = B { v = "x" };
+    let r = &b;
+    let n = takes(*r);
+}

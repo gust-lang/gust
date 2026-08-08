@@ -1,0 +1,19 @@
+// #648: a different manifestation of the same gap, reached through the
+// by-value method receiver's own fallback path. #602's own
+// receiver_place_is_behind_a_reference only inspects the immediate
+// receiver's own type/place, so it misses a receiver reached via auto-deref
+// through an interior reference-typed field (`inner: &Middle` here). The
+// fallback still routes through the same checked path this fix corrects,
+// so it's closed as a side effect.
+aspect Consume { fun eat(self) -> String; }
+struct B { v: String }
+extend B: Consume { fun eat(self) -> String { return self.v; } }
+struct Middle { payload: B }
+struct Outer { inner: &Middle }
+
+fun main() {
+    let b = B { v = "owned" };
+    let middle = Middle { payload = b };
+    let outer = Outer { inner = &middle };
+    let taken = outer.inner.payload.eat();
+}

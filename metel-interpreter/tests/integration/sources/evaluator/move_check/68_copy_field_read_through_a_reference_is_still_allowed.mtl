@@ -1,0 +1,14 @@
+// #648's Copy gate: a Copy value can always be read back out through a
+// reference, at any of the new non-receiver positions, exactly as it
+// already could through a by-value method receiver (#602).
+struct Item { count: i64, name: String }
+
+fun peek(item: &Item) -> i64 {
+    let v = item.count;
+    v
+}
+
+fun main() {
+    let item = Item { count = 5, name = "n" };
+    assert(peek(&item) == 5);
+}

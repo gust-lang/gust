@@ -1,0 +1,8 @@
+// #648, RFC-0071 SS7.1's own named example: `let x: B = *r;`.
+struct B { v: String }
+
+fun main() {
+    let b = B { v = "x" };
+    let r = &b;
+    let x: B = *r;
+}

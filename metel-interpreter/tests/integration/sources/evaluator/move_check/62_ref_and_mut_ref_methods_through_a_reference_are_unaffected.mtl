@@ -12,7 +12,12 @@ struct B {
 
 extend B: Show {
     fun show(&self) -> String {
-        return self.v;
+        // #648: `return self.v;` would move a non-Copy value out of `&self`.
+        // No `String: Clone` exists in this stdlib to reach for instead (adding
+        // one hits an unrelated, separate bug — `Self` as a return type on a
+        // primitive `extend` target — filed as metel-core#650), so this builds
+        // a fresh, owned `String` via concatenation instead.
+        return self.v + "";
     }
 }
 
