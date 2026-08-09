@@ -2,51 +2,142 @@
   <img src="media/metel-logo-dark.svg" alt="Metel" width="600"/>
 </p>
 
-An exploration in type-driven memory management.
+A statically-typed language exploring what happens when ownership, structural typing,
+and a real aspect system are designed in together instead of bolted on.
 
-## Why?
+## Why
 
-You surely know as well as I do that the world does not need yet another amateur Rust clone, so let me be clear with you: The main reason I built this is that I wanted to.
+You surely know as well as I do that the world does not need another amateur language,
+so the honest reason is: I wanted to build one. It started as a small, Rust-influenced
+tree-walk interpreter and grew into something with a two-pass Hindley-Milner type
+checker, affine-by-default ownership with a real move checker, an aspect system
+standing in for traits, and structural records living alongside nominal structs.
 
-It began as "Yoloscript," a silly experiment based on Lox from Crafting Interpreters. But somewhere along the way, it got ambitious. Statically typed? Sure. Written in Rust? Why not. Operator overloads, pointers, concurrency? Let's try it all.
+It's a personal project — there is no team, no company, and no roadmap beyond my own
+curiosity about whether these ideas hold together once they collide with generics,
+closures, and real programs. It's heavily AI-assisted: most of the implementation was
+built with a lot of help from AI tools, with the design work reviewed and curated in
+detail rather than accepted wholesale. Read more about how it started, and where it's
+headed, in [Introducing Metel](https://metel-lang.org/blog/introducing-metel).
 
-The current frontier is linear types—baked in as an opt-in pillar of the memory model. The mission: discover what this system can express and where it breaks.
+## What it can do today
 
-> Fair warning: this project's development is powered by some serious AI machinery, and it probably shows in a lot of places.
+**Ownership is affine by default.** A non-`Copy` value has exactly one owner; moving it
+invalidates the source, checked statically with `--move-check`. `Copy` and `Drop` are
+opt-in aspects, mutually exclusive by construction. References (`&T`, `&var T`) are
+explicit aliases with auto-deref through field access and method calls, and reading a
+`Copy` value back out of a reference ("read-copy") is the only implicit duplication
+allowed.
 
-## What?
+**Aspects stand in for interfaces.** `aspect Name { fun method(&self) -> T; }` declares
+a capability; `extend Type: Aspect { ... }` implements it, with default methods,
+negative bounds (`T: !Aspect`), associated types, and coherence checking to keep two
+conflicting implementations of the same aspect for the same type from compiling.
 
-### Available now (v0.7.0)
+```metel
+aspect Greet {
+    fun greet(&self) -> String;
+}
 
-- **Strong static typing** with local type inference (Hindley-Milner)
-- **Algebraic data types** — structs and enums with data-carrying variants
-- **Exhaustive pattern matching**
-- **Explicit nullability** via `Perhaps<T>` (no null pointers)
-- **Explicit error handling** via `Result<T, E>` with `?` propagation — including cross-type coercion via `From<E>`
-- **First-class functions** and closures (`(x) -> T { ... }` syntax)
-- **Generics** — generic functions, structs, and enums with full monomorphisation
-- **Aspect bounds** — inline (`<T: Comparable>`), multi-bound (`<T: Comparable + Display>`), `where` clauses, and `impl Aspect` anonymous parameters
-- **Aspects** — user-defined interfaces (`aspect Foo { ... }`) with `impl Aspect for Type` dispatch, including default methods
-- **Explicit receiver semantics** — `&self` (shared read) and `&mut self` (shared mutable) method receivers
-- **Pointer types** — `&expr` and `&mut expr` produce `Pointer<T>` and `MutPointer<T>`; assignment through `*ptr` is supported
-- **Module system** — multi-file programs via `import` and `export`; visibility enforced with `pub`; `std::core` auto-imported
-- **`Iterable<T>`** — implement `for-in` on your own types
-- **`From<T>`** — implement `as` casts between any two types
-- **`Display`** — `.to_string()` on all built-in types; polymorphic `print`/`println`
-- **String interpolation** — `"Hello, ${name}!"` desugars to string concatenation
-- **Runtime memory management** via reference counting
+struct Person { name: String }
 
-### Planned
+extend Person: Greet {
+    fun greet(&self) -> String { "Hello, ${self.name}!" }
+}
 
-- **Opt-in linear types** — the `linear` keyword marks a type as use-exactly-once. The type checker statically prevents resource leaks, double-frees, and unconsumed handles. No runtime overhead; in the compiler, linear values are freed deterministically with zero allocator cost.
+extend Person {
+    fun rename(&var self, new_name: String) { self.name = new_name; }
+}
 
-- **Fiber green threads** — lightweight concurrent tasks launched with `spawn { }`. M:N scheduled by the runtime; no `async`/`await`, no function colouring. A function that blocks inside a fiber does not need a different declaration.
+fun greet_all<T: Greet>(people: T[]) {
+    for (p in people) { println(p.greet()); }
+}
 
-- **Typed channels** — `Chan<T>` is the primary concurrency primitive. Values are transferred between fibers with `ch <- value` (send) and `<- ch` (receive). A `select` expression waits on multiple channels simultaneously. Channels are the natural transport for linear values: sending consumes the value, satisfying the exactly-once rule across fiber boundaries.
+fun main() -> i64 {
+    var ada = Person { name = "Ada" };
+    let ada_ref: &var Person = &var ada;
+    ada_ref.rename("Ada Lovelace");   // auto-deref through &var — writes back to ada
 
-- **C FFI** — `extern "C"` blocks declare functions callable via the C ABI. Calls require an `unsafe` block. The primary use case is Rust crate interop: any Rust crate can be exposed to Metel through a thin `#[no_mangle] extern "C"` shim, giving access to the full `crates.io` ecosystem.
+    greet_all([ada, Person { name = "Grace" }]);
+    return 0;
+}
+```
 
-See the [Language Specification](docs/public/reference/spec.md) and [RFCs](docs/internal/rfcs/) for the complete design.
+**Records are the structural counterpart to structs.** `{ x: f64, y: f64 }` is a type
+with no declaration site — two unrelated pieces of code that write the same shape are
+talking about the same type. A row bound constrains a generic parameter by the fields
+it carries rather than by an aspect it implements:
+
+```metel
+fun magnitude<record T: { x: f64, y: f64, .. }>(p: T) -> f64 {
+    return p.x * p.x + p.y * p.y;
+}
+
+fun main() {
+    println(magnitude({ x = 3.0, y = 4.0 }));   // 25
+}
+```
+
+**Algebraic data types and exhaustive pattern matching:**
+
+```metel
+enum Shape {
+    Circle { radius: f64 },
+    Rectangle { width: f64, height: f64 },
+}
+
+fun area(s: Shape) -> f64 {
+    match s {
+        Shape::Circle { radius }           => 3.14159 * radius * radius,
+        Shape::Rectangle { width, height } => width * height,
+    }
+}
+```
+
+**Explicit error handling**, with `?`-propagation and automatic coercion between error
+types via `From`:
+
+```metel
+struct IoError { msg: String }
+struct AppError { msg: String }
+
+extend AppError: From<IoError> {
+    fun from(value: IoError) -> AppError {
+        return AppError { msg = "io: ${value.msg}" };
+    }
+}
+
+fun load() -> Result<String, IoError> {
+    return Result::Err { error = IoError { msg = "disk full" } };
+}
+
+fun load_config() -> Result<String, AppError> {
+    let data = load()?;   // IoError coerced to AppError via From
+    return Result::Ok { value = data };
+}
+```
+
+Also: generics with full monomorphization, a module system (`import`/`export`, `pub`
+visibility), `Perhaps<T>` instead of null, string interpolation, and a growing standard
+library (`List<T>`, `String`, host-backed `fs`/`env`/`process` modules).
+
+## What's next
+
+**Short term:** field-sensitive access into records (reading an unnamed field of an
+open row bound), and closing the remaining gaps `--move-check` doesn't cover by
+default yet.
+
+**Medium term:** a borrow checker (tracking what's currently borrowed, not just what's
+been moved), allocators and lifetime anchors as an explicit, program-visible storage
+model, and linear types as a stricter opt-in layer above the affine default
+(use-*exactly*-once, not just at-most-once).
+
+**Further out:** compile-time execution (`comptime`) staged by the same evaluator
+rather than a separate macro language, and fiber-based concurrency with typed channels
+— no `async`/`await`, no function coloring.
+
+All of this is designed in the open — see the [RFC process](docs/public/rfcs/) for the
+proposals, the arguments for and against, and the decisions as they're made.
 
 ## Quick Start
 
@@ -58,182 +149,63 @@ See the [Language Specification](docs/public/reference/spec.md) and [RFCs](docs/
 ### Build
 
 ```bash
-cd metel-interpreter
-cargo build --release
+cargo build --release --workspace
 ```
 
 ### Run a Program
 
 ```bash
-cargo run -- path/to/program.mtl
+cargo run --release -- path/to/program.mtl
 ```
+
+Pass `--move-check` to additionally reject use-after-move and moving a value out of a
+reference — off by default while the existing corpus finishes migrating to the style
+affine ownership expects.
 
 ### Run Tests
 
 ```bash
-# All tests
-cargo test
-
-# Type inference unit tests
-cargo test --test typeinference_tests
-
-# Typechecking integration tests
-cargo test --test typechecking_tests
-
-# Evaluator integration tests
-cargo test --test evaluator_tests
-```
-
-## Examples
-
-**Algebraic types and pattern matching**
-
-```metel
-enum Shape {
-    Circle    { radius: Float },
-    Rectangle { width: Float, height: Float },
-}
-
-fun area(s: Shape) -> Float {
-    match s {
-        Shape::Circle { radius }           => 3.14159 * radius * radius,
-        Shape::Rectangle { width, height } => width * height,
-    }
-}
-```
-
-**Generics with aspect bounds**
-
-```metel
-fun first<T>(items: T[]) -> Perhaps<T> {
-    if (array_len(items) == 0) { None }
-    else { items[0] }
-}
-
-fun max_of<T: Comparable>(a: T, b: T) -> T {
-    if (a > b) { a } else { b }
-}
-```
-
-**Aspects**
-
-```metel
-aspect Summary {
-    fun summarize(&self) -> String;
-}
-
-struct Article { pub title: String, pub author: String }
-struct Tweet   { pub content: String }
-
-impl Summary for Article {
-    fun summarize(&self) -> String { self.title + " — " + self.author }
-}
-impl Summary for Tweet {
-    fun summarize(&self) -> String { self.content }
-}
-```
-
-**Error propagation with `From`-based coercion**
-
-```metel
-enum IoError  { FileNotFound {} }
-enum AppError { Io { msg: String } }
-
-impl From<IoError> for AppError {
-    fun from(e: IoError) -> AppError { AppError::Io { msg: "file not found" } }
-}
-
-fun load_config() -> Result<String, AppError> {
-    let data = read_file("config.toml")?;  // IoError coerced to AppError via From
-    Result::Ok { value: data }
-}
-```
-
-**User-defined iteration**
-
-```metel
-struct Counter { current: Int, max: Int }
-
-impl Iterable<Int> for Counter {
-    fun next(&mut self) -> Perhaps<Int> {
-        if (self.current >= self.max) { None }
-        else {
-            self.current = self.current + 1;
-            self.current
-        }
-    }
-}
-
-fun main() {
-    for (let n in Counter { current: 0, max: 5 }) {
-        println(n);  // 1 2 3 4 5
-    }
-}
-```
-
-**String interpolation**
-
-```metel
-fun greet(name: String, age: Int) -> String {
-    "Hello, ${name}! You are ${age} years old."
-}
-```
-
-**Modules**
-
-```metel
-// shapes.mtl
-pub struct Circle { pub radius: Float }
-
-pub fun area(c: Circle) -> Float {
-    3.14159 * c.radius * c.radius
-}
-
-// main.mtl
-import shapes::Circle;
-import shapes::area;
-
-fun main() {
-    let c = Circle { radius: 2.0 };
-    println(area(c));
-}
+cargo test --release --workspace
 ```
 
 ## Project Structure
 
 ```
-Metel/
-├── metel-interpreter/
-│   ├── src/
-│   │   ├── parser/         # PEG grammar (pest) → untyped AST
-│   │   ├── ast/            # Untyped AST node definitions
-│   │   ├── typeinference/  # HM inference engine
-│   │   ├── typechecker/    # Two-pass type checker → typed AST
-│   │   ├── typed_ast/      # Typed AST node definitions
-│   │   ├── evaluator/      # Tree-walking evaluator
-│   │   ├── types/          # Concrete type representation
-│   │   └── error/          # Unified error type
-│   ├── tests/
-│   │   ├── typeinference/  # HM engine unit tests
-│   │   ├── typechecking/   # Full pipeline integration tests
-│   │   ├── evaluator/      # Runtime behaviour tests
-│   │   ├── module_loading/ # Module graph and path resolution tests
-│   │   ├── module_semantics/ # Cross-module visibility and import tests
-│   │   └── parsing/        # Parser tests
-│   └── Cargo.toml
+metel-core/
+├── metel-frontend/        # Parsing through typechecking; produces a typed AST
+│   └── src/
+│       ├── parser/        # PEG grammar (pest) → untyped AST
+│       ├── ast/           # Untyped AST node definitions
+│       ├── typeinference/ # Hindley-Milner constraint solver
+│       ├── typechecker/   # Two-pass type checker (inference, then construction)
+│       ├── typed_ast/     # Typed AST node definitions
+│       ├── move_check/    # Opt-in affine-ownership checker
+│       ├── coherence.rs   # Aspect-impl overlap/orphan checking
+│       └── elaborator/    # Resolves method dispatch ahead of evaluation
 │
-└── docs/           # Spec, RFCs, Changelog
+├── metel-interpreter/     # Runtime
+│   └── src/
+│       ├── evaluator/     # Tree-walking evaluator
+│       ├── pipeline.rs    # Wires parsing → typechecking → elaboration → evaluation
+│       └── main.rs        # CLI entry point
+│
+└── docs/                  # Submodule: spec, RFCs, changelog, decision records
 ```
 
 ## Resources
 
-- **Language Specification:** [`docs/public/reference/spec.md`](docs/public/reference/spec.md)
+- **Website:** [metel-lang.org](https://metel-lang.org)
+- **Language Specification:** [`docs/public/reference/spec/`](docs/public/reference/spec/)
+- **RFCs:** [`docs/public/rfcs/`](docs/public/rfcs/) — every language design decision,
+  public at every stage
 - **Changelog:** [`docs/public/release-notes/changelog.md`](docs/public/release-notes/changelog.md)
-- **Typechecker Architecture:** [`metel-interpreter/docs/typechecker.md`](metel-interpreter/docs/typechecker.md)
-- **Evaluator Design:** [`metel-interpreter/docs/evaluator.md`](metel-interpreter/docs/evaluator.md)
-- **RFCs:** [`docs/internal/rfcs/`](docs/internal/rfcs/) — language change proposals and decisions
-- **Decision Records:** [`metel-interpreter/docs/decisions/`](metel-interpreter/docs/decisions/) — implementation rationales
+- **Introducing Metel:** [the blog post](https://metel-lang.org/blog/introducing-metel)
+  on why this exists and where it's headed
+- **Architecture:** [`docs/architecture/architecture.md`](docs/architecture/architecture.md),
+  plus `typechecker.md`/`evaluator.md` in each crate's own `docs/`
+- **Decision Records:** [`docs/architecture/decisions/`](docs/architecture/decisions/)
+  — why past decisions were made, and why some were reversed
 
 ## License
 
-Metel is licensed under the Apache License 2.0. See the [LICENSE](LICENSE) file for details.
+Metel is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.

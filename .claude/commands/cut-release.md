@@ -93,6 +93,12 @@ cargo clippy --release --lib -- -W clippy::pedantic
 
 Confirm by reading the `test result:` lines and a 0-warning clippy tail.
 
+**9. README accuracy** — every ` ```metel ` code block in `README.md` still compiles
+and runs against the release binary; described capabilities match what's actually
+shipping, not a stale or aspirational version of it. `README.md` drifted for 12
+releases (every example uncompilable, the feature list two ownership models out of
+date) before anyone noticed, because nothing in this gate ever looked at it.
+
 ## Step 3 — Fix findings, then re-run
 
 Every failing item gets fixed on its own issue branch through the normal per-PR flow —
