@@ -1681,30 +1681,44 @@ impl TypeDefinitionRegistry {
             })
     }
 
-    /// Canonicalize a `root`/`self`/`super`-qualified type-annotation name to the
-    /// same spelling a constructor expression for that type resolves to (#659) --
-    /// e.g. `root::parser::Token` becomes `Token`, so `let t: root::parser::Token =
-    /// root::parser::Token { .. }` unifies instead of looking like two unrelated
-    /// types. Deliberately the struct/enum's own *declared* name, not whatever local
-    /// alias happened to match -- a struct literal's type identity is the
-    /// declaration itself, not the value-level import alias used to reach it, so
-    /// `import ... Token as Tok;` must still canonicalize a `root::..::Token`
-    /// annotation to `Token`, matching what `Token { .. }` construction resolves to,
-    /// not to `Tok`. Returns `None` for anything that isn't such a qualified name --
-    /// the caller should keep the original spelling in that case.
-    pub(crate) fn canonicalize_reserved_root_type_name(
+    /// Canonicalize a type-annotation name to the same spelling a constructor
+    /// expression for that type resolves to, covering two distinct spellings that
+    /// can name an aliased import:
+    ///
+    /// - A `root`/`self`/`super`-qualified path (#659) -- e.g. `root::parser::Token`
+    ///   becomes `Token`, so `let t: root::parser::Token = root::parser::Token { .. }`
+    ///   unifies instead of looking like two unrelated types.
+    /// - A plain `as Alias`-imported name used bare (#667) -- e.g. `import
+    ///   lexer::Token as Tok;` then `let t: Tok = Token { .. }` needs `Tok` to mean
+    ///   the same type `Token { .. }` constructs, not a second, unrelated `Tok`.
+    ///
+    /// Either way this resolves to the struct/enum's own *declared* name, not
+    /// whatever local alias happened to match -- a struct literal's type identity is
+    /// the declaration itself, not the value-level import alias used to reach it.
+    /// Returns `None` for anything that isn't one of these two forms -- the caller
+    /// should keep the original spelling in that case.
+    pub(crate) fn canonicalize_type_name(
         &self,
         current_module: &[String],
         name: &str,
     ) -> Option<String> {
-        let (short_name, binding) = self.reserved_root_binding(current_module, name)?;
-        let id = binding
-            .map(|(_, b)| b.symbol_id)
-            .or_else(|| self.resolve_type_position_id(current_module, short_name));
-        Some(
-            id.and_then(|id| self.declared_type_name_for_id(id))
-                .unwrap_or_else(|| short_name.to_string()),
-        )
+        if let Some((short_name, binding)) = self.reserved_root_binding(current_module, name) {
+            let id = binding
+                .map(|(_, b)| b.symbol_id)
+                .or_else(|| self.resolve_type_position_id(current_module, short_name));
+            return Some(
+                id.and_then(|id| self.declared_type_name_for_id(id))
+                    .unwrap_or_else(|| short_name.to_string()),
+            );
+        }
+        if !name.contains("::") {
+            let binding = self.scopes.get(current_module)?.explicit.get(name)?;
+            return Some(
+                self.declared_type_name_for_id(binding.symbol_id)
+                    .unwrap_or_else(|| binding.source_name.clone()),
+            );
+        }
+        None
     }
 
     fn split_qualified_type_name(name: &str) -> Option<(Vec<String>, &str)> {
