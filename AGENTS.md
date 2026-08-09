@@ -328,6 +328,11 @@ checks already passed on every branch that landed.
 8. **Issue hygiene** - the milestone's issues are genuinely closed with acceptance
    criteria satisfied, and anything deferred out of the release is an explicit open
    issue re-milestoned to a later version, not left silently attached to this one.
+9. **README accuracy** - every ` ```metel ` code block in `README.md` still compiles
+   and runs against the release binary; described capabilities match what's actually
+   shipping, not a stale or aspirational version of it. `README.md` drifted for 12
+   releases (every example uncompilable, the feature list two ownership models out of
+   date) before anyone noticed, because nothing in this gate ever looked at it.
 
 ### Cutting the Release
 
