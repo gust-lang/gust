@@ -1843,6 +1843,73 @@ fn run_main(env: &mut Environment, runtime: &RuntimeRegistry) -> Result<(), Mete
 
 // ── Block and declaration evaluation ─────────────────────────────────────────
 
+/// Build `f`'s closure, capturing `env` exactly as it stands right now, and
+/// install it over its own binding (already `define`d as a placeholder by
+/// `hoist_nested_funs`, or by a previous call to this same function).
+fn build_and_set_nested_fun(
+    f: &crate::typed_ast::TypedFunDecl,
+    env: &mut Environment,
+) -> Result<(), MetelError> {
+    let (body, ctx) = match &f.body {
+        FunBody::Typed(b) => (ClosureBody::Typed(b.clone()), None),
+        FunBody::Generic(b) => (ClosureBody::Untyped(b.clone()), env.type_ctx.clone()),
+        // `native` functions are stdlib-only and top-level; they cannot
+        // appear as a nested declaration.
+        FunBody::Native(_) => {
+            return Err(MetelError::internal(
+                "native function in nested declaration position",
+            ))
+        }
+    };
+    let captured = env.clone();
+    let closure = Value::Callable(RuntimeCallable::Closure(Rc::new(ClosureValue {
+        name: Some(f.name.clone()),
+        params: f.params.clone(),
+        body,
+        captured,
+        type_ctx: ctx,
+        fun_type: None,
+    })));
+    let _ = env.set(&f.name, closure);
+    Ok(())
+}
+
+/// Give every `fun` declared directly in `decls` a placeholder binding, then a
+/// real (if provisional) closure, before any other statement in the block
+/// runs — mirroring `run_passes`'s top-level Pass 1a/1b, so siblings get
+/// mutual visibility regardless of textual order, including being callable
+/// from a statement that precedes their own declaration, exactly like the
+/// spec's own hoisting example (metel-core#656). The type checker's own
+/// hoisting pass (`hoist_fun_decls`) already accepts such programs; this
+/// closes the runtime gap where a nested block only built a `fun`'s closure
+/// once the ordinary sequential loop below reached its declaration statement.
+///
+/// This first build happens before any `let`/`var` earlier in the block has
+/// run, so it can't yet capture them — deliberately provisional. Once the
+/// sequential loop (in `eval_decl`) actually reaches a given `fun`'s own
+/// declaration statement, it calls `build_and_set_nested_fun` again, this
+/// time correctly capturing whatever precedes it, so a call arriving after
+/// that point — the overwhelmingly common case — sees the fully
+/// lexically-correct closure. A call arriving before it uses this
+/// pre-pass's closure: it can call any sibling fun (all of them are hoisted
+/// together), but referencing a `let` that hasn't executed yet at that point
+/// in the program fails with "undefined variable" — which is what calling a
+/// function too early ought to mean, rather than the function itself not
+/// existing.
+fn hoist_nested_funs(decls: &[TypedDecl], env: &mut Environment) -> Result<(), MetelError> {
+    for decl in decls {
+        if let TypedDecl::Fun(f) = decl {
+            env.define(&f.name, Value::Unit);
+        }
+    }
+    for decl in decls {
+        if let TypedDecl::Fun(f) = decl {
+            build_and_set_nested_fun(f, env)?;
+        }
+    }
+    Ok(())
+}
+
 /// Evaluate a block: push scope, run stmts, return tail (or Unit).
 /// Non-Value signals (Return, Break, Continue) short-circuit and propagate out.
 ///
@@ -1855,6 +1922,7 @@ pub fn eval_block(
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
     env.push_scope();
+    hoist_nested_funs(&block.stmts, env)?;
     for decl in &block.stmts {
         let sig = eval_decl(decl, env, runtime)?;
         match sig {
@@ -1895,30 +1963,12 @@ fn eval_decl(
             other => Ok(other),
         },
         TypedDecl::Fun(f) => {
-            let (body, ctx) = match &f.body {
-                FunBody::Typed(b) => (ClosureBody::Typed(b.clone()), None),
-                FunBody::Generic(b) => (ClosureBody::Untyped(b.clone()), env.type_ctx.clone()),
-                // `native` functions are stdlib-only and top-level; they cannot
-                // appear as a nested declaration.
-                FunBody::Native(_) => {
-                    return Err(MetelError::internal(
-                        "native function in nested declaration position",
-                    ))
-                }
-            };
-            // Define a placeholder first so the closure can see itself via shared Rc
-            // (enables self-recursion for functions defined inside other functions).
-            env.define(&f.name, Value::Unit);
-            let captured = env.clone();
-            let closure = Value::Callable(RuntimeCallable::Closure(Rc::new(ClosureValue {
-                name: Some(f.name.clone()),
-                params: f.params.clone(),
-                body,
-                captured,
-                type_ctx: ctx,
-                fun_type: None,
-            })));
-            let _ = env.set(&f.name, closure);
+            // `hoist_nested_funs` already gave `f` a placeholder and a
+            // provisional closure before this block's statements started
+            // running (metel-core#656). Rebuild it now that every `let`/`var`
+            // preceding it in this block is actually in scope, so a call from
+            // here on captures the fully lexically-correct environment.
+            build_and_set_nested_fun(f, env)?;
             Ok(Signal::Value(Value::Unit))
         }
         TypedDecl::Stmt(s) => eval_stmt(s, env, runtime),
