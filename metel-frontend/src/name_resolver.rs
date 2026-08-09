@@ -261,6 +261,37 @@ pub fn method_symbol_name(target: &str, aspect: Option<&str>, method: &str) -> S
     }
 }
 
+/// Resolve `name` as *provided* by `module` — either declared there directly, or
+/// re-exported from elsewhere via `export path::name;` (`ModuleScope::re_exports`).
+///
+/// A glob import (`import module::*;`) must see everything `module`'s own public
+/// surface includes, and a re-export is as much a part of that surface as a local
+/// declaration — `pub_surface` already counts it as visible (see its own doc), but
+/// naming its `SymbolId` needs this extra hop through `module`'s own scope, since
+/// `symbols` is keyed by where a name is *declared*, not everywhere it's *visible*.
+/// Without it, a glob-imported re-export typechecks (visibility says it's there) but
+/// resolves to no identity at all, which is silently indistinguishable from "not
+/// actually bound" downstream (#668). Shared by every glob-resolution site — value
+/// names in `reference_resolver`, type names in `TypeDefinitionRegistry` — since both
+/// hit the exact same gap for the exact same reason.
+#[must_use]
+pub(crate) fn resolve_name_provided_by_module(
+    module: &[String],
+    name: &str,
+    symbols: &HashMap<(Vec<String>, String), SymbolId>,
+    scopes: &HashMap<Vec<String>, ModuleScope>,
+) -> Option<SymbolId> {
+    symbols
+        .get(&(module.to_vec(), name.to_string()))
+        .copied()
+        .or_else(|| {
+            scopes
+                .get(module)
+                .and_then(|s| s.re_exports.get(name))
+                .map(|binding| binding.symbol_id)
+        })
+}
+
 /// Extract the surface type name of an impl target (`extend Foo { … }` → `Foo`).
 /// Returns `None` for non-named targets (which the typechecker rejects elsewhere).
 fn impl_target_name(target: &TypeExpr) -> Option<&str> {
