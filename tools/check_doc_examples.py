@@ -34,9 +34,9 @@ one multi-file example (as opposed to one fence with multiple `// path.mtl` mark
 aren't detected — that would need guessing that two adjacent fences are a matching
 pair, which is fragile for the rare case it actually happens.
 
-Both of the above are marked, in the doc source, with an HTML comment on the line
-directly above the fence, so a human reading the doc sees why a block is exempt at
-its point of use rather than needing to check this script:
+Both of the above are marked, in the doc source, with a comment on the line directly
+above the fence, so a human reading the doc sees why a block is exempt at its point of
+use rather than needing to check this script:
 
     <!-- doc-example: skip reason="depends on an earlier block in this doc" -->
     ```metel
@@ -52,6 +52,18 @@ did" as a regression (the doc's claim about what's illegal, or the bug being tra
 may no longer hold):
 
     <!-- doc-example: expect-fail reason="ascription failure — the whole point" -->
+    ```metel
+    ...
+    ```
+
+**`.mdx` files need the JSX form instead** — `<!-- -->` is only a comment in plain
+Markdown; MDX parses `<...>` as JSX and fails the website build on it (found the hard
+way: `<!--` isn't valid JSX, so an HTML-comment marker in a tutorial's `.mdx` file
+compiles fine here, in this Python-regex-based checker, and then breaks
+`docusaurus build` outright). Use `{/* ... */}` in a `.mdx` file instead, otherwise
+identical:
+
+    {/* doc-example: skip reason="depends on an earlier block in this doc" */}
     ```metel
     ...
     ```
@@ -77,7 +89,10 @@ from pathlib import Path, PurePosixPath
 
 CODE_FENCE_RE = re.compile(r"```metel\n(.*?)```", re.DOTALL)
 MAIN_RE = re.compile(r"\bfun\s+main\b")
-MARKER_RE = re.compile(r'^<!--\s*doc-example:\s*(skip|expect-fail)\s*(?:reason="([^"]*)")?\s*-->$')
+MARKER_RE = re.compile(
+    r'^(?:<!--\s*doc-example:\s*(?P<kind1>skip|expect-fail)\s*(?:reason="(?P<reason1>[^"]*)")?\s*-->'
+    r'|\{/\*\s*doc-example:\s*(?P<kind2>skip|expect-fail)\s*(?:reason="(?P<reason2>[^"]*)")?\s*\*/\})$'
+)
 FILE_MARKER_RE = re.compile(r"^//\s*(\S+\.mtl)\s*$", re.MULTILINE)
 R0001_RE = re.compile(r"\[R0001\]")
 
@@ -132,7 +147,7 @@ def find_marker(text, start_line):
     m = MARKER_RE.match(preceding)
     if not m:
         return None, None
-    return m.group(1), m.group(2)
+    return m.group("kind1") or m.group("kind2"), m.group("reason1") or m.group("reason2")
 
 
 def extract_blocks(doc_path):
