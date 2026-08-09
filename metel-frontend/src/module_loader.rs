@@ -238,6 +238,23 @@ impl Loader<'_> {
                 self.load_module(child, child_path)?;
             }
         }
+        // An `export path::Name;` re-export (#660) names a module the same way an
+        // `import` does -- `ExportDecl` and `ImportDecl` share the identical
+        // `ImportPath` shape -- but nothing previously followed it to actually load
+        // the target file. A module reachable *only* through another module's
+        // `export`, with no `import` anywhere pulling it in directly, was simply
+        // never parsed: its declarations existed nowhere in the compiled program, so
+        // even a direct `import a::b::Name;` bypassing the re-export failed with
+        // "unknown struct/enum/name", not just the re-export path itself.
+        for export in &program.exports {
+            if let Some((mod_segs, child_file)) =
+                resolve_import_module(&file_path, &root_dir, &export.path.root, &export.path.tree)?
+            {
+                let child = canonicalize_existing(&child_file)?;
+                let child_path = child_module_path(&module_path, &export.path.root, &mod_segs);
+                self.load_module(child, child_path)?;
+            }
+        }
         self.stack.pop();
 
         self.visited.insert(file_path.clone());
