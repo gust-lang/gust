@@ -13,8 +13,54 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+"
 
 jobs:
+  # Gates both jobs below on the one check that actually determines whether this
+  # tag is a real, publishable release (metel-core#681): a still-"in progress"
+  # changelog. Before this job existed, that check lived only in github-release,
+  # and release-chain had no dependency on it -- so a tag pushed before the
+  # changelog was finalized still got a real commit + tag on metel-docs and
+  # metel-website, even though github-release correctly refused to publish a
+  # GitHub Release for the same tag. Nothing writes to another repository, or
+  # builds anything, until this passes.
+  validate-release:
+    name: Validate the release is ready to publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Point the docs submodule fetch at HTTPS + the docs-only token
+        run: git config --global url."https://x-access-token:${{ secrets.DOCS_REPO_TOKEN }}@github.com/".insteadOf "git@github.com:"
+
+      - name: Check out docs submodule
+        run: git submodule update --init docs
+
+      - name: Derive the release version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # Same check github-release runs on its own copy of the changelog before
+      # building -- duplicated rather than shared via an artifact, since it's a
+      # few lines with no side effects and this way each job stays independently
+      # runnable. Failing loudly on a still-"In progress" section catches exactly
+      # the mistake /cut-release's own Step 2.1 exists to prevent (tagging before
+      # finalizing the changelog).
+      - name: Extract this version's changelog section
+        run: |
+          python3 - "${{ steps.version.outputs.version }}" <<'PYEOF'
+          import re, sys
+          version = sys.argv[1]
+          text = open("docs/public/release-notes/changelog.md").read()
+          pattern = rf"^## v{re.escape(version)}\n(.*?)(?=^## v|\Z)"
+          m = re.search(pattern, text, re.DOTALL | re.MULTILINE)
+          if not m:
+              sys.exit(f"no changelog section found for v{version}")
+          body = m.group(1).strip()
+          if body.startswith("**In progress"):
+              sys.exit(f"changelog for v{version} is still marked in-progress -- finalize it before tagging")
+          PYEOF
+
   release-chain:
     name: Sync docs, cut website release
+    needs: validate-release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout metel-core at the release tag
@@ -141,14 +187,17 @@ jobs:
             git push origin "$tag"
           fi
 
-  # Independent of release-chain above -- no shared dependency, so a failure in one
-  # doesn't block the other. Builds the metel binary and publishes a GitHub Release
+  # Independent of release-chain -- both depend only on validate-release above, not
+  # on each other, so a failure in one doesn't block the other and neither delays
+  # the other's expensive work (a full site build vs. a full cargo build) waiting
+  # on something unrelated. Builds the metel binary and publishes a GitHub Release
   # for this repo's own tag, with its body sourced from the changelog -- previously
   # a fully manual step (/cut-release's Step 5.1). Needs only this repo's own
   # GITHUB_TOKEN (contents: write) -- unlike release-chain, nothing here writes to
   # another repository.
   github-release:
     name: Build binary and publish GitHub Release
+    needs: validate-release
     runs-on: ubuntu-latest
     permissions:
       contents: write
