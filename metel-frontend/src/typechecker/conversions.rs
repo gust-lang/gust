@@ -147,7 +147,19 @@ fn type_expr_to_infer_in_context(
                 ("u64", 0) => InferType::Concrete(Type::U64),
                 ("f32", 0) => InferType::Concrete(Type::F32),
                 ("Array", 1) => InferType::Array(Box::new(arg_tys.into_iter().next().unwrap())),
-                _ => InferType::Named(name.clone(), arg_tys),
+                _ => {
+                    // A `root`/`self`/`super`-qualified name (#659) must canonicalize
+                    // to the same spelling an equivalent value-position path would --
+                    // otherwise `let t: root::parser::Token = root::parser::Token{..}`
+                    // resolves the annotation but leaves it unifying with a
+                    // differently-spelled `InferType::Named` for what's really the
+                    // same type.
+                    let canonical = assoc_ctx.and_then(|ctx| {
+                        ctx.registry
+                            .canonicalize_reserved_root_type_name(ctx.current_module, name)
+                    });
+                    InferType::Named(canonical.unwrap_or_else(|| name.clone()), arg_tys)
+                }
             }
         }
         TypeExpr::Unit => InferType::unit(),
