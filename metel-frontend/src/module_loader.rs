@@ -230,9 +230,13 @@ impl Loader<'_> {
 
         self.stack.push(file_path.clone());
         for import in &program.imports {
-            if let Some((mod_segs, child_file)) =
-                resolve_import_module(&file_path, &root_dir, &import.path.root, &import.path.tree)?
-            {
+            if let Some((mod_segs, child_file)) = resolve_import_module(
+                &file_path,
+                &root_dir,
+                &module_path,
+                &import.path.root,
+                &import.path.tree,
+            )? {
                 let child = canonicalize_existing(&child_file)?;
                 let child_path = child_module_path(&module_path, &import.path.root, &mod_segs);
                 self.load_module(child, child_path)?;
@@ -247,9 +251,13 @@ impl Loader<'_> {
         // even a direct `import a::b::Name;` bypassing the re-export failed with
         // "unknown struct/enum/name", not just the re-export path itself.
         for export in &program.exports {
-            if let Some((mod_segs, child_file)) =
-                resolve_import_module(&file_path, &root_dir, &export.path.root, &export.path.tree)?
-            {
+            if let Some((mod_segs, child_file)) = resolve_import_module(
+                &file_path,
+                &root_dir,
+                &module_path,
+                &export.path.root,
+                &export.path.tree,
+            )? {
                 let child = canonicalize_existing(&child_file)?;
                 let child_path = child_module_path(&module_path, &export.path.root, &mod_segs);
                 self.load_module(child, child_path)?;
@@ -294,6 +302,24 @@ fn canonicalize_existing(path: &Path) -> Result<PathBuf, MetelError> {
     })
 }
 
+/// The directory a module's own submodules live in.
+///
+/// A non-root module `parser.mtl` (module path `["parser"]`) owns a directory named
+/// after itself, `parser/`, sitting *beside* the file rather than being its own
+/// containing directory -- "a directory module with a public facade is expressed by
+/// placing `name.mtl` alongside the `name/` directory" (`modules.md`, File-to-Module
+/// Mapping). The root module (empty module path) has no such nesting: its "own"
+/// directory for this purpose is simply wherever it already lives, `parent_dir`
+/// itself -- the special case that made this indistinguishable from an ordinary
+/// sibling lookup for as long as every test happened to write `self::`/a bare path
+/// only from the root file (#663).
+fn own_submodule_dir(parent_dir: &Path, current_module_path: &[String]) -> PathBuf {
+    match current_module_path.last() {
+        Some(name) => parent_dir.join(name),
+        None => parent_dir.to_path_buf(),
+    }
+}
+
 /// Resolve an import declaration to a module file.
 ///
 /// Returns `Ok(Some((segments, path)))` when a `.mtl` file is found.
@@ -307,6 +333,7 @@ fn canonicalize_existing(path: &Path) -> Result<PathBuf, MetelError> {
 fn resolve_import_module(
     parent_file: &Path,
     root_dir: &Path,
+    current_module_path: &[String],
     root: &PathRoot,
     tree: &ImportTree,
 ) -> Result<Option<(Vec<String>, PathBuf)>, MetelError> {
@@ -335,14 +362,48 @@ fn resolve_import_module(
             resolve_in_dir(&super_dir, &segs, parent_file)
         }
 
+        // An existing, passing test
+        // (accepts_root_self_super_std_and_child_roots_in_non_root_modules) asserts
+        // that `self::` from a non-root module can reach a true top-level sibling,
+        // the same file `root::`/a bare path from that position reaches -- its
+        // fixture has no directory named after the current module at all, so it
+        // never exercises the case `own_submodule_dir` is for. Applying the same
+        // try-then-fall-back-to-sibling order as the bare-path case below satisfies
+        // both: a sibling with no own-submodule alternative still resolves exactly
+        // as that test expects, while `self::ast::Ast` written inside `parser.mtl`
+        // now also reaches `parser/ast.mtl` when it exists (#663).
         PathRoot::Self_ => {
             let segs = import_tree_segments(tree);
+            if !current_module_path.is_empty() {
+                let self_dir = own_submodule_dir(parent_dir, current_module_path);
+                if let Some(result) = find_module_file(&self_dir, &segs) {
+                    return Ok(Some(result));
+                }
+            }
             resolve_in_dir(parent_dir, &segs, parent_file)
         }
 
         PathRoot::Name(name) => {
             let mut segs = vec![name.clone()];
             segs.extend(import_tree_segments(tree));
+            if segs.is_empty() {
+                return Ok(None);
+            }
+            // A bare (unprefixed) path is ambiguous between "one of my own
+            // submodules" and "a sibling of me" (#663) -- `parser.mtl` re-exporting
+            // `ast::Ast` means its own `parser/ast.mtl`, but re-exporting
+            // `lexer::Token` (also written bare, in the very same file) means the
+            // true top-level sibling `lexer.mtl`, not `parser/lexer.mtl`. Try the
+            // module's own submodule directory first (the more specific match), and
+            // only fall back to sibling resolution -- the pre-#663 behavior, and
+            // still correct for the root module, which has no submodule directory
+            // of its own to prefer -- if nothing is found there.
+            if !current_module_path.is_empty() {
+                let self_dir = own_submodule_dir(parent_dir, current_module_path);
+                if let Some(result) = find_module_file(&self_dir, &segs) {
+                    return Ok(Some(result));
+                }
+            }
             resolve_in_dir(parent_dir, &segs, parent_file)
         }
     }
