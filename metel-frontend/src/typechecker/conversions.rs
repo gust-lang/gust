@@ -148,15 +148,17 @@ fn type_expr_to_infer_in_context(
                 ("f32", 0) => InferType::Concrete(Type::F32),
                 ("Array", 1) => InferType::Array(Box::new(arg_tys.into_iter().next().unwrap())),
                 _ => {
-                    // A `root`/`self`/`super`-qualified name (#659) must canonicalize
-                    // to the same spelling an equivalent value-position path would --
-                    // otherwise `let t: root::parser::Token = root::parser::Token{..}`
+                    // A `root`/`self`/`super`-qualified name (#659) or a plain
+                    // `as Alias`-imported name (#667) must canonicalize to the same
+                    // spelling an equivalent value-position path would -- otherwise
+                    // `let t: root::parser::Token = root::parser::Token{..}` (or,
+                    // for #667, `let t: Tok = Token{..}` given `import ... as Tok;`)
                     // resolves the annotation but leaves it unifying with a
                     // differently-spelled `InferType::Named` for what's really the
                     // same type.
                     let canonical = assoc_ctx.and_then(|ctx| {
                         ctx.registry
-                            .canonicalize_reserved_root_type_name(ctx.current_module, name)
+                            .canonicalize_type_name(ctx.current_module, name)
                     });
                     InferType::Named(canonical.unwrap_or_else(|| name.clone()), arg_tys)
                 }
