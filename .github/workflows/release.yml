@@ -76,9 +76,26 @@ jobs:
       - name: Check out docs submodule
         run: git submodule update --init docs
 
+      # docs/internal/versioning.md: "patch > 0 always means the spec is unchanged
+      # from the .0 release of that minor version." A patch's docs are therefore
+      # identical, by definition, to the minor version it patches -- cutting a new
+      # Docusaurus versioned-docs snapshot for one is pure duplication of the last
+      # minor's snapshot, not a new artifact. v0.12.1 did this: its versioned-docs
+      # tree came back byte-identical to v0.12.0's. is_minor gates the
+      # version-cutting steps below; every release still gets its docs pointer
+      # bumped and the site redeployed, a patch just doesn't also freeze a new
+      # `versioned_docs/version-X.Y.Z/` copy of what a reader already has under
+      # the prior minor's version.
       - name: Derive the release version
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$version" == *.0 ]]; then
+            echo "is_minor=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_minor=false" >> "$GITHUB_OUTPUT"
+          fi
 
       # A distinct bot identity (e.g. metel-release-bot@users.noreply.github.com)
       # was tried first and doesn't work here: Vercel's Hobby plan checks the git
@@ -156,6 +173,7 @@ jobs:
         run: npm ci
 
       - name: Cut a new docs version
+        if: steps.version.outputs.is_minor == 'true'
         working-directory: metel-website
         run: npm run docusaurus docs:version "${{ steps.version.outputs.version }}"
 
@@ -166,12 +184,21 @@ jobs:
           git add -A
           if git diff --cached --quiet; then
             echo "No content changes for v${{ steps.version.outputs.version }} -- docs submodule pointer and docs:version output already up to date"
-          else
+          elif [[ "${{ steps.version.outputs.is_minor }}" == "true" ]]; then
             git commit -q -m "release: v${{ steps.version.outputs.version }}
 
           Bumps the docs submodule pointer to metel-docs@${{ steps.sync-docs.outputs.sha }}
           and cuts a new versioned docs snapshot for this release. Automated by
           metel-core's release.yml (metel-core#614)."
+            git push origin main
+          else
+            git commit -q -m "release: v${{ steps.version.outputs.version }}
+
+          Bumps the docs submodule pointer to metel-docs@${{ steps.sync-docs.outputs.sha }}.
+          A patch release changes no language-visible behavior (see
+          docs/internal/versioning.md), so its docs are identical to the minor
+          version it patches -- no new versioned-docs snapshot is cut. Automated
+          by metel-core's release.yml (metel-core#614, metel-core#683)."
             git push origin main
           fi
 
