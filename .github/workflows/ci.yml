@@ -77,3 +77,41 @@ jobs:
 
       - name: rfc.py check
         run: python3 docs/public/rfcs/tools/rfc.py check
+
+  doc-examples:
+    name: doc examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same HTTPS-rewrite pattern as rfc-check, above, for the same reason:
+      # `docs` is a private submodule and GitHub-hosted runners have no SSH
+      # key provisioned for it.
+      - name: point submodule fetch at HTTPS + the docs-only token
+        run: git config --global url."https://x-access-token:${{ secrets.DOCS_REPO_TOKEN }}@github.com/".insteadOf "git@github.com:"
+
+      - name: check out docs submodule
+        run: git submodule update --init docs
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: build metel
+        run: cargo build --release -p metel
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      # Checks README.md plus whatever commit the docs submodule is
+      # currently pinned to -- not necessarily metel-docs-internal's latest
+      # main. metel-docs-internal has its own copy of this workflow that
+      # checks its own current main against the latest release binary, so a
+      # broken example there is caught immediately rather than waiting for
+      # this repo's submodule pointer to move.
+      - name: check doc examples
+        run: |
+          python3 tools/check_doc_examples.py --binary target/release/metel \
+            README.md \
+            docs/public/getting-started/tutorials \
+            docs/public/reference/spec

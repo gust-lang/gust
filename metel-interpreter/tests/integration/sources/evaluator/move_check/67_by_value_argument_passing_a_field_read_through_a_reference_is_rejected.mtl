@@ -1,0 +1,14 @@
+// #648: the field-read form of the argument-position gap -- `f(r.field)`, no
+// explicit `*` anywhere in sight.
+struct Name { value: String }
+struct Item { name: Name }
+
+fun takes(v: String) -> i64 {
+    v.len()
+}
+
+fun main() {
+    let item = Item { name = Name { value = "x" } };
+    let r = &item;
+    let n = takes(r.name.value);
+}

@@ -26,7 +26,7 @@ use std::collections::{HashMap, HashSet};
 use crate::ast::{
     AssignTarget, Block, Decl, Expr, ForInit, FunDecl, MatchArm, Pattern, Span, Stmt,
 };
-use crate::name_resolver::{GlobTier, ModuleScope};
+use crate::name_resolver::{resolve_name_provided_by_module, GlobTier, ModuleScope};
 use crate::symbols::SymbolId;
 
 /// The classification of a single reference site. See module docs.
@@ -161,14 +161,15 @@ impl Walker<'_, '_> {
             if !provides {
                 continue;
             }
-            if let Some(id) = self
-                .inputs
-                .symbols
-                .get(&(glob_module.clone(), name.to_string()))
-            {
+            if let Some(id) = resolve_name_provided_by_module(
+                glob_module,
+                name,
+                self.inputs.symbols,
+                self.inputs.scopes,
+            ) {
                 match tier {
-                    GlobTier::User => return Some(*id),
-                    GlobTier::Std => std_hit = std_hit.or(Some(*id)),
+                    GlobTier::User => return Some(id),
+                    GlobTier::Std => std_hit = std_hit.or(Some(id)),
                 }
             }
         }

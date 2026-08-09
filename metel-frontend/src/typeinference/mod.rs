@@ -5,7 +5,7 @@
 
 use crate::ast::{AspectMethod, AssocTypeDecl, ReceiverKind, RowBound, Span, TypeExpr, Visibility};
 use crate::error::MetelError;
-use crate::name_resolver::{GlobTier, ModuleScope};
+use crate::name_resolver::{resolve_name_provided_by_module, GlobTier, ModuleScope};
 use crate::symbols::SymbolId;
 use crate::types::Type;
 use std::collections::{HashMap, HashSet};
@@ -1636,6 +1636,91 @@ pub struct TypeDefinitionRegistry {
 }
 
 impl TypeDefinitionRegistry {
+    /// For a `root`/`self`/`super`-qualified type-annotation name, find whichever
+    /// explicit binding's *source* name matches the path's last segment, regardless
+    /// of local alias -- mirrors `path_normalizer::try_resolve_path`'s handling of
+    /// the same keywords for expression paths (#659). Returns
+    /// `(declared_short_name, Some((local_name, binding)))` if such a binding
+    /// exists, `(declared_short_name, None)` if the name isn't imported under any
+    /// alias (the declared name should then be resolved bare, as if the prefix
+    /// were stripped), or `None` if `name` isn't a `root`/`self`/`super`-qualified
+    /// path at all.
+    fn reserved_root_binding<'a>(
+        &'a self,
+        current_module: &[String],
+        name: &'a str,
+    ) -> Option<(
+        &'a str,
+        Option<(&'a str, &'a crate::name_resolver::ImportBinding)>,
+    )> {
+        let (prefix, short_name) = Self::split_qualified_type_name(name)?;
+        let first = prefix.first()?;
+        if !(first == "root" || first == "self" || first == "super") {
+            return None;
+        }
+        let scope = self.scopes.get(current_module)?;
+        let binding = scope
+            .explicit
+            .iter()
+            .find(|(_, b)| b.source_name == short_name)
+            .map(|(local, b)| (local.as_str(), b));
+        Some((short_name, binding))
+    }
+
+    /// The name a struct/enum declaration is registered under, given a `SymbolId`
+    /// known to identify it -- mirrors `visible_decl_name`'s own inner search, for
+    /// callers that already have the id rather than a spelling to resolve.
+    fn declared_type_name_for_id(&self, id: SymbolId) -> Option<String> {
+        self.symbols
+            .iter()
+            .find_map(|((_, decl_name), candidate_id)| {
+                (*candidate_id == id
+                    && (self.struct_env.contains_key(decl_name)
+                        || self.enum_env.contains_key(decl_name)))
+                .then(|| decl_name.clone())
+            })
+    }
+
+    /// Canonicalize a type-annotation name to the same spelling a constructor
+    /// expression for that type resolves to, covering two distinct spellings that
+    /// can name an aliased import:
+    ///
+    /// - A `root`/`self`/`super`-qualified path (#659) -- e.g. `root::parser::Token`
+    ///   becomes `Token`, so `let t: root::parser::Token = root::parser::Token { .. }`
+    ///   unifies instead of looking like two unrelated types.
+    /// - A plain `as Alias`-imported name used bare (#667) -- e.g. `import
+    ///   lexer::Token as Tok;` then `let t: Tok = Token { .. }` needs `Tok` to mean
+    ///   the same type `Token { .. }` constructs, not a second, unrelated `Tok`.
+    ///
+    /// Either way this resolves to the struct/enum's own *declared* name, not
+    /// whatever local alias happened to match -- a struct literal's type identity is
+    /// the declaration itself, not the value-level import alias used to reach it.
+    /// Returns `None` for anything that isn't one of these two forms -- the caller
+    /// should keep the original spelling in that case.
+    pub(crate) fn canonicalize_type_name(
+        &self,
+        current_module: &[String],
+        name: &str,
+    ) -> Option<String> {
+        if let Some((short_name, binding)) = self.reserved_root_binding(current_module, name) {
+            let id = binding
+                .map(|(_, b)| b.symbol_id)
+                .or_else(|| self.resolve_type_position_id(current_module, short_name));
+            return Some(
+                id.and_then(|id| self.declared_type_name_for_id(id))
+                    .unwrap_or_else(|| short_name.to_string()),
+            );
+        }
+        if !name.contains("::") {
+            let binding = self.scopes.get(current_module)?.explicit.get(name)?;
+            return Some(
+                self.declared_type_name_for_id(binding.symbol_id)
+                    .unwrap_or_else(|| binding.source_name.clone()),
+            );
+        }
+        None
+    }
+
     fn split_qualified_type_name(name: &str) -> Option<(Vec<String>, &str)> {
         let (module_path, short_name) = name.rsplit_once("::")?;
         Some((
@@ -1767,10 +1852,12 @@ impl TypeDefinitionRegistry {
         }
         let mut std_hit = None;
         for (tier, glob_module) in &scope.globs {
-            if let Some(id) = self.symbols.get(&(glob_module.clone(), name.to_string())) {
+            if let Some(id) =
+                resolve_name_provided_by_module(glob_module, name, &self.symbols, &self.scopes)
+            {
                 match tier {
-                    GlobTier::User => return Some(*id),
-                    GlobTier::Std => std_hit = std_hit.or(Some(*id)),
+                    GlobTier::User => return Some(id),
+                    GlobTier::Std => std_hit = std_hit.or(Some(id)),
                 }
             }
         }
@@ -1785,6 +1872,23 @@ impl TypeDefinitionRegistry {
         // module, even though no `(facade, Token)` declaration exists in `symbols`.
         let (prefix, short_name) = Self::split_qualified_type_name(name)?;
         let (first, rest) = prefix.split_first()?;
+
+        // `root`/`self`/`super` are reserved path roots, not ordinary imported module
+        // handles bound in `scope.explicit` -- mirror `path_normalizer::try_resolve_path`'s
+        // handling of the same keywords for expression paths (#659).
+        if first == "root" || first == "self" || first == "super" {
+            return self.reserved_root_binding(current_module, name).and_then(
+                |(remainder, binding)| {
+                    binding
+                        .map(|(_, b)| b.symbol_id)
+                        // Not explicitly imported under any alias -- fall back to
+                        // resolving the bare declared name directly, as if the
+                        // reserved prefix were stripped.
+                        .or_else(|| self.resolve_type_position_id(current_module, remainder))
+                },
+            );
+        }
+
         let binding = scope.explicit.get(first)?;
         if !matches!(binding.kind, crate::name_resolver::BindingKind::Module) {
             return None;
@@ -3053,6 +3157,13 @@ pub struct InferContext {
     current_assoc_projections: AssocProjectionMemo,
     /// Flat log of everything minted above, in insertion order.
     recorded_assoc_projections: AssocProjectionLog,
+    /// Memo for symbolic placeholders minted for an untyped row-bound field access
+    /// (`{ name, .. }` — no declared type) while inferring the CURRENT function/method
+    /// body. Key: (`base_tv`, field label) so two accesses to the same untyped field
+    /// agree on a type. Reset (swapped, like `current_type_param_bounds`) on entry/exit
+    /// of each function/method body. Unlike associated-type projections, nothing
+    /// downstream needs a flat log of these, so there's no matching "recorded" vec.
+    current_row_field_vars: HashMap<(TypeVar, String), TypeVar>,
     current_module_path: Vec<String>,
     /// Names that have same-tier glob conflicts deferred until use. (METEL-98)
     /// Maps name → list of source module paths that both export it.
@@ -3143,6 +3254,7 @@ impl InferContext {
             current_type_param_bounds: HashMap::new(),
             current_assoc_projections: HashMap::new(),
             recorded_assoc_projections: Vec::new(),
+            current_row_field_vars: HashMap::new(),
             current_module_path,
             deferred_glob_conflicts: HashMap::new(),
             integer_literal_vars: HashSet::new(),
@@ -3449,6 +3561,33 @@ impl InferContext {
     /// `assoc_projections` mapping.
     pub fn take_recorded_assoc_projections(&mut self) -> AssocProjectionLog {
         std::mem::take(&mut self.recorded_assoc_projections)
+    }
+
+    /// Swap in an empty row-field-var memo for a new function/method body, returning
+    /// the old state.
+    pub fn swap_row_field_vars(&mut self) -> HashMap<(TypeVar, String), TypeVar> {
+        std::mem::take(&mut self.current_row_field_vars)
+    }
+
+    /// Restore previously-saved row-field-var memo (call when leaving a function/method
+    /// body).
+    pub fn restore_row_field_vars(&mut self, memo: HashMap<(TypeVar, String), TypeVar>) {
+        self.current_row_field_vars = memo;
+    }
+
+    /// Mint a fresh `TypeVar` standing in for an untyped row-bound field's type (the
+    /// `{ name, .. }` form, which constrains the label but not the type). Reuses the
+    /// same placeholder if `field` on `base_tv` was already accessed earlier in the
+    /// current body, so repeated accesses agree on a type instead of each getting an
+    /// unrelated fresh var.
+    pub fn fresh_row_field_var(&mut self, base_tv: TypeVar, field: &str) -> TypeVar {
+        let key = (base_tv, field.to_string());
+        if let Some(&existing) = self.current_row_field_vars.get(&key) {
+            return existing;
+        }
+        let placeholder = self.var_gen.fresh();
+        self.current_row_field_vars.insert(key, placeholder);
+        placeholder
     }
 
     /// Returns the aspect method defs from the registry.

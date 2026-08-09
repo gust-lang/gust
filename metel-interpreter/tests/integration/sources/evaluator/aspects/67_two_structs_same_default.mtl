@@ -19,13 +19,13 @@ aspect Named {
 
 extend Dog: Named {
     fun name(&self) -> String {
-        return self.name;
+        return self.name.clone();
     }
 }
 
 extend Cat: Named {
     fun name(&self) -> String {
-        return self.name;
+        return self.name.clone();
     }
 }
 

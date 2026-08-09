@@ -291,6 +291,20 @@ fn normalize_expr(
             {
                 *path = local_path;
                 *symbol_id = type_id;
+            } else if let [only] = path.as_mut_slice() {
+                // A single-segment path can still be an alias (#667): `import
+                // lexer::Token as Tok;` then `Tok { .. }` needs to construct the
+                // same `Token` a bare `Token { .. }` would, not go looking for a
+                // never-declared type literally named `Tok`. Only item bindings
+                // apply -- a `Module` binding here would mean `path` should have had
+                // a second segment (`handle::Type`), a different, already-handled
+                // shape.
+                if let Some(binding) = scope.and_then(|s| s.explicit.get(only.as_str())) {
+                    if binding.kind == crate::name_resolver::BindingKind::Item {
+                        *only = binding.source_name.clone();
+                        *symbol_id = Some(binding.symbol_id);
+                    }
+                }
             }
             for (_, v) in fields {
                 normalize_expr(v, scope, module_names, symbols)?;

@@ -1,0 +1,24 @@
+// #650: `Self` as a return type previously failed to type-check on a primitive
+// `extend` target -- `self`'s parameter type correctly resolved to the real
+// primitive representation, but the `-> Self` return annotation resolved to a
+// different internal representation of the same name, so `return self;`
+// failed to unify with a confusing "cannot unify i64 with i64".
+extend i64 {
+    fun identity(&self) -> Self {
+        return self;
+    }
+}
+
+extend String {
+    fun identity(&self) -> Self {
+        return self.clone();
+    }
+}
+
+fun main() {
+    let x: i64 = 5;
+    assert(x.identity() == 5);
+
+    let s = "hi";
+    assert(s.identity() == "hi");
+}

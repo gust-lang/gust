@@ -431,6 +431,12 @@ extend String: Display {
     native(@std.core.to_string) fun to_string(&self) -> String;
 }
 
+extend String: Clone {
+    fun clone(&self) -> Self {
+        return self;
+    }
+}
+
 extend<T: Display> T[]: Display {
     fun to_string(&self) -> String {
         var out = "[";

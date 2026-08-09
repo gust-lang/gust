@@ -483,13 +483,48 @@ impl<'a> Checker<'a> {
             }
             TypedDecl::Stmt(stmt) => self.check_stmt(stmt, current_module, state),
             TypedDecl::Impl(ib) => {
+                // The typechecker itself binds `self` to the bare target type in
+                // *every* receiver form — `self`, `&self`, and `&var self` all get
+                // the identical unwrapped type internally; `&self`/`&var self` are
+                // distinguished only by a separate mutability flag, never by an
+                // actual reference type (confirmed by reading both
+                // `typechecker/inference.rs` and `typechecker/construction.rs`'s
+                // `self`-binding code — a real gap, filed as metel-core#650, far
+                // larger than this checker and not fixed here). Move-checking needs
+                // to know `self`'s *real* reference-ness to catch #648 (moving a
+                // value out of `self` inside a `&self`/`&var self` method), so it
+                // tracks a corrected type for `self` in its own `FlowState` — a
+                // local, checker-only view, not a change to what the rest of the
+                // typechecker believes.
+                let self_ty = match &ib.target_type {
+                    crate::ast::TypeExpr::Named(name, _) => Some(
+                        primitive_type_from_name(name)
+                            .unwrap_or_else(|| Type::Named(name.clone(), vec![])),
+                    ),
+                    _ => None,
+                };
                 for method in &ib.methods {
                     match &method.body {
                         FunBody::Typed(body) => {
                             let mut fn_state = FlowState::default();
                             fn_state.push_scope();
                             for param in &method.params {
-                                fn_state.bind(&param.name);
+                                let corrected_self_ty = (param.name == "self")
+                                    .then_some(())
+                                    .and(self_ty.as_ref())
+                                    .map(|base| match param.receiver {
+                                        Some(ReceiverKind::Ref) => {
+                                            Type::Reference(Box::new(base.clone()))
+                                        }
+                                        Some(ReceiverKind::RefMut) => {
+                                            Type::MutReference(Box::new(base.clone()))
+                                        }
+                                        Some(ReceiverKind::Value) | None => base.clone(),
+                                    });
+                                match corrected_self_ty {
+                                    Some(ty) => fn_state.bind_typed(&param.name, &ty),
+                                    None => fn_state.bind(&param.name),
+                                }
                             }
                             self.check_block(body, current_module, &mut fn_state);
                             fn_state.pop_scope();
@@ -1763,8 +1798,23 @@ impl<'a> Checker<'a> {
             return Some(MoveViolationKind::ArrayElementMove);
         }
 
+        // #648: a reference only ever grants access to what it points at, never
+        // ownership (RFC-0071 SS7.1) — banned the moment a projection step reads
+        // *through* one, regardless of whether the crossing is explicit (`*r`,
+        // a `Deref` projection) or implicit (auto-deref through a reference-typed
+        // field or tuple element, which carries no `Deref` projection at all).
+        // `prefix_ty` is checked *before* projecting through it, mirroring the
+        // `is_drop` check below exactly, so this fires at the first step that
+        // actually crosses a reference rather than at the place's root or its
+        // final leaf type. The leaf is already known non-`Copy` by the early
+        // return above, so no further `Copy` check is needed here — reading a
+        // `Copy` value back out through a reference is exactly what `Copy`
+        // permits (RFC-0067a SS3a).
         let mut prefix_ty = root_ty.clone();
         for projection in place.projections() {
+            if matches!(prefix_ty, Type::Reference(_) | Type::MutReference(_)) {
+                return Some(MoveViolationKind::MoveOutOfReference);
+            }
             if self.is_drop(current_module, &prefix_ty) {
                 return Some(MoveViolationKind::PartialMoveOfDropType);
             }
@@ -2408,6 +2458,32 @@ fn peel_type_references(ty: &Type) -> &Type {
     }
 }
 
+/// Mirrors `typechecker::inference::primitive_type_from_name` (`pub(super)`, not
+/// reachable from this module) — a `self` receiver's target name needs the same
+/// primitive-name resolution an ordinary parameter's type annotation would get, so
+/// `extend i64 { fun ...(&self) ... }`'s `self` is correctly typed `&i64`
+/// (`Type::I64`) rather than the wrong `Type::Named("i64", [])`, which would dodge
+/// `is_copy`'s primitive recognition and produce a false positive.
+fn primitive_type_from_name(name: &str) -> Option<Type> {
+    let ty = match name {
+        "String" => Type::Str,
+        "boolean" => Type::Boolean,
+        "Char" => Type::Char,
+        "i8" => Type::I8,
+        "i16" => Type::I16,
+        "i32" => Type::I32,
+        "i64" => Type::I64,
+        "u8" => Type::U8,
+        "u16" => Type::U16,
+        "u32" => Type::U32,
+        "u64" => Type::U64,
+        "f32" => Type::F32,
+        "f64" => Type::F64,
+        _ => return None,
+    };
+    Some(ty)
+}
+
 /// How many layers of `&`/`&var` wrap `ty` — the number of implicit derefs an
 /// auto-deref chain still has left to do to reach the non-reference type
 /// underneath. Companion to `peel_type_references`, which strips them but
@@ -2733,8 +2809,8 @@ fn violation_message(violation: &MoveViolation) -> String {
             format_span(&violation.moved_span)
         ),
         MoveViolationKind::MoveOutOfReference => format!(
-            "cannot move `{}` out of a reference: a by-value `self` method cannot be called \
-             through a reference",
+            "cannot move `{}` out of a reference: a reference only grants access to the \
+             value it points at, never ownership of it",
             format_place(&violation.use_place),
         ),
     }
@@ -4248,7 +4324,7 @@ fun main() {
 aspect Show { fun show(&self) -> String; }
 aspect Bump { fun bump(&var self); }
 struct B { v: String }
-extend B: Show { fun show(&self) -> String { return self.v; } }
+extend B: Show { fun show(&self) -> String { return self.v.clone(); } }
 struct C { v: i64 }
 extend C: Bump { fun bump(&var self) { self.v = self.v + 1; } }
 
@@ -4343,6 +4419,183 @@ fun main() {
         );
         assert_eq!(violations.len(), 1);
         assert_eq!(format_place(&violations[0].moved_place), "(*(*rr))");
+    }
+
+    // ── Moving a value out of a reference at non-receiver positions (#648) ──
+    //
+    // #602 (above) only ever intercepted a by-value method *receiver*. Every
+    // other position a value can be moved from — a `let` initializer, a
+    // by-value argument, a plain field read — funnels through the ordinary
+    // `consume_place` -> `illegal_move_kind` path instead, which never
+    // consulted whether a projection stepped through a reference. These
+    // exercise that path directly.
+
+    #[test]
+    fn move_out_of_self_field_in_a_ref_self_method_is_rejected() {
+        // The motivating repro for #648: `self` in a `&self` method is a
+        // reference like any other, but nothing checked it before this fix.
+        let violations = assert_has_violation(
+            r#"
+struct Name { value: String }
+struct Item { name: Name, count: i64 }
+extend Item {
+    fun peek(&self) -> String {
+        let v = self.name.value;
+        v
+    }
+}
+fun main() {
+    let item = Item { name = Name { value = "n" }, count = 1 };
+    let _ = item.peek();
+}
+"#,
+            "self",
+        );
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].kind, MoveViolationKind::MoveOutOfReference);
+        assert_eq!(format_place(&violations[0].moved_place), "self.name.value");
+    }
+
+    #[test]
+    fn move_out_of_a_field_read_through_a_plain_reference_parameter_is_rejected() {
+        // Same rule, no `self` involved — an ordinary `&T` parameter.
+        let violations = assert_has_violation(
+            r#"
+struct Name { value: String }
+struct Item { name: Name, count: i64 }
+fun peek(item: &Item) -> String {
+    let v = item.name.value;
+    v
+}
+fun main() {
+    let item = Item { name = Name { value = "n" }, count = 1 };
+    let _ = peek(&item);
+}
+"#,
+            "item",
+        );
+        assert_eq!(violations.len(), 1);
+        assert_eq!(format_place(&violations[0].moved_place), "item.name.value");
+    }
+
+    #[test]
+    fn general_assignment_out_of_an_explicit_deref_is_rejected() {
+        // RFC-0071 SS7.1's own named example: `let x: B = *r;`.
+        assert_has_violation(
+            r#"
+struct B { v: String }
+fun main() {
+    let b = B { v = "x" };
+    let r = &b;
+    let x: B = *r;
+}
+"#,
+            "r",
+        );
+    }
+
+    #[test]
+    fn by_value_argument_passing_out_of_an_explicit_deref_is_rejected() {
+        // RFC-0071 SS7.1's other named example: `f(*r)`.
+        assert_has_violation(
+            r#"
+struct B { v: String }
+fun takes(b: B) -> String { b.v }
+fun main() {
+    let b = B { v = "x" };
+    let r = &b;
+    let n = takes(*r);
+}
+"#,
+            "r",
+        );
+    }
+
+    #[test]
+    fn by_value_argument_passing_a_field_read_through_a_reference_is_rejected() {
+        // The field-read form of the same argument-position gap: `f(r.field)`,
+        // no explicit `*` anywhere.
+        assert_has_violation(
+            r#"
+struct Name { value: String }
+struct Item { name: Name }
+fun takes(v: String) -> i64 { v.len() }
+fun main() {
+    let item = Item { name = Name { value = "x" } };
+    let r = &item;
+    let n = takes(r.name.value);
+}
+"#,
+            "r",
+        );
+    }
+
+    #[test]
+    fn copy_field_read_through_a_reference_is_still_allowed() {
+        // The `Copy` gate must survive the new check exactly as it does for
+        // #602's receiver case: a `Copy` value can always be read back out.
+        assert_no_violations(
+            r#"
+struct Item { count: i64, name: String }
+fun peek(item: &Item) -> i64 {
+    let v = item.count;
+    v
+}
+fun main() {
+    let item = Item { count = 5, name = "n" };
+    let _ = peek(&item);
+}
+"#,
+        );
+    }
+
+    #[test]
+    fn by_value_method_through_an_interior_reference_field_is_rejected() {
+        // A different manifestation of the same gap, reached through
+        // `consume_method_receiver`'s own fallback: #602's
+        // `receiver_place_is_behind_a_reference` only inspects the
+        // *immediate* receiver's own type/place, so it misses a receiver
+        // reached via auto-deref through an *interior* reference-typed field
+        // (`outer.inner.payload`, where `inner: &Middle`). That fallback
+        // still routes through `consume_expr_with_cause` -> `illegal_move_kind`
+        // when its own check misses, so this fix closes it as a side effect —
+        // this test proves it rather than leaving it as an assumption.
+        assert_has_violation(
+            r#"
+aspect Consume { fun eat(self) -> String; }
+struct B { v: String }
+extend B: Consume { fun eat(self) -> String { return self.v; } }
+struct Middle { payload: B }
+struct Outer { inner: &Middle }
+fun main() {
+    let b = B { v = "owned" };
+    let middle = Middle { payload = b };
+    let outer = Outer { inner = &middle };
+    let taken = outer.inner.payload.eat();
+}
+"#,
+            "outer",
+        );
+    }
+
+    #[test]
+    fn ref_self_method_that_only_reads_is_still_unaffected() {
+        // Reading a Copy field, or calling a &self/&var self method, through
+        // self must remain completely unaffected by the corrected self type.
+        assert_no_violations(
+            r#"
+struct Item { count: i64, name: String }
+extend Item {
+    fun show(&self) -> String {
+        return "${self.count}: ${self.name}";
+    }
+}
+fun main() {
+    let item = Item { count = 1, name = "n" };
+    println(item.show());
+}
+"#,
+        );
     }
 }
 

@@ -1,0 +1,10 @@
+// TYPECHECK_ERROR[T0024]
+// #649: explicit ascription (`expr: T`) goes through the identical read-copy
+// mechanism as a `let` binding's declared type -- same `Copy` requirement.
+struct NotCopy { v: String }
+
+fun main() {
+    let owned = NotCopy { v = "x" };
+    let r: &NotCopy = &owned;
+    let copy = r: NotCopy;
+}

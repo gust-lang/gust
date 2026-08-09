@@ -1,0 +1,11 @@
+// TYPECHECK_ERROR[T0024]
+// #649: mirrors `03_read_copy_at_loop_break.mtl`, but for a non-`Copy` type.
+struct NotCopy { v: String }
+
+fun main() {
+    let owned = NotCopy { v = "x" };
+    let r: &NotCopy = &owned;
+    let result: NotCopy = loop {
+        break (r: NotCopy);
+    };
+}

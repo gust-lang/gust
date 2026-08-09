@@ -1574,12 +1574,14 @@ fn infer_fun_decl(
     let saved_type_params = ctx.swap_type_params(generic_map);
     let saved_tp_bounds = ctx.swap_type_param_bounds(type_var_bounds.clone());
     let (saved_assoc_memo, saved_assoc_log) = ctx.swap_assoc_projections();
+    let saved_row_field_vars = ctx.swap_row_field_vars();
     let saved_ret = ctx.push_return_type(ret_ty.clone());
     let body_ty = infer_block(&fun.body, ctx, fun_generalizations)?;
 
     constrain_with_read_copy(ctx, body_ty, ret_ty.clone(), fun.body.span.clone());
 
     ctx.pop_return_type(saved_ret);
+    ctx.restore_row_field_vars(saved_row_field_vars);
     ctx.swap_type_param_bounds(saved_tp_bounds);
     ctx.swap_type_params(saved_type_params);
     // Capture the projection log recorded during this function's body BEFORE restoring.
@@ -2000,10 +2002,12 @@ fn infer_impl_method(
         let saved_type_params = ctx.swap_type_params(generic_map);
         let saved_tp_bounds = ctx.swap_type_param_bounds(struct_bounds);
         let (saved_assoc_memo, saved_assoc_log) = ctx.swap_assoc_projections();
+        let saved_row_field_vars = ctx.swap_row_field_vars();
         let saved_ret = ctx.push_return_type(ret_ty.clone());
         let body_ty = infer_block(&method.body, ctx, fun_generalizations)?;
         constrain_with_read_copy(ctx, body_ty, ret_ty.clone(), method.body.span.clone());
         ctx.pop_return_type(saved_ret);
+        ctx.restore_row_field_vars(saved_row_field_vars);
         ctx.swap_type_param_bounds(saved_tp_bounds);
         ctx.swap_type_params(saved_type_params);
         let body_assoc_log_inner = ctx.take_recorded_assoc_projections();
@@ -2928,6 +2932,17 @@ fn infer_expr(
                         )
                     });
             }
+            // Abstract, row-bounded generic type parameter (`<record T: { x: f64, .. }>`):
+            // resolve `field` against the row bound the same way MethodCall's slow path
+            // (below) resolves a method against an aspect bound, instead of falling
+            // through to the nominal-struct path, which can't name a struct for a bare
+            // TypeVar and would otherwise mislead with "add a type annotation" — no
+            // annotation fixes a missing row-bound field.
+            if let InferType::Var(tv) = &peeled {
+                if let Some(result) = resolve_row_bound_field(ctx, *tv, field, span) {
+                    return result;
+                }
+            }
             let struct_name = named_type_name(&obj_ty).ok_or_else(|| {
                 MetelError::type_error(
                     TypeErrorCode::T0002,
@@ -3778,6 +3793,60 @@ fn peel_all_references(ty: &InferType) -> InferType {
     }
 }
 
+/// Resolve `field` against `tv`'s row bound(s), for an abstract, row-bounded generic
+/// type parameter (`<record T: { x: f64, .. }>`) — the read and write sides of field
+/// access share this exact lookup, mirroring how `MethodCall`'s slow path resolves a
+/// method against an aspect bound instead of a concrete receiver type.
+///
+/// Returns `None` when `tv` has no row bound at all, so the caller falls through to
+/// the nominal-struct path unchanged. Returns `Some(Ok(_))` when the field is listed
+/// (typed or untyped), and `Some(Err(_))` when a row bound exists but doesn't list
+/// `field` — a dedicated error instead of the generic, misleading "add a type
+/// annotation" T0002 the nominal-struct fallback would otherwise produce, since no
+/// annotation fixes a missing row-bound field.
+fn resolve_row_bound_field(
+    ctx: &mut InferContext,
+    tv: TypeVar,
+    field: &str,
+    span: &Span,
+) -> Option<Result<InferType, MetelError>> {
+    let bounds = ctx.bounds_for_type_var(tv)?;
+    for bound in &bounds {
+        if let GenericBound::Row(row) = bound {
+            if let Some(row_field) = row.fields.iter().find(|f| f.label == *field) {
+                return Some(Ok(match &row_field.ty {
+                    Some(type_expr) => {
+                        type_expr_to_infer_with_generics(type_expr, ctx.type_params())
+                    }
+                    None => InferType::Var(ctx.fresh_row_field_var(tv, field)),
+                }));
+            }
+        }
+    }
+    if bounds.iter().any(|b| matches!(b, GenericBound::Row(_))) {
+        let is_open = bounds
+            .iter()
+            .any(|b| matches!(b, GenericBound::Row(row) if row.open));
+        let mut msg = format!(
+            "no field `{field}` on type parameter (bounds: {})",
+            bounds
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(" + ")
+        );
+        if is_open {
+            msg.push_str(
+                "\n       hint: an open row bound only makes its explicitly listed fields \
+                 accessible; a caller's extra fields aren't reachable from inside the \
+                 function yet",
+            );
+        }
+        return Some(Err(MetelError::type_error(TypeErrorCode::T0003, msg, span)));
+    }
+    None
+}
+
 /// Whether a `&mut self` method call through this receiver type has write access
 /// *somewhere* along the chain — true the moment a `MutReference` layer is found,
 /// regardless of how many shared `Reference` layers wrap it from the outside (a
@@ -4450,6 +4519,14 @@ fn infer_field_assign_type(
                     target_span,
                 )
             });
+    }
+    // Mirror of Expr::FieldAccess's row-bound branch above, so `p.x = value` works
+    // symmetrically wherever `p.x` does. `fresh_row_field_var` is memoized by
+    // (tv, field), so an untyped field's read and write sides agree on a type.
+    if let InferType::Var(tv) = &peeled {
+        if let Some(result) = resolve_row_bound_field(ctx, *tv, field, target_span) {
+            return result;
+        }
     }
     let struct_name = named_type_name(&obj_ty).ok_or_else(|| {
         MetelError::type_error(

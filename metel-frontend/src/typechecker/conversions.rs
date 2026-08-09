@@ -105,8 +105,25 @@ fn type_expr_to_infer_in_context(
                     }
                 }
                 if name == "Self" {
-                    if let Some(self_ty_name) = self_ty_name {
-                        return InferType::Named(self_ty_name.to_string(), vec![]);
+                    if let Some(target) = self_ty_name {
+                        // #650: recurse as if the source had spelled the resolved
+                        // target name directly, so a primitive target (`i64`,
+                        // `String`, ...) falls through this same function's own
+                        // dispatch table below into its real `InferType::Concrete`
+                        // representation, instead of being wrapped in `Named(..)`
+                        // here -- which the unifier has no bridge for (see
+                        // `primitive_type_from_name`'s doc comment in
+                        // `inference.rs`) and produced a confusing "cannot unify
+                        // i64 with i64" the moment a primitive `extend` target's
+                        // method returned `Self`. Safe from infinite recursion:
+                        // `self_ty_name` is always the real target name, never the
+                        // literal string "Self".
+                        return type_expr_to_infer_in_context(
+                            &TypeExpr::Named(target.to_string(), vec![]),
+                            generics,
+                            self_ty_name,
+                            assoc_ctx,
+                        );
                     }
                 }
             }
@@ -130,7 +147,21 @@ fn type_expr_to_infer_in_context(
                 ("u64", 0) => InferType::Concrete(Type::U64),
                 ("f32", 0) => InferType::Concrete(Type::F32),
                 ("Array", 1) => InferType::Array(Box::new(arg_tys.into_iter().next().unwrap())),
-                _ => InferType::Named(name.clone(), arg_tys),
+                _ => {
+                    // A `root`/`self`/`super`-qualified name (#659) or a plain
+                    // `as Alias`-imported name (#667) must canonicalize to the same
+                    // spelling an equivalent value-position path would -- otherwise
+                    // `let t: root::parser::Token = root::parser::Token{..}` (or,
+                    // for #667, `let t: Tok = Token{..}` given `import ... as Tok;`)
+                    // resolves the annotation but leaves it unifying with a
+                    // differently-spelled `InferType::Named` for what's really the
+                    // same type.
+                    let canonical = assoc_ctx.and_then(|ctx| {
+                        ctx.registry
+                            .canonicalize_type_name(ctx.current_module, name)
+                    });
+                    InferType::Named(canonical.unwrap_or_else(|| name.clone()), arg_tys)
+                }
             }
         }
         TypeExpr::Unit => InferType::unit(),

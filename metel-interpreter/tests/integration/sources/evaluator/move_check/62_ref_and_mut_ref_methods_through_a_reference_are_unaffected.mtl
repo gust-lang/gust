@@ -12,7 +12,7 @@ struct B {
 
 extend B: Show {
     fun show(&self) -> String {
-        return self.v;
+        return self.v.clone();
     }
 }
 

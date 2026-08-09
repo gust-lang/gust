@@ -38,7 +38,7 @@ extend Fighter {
         let dmg     = if (reduced > 1) { reduced } else { 1 };
         let new_hp  = if (self.hp - dmg > 0) { self.hp - dmg } else { 0 };
         Fighter {
-            name =    self.name,
+            name =    self.name.clone(),
             hp =      new_hp,
             max_hp =  self.max_hp,
             attack =  self.attack,
@@ -54,7 +54,7 @@ extend Fighter {
             self.max_hp
         };
         Fighter {
-            name =    self.name,
+            name =    self.name.clone(),
             hp =      new_hp,
             max_hp =  self.max_hp,
             attack =  self.attack,
@@ -65,7 +65,7 @@ extend Fighter {
     // Raises defense by `bonus`.
     fun add_defense(&self, bonus: i64) -> Fighter {
         Fighter {
-            name =    self.name,
+            name =    self.name.clone(),
             hp =      self.hp,
             max_hp =  self.max_hp,
             attack =  self.attack,
@@ -92,7 +92,7 @@ fun resolve(action: Action, actor: &Fighter, target: &Fighter) -> (Fighter, Figh
             let damaged = target.take_damage(actor.attack);
             (
                 Fighter {
-                    name = actor.name,
+                    name = actor.name.clone(),
                     hp = actor.hp,
                     max_hp = actor.max_hp,
                     attack = actor.attack,
@@ -106,7 +106,7 @@ fun resolve(action: Action, actor: &Fighter, target: &Fighter) -> (Fighter, Figh
             (
                 buffed,
                 Fighter {
-                    name = target.name,
+                    name = target.name.clone(),
                     hp = target.hp,
                     max_hp = target.max_hp,
                     attack = target.attack,
@@ -119,7 +119,7 @@ fun resolve(action: Action, actor: &Fighter, target: &Fighter) -> (Fighter, Figh
             (
                 healed,
                 Fighter {
-                    name = target.name,
+                    name = target.name.clone(),
                     hp = target.hp,
                     max_hp = target.max_hp,
                     attack = target.attack,
