@@ -1636,6 +1636,77 @@ pub struct TypeDefinitionRegistry {
 }
 
 impl TypeDefinitionRegistry {
+    /// For a `root`/`self`/`super`-qualified type-annotation name, find whichever
+    /// explicit binding's *source* name matches the path's last segment, regardless
+    /// of local alias -- mirrors `path_normalizer::try_resolve_path`'s handling of
+    /// the same keywords for expression paths (#659). Returns
+    /// `(declared_short_name, Some((local_name, binding)))` if such a binding
+    /// exists, `(declared_short_name, None)` if the name isn't imported under any
+    /// alias (the declared name should then be resolved bare, as if the prefix
+    /// were stripped), or `None` if `name` isn't a `root`/`self`/`super`-qualified
+    /// path at all.
+    fn reserved_root_binding<'a>(
+        &'a self,
+        current_module: &[String],
+        name: &'a str,
+    ) -> Option<(
+        &'a str,
+        Option<(&'a str, &'a crate::name_resolver::ImportBinding)>,
+    )> {
+        let (prefix, short_name) = Self::split_qualified_type_name(name)?;
+        let first = prefix.first()?;
+        if !(first == "root" || first == "self" || first == "super") {
+            return None;
+        }
+        let scope = self.scopes.get(current_module)?;
+        let binding = scope
+            .explicit
+            .iter()
+            .find(|(_, b)| b.source_name == short_name)
+            .map(|(local, b)| (local.as_str(), b));
+        Some((short_name, binding))
+    }
+
+    /// The name a struct/enum declaration is registered under, given a `SymbolId`
+    /// known to identify it -- mirrors `visible_decl_name`'s own inner search, for
+    /// callers that already have the id rather than a spelling to resolve.
+    fn declared_type_name_for_id(&self, id: SymbolId) -> Option<String> {
+        self.symbols
+            .iter()
+            .find_map(|((_, decl_name), candidate_id)| {
+                (*candidate_id == id
+                    && (self.struct_env.contains_key(decl_name)
+                        || self.enum_env.contains_key(decl_name)))
+                .then(|| decl_name.clone())
+            })
+    }
+
+    /// Canonicalize a `root`/`self`/`super`-qualified type-annotation name to the
+    /// same spelling a constructor expression for that type resolves to (#659) --
+    /// e.g. `root::parser::Token` becomes `Token`, so `let t: root::parser::Token =
+    /// root::parser::Token { .. }` unifies instead of looking like two unrelated
+    /// types. Deliberately the struct/enum's own *declared* name, not whatever local
+    /// alias happened to match -- a struct literal's type identity is the
+    /// declaration itself, not the value-level import alias used to reach it, so
+    /// `import ... Token as Tok;` must still canonicalize a `root::..::Token`
+    /// annotation to `Token`, matching what `Token { .. }` construction resolves to,
+    /// not to `Tok`. Returns `None` for anything that isn't such a qualified name --
+    /// the caller should keep the original spelling in that case.
+    pub(crate) fn canonicalize_reserved_root_type_name(
+        &self,
+        current_module: &[String],
+        name: &str,
+    ) -> Option<String> {
+        let (short_name, binding) = self.reserved_root_binding(current_module, name)?;
+        let id = binding
+            .map(|(_, b)| b.symbol_id)
+            .or_else(|| self.resolve_type_position_id(current_module, short_name));
+        Some(
+            id.and_then(|id| self.declared_type_name_for_id(id))
+                .unwrap_or_else(|| short_name.to_string()),
+        )
+    }
+
     fn split_qualified_type_name(name: &str) -> Option<(Vec<String>, &str)> {
         let (module_path, short_name) = name.rsplit_once("::")?;
         Some((
@@ -1785,6 +1856,23 @@ impl TypeDefinitionRegistry {
         // module, even though no `(facade, Token)` declaration exists in `symbols`.
         let (prefix, short_name) = Self::split_qualified_type_name(name)?;
         let (first, rest) = prefix.split_first()?;
+
+        // `root`/`self`/`super` are reserved path roots, not ordinary imported module
+        // handles bound in `scope.explicit` -- mirror `path_normalizer::try_resolve_path`'s
+        // handling of the same keywords for expression paths (#659).
+        if first == "root" || first == "self" || first == "super" {
+            return self.reserved_root_binding(current_module, name).and_then(
+                |(remainder, binding)| {
+                    binding
+                        .map(|(_, b)| b.symbol_id)
+                        // Not explicitly imported under any alias -- fall back to
+                        // resolving the bare declared name directly, as if the
+                        // reserved prefix were stripped.
+                        .or_else(|| self.resolve_type_position_id(current_module, remainder))
+                },
+            );
+        }
+
         let binding = scope.explicit.get(first)?;
         if !matches!(binding.kind, crate::name_resolver::BindingKind::Module) {
             return None;
