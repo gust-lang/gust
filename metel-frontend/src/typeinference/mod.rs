@@ -5,7 +5,7 @@
 
 use crate::ast::{AspectMethod, AssocTypeDecl, ReceiverKind, RowBound, Span, TypeExpr, Visibility};
 use crate::error::MetelError;
-use crate::name_resolver::{GlobTier, ModuleScope};
+use crate::name_resolver::{resolve_name_provided_by_module, GlobTier, ModuleScope};
 use crate::symbols::SymbolId;
 use crate::types::Type;
 use std::collections::{HashMap, HashSet};
@@ -1838,10 +1838,12 @@ impl TypeDefinitionRegistry {
         }
         let mut std_hit = None;
         for (tier, glob_module) in &scope.globs {
-            if let Some(id) = self.symbols.get(&(glob_module.clone(), name.to_string())) {
+            if let Some(id) =
+                resolve_name_provided_by_module(glob_module, name, &self.symbols, &self.scopes)
+            {
                 match tier {
-                    GlobTier::User => return Some(*id),
-                    GlobTier::Std => std_hit = std_hit.or(Some(*id)),
+                    GlobTier::User => return Some(id),
+                    GlobTier::Std => std_hit = std_hit.or(Some(id)),
                 }
             }
         }

@@ -1,0 +1,7 @@
+import facade::*;
+
+fun main() {
+    assert(get_val() == 42);
+    let t: Token = Token { value = 7 };
+    assert(t.value == 7);
+}
