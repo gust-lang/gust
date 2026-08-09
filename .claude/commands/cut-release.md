@@ -93,11 +93,16 @@ cargo clippy --release --lib -- -W clippy::pedantic
 
 Confirm by reading the `test result:` lines and a 0-warning clippy tail.
 
-**9. README accuracy** — every ` ```metel ` code block in `README.md` still compiles
-and runs against the release binary; described capabilities match what's actually
-shipping, not a stale or aspirational version of it. `README.md` drifted for 12
-releases (every example uncompilable, the feature list two ownership models out of
-date) before anyone noticed, because nothing in this gate ever looked at it.
+**9. Doc examples green** — `tools/check_doc_examples.py` reports clean:
+
+```bash
+cargo build --release -p metel
+python3 tools/check_doc_examples.py --binary target/release/metel \
+    README.md docs/public/getting-started/tutorials docs/public/reference/spec
+```
+
+Confirm by reading the CI job `doc-examples`'s result on the release commit rather than
+re-running it locally, unless the submodule pointer just moved and CI hasn't caught up.
 
 ## Step 3 — Fix findings, then re-run
 
@@ -144,7 +149,7 @@ Lift the freeze on `develop` once both are confirmed green.
 ## $ARGUMENTS — released
 
 **Range:** <prev-tag>..$ARGUMENTS (<N> commits)
-**Gate:** all 8 items passed.
+**Gate:** all 9 items passed.
 
 ### Shipped
 - #N: <title>
