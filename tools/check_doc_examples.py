@@ -68,6 +68,12 @@ identical:
     ...
     ```
 
+**A `reason=` string must never itself contain a literal `/*` or `*/`** — a comment
+of *either* form above still ends up lowered to a JS-style comment somewhere in
+Docusaurus's MDX compile, and a reason describing an elided body as "(`/* ... */`)"
+closes and reopens that comment mid-string, breaking the build the same way (found
+the hard way, same release). Describe the syntax in prose instead of quoting it.
+
 A skipped block is not a verified block; treat silence on a fragment as "not
 checked," not "confirmed correct."
 
