@@ -1874,37 +1874,50 @@ fn build_and_set_nested_fun(
     Ok(())
 }
 
-/// Give every `fun` declared directly in `decls` a placeholder binding, then a
-/// real (if provisional) closure, before any other statement in the block
-/// runs — mirroring `run_passes`'s top-level Pass 1a/1b, so siblings get
-/// mutual visibility regardless of textual order, including being callable
-/// from a statement that precedes their own declaration, exactly like the
-/// spec's own hoisting example (metel-core#656). The type checker's own
-/// hoisting pass (`hoist_fun_decls`) already accepts such programs; this
-/// closes the runtime gap where a nested block only built a `fun`'s closure
-/// once the ordinary sequential loop below reached its declaration statement.
+/// Give every `fun` declared directly in `decls` a placeholder binding, so a
+/// forward reference resolves to *something* rather than "undefined
+/// variable" — mirroring `run_passes`'s top-level Pass 1a. Then, only when
+/// it's safe to, build each one's real closure immediately, before any other
+/// statement in the block runs, so siblings get full mutual visibility
+/// regardless of textual order, including being callable from a statement
+/// that precedes their own declaration — exactly like the spec's own
+/// hoisting example (metel-core#656). The type checker's own hoisting pass
+/// (`hoist_fun_decls`) already accepts such programs; this closes the
+/// runtime gap where a nested block only built a `fun`'s closure once the
+/// ordinary sequential loop below reached its declaration statement.
 ///
-/// This first build happens before any `let`/`var` earlier in the block has
-/// run, so it can't yet capture them — deliberately provisional. Once the
-/// sequential loop (in `eval_decl`) actually reaches a given `fun`'s own
-/// declaration statement, it calls `build_and_set_nested_fun` again, this
-/// time correctly capturing whatever precedes it, so a call arriving after
-/// that point — the overwhelmingly common case — sees the fully
-/// lexically-correct closure. A call arriving before it uses this
-/// pre-pass's closure: it can call any sibling fun (all of them are hoisted
-/// together), but referencing a `let` that hasn't executed yet at that point
-/// in the program fails with "undefined variable" — which is what calling a
-/// function too early ought to mean, rather than the function itself not
-/// existing.
+/// "Safe to" means: `decls` contains no `let`/`var` at all. Building eagerly
+/// captures the block's environment as it stands *before anything in the
+/// block has run* — if a `let`/`var` sits between an early call and the
+/// callee's own declaration line, that eager closure would miss it even
+/// though it had, by the time of the call, already executed. That's not a
+/// merely-confusing error, it's a wrong answer: the same variable, already
+/// initialized, is invisible depending on an unrelated detail (whether the
+/// loop has reached the *fun's* declaration yet, not the *let's*). Rather
+/// than a free-variable analysis to scope eager-building to exactly the
+/// funs that don't touch such a `let` (finer-grained, but real new analysis
+/// code with its own room for under-approximation bugs), this all-or-nothing
+/// check per block trades a little precision for zero risk of a stale
+/// snapshot: a block mixing `fun`s with `let`/`var` falls back to the
+/// pre-#656-fix behavior for every fun in it (not callable before its own
+/// declaration line — same "undefined `<the fun>`" as always), while a
+/// block of `fun`s with no `let`/`var` among them — `is_even`/`is_odd`-style
+/// mutual helpers, the case #656 itself reports — gets full hoisting with no
+/// caveat.
 fn hoist_nested_funs(decls: &[TypedDecl], env: &mut Environment) -> Result<(), MetelError> {
     for decl in decls {
         if let TypedDecl::Fun(f) = decl {
             env.define(&f.name, Value::Unit);
         }
     }
-    for decl in decls {
-        if let TypedDecl::Fun(f) = decl {
-            build_and_set_nested_fun(f, env)?;
+    let safe_to_build_eagerly = !decls
+        .iter()
+        .any(|d| matches!(d, TypedDecl::Let(_) | TypedDecl::Mut(_)));
+    if safe_to_build_eagerly {
+        for decl in decls {
+            if let TypedDecl::Fun(f) = decl {
+                build_and_set_nested_fun(f, env)?;
+            }
         }
     }
     Ok(())
