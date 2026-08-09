@@ -327,9 +327,20 @@ int_lit     = @{ ASCII_DIGIT+ ~ ("_" ~ ASCII_DIGIT+)* }
 float_lit   = @{ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
 decimal_int = @{ ASCII_DIGIT+ }
 
-string_lit  = @{ "\"" ~ string_char* ~ "\"" }
-string_char = _{ "\\" ~ escape_seq | (!("\"" | "\\") ~ ANY) }
-escape_seq  = _{ "n" | "t" | "r" | "\\" | "\"" | "$" }
+// `${…}` may itself contain a nested string literal with its own unescaped quotes
+// (`"${if (c) { "yes" } else { "no" }}"`, an if/match arm producing a string) --
+// `interpolation` recurses through balanced `{}` and lets `nested_string` swallow
+// such a quoted span whole, so `string_char`'s own bare-quote-terminates rule never
+// sees it as the end of the outer literal (#661). `nested_string` does not itself
+// recurse into `interpolation` -- a string literal nested inside an interpolated
+// expression that itself contains another `${…}` is not handled, matching the scope
+// of the reported bug; deeper nesting can extend this rule if it's ever needed.
+string_lit    = @{ "\"" ~ string_char* ~ "\"" }
+string_char   = _{ interpolation | "\\" ~ escape_seq | (!("\"" | "\\") ~ ANY) }
+interpolation = _{ "${" ~ interp_char* ~ "}" }
+interp_char   = _{ nested_string | ("{" ~ interp_char* ~ "}") | (!("{" | "}" | "\"") ~ ANY) }
+nested_string = _{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+escape_seq    = _{ "n" | "t" | "r" | "\\" | "\"" | "$" }
 
 char_lit      = @{ "'" ~ char_char ~ "'" }
 char_char     = _{ "\\" ~ char_escape_seq | (!("'" | "\\") ~ ANY) }
