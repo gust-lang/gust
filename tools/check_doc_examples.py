@@ -13,9 +13,15 @@ Four verification strategies are tried, in this order, per block:
    segment contains `fun main`.
 2. **A complete program** (contains `fun main`) — run directly.
 3. **A fragment with no `main` at all** (a bare signature, a struct/aspect
-   declaration with no runnable entry point) — run anyway; if it fails with *exactly*
-   `[R0001]` ("no main function defined"), that means it parsed and typechecked
-   completely, so it counts as verified even though nothing actually executed.
+   declaration with no runnable entry point) — first try synthesizing a `fun main`
+   that calls every top-level function whose parameters are all recognized
+   primitives (or none) with placeholder arguments, so the fragment is actually
+   *executed*, not just typechecked. If nothing in the fragment is callable this
+   unambiguously (a generic function, a parameter of some other type, or no free
+   function at all — just a struct/enum/aspect declaration), or the synthesized
+   call doesn't run cleanly, fall back to running the fragment as-is: if it fails
+   with *exactly* `[R0001]` ("no main function defined"), that means it parsed and
+   typechecked completely, so it counts as verified even though nothing executed.
 4. **A bare expression** (a lexical-form literal like `1_000_000` or `'\\n'`, shown
    without a surrounding statement, often several to a block, one per line) — if 1-3
    don't apply or fail, try each non-blank line as the initializer of a throwaway
@@ -32,7 +38,13 @@ across illustrative blocks that each redeclare the same example type. An elided 
 with or without a `main` wrapped around it. Two *separate* fences that together form
 one multi-file example (as opposed to one fence with multiple `// path.mtl` markers)
 aren't detected — that would need guessing that two adjacent fences are a matching
-pair, which is fragile for the rare case it actually happens.
+pair, which is fragile for the rare case it actually happens. A no-`main` fragment
+whose only free functions are generic, take a non-primitive parameter (a struct, an
+array, a function type), are declared `-> !` (a function that promises never to
+return can't make a synthesized call "succeed" by definition), or don't exist at all
+(a struct/enum/aspect declaration with no accompanying function) can't be exercised
+by strategy 3's synthesized `main` either — it still falls back to the
+parses-and-typechecks-only R0001 check.
 
 Both of the above are marked, in the doc source, with a comment on the line directly
 above the fence, so a human reading the doc sees why a block is exempt at its point of
@@ -118,8 +130,32 @@ MTL_MARKER_RE = re.compile(
 )
 FILE_MARKER_RE = re.compile(r"^//\s*(\S+\.mtl)\s*$", re.MULTILINE)
 R0001_RE = re.compile(r"\[R0001\]")
+# A top-level `fun` declaration -- no leading whitespace, so an indented method inside
+# an `extend` block never matches. `params` deliberately excludes `(` and `<` so a
+# function-type or generic-type parameter falls through to synthesize_call's own
+# rejection rather than being mis-split by this simple, non-nesting-aware group. `ret`
+# captures an optional `-> Type` so synthesize_call can reject `-> !` (see below).
+FUN_SIG_RE = re.compile(
+    r"^(?:public\s+)?fun\s+(?P<name>\w+)\s*(?P<generics><[^>]*>)?\s*\((?P<params>[^()]*)\)"
+    r"\s*(?:->\s*(?P<ret>[^{;]+))?",
+    re.MULTILINE,
+)
 
 UNVERIFIABLE = "unverifiable fragment"
+
+# Primitive parameter types unambiguous enough to fill with a fixed placeholder value.
+# Deliberately narrow (RFC issue #686): a struct, an array, a function type, or a
+# generic type parameter has no single value that's an obviously-safe guess, so a
+# function using any of those is left unsynthesized rather than risking a
+# placeholder that trips an unrelated panic and misreports a correct example as broken.
+PRIMITIVE_PLACEHOLDERS = {
+    "i8": "1", "i16": "1", "i32": "1", "i64": "1",
+    "u8": "1", "u16": "1", "u32": "1", "u64": "1",
+    "f32": "1.0", "f64": "1.0",
+    "boolean": "true",
+    "String": '"example"',
+    "Char": "'a'",
+}
 
 
 def find_doc_files(paths):
@@ -306,6 +342,62 @@ def run_wrapped_expression(binary, code):
     return True, "\n".join(outputs)
 
 
+def synthesize_call(name, generics, params, ret):
+    """Return a placeholder-argument call expression for one matched top-level `fun`
+    signature, or None if it can't be synthesized unambiguously.
+
+    Bails (returns None) on a generic function (no principled choice of `T`), a
+    parameter list this simple, non-nesting-aware regex can't have split cleanly
+    (a function-type or generic-type parameter contains its own `(` or `<`), an
+    array-typed parameter (`i64[]` isn't in PRIMITIVE_PLACEHOLDERS), a parameter
+    with no type annotation at all (e.g. `self` on a method that slipped through --
+    shouldn't happen given FUN_SIG_RE's no-leading-whitespace anchor, but this is
+    parsing arbitrary doc prose, not trusted input, so fail closed), or a function
+    declared `-> !` (the never type) -- a function that promises to never return is,
+    by definition, never going to make a synthesized call "succeed"; that's not a
+    bug the call could be catching, it's the function working as documented.
+    """
+    if generics:
+        return None
+    if ret is not None and ret.strip() == "!":
+        return None
+    params = params.strip()
+    if not params:
+        return f"{name}()"
+    if "(" in params or "<" in params:
+        return None
+    args = []
+    for raw_param in params.split(","):
+        raw_param = raw_param.strip()
+        if not raw_param:
+            continue
+        if ":" not in raw_param:
+            return None
+        _, _, type_part = raw_param.partition(":")
+        placeholder = PRIMITIVE_PLACEHOLDERS.get(type_part.strip())
+        if placeholder is None:
+            return None
+        args.append(placeholder)
+    return f"{name}({', '.join(args)})"
+
+
+def synthesize_main(code):
+    """Build a `fun main() { ... }` that calls every top-level function in `code`
+    that synthesize_call can fill unambiguously, so a no-main fragment is actually
+    *executed* instead of merely typechecked. Returns None if nothing in the
+    fragment is callable this way -- a struct/enum/aspect-only fragment, or one
+    where every free function is generic or takes a non-primitive parameter.
+    """
+    calls = []
+    for m in FUN_SIG_RE.finditer(code):
+        call = synthesize_call(m.group("name"), m.group("generics"), m.group("params"), m.group("ret"))
+        if call is not None:
+            calls.append(f"    {call};")
+    if not calls:
+        return None
+    return "fun main() {\n" + "\n".join(calls) + "\n}\n"
+
+
 def classify_block(binary, code):
     """Try every applicable verification strategy for one block.
 
@@ -321,6 +413,19 @@ def classify_block(binary, code):
     if MAIN_RE.search(code):
         ok, output = run_block(binary, code)
         return ok, "full program", output
+
+    synthesized = synthesize_main(code)
+    if synthesized is not None:
+        synth_ok, synth_output = run_block(binary, code + "\n" + synthesized)
+        # A real main is now present, so this can't fail with R0001 -- any failure
+        # here is the fragment's own code breaking under actual execution, which is
+        # exactly what strategy 3 previously had no way to notice. Report it as a
+        # real failure rather than quietly falling back to the weaker check below:
+        # a wrong-precondition placeholder is a false positive this tool doesn't
+        # yet have a way to silence per-parameter, but it's the same shape of
+        # problem the existing `skip`/`expect-fail` markers already exist to
+        # handle -- annotate the doc block, don't weaken the check.
+        return synth_ok, "fragment, synthesized main", synth_output
 
     ok, output = run_block(binary, code)
     if ok or R0001_RE.search(output):
