@@ -77,12 +77,24 @@ the hard way, same release). Describe the syntax in prose instead of quoting it.
 A skipped block is not a verified block; treat silence on a fragment as "not
 checked," not "confirmed correct."
 
+**A standalone `.mtl` file counts as one block, the whole file** — for Metel code
+that lives outside any doc at all, e.g. metel-website's landing-page showcase
+snippets (`src/showcases/*.mtl`, imported as raw text into a React component
+instead of living as inline template-literal strings). That JS-string form was
+invisible to this script entirely; three of six landing-page snippets were broken
+and nobody noticed until they were checked by hand. The `skip`/`expect-fail`
+marker goes on the file's own first line instead, as a Metel `//` comment (the
+rest of the file is still exactly what gets verified):
+
+    // doc-example: skip reason="depends on a helper not defined in this file"
+    fun uses_undefined_helper() { ... }
+
 Usage:
     python3 check_doc_examples.py --binary path/to/metel FILE_OR_DIR [FILE_OR_DIR ...]
 
-Each positional argument is a .md/.mdx file, or a directory searched recursively for
-.md/.mdx files. Exits non-zero if any block fails (including an expect-fail block
-that unexpectedly verifies as working).
+Each positional argument is a .md/.mdx/.mtl file, or a directory searched
+recursively for .md/.mdx/.mtl files. Exits non-zero if any block fails (including
+an expect-fail block that unexpectedly verifies as working).
 """
 
 import argparse
@@ -99,6 +111,11 @@ MARKER_RE = re.compile(
     r'^(?:<!--\s*doc-example:\s*(?P<kind1>skip|expect-fail)\s*(?:reason="(?P<reason1>[^"]*)")?\s*-->'
     r'|\{/\*\s*doc-example:\s*(?P<kind2>skip|expect-fail)\s*(?:reason="(?P<reason2>[^"]*)")?\s*\*/\})$'
 )
+# Same marker, spelled as a Metel line comment -- for a standalone .mtl file, which
+# has no surrounding Markdown/MDX comment syntax to borrow.
+MTL_MARKER_RE = re.compile(
+    r'^//\s*doc-example:\s*(?P<kind>skip|expect-fail)\s*(?:reason="(?P<reason>[^"]*)")?\s*$'
+)
 FILE_MARKER_RE = re.compile(r"^//\s*(\S+\.mtl)\s*$", re.MULTILINE)
 R0001_RE = re.compile(r"\[R0001\]")
 
@@ -106,13 +123,14 @@ UNVERIFIABLE = "unverifiable fragment"
 
 
 def find_doc_files(paths):
-    """Resolve CLI arguments (files or directories) to a sorted list of .md/.mdx files."""
+    """Resolve CLI arguments (files or directories) to a sorted list of .md/.mdx/.mtl files."""
     files = []
     for raw in paths:
         p = Path(raw)
         if p.is_dir():
             files.extend(p.rglob("*.md"))
             files.extend(p.rglob("*.mdx"))
+            files.extend(p.rglob("*.mtl"))
         elif p.is_file():
             files.append(p)
         else:
@@ -157,8 +175,18 @@ def find_marker(text, start_line):
 
 
 def extract_blocks(doc_path):
-    """Yield (start_line, code, marker_kind, marker_reason) for every ```metel block."""
+    """Yield (start_line, code, marker_kind, marker_reason) for every checkable block
+    in `doc_path` -- every ```metel fence in a .md/.mdx file, or the whole file
+    itself for a standalone .mtl file (see MTL_MARKER_RE's doc)."""
     text = doc_path.read_text()
+    if doc_path.suffix == ".mtl":
+        lines = text.split("\n")
+        m = MTL_MARKER_RE.match(lines[0]) if lines else None
+        if m:
+            yield 2, "\n".join(lines[1:]), m.group("kind"), m.group("reason")
+        else:
+            yield 1, text, None, None
+        return
     for match in CODE_FENCE_RE.finditer(text):
         start_line = text.count("\n", 0, match.start()) + 1
         kind, reason = find_marker(text, start_line)
@@ -319,7 +347,7 @@ def main():
 
     doc_files = find_doc_files(args.paths)
     if not doc_files:
-        sys.exit("error: no .md/.mdx files found under the given paths")
+        sys.exit("error: no .md/.mdx/.mtl files found under the given paths")
 
     passed_by_kind = Counter()
     skipped_by_kind = Counter()
