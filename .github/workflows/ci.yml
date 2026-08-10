@@ -115,3 +115,15 @@ jobs:
             README.md \
             docs/public/getting-started/tutorials \
             docs/public/reference/spec
+
+  inventory:
+    name: inventory doc up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Guards only this repo's own slice of PROCESSES.md (metel-core#687) --
+      # see the script's own header for why metel-docs-internal's and
+      # metel-website's workflows aren't checkable from here.
+      - name: check PROCESSES.md lists every workflow/script/command
+        run: tools/check_inventory.sh
