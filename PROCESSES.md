@@ -113,13 +113,49 @@ all.
 
 | Path | Trigger | Reads | Writes | Secret(s) |
 |---|---|---|---|---|
-| `.github/workflows/check-examples.yml` | push/PR to `main` | `public/getting-started/tutorials`, `public/reference/spec`; the latest metel-core **release binary**; `tools/check_doc_examples.py` fetched live from metel-core `develop` | — | built-in `GITHUB_TOKEN` (public reads only) |
+| `.github/workflows/check-examples.yml` | push/PR to `main` | `public/getting-started`, `public/blog`, `public/reference`; the latest metel-core **release binary**; `tools/check_doc_examples.py` fetched live from metel-core `develop` | — | built-in `GITHUB_TOKEN` (public reads only) |
 | `.github/workflows/check-mdx.yml` | push/PR to `main` | `public/getting-started`, `public/reference`, `public/release-notes`, `public/blog`, via `tools/mdx-check-site` | — | — |
 | `public/rfcs/tools/rfc.py` | manual (`new`/`transition`/`supersede`/`check`/`index`) | `public/rfcs/` | `public/rfcs/` (moves files between lifecycle directories, edits frontmatter), `public/rfcs/INDEX.md` | — |
 | `public/rfcs/PROCESS.md` | — (process doc) | — | — | — |
 
 This repo is trunk-based (no `develop`/`main` split of its own) — every commit goes
 straight to `main`, per its own `README.md`.
+
+### What is deliberately not checked
+
+`check_doc_examples.py` runs against `public/getting-started`, `public/blog`, and
+`public/reference` (plus `README.md` on metel-core's side, and `src/showcases` on
+metel-website's). Two directories holding a large number of ` ```metel ` fences are
+excluded **by decision, not by oversight** — recorded here so neither reads as a gap
+someone should close later:
+
+**`public/release-notes/changelog.md`** — the changelog's genre is documenting
+*rejections, known limitations, and before/after syntax transitions*, so it is the
+document most likely to quote syntax that deliberately does not compile, including in
+its newest entry. All three of its current fences are non-compiling by intent: bare
+signatures with no bodies; an example labelled as accepted-but-wrong under a
+then-known move-checker gap; and two conflicting `extend Handle: Drop` blocks, one
+explicitly marked "rejected". Holding a historical record to "compiles against the
+current binary" would mean either rewriting past entries or accumulating permanent
+`expect-fail` markers on them.
+
+*(An alternative was considered and not taken: check only the newest `## vX.Y.Z`
+section, extracting it with the same regex `release.yml` already uses twice. It is a
+no-op today — every existing fence sits in `v0.12.0`, one section behind the newest —
+and each future release section would still need markers on its rejection examples.
+Worth revisiting only if changelog examples start being written as ordinary working
+code, which the genre argues against.)*
+
+**`public/rfcs/`** — 676 fences across 136 files, describing proposed, superseded, and
+refused syntax. An RFC at `0-draft` proposes syntax that does not exist yet; one at
+`6-refused` documents syntax deliberately never built. Neither can compile, and both
+are correct as written.
+
+The distinction is what a reader *does* with the code. Spec, tutorials, quickstart,
+intro, error-codes, and the showcases describe the current language and get copied, so
+they must always compile. The blog is dated like the changelog but its examples are
+also meant to be lifted, so it stays checked — a newcomer copying a broken example out
+of "Introducing Metel" is worse than editing an archived post when syntax moves.
 
 ## metel-website
 

@@ -109,12 +109,29 @@ jobs:
       # checks its own current main against the latest release binary, so a
       # broken example there is caught immediately rather than waiting for
       # this repo's submodule pointer to move.
+      #
+      # The paths are the *directory* getting-started and the *directory*
+      # reference, not their `tutorials`/`spec` subdirectories -- narrower
+      # paths silently excluded three files that read as ordinary working
+      # Metel: getting-started/quickstart.mdx and intro.mdx (siblings of
+      # `tutorials/`, not inside it), reference/error-codes.md (a sibling of
+      # `spec/`), and the blog, which wasn't listed at all. Two real,
+      # uncompilable examples shipped to production through exactly that gap
+      # -- quickstart's `public fun greet` missing its `-> ()` return type,
+      # and the blog post declaring a non-aspect method inside `extend
+      # Person: Greet` -- both found by hand, neither reachable by this job
+      # as it was configured (metel-core#693).
+      #
+      # release-notes/ and rfcs/ stay deliberately excluded; see
+      # PROCESSES.md § "What is deliberately not checked" for why neither is
+      # a gap to close later.
       - name: check doc examples
         run: |
           python3 tools/check_doc_examples.py --binary target/release/metel \
             README.md \
-            docs/public/getting-started/tutorials \
-            docs/public/reference/spec
+            docs/public/getting-started \
+            docs/public/blog \
+            docs/public/reference
 
   inventory:
     name: inventory doc up to date
