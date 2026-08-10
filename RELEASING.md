@@ -5,6 +5,10 @@ end, across three repositories. This document describes that chain; the workflow
 themselves are `.github/workflows/release.yml` here and
 [`metel-website`'s `deploy.yml`](https://github.com/metel-lang/metel-website/blob/main/.github/workflows/deploy.yml).
 
+For the release chain in the context of every other script and CI workflow across all
+three repos — including the per-PR checks and the manual docs-only sync this document
+doesn't cover — see [`PROCESSES.md`](PROCESSES.md).
+
 ## The chain
 
 ```
