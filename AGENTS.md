@@ -33,8 +33,8 @@ The canonical repository remote is GitHub (`github.com/metel-lang/metel-core`). 
 | `docs/public/rfcs/4-implemented/` | Implemented and shipped |
 | `docs/public/rfcs/5-superseded/` | RFCs replaced by later RFCs |
 | `docs/public/rfcs/6-refused/` | RFCs refused with a recorded decision |
-| `docs/reports/strategy/OBJECTIVES.md` | **Living long-term objectives, current priorities, and open triggers** — persists across planning cycles; see "Strategic Planning" below. |
-| `docs/reports/strategy/PROCESS.md` | **How to run a strategic-overview cycle** — verification discipline, trigger lifecycle, and the dated overview's structural template. Read before running one. |
+| `docs/reports/strategy/` | **Strategy corpus** — typed entity files (goals/priorities/recommendations/triggers/heuristics/cycles); `OBJECTIVES.md` and `HEURISTICS.md` are **generated views**, never hand-edited. See "Strategic Planning" below. |
+| `docs/reports/strategy/PROCESS.md` | **Why the strategy process is shaped as it is** — verification discipline, trigger lifecycle, closure bar. The *procedure* is the `strategy-cycle` skill; the *mechanics* are `reports/strategy/tools/strategy.py`. |
 | `docs/reports/` | Design reports and longer-form research notes |
 | `docs/architecture/architecture.md` | Interpreter pipeline and component boundaries |
 | `metel-frontend/docs/typechecker.md` | Typechecker theory and implementation notes |
@@ -558,37 +558,38 @@ inconsistency before implementing against it.
 
 ## Strategic Planning
 
-Goals, current priorities, and open triggers (watch-list items that
-should prompt a re-check when conditions change) live in
-`docs/reports/strategy/OBJECTIVES.md` — a living document, updated in place, not a
-dated snapshot. Periodic dated narrative snapshots (`docs/reports/strategy/
-strategic-overview-YYYY-MM-DD.md`) remain the point-in-time record of what was found
-and decided each planning cycle; `OBJECTIVES.md` is what each cycle reads from and
-writes back to, so priorities and triggers persist between cycles instead of being
-reconstructed from whichever dated file is most recent.
+**Restructured 2026-08-11 into typed entity files plus a script and a skill.** The corpus
+lives under `docs/reports/strategy/` as one file per entity — `goals/`, `priorities/`,
+`recommendations/`, `triggers/`, `heuristics/`, `cycles/<date>/`, `archive/`. Those files
+are the source of truth.
 
-Rules (content lives in `OBJECTIVES.md` itself, not duplicated here):
+- **`OBJECTIVES.md` and `HEURISTICS.md` are generated views. Never hand-edit them** —
+  edit the entity files and run `render`. `check` fails on a hand-edit, the same way
+  `rfc.py check` catches a hand-edited `REGISTRY.md`.
+- **`docs/reports/strategy/tools/strategy.py` is the mechanics:** `check` · `render` ·
+  `stats` · `archive` · `new` · `close` · `decide` · `cycle new` · `cycle prep`. Run it
+  from the submodule root. `check` must be clean before committing.
+- **`.claude/skills/strategy-cycle/` is the procedure** — invoke that skill to run a
+  cycle rather than reconstructing the steps.
+- **`docs/reports/strategy/PROCESS.md` is the reasoning** — why each rule exists and what
+  it was learned from. Read it before changing the process; the skill for running it.
 
-- Before starting non-trivial design or planning work, check `OBJECTIVES.md`'s current
-  priorities (§2) and open triggers (§3) for relevance.
-- A strategic-overview cycle checks triggers against real progress, updates priorities
-  in place, adds anything new, and appends to the review log — *then* decides whether a
-  new dated snapshot is warranted. Triggering a new dated snapshot is event-based (a
-  real inflection point), not calendar-based, and stays human-prompted rather than
-  agent-initiated — see `docs/reports/strategy/PROCESS.md` §5.
-- `OBJECTIVES.md` does not replace `docs/public/rfcs/INDEX.md` (RFC-level thematic
-  state) or `PROCESS.md` (RFC lifecycle mechanics) — it's the layer above both, tracking
-  why priorities are what they are, not RFC-by-RFC status.
-- **`docs/reports/strategy/PROCESS.md` is the methodology reference — read it before
-  running a strategic-overview cycle.** It covers what's not obvious from `OBJECTIVES.md`
-  alone: the verification discipline (every claim checked against a primary source, not
-  restated from memory or frontmatter), the trigger append-only lifecycle and closure
-  bar, and the dated overview's structural template.
-- **If the user makes an explicit priority call or redirect at any point — not only
-  during a strategic-overview cycle — log it immediately to `OBJECTIVES.md` §0's
-  Operator Directives**, rather than waiting for the next cycle to reconstruct it after
-  the fact. This is the one place operator intent enters the process as a first-class
-  input rather than inferred evidence; see `docs/reports/strategy/PROCESS.md` §1.
+Rules that still need a human:
+
+- Before starting non-trivial design or planning work, check the current priorities and
+  open triggers for relevance (`strategy.py cycle prep` lists both).
+- A cycle is **event-based, not calendar-based, and stays human-prompted**. If a natural
+  trigger fires while you're doing something else, name it and let the operator decide —
+  don't run one unasked, and don't stay silent about noticing.
+- **Promoting a goal from `proposed` to `active` is only ever an operator decision**, as
+  is deciding a recommendation. A script records those; it never infers them.
+- **If the user makes an explicit priority call or redirect at any point — not only during
+  a cycle — record it immediately** in `docs/reports/strategy/parts/directives.md`, rather
+  than waiting for the next cycle to reconstruct it. This is the one place operator intent
+  enters as a first-class input rather than inferred evidence.
+- The strategy corpus does not replace `docs/public/rfcs/INDEX.md` (RFC-level thematic
+  state) or its `PROCESS.md` (RFC lifecycle mechanics) — it is the layer above both,
+  tracking why priorities are what they are, not RFC-by-RFC status.
 
 ---
 

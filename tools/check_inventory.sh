@@ -45,6 +45,18 @@ for f in .claude/commands/*.md; do
     [[ -e "$f" ]] || continue
     check "$f"
 done
+# Skills were a blind spot until 2026-08-11: the strategy-cycle skill was added and this
+# check couldn't see it. A skill encodes a whole procedure, so it is exactly the kind of
+# thing "what would break if I changed X" needs to find. Checked by directory name, since
+# every skill's file is SKILL.md and basenames would all collide.
+for d in .claude/skills/*/; do
+    [[ -e "$d/SKILL.md" ]] || continue
+    name="$(basename "$d")"
+    if ! grep -qF "$name" "$doc"; then
+        echo "MISSING  ${d}SKILL.md (skill '$name') is not mentioned in $doc"
+        missing=$((missing + 1))
+    fi
+done
 
 if (( missing > 0 )); then
     echo

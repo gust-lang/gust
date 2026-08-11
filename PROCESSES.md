@@ -106,6 +106,8 @@ all.
 | `.claude/commands/gap-analysis.md` | manual slash command | milestone's open issues | edited/created issues | — |
 | `.claude/commands/review-typechecker.md` | manual slash command | a typechecker/inference diff | review report | — |
 | `.claude/commands/new-rfc.md` | manual slash command | `docs/public/rfcs/` | new draft RFC | — |
+| `.claude/skills/codex-delegate/SKILL.md` | manual skill invocation | an issue/task brief | delegates to `codex exec`, then reviews its diff | — |
+| `.claude/skills/strategy-cycle/SKILL.md` | manual skill invocation | `docs/reports/strategy/` | strategy entity files, a new `cycles/<date>/`, and the regenerated views | — |
 | `RELEASING.md` | — (process doc) | — | — | — |
 | `AGENTS.md` | — (process doc) | — | — | — |
 
@@ -116,6 +118,7 @@ all.
 | `.github/workflows/check-examples.yml` | push/PR to `main` | `public/getting-started`, `public/blog`, `public/reference`; the latest metel-core **release binary**; `tools/check_doc_examples.py` fetched live from metel-core `develop` | — | built-in `GITHUB_TOKEN` (public reads only) |
 | `.github/workflows/check-mdx.yml` | push/PR to `main` | `public/getting-started`, `public/reference`, `public/release-notes`, `public/blog`, via `tools/mdx-check-site` | — | — |
 | `public/rfcs/tools/rfc.py` | manual (`new`/`transition`/`supersede`/`check`/`index`) | `public/rfcs/` | `public/rfcs/` (moves files between lifecycle directories, edits frontmatter), `public/rfcs/INDEX.md` | — |
+| `reports/strategy/tools/strategy.py` | manual (`check`/`render`/`stats`/`archive`/`new`/`close`/`decide`/`cycle`), driven by metel-core's `strategy-cycle` skill | `reports/strategy/` entity files | `reports/strategy/` entities, `archive/`, `cycles/<date>/`, and the generated `OBJECTIVES.md`/`HEURISTICS.md` | — |
 | `public/rfcs/PROCESS.md` | — (process doc) | — | — | — |
 
 This repo is trunk-based (no `develop`/`main` split of its own) — every commit goes
