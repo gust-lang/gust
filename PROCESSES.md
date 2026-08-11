@@ -118,7 +118,8 @@ all.
 | `.github/workflows/check-examples.yml` | push/PR to `main` | `public/getting-started`, `public/blog`, `public/reference`; the latest metel-core **release binary**; `tools/check_doc_examples.py` fetched live from metel-core `develop` | — | built-in `GITHUB_TOKEN` (public reads only) |
 | `.github/workflows/check-mdx.yml` | push/PR to `main` | `public/getting-started`, `public/reference`, `public/release-notes`, `public/blog`, via `tools/mdx-check-site` | — | — |
 | `public/rfcs/tools/rfc.py` | manual (`new`/`transition`/`supersede`/`check`/`index`) | `public/rfcs/` | `public/rfcs/` (moves files between lifecycle directories, edits frontmatter), `public/rfcs/INDEX.md` | — |
-| `reports/strategy/tools/strategy.py` | manual (`check`/`render`/`stats`/`archive`/`new`/`close`/`decide`/`cycle`), driven by metel-core's `strategy-cycle` skill | `reports/strategy/` entity files | `reports/strategy/` entities, `archive/`, `cycles/<date>/`, and the generated `OBJECTIVES.md`/`HEURISTICS.md` | — |
+| `reports/strategy/tools/strategy.py` | manual (`check`/`render`/`stats`/`archive`/`new`/`close`/`decide`/`cycle`), driven by metel-core's `strategy-cycle` skill | `reports/strategy/` entity files; `gh` for the unscoped-issue guard in `cycle prep` | `reports/strategy/` entities, `archive/`, `cycles/<date>/`, and the generated `OBJECTIVES.md`/`HEURISTICS.md` | — (public `gh` reads only) |
+| `reports/strategy/tools/README.md` | — (reference doc) | — | — | — |
 | `public/rfcs/PROCESS.md` | — (process doc) | — | — | — |
 
 This repo is trunk-based (no `develop`/`main` split of its own) — every commit goes
