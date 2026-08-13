@@ -1717,7 +1717,7 @@ fn construct_expr(
                 .map(|e| construct_expr(e, None, ctx))
                 .collect::<Result<_, _>>()?;
             let elem_ty = typed[0].ty().clone();
-            let ty = Type::SizedArray(Box::new(elem_ty), elems.len() as u64);
+            let ty = Type::Array(Box::new(elem_ty));
             Ok(TypedExpr::Array(typed, ty, span.clone()))
         }
         Expr::RepeatArray(elem, n, span) => {

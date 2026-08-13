@@ -4,7 +4,7 @@ fun main() {
     struct S { data: [i64; 3] }
 
     // Computed index assignment.
-    var arr = [10, 20, 30, 40, 50];
+    var arr: [i64; 5] = [10, 20, 30, 40, 50];
     let i = 1;
     arr[(i + 1) as u64] = 99;
     assert(arr[2] == 99);
