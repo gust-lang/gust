@@ -1,18 +1,6 @@
 // Regression (metel-core#712): a nested `fun` forward-referenced from a `let`
-// initializer used to fail at runtime with "call: target is Unit, not a function",
-// even though the typechecker's own hoisting pass correctly accepted the program.
-// #658 fixed the general case (metel-core#656) by building every nested `fun`'s
-// closure eagerly, before any statement in its block runs -- but only when the block
-// has no `let`/`var` at all, since an eagerly-built closure that reads such a
-// variable would capture a snapshot missing it. This block has both a `let` and a
-// `fun`, so it falls back to the pre-#658 behavior (build only at the `fun`'s own
-// declaration line) -- which is exactly what this specific position breaks.
-//
-// The five forms metel-core#712 characterised are all covered here, plus one extra:
-// the bare-statement forward call repeated with a var present in the block, since
-// that's the same deferred-build path the let-initializer bug goes through -- the
-// original bare-statement form in #712's own table had no let/var, so it was always
-// on the unaffected eager-build fast path.
+// initializer failed at runtime, even though the typechecker accepted it. Covers all
+// five forms #712 characterised, plus a bare-statement call with a `var` present.
 
 fun call_in_let_initializer() -> i64 {
     let r = f();
@@ -25,18 +13,14 @@ fun call_after_declaration() -> i64 {
     g()
 }
 
-// No let/var in this block, so it takes the pre-existing eager-build fast path
-// (unaffected by this fix) -- the exact form metel-core#712's own table already
-// found working before this fix landed.
+// No let/var here, so this was already working (eager-build fast path).
 fun call_as_bare_statement_no_let_var() -> i64 {
     h();
     fun h() -> i64 { 9 }
     h()
 }
 
-// Same shape, but with a var in the block -- takes the deferred path this fix adds
-// a fallback for, same as the let-initializer case above, just via a bare statement
-// rather than a let initializer.
+// Same shape with a var present -- the new fallback path, via a bare statement.
 fun call_as_bare_statement_with_var() -> i64 {
     var hit = 0;
     i();

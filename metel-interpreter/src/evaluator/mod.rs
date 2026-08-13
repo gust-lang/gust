@@ -1311,16 +1311,9 @@ fn eval_to_value(
 #[derive(Debug, Clone)]
 pub struct Environment {
     scopes: Vec<HashMap<String, Rc<RefCell<Value>>>>,
-    /// Nested `fun`s that `hoist_nested_funs` gave a placeholder but deliberately did
-    /// *not* build yet (metel-core#712) — a block mixing `fun`s with `let`/`var` falls
-    /// back to building each `fun`'s closure only when the sequential statement loop
-    /// reaches its declaration line, same as before metel-core#656's fix. If something
-    /// calls it *before* that line runs (a `let` initializer, most commonly), the
-    /// placeholder `Value::Unit` would otherwise fail with "target is Unit, not a
-    /// function". `eval_call_expr` consults this table on exactly that failure and
-    /// builds the closure on demand, using the environment as it stands at the call
-    /// site — which is correct by construction (nothing skipped, nothing stale), unlike
-    /// building every `fun` in the block eagerly regardless of what it references.
+    /// Nested `fun`s `hoist_nested_funs` placeholdered but didn't build yet
+    /// (metel-core#712). `eval_call_expr` builds one on demand if it's called before
+    /// its declaration line runs.
     pending_funs: Vec<HashMap<String, Rc<crate::typed_ast::TypedFunDecl>>>,
     /// Type context for construction-at-call-time of generic closures. Set once per module
     /// in `run_passes`; shared via `Rc` so cloning the environment is cheap.
@@ -1365,10 +1358,8 @@ impl Environment {
             .insert(name.to_string(), f);
     }
 
-    /// Take (remove) a pending `fun` declaration by name, searching innermost to
-    /// outermost scope — mirrors `get`'s search order. Removing it means a given
-    /// pending `fun` is built at most once, whichever call or declaration reaches it
-    /// first.
+    /// Remove and return a pending `fun` by name (innermost scope first), so it's
+    /// built at most once.
     pub fn take_pending_fun(&mut self, name: &str) -> Option<Rc<crate::typed_ast::TypedFunDecl>> {
         for scope in self.pending_funs.iter_mut().rev() {
             if let Some(f) = scope.remove(name) {
@@ -1948,15 +1939,9 @@ fn build_and_set_nested_fun(
 /// mutual helpers, the case #656 itself reports — gets full hoisting with no
 /// caveat.
 ///
-/// **A block with `let`/`var` isn't left with a dead-on-arrival placeholder any
-/// more (metel-core#712).** Each deferred `fun` is registered in `env`'s
-/// `pending_funs` table; if anything calls it before the sequential loop reaches
-/// its own declaration line — a `let` initializer, most commonly — `eval_call_expr`
-/// builds it right there, using the environment as it stands at that exact call
-/// site. That's still not the eager path above (still no free-variable analysis),
-/// it's a fallback for the case eager-building was disabled to protect against:
-/// building happens no earlier than the call that needs it, so it can never miss a
-/// `let`/`var` that, by then, has already run.
+/// **A deferred block's placeholder isn't dead-on-arrival any more (metel-core#712).**
+/// Each deferred `fun` also goes into `env`'s `pending_funs` table; `eval_call_expr`
+/// builds it on demand if something calls it before its own declaration line runs.
 fn hoist_nested_funs(decls: &[TypedDecl], env: &mut Environment) -> Result<(), MetelError> {
     for decl in decls {
         if let TypedDecl::Fun(f) = decl {
@@ -2644,12 +2629,8 @@ fn eval_call_expr(
             ControlFlow::Break(signal) => return Ok(signal),
         },
     };
-    // metel-core#712: `func_val` can be `Value::Unit` because `callee` names a nested
-    // `fun` `hoist_nested_funs` deliberately deferred building (a block mixing `fun`s
-    // with `let`/`var`) and this call is reached before the sequential loop gets to
-    // that `fun`'s own declaration line — a `let` initializer, most commonly. Build it
-    // now, using `env` as it stands at this exact call site, rather than fail on a
-    // placeholder that was always going to become real.
+    // metel-core#712: a Unit here can be a deferred nested fun's placeholder, called
+    // before its declaration line runs. Build it now instead of failing.
     let func_val = if matches!(func_val, Value::Unit) {
         if let TypedExpr::Ident(name, ..) = callee {
             if let Some(f) = env.take_pending_fun(name) {
