@@ -761,6 +761,11 @@ pub(crate) fn reject_unregisterable_impl_target(
 /// Instantiates the function's `TypeScheme` using the runtime argument types, builds
 /// a `ConstructCtx`, and runs the typechecker's construction pass on the raw block.
 ///
+/// `expected_ret`, when available, is the call site's own already-resolved return type
+/// (metel-core#716) — the only source of information for a type parameter that appears
+/// solely in return position, since a no-argument generic call gives `arg_types` nothing
+/// to recover it from.
+///
 /// # Errors
 ///
 /// Returns a typechecking error when the body cannot be constructed for the supplied
@@ -772,8 +777,9 @@ pub fn construct_generic_body(
     body: &crate::ast::Block,
     span: &crate::ast::Span,
     type_ctx: &crate::typeinference::TypeCtx,
+    expected_ret: Option<&crate::types::Type>,
 ) -> Result<crate::typed_ast::TypedBlock, MetelError> {
-    construction::construct_generic_body(scheme, params, arg_types, body, span, type_ctx)
+    construction::construct_generic_body(scheme, params, arg_types, body, span, type_ctx, expected_ret)
 }
 
 pub(crate) fn symbolic_aspect_method_type(
