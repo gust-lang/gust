@@ -147,6 +147,15 @@ for_in_stmt  = { "for" ~ "(" ~ (("let" ~ mut_kw?) | mut_kw)? ~ ident ~ "in" ~ ex
 
 expr             = { assign_expr }
 
+// Entry point for re-parsing a standalone expression substring (string
+// interpolation's `${...}` body). `expr` alone has no leading `~` sequence
+// member for pest to hang implicit whitespace-skipping off of when it is the
+// *outermost* rule passed to `Parser::parse` — `program`'s `SOI ~ item*`
+// gets that skip for free, `expr` on its own does not. Without this wrapper,
+// `${ 1 + 1 }` (leading space) fails to parse while `${1 + 1}` (no leading
+// space) succeeds.
+interp_expr_entry = { SOI ~ expr ~ EOI }
+
 assign_expr      = { unary_expr ~ assign_op ~ assign_expr | or_expr }
 assign_op        = { "+=" | "-=" | "*=" | "/=" | "%=" | ("=" ~ !"=") }
 

@@ -1268,7 +1268,7 @@ fn parse_string_literal_expr(text: &str, span: Span, filename: &str) -> Result<E
 
 fn parse_interpolation_expr(source: &str, span: &Span, filename: &str) -> Result<Expr, MetelError> {
     let source = unescape(source);
-    let mut pairs = MetelParser::parse(Rule::expr, &source).map_err(|e| {
+    let mut pairs = MetelParser::parse(Rule::interp_expr_entry, &source).map_err(|e| {
         let (start, end) = match e.location {
             pest::error::InputLocation::Pos(p) => (p, p),
             pest::error::InputLocation::Span((s, e)) => (s, e),
@@ -1289,7 +1289,11 @@ fn parse_interpolation_expr(source: &str, span: &Span, filename: &str) -> Result
             source_line: Some(e.line().to_string()),
         }
     })?;
-    let pair = pairs
+    let entry_pair = pairs
+        .next()
+        .ok_or_else(|| MetelError::internal("string interpolation: missing expr pair"))?;
+    let pair = entry_pair
+        .into_inner()
         .next()
         .ok_or_else(|| MetelError::internal("string interpolation: missing expr pair"))?;
     parse_expr(pair, filename)
