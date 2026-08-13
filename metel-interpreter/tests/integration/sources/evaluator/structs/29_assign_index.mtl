@@ -1,6 +1,6 @@
 fun main() {
     // Plain index assignment.
-    var arr = [10, 20, 30];
+    var arr: [i64; 3] = [10, 20, 30];
     arr[1] = 99;
     assert(arr[0] == 10);
     assert(arr[1] == 99);

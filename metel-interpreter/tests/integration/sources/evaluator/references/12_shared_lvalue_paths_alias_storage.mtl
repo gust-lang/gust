@@ -12,7 +12,7 @@ fun main() {
     nested.point.x = 12;
     assert(*nested_ref == 12);
 
-    var xs = [3, 4, 5];
+    var xs: [i64; 3] = [3, 4, 5];
     let array_ref: &i64 = &xs[1];
     xs[1] = 9;
     assert(*array_ref == 9);
