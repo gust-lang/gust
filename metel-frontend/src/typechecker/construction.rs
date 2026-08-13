@@ -615,8 +615,7 @@ pub(super) fn construct_generic_body(
     // Unification failures here are skipped for the same "good enough substitution"
     // reason as the argument loop above.
     if let Some(expected) = expected_ret {
-        if let Ok(s) =
-            typeinference::unify(&subst.apply(&ret_infertype), &type_to_infer(expected))
+        if let Ok(s) = typeinference::unify(&subst.apply(&ret_infertype), &type_to_infer(expected))
         {
             subst = subst.compose(&s);
         }
