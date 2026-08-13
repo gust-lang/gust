@@ -1,0 +1,63 @@
+// Regression (metel-core#712): a nested `fun` forward-referenced from a `let`
+// initializer used to fail at runtime with "call: target is Unit, not a function",
+// even though the typechecker's own hoisting pass correctly accepted the program.
+// #658 fixed the general case (metel-core#656) by building every nested `fun`'s
+// closure eagerly, before any statement in its block runs -- but only when the block
+// has no `let`/`var` at all, since an eagerly-built closure that reads such a
+// variable would capture a snapshot missing it. This block has both a `let` and a
+// `fun`, so it falls back to the pre-#658 behavior (build only at the `fun`'s own
+// declaration line) -- which is exactly what this specific position breaks.
+//
+// The five forms metel-core#712 characterised are all covered here, plus one extra:
+// the bare-statement forward call repeated with a var present in the block, since
+// that's the same deferred-build path the let-initializer bug goes through -- the
+// original bare-statement form in #712's own table had no let/var, so it was always
+// on the unaffected eager-build fast path.
+
+fun call_in_let_initializer() -> i64 {
+    let r = f();
+    fun f() -> i64 { 7 }
+    r
+}
+
+fun call_after_declaration() -> i64 {
+    fun g() -> i64 { 8 }
+    g()
+}
+
+// No let/var in this block, so it takes the pre-existing eager-build fast path
+// (unaffected by this fix) -- the exact form metel-core#712's own table already
+// found working before this fix landed.
+fun call_as_bare_statement_no_let_var() -> i64 {
+    h();
+    fun h() -> i64 { 9 }
+    h()
+}
+
+// Same shape, but with a var in the block -- takes the deferred path this fix adds
+// a fallback for, same as the let-initializer case above, just via a bare statement
+// rather than a let initializer.
+fun call_as_bare_statement_with_var() -> i64 {
+    var hit = 0;
+    i();
+    fun i() { hit = 11; }
+    hit
+}
+
+fun mutual_recursion() -> boolean {
+    fun is_even(n: i64) -> boolean { if (n == 0) { true } else { is_odd(n - 1) } }
+    fun is_odd(n: i64) -> boolean { if (n == 0) { false } else { is_even(n - 1) } }
+    is_even(10) && is_odd(7)
+}
+
+fun top_level_caller() -> i64 { top_level_callee() }
+fun top_level_callee() -> i64 { 10 }
+
+fun main() {
+    assert(call_in_let_initializer() == 7);
+    assert(call_after_declaration() == 8);
+    assert(call_as_bare_statement_no_let_var() == 9);
+    assert(call_as_bare_statement_with_var() == 11);
+    assert(mutual_recursion());
+    assert(top_level_caller() == 10);
+}
