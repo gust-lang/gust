@@ -1311,6 +1311,17 @@ fn eval_to_value(
 #[derive(Debug, Clone)]
 pub struct Environment {
     scopes: Vec<HashMap<String, Rc<RefCell<Value>>>>,
+    /// Nested `fun`s that `hoist_nested_funs` gave a placeholder but deliberately did
+    /// *not* build yet (metel-core#712) — a block mixing `fun`s with `let`/`var` falls
+    /// back to building each `fun`'s closure only when the sequential statement loop
+    /// reaches its declaration line, same as before metel-core#656's fix. If something
+    /// calls it *before* that line runs (a `let` initializer, most commonly), the
+    /// placeholder `Value::Unit` would otherwise fail with "target is Unit, not a
+    /// function". `eval_call_expr` consults this table on exactly that failure and
+    /// builds the closure on demand, using the environment as it stands at the call
+    /// site — which is correct by construction (nothing skipped, nothing stale), unlike
+    /// building every `fun` in the block eagerly regardless of what it references.
+    pending_funs: Vec<HashMap<String, Rc<crate::typed_ast::TypedFunDecl>>>,
     /// Type context for construction-at-call-time of generic closures. Set once per module
     /// in `run_passes`; shared via `Rc` so cloning the environment is cheap.
     pub type_ctx: Option<std::rc::Rc<TypeCtx>>,
@@ -1327,16 +1338,44 @@ impl Environment {
     pub fn new() -> Self {
         Self {
             scopes: vec![HashMap::new()],
+            pending_funs: vec![HashMap::new()],
             type_ctx: None,
         }
     }
 
     pub fn push_scope(&mut self) {
         self.scopes.push(HashMap::new());
+        self.pending_funs.push(HashMap::new());
     }
 
     pub fn pop_scope(&mut self) {
         self.scopes.pop();
+        self.pending_funs.pop();
+    }
+
+    /// Record that `name` refers to a nested `fun` whose closure hasn't been built yet
+    /// (metel-core#712) — see the `pending_funs` field doc.
+    ///
+    /// # Panics
+    /// Panics if called with no scope pushed — see [`Environment::define`].
+    pub fn register_pending_fun(&mut self, name: &str, f: Rc<crate::typed_ast::TypedFunDecl>) {
+        self.pending_funs
+            .last_mut()
+            .unwrap()
+            .insert(name.to_string(), f);
+    }
+
+    /// Take (remove) a pending `fun` declaration by name, searching innermost to
+    /// outermost scope — mirrors `get`'s search order. Removing it means a given
+    /// pending `fun` is built at most once, whichever call or declaration reaches it
+    /// first.
+    pub fn take_pending_fun(&mut self, name: &str) -> Option<Rc<crate::typed_ast::TypedFunDecl>> {
+        for scope in self.pending_funs.iter_mut().rev() {
+            if let Some(f) = scope.remove(name) {
+                return Some(f);
+            }
+        }
+        None
     }
 
     /// Define a new binding in the current scope.
@@ -1415,6 +1454,10 @@ impl Environment {
             .collect();
         Self {
             scopes,
+            // AST reference data, immutable once produced — sharing the `Rc`s across
+            // this deep-cloned environment is fine, only `scopes`' runtime values need
+            // independent cells.
+            pending_funs: self.pending_funs.clone(),
             type_ctx: self.type_ctx.clone(),
         }
     }
@@ -1904,6 +1947,16 @@ fn build_and_set_nested_fun(
 /// block of `fun`s with no `let`/`var` among them — `is_even`/`is_odd`-style
 /// mutual helpers, the case #656 itself reports — gets full hoisting with no
 /// caveat.
+///
+/// **A block with `let`/`var` isn't left with a dead-on-arrival placeholder any
+/// more (metel-core#712).** Each deferred `fun` is registered in `env`'s
+/// `pending_funs` table; if anything calls it before the sequential loop reaches
+/// its own declaration line — a `let` initializer, most commonly — `eval_call_expr`
+/// builds it right there, using the environment as it stands at that exact call
+/// site. That's still not the eager path above (still no free-variable analysis),
+/// it's a fallback for the case eager-building was disabled to protect against:
+/// building happens no earlier than the call that needs it, so it can never miss a
+/// `let`/`var` that, by then, has already run.
 fn hoist_nested_funs(decls: &[TypedDecl], env: &mut Environment) -> Result<(), MetelError> {
     for decl in decls {
         if let TypedDecl::Fun(f) = decl {
@@ -1917,6 +1970,12 @@ fn hoist_nested_funs(decls: &[TypedDecl], env: &mut Environment) -> Result<(), M
         for decl in decls {
             if let TypedDecl::Fun(f) = decl {
                 build_and_set_nested_fun(f, env)?;
+            }
+        }
+    } else {
+        for decl in decls {
+            if let TypedDecl::Fun(f) = decl {
+                env.register_pending_fun(&f.name, Rc::new(f.clone()));
             }
         }
     }
@@ -2584,6 +2643,26 @@ fn eval_call_expr(
             ControlFlow::Continue(value) => value,
             ControlFlow::Break(signal) => return Ok(signal),
         },
+    };
+    // metel-core#712: `func_val` can be `Value::Unit` because `callee` names a nested
+    // `fun` `hoist_nested_funs` deliberately deferred building (a block mixing `fun`s
+    // with `let`/`var`) and this call is reached before the sequential loop gets to
+    // that `fun`'s own declaration line — a `let` initializer, most commonly. Build it
+    // now, using `env` as it stands at this exact call site, rather than fail on a
+    // placeholder that was always going to become real.
+    let func_val = if matches!(func_val, Value::Unit) {
+        if let TypedExpr::Ident(name, ..) = callee {
+            if let Some(f) = env.take_pending_fun(name) {
+                build_and_set_nested_fun(&f, env)?;
+                env.get(name).unwrap_or(Value::Unit)
+            } else {
+                func_val
+            }
+        } else {
+            func_val
+        }
+    } else {
+        func_val
     };
     let mut arg_vals = Vec::with_capacity(args.len());
     for arg in args {
