@@ -1,7 +1,5 @@
-// Regression (metel-core#705): a space right after `${` (or before the closing `}`)
-// used to break parsing of the interpolated expression. Isolated to whitespace alone --
-// nothing else differs between the leading-space and no-space forms of each case below.
-// Reproduced for a bare value, `if`, `match`, and `loop`.
+// Regression (metel-core#705): a space right after `${` broke parsing of the
+// interpolated expression. Covers a bare value, `if`, `match`, and `loop`.
 
 fun main() {
     let a = "${1 + 1}";
