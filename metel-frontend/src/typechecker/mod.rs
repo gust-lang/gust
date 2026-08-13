@@ -779,7 +779,15 @@ pub fn construct_generic_body(
     type_ctx: &crate::typeinference::TypeCtx,
     expected_ret: Option<&crate::types::Type>,
 ) -> Result<crate::typed_ast::TypedBlock, MetelError> {
-    construction::construct_generic_body(scheme, params, arg_types, body, span, type_ctx, expected_ret)
+    construction::construct_generic_body(
+        scheme,
+        params,
+        arg_types,
+        body,
+        span,
+        type_ctx,
+        expected_ret,
+    )
 }
 
 pub(crate) fn symbolic_aspect_method_type(
