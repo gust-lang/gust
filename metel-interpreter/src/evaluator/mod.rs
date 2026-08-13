@@ -2230,6 +2230,7 @@ fn eval_for_in(
             vec![],
             None,
             None,
+            None,
             span,
             runtime,
         )?
@@ -2473,11 +2474,13 @@ fn eval_struct_literal_expr(
 // Keep this as one dispatch table so receiver-mode handling stays in one place.
 #[allow(clippy::too_many_lines)]
 #[inline(never)]
+#[allow(clippy::too_many_arguments)]
 fn eval_method_call_expr(
     receiver: &TypedExpr,
     method: &str,
     args: &[TypedExpr],
     dispatch: &MethodDispatch,
+    expected_ret: &crate::types::Type,
     span: &Span,
     env: &mut Environment,
     runtime: &RuntimeRegistry,
@@ -2570,6 +2573,7 @@ fn eval_method_call_expr(
                 arg_vals,
                 Some(&static_arg_tys),
                 Some(&static_receiver_ty),
+                Some(expected_ret),
                 span,
                 runtime,
             )?;
@@ -2601,6 +2605,7 @@ fn eval_method_call_expr(
             arg_vals,
             Some(&static_arg_tys),
             Some(&static_receiver_ty),
+            Some(expected_ret),
             span,
             runtime,
         ),
@@ -2617,6 +2622,7 @@ fn eval_call_expr(
     callee: &TypedExpr,
     args: &[TypedExpr],
     callee_id: Option<SymbolId>,
+    expected_ret: &crate::types::Type,
     span: &Span,
     env: &mut Environment,
     runtime: &RuntimeRegistry,
@@ -2677,7 +2683,14 @@ fn eval_call_expr(
     // re-derive them from runtime values, which loses precision an empty collection
     // cannot supply.
     let static_arg_tys: Vec<crate::types::Type> = args.iter().map(|a| a.ty().clone()).collect();
-    call::call_function(func_val, &arg_vals, Some(&static_arg_tys), span, runtime)
+    call::call_function(
+        func_val,
+        &arg_vals,
+        Some(&static_arg_tys),
+        Some(expected_ret),
+        span,
+        runtime,
+    )
 }
 
 #[allow(clippy::too_many_lines)]
@@ -3027,7 +3040,14 @@ pub fn eval_expr(
                 let from_fn = runtime_type_name(&v)
                     .and_then(|source| runtime.get_from_method(target_name, source));
                 if let Some(f) = from_fn {
-                    return call::call_function(Value::Callable(f.body), &[v], None, span, runtime);
+                    return call::call_function(
+                        Value::Callable(f.body),
+                        &[v],
+                        None,
+                        None,
+                        span,
+                        runtime,
+                    );
                 }
             }
             // Identity cast fallback (same type, no from registered).
@@ -3286,18 +3306,19 @@ pub fn eval_expr(
             receiver,
             method,
             args,
+            ty,
             dispatch,
             span,
-            ..
-        } => eval_method_call_expr(receiver, method, args, dispatch, span, env, runtime),
+        } => eval_method_call_expr(receiver, method, args, dispatch, ty, span, env, runtime),
 
         TypedExpr::Call {
             callee,
             args,
+            ty,
             callee_id,
             span,
             ..
-        } => eval_call_expr(callee, args, *callee_id, span, env, runtime),
+        } => eval_call_expr(callee, args, *callee_id, ty, span, env, runtime),
 
         TypedExpr::Closure {
             params, body, ty, ..

@@ -597,6 +597,7 @@ impl<'a> Checker<'a> {
             body,
             span,
             &symbolic_type_ctx,
+            None,
         ) {
             Ok(typed_body) => Some((typed_body, generic_env)),
             Err(error) => {
@@ -662,6 +663,7 @@ impl<'a> Checker<'a> {
             body,
             &method.span,
             &symbolic_type_ctx,
+            None,
         ) {
             Ok(typed_body) => {
                 let mut fn_state = FlowState::default();

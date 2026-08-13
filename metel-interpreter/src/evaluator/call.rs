@@ -33,6 +33,7 @@ fn call_runtime_callable(
     callable: RuntimeCallable,
     args: &[Value],
     static_arg_tys: Option<&[crate::types::Type]>,
+    expected_ret: Option<&crate::types::Type>,
     span: &Span,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
@@ -87,7 +88,7 @@ fn call_runtime_callable(
                                 })
                                 .collect();
                             let tb = crate::typechecker::construct_generic_body(
-                                scheme, &closure.params, &arg_types, b, span, type_ctx
+                                scheme, &closure.params, &arg_types, b, span, type_ctx, expected_ret
                             )?;
                             eval_block(&tb, &mut call_env, runtime)
                         }
@@ -117,6 +118,7 @@ pub(super) fn call_function(
     func: Value,
     args: &[Value],
     static_arg_tys: Option<&[crate::types::Type]>,
+    expected_ret: Option<&crate::types::Type>,
     span: &Span,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
@@ -130,7 +132,7 @@ pub(super) fn call_function(
     };
     match func {
         Value::Callable(callable) => {
-            call_runtime_callable(callable, args, static_arg_tys, span, runtime)
+            call_runtime_callable(callable, args, static_arg_tys, expected_ret, span, runtime)
         }
 
         Value::Unit => Err(attach_stack(MetelError::panic(
@@ -150,12 +152,14 @@ pub(super) fn call_function(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn call_method_function(
     func: RuntimeCallable,
     receiver: ReceiverBinding,
     mut args: Vec<Value>,
     static_arg_tys: Option<&[crate::types::Type]>,
     static_receiver_ty: Option<&crate::types::Type>,
+    expected_ret: Option<&crate::types::Type>,
     span: &Span,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
@@ -249,7 +253,7 @@ pub(super) fn call_method_function(
                                 }
                             }));
                             let tb = crate::typechecker::construct_generic_body(
-                                scheme, &closure.params, &arg_types, b, span, type_ctx
+                                scheme, &closure.params, &arg_types, b, span, type_ctx, expected_ret
                             )?;
                             eval_block(&tb, &mut call_env, runtime)
                         }
@@ -276,7 +280,7 @@ pub(super) fn call_method_function(
                 ReceiverBinding::Shared(cell) => cell.borrow().clone(),
             };
             args.insert(0, receiver_value);
-            call_runtime_callable(callable, &args, static_arg_tys, span, runtime)
+            call_runtime_callable(callable, &args, static_arg_tys, expected_ret, span, runtime)
         }
     }
 }

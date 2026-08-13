@@ -575,6 +575,7 @@ pub(super) fn construct_generic_body(
     body: &crate::ast::Block,
     span: &crate::ast::Span,
     type_ctx: &crate::typeinference::TypeCtx,
+    expected_ret: Option<&crate::types::Type>,
 ) -> Result<crate::typed_ast::TypedBlock, crate::error::MetelError> {
     use super::conversions::{infer_type_to_type, type_to_infer};
     use crate::typeinference::{instantiate_with_renaming, TypeVarGenerator};
@@ -600,6 +601,23 @@ pub(super) fn construct_generic_body(
     for (param_it, arg_ty) in param_infertypes.iter().zip(arg_types.iter()) {
         let arg_it = type_to_infer(arg_ty);
         if let Ok(s) = typeinference::unify(&subst.apply(param_it), &arg_it) {
+            subst = subst.compose(&s);
+        }
+    }
+
+    // metel-core#716: a type parameter that appears only in the return position (no
+    // argument mentions it — `fun make<V>() -> V[]`, `List::new<T>() -> List<T>`) gets
+    // nothing from the loop above. Before falling back to Never (which follows), also try
+    // the caller's own expected return type — already correctly resolved at the call site
+    // (the same computation `instantiate_scheme_with_expected_ret` does for the outer
+    // call's own signature; this is that information's only path into the body's own
+    // construction, which arg_types alone can never carry for a no-argument call).
+    // Unification failures here are skipped for the same "good enough substitution"
+    // reason as the argument loop above.
+    if let Some(expected) = expected_ret {
+        if let Ok(s) =
+            typeinference::unify(&subst.apply(&ret_infertype), &type_to_infer(expected))
+        {
             subst = subst.compose(&s);
         }
     }
