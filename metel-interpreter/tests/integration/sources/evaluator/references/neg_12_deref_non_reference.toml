@@ -1,0 +1,6 @@
+[options]
+rfc = ["rfc-0110§3"]
+
+[expect]
+status = "typecheck_error"
+contains = "T0002"

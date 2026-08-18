@@ -415,7 +415,12 @@ fn extract_annotation(line: &str, marker: &str) -> Option<String> {
 /// grammar: `rfc-NNNN` or `rfc-NNNN§section`, where `section` is
 /// `part("."part)?` and `part` is `digit+letter?` (e.g. `7`, `9c`, `3a` --
 /// letter-suffixed sections are real, not hypothetical: RFC-0071 §9a-9c,
-/// RFC-0082 §3a, RFC-0118 §2a, RFC-0067a §3a, RFC-0110 §1a all exist).
+/// RFC-0082 §3a, RFC-0118 §2a, RFC-0067a §3a, RFC-0110 §1a all exist). The
+/// RFC id itself can carry the same optional letter suffix -- `rfc-0067a`
+/// is a real, distinct RFC id (Reference Types), not a typo for `rfc-0067`
+/// (a different RFC, Lifetime Anchors) -- found the hard way when a
+/// migration first cited the wrong one and this validator accepted it
+/// anyway, because it only allowed the letter suffix on the section half.
 fn parse_rfc_list(raw: &str, path: &Path) -> Vec<String> {
     let citations = parse_list(raw);
     for citation in &citations {
@@ -424,9 +429,14 @@ fn parse_rfc_list(raw: &str, path: &Path) -> Vec<String> {
             Some((id, section)) => (id, Some(section)),
             None => (lower.as_str(), None),
         };
-        let id_ok = id.len() == 8
-            && id.starts_with("rfc-")
-            && id[4..].bytes().all(|b| b.is_ascii_digit());
+        let id_ok = id.starts_with("rfc-") && {
+            let digits_and_letter = &id[4..];
+            let digit_end = digits_and_letter
+                .find(|c: char| !c.is_ascii_digit())
+                .unwrap_or(digits_and_letter.len());
+            let (digits, rest) = digits_and_letter.split_at(digit_end);
+            digits.len() == 4 && matches!(rest.len(), 0 | 1) && rest.chars().all(|c| c.is_ascii_lowercase())
+        };
         let section_ok = section.is_none_or(|s| {
             !s.is_empty()
                 && s.split('.').all(|part| {
