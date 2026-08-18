@@ -1,0 +1,24 @@
+// RFC-0102 §2/§5: a bodyless `extend` desugars to an ordinary empty impl (no separate
+// "marker aspect" category), and multiple aspects -- including a negated one -- may be
+// listed in a single bodyless extend block, comma-separated.
+
+aspect Copy2 {}
+aspect Sendable {}
+aspect Displayable {
+    fun to_string(&self) -> String;
+}
+
+struct Handle { fd: i64 }
+
+extend Handle: Copy2, Sendable, !Displayable;
+
+fun needs_copy2<T: Copy2>(x: &T) -> boolean { return true; }
+fun needs_sendable<T: Sendable>(x: &T) -> boolean { return true; }
+fun needs_not_displayable<T: !Displayable>(x: &T) -> boolean { return true; }
+
+fun main() {
+    let h = Handle { fd = 1 };
+    assert(needs_copy2(&h));
+    assert(needs_sendable(&h));
+    assert(needs_not_displayable(&h));
+}
