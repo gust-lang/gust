@@ -435,14 +435,20 @@ fn parse_rfc_list(raw: &str, path: &Path) -> Vec<String> {
                 .find(|c: char| !c.is_ascii_digit())
                 .unwrap_or(digits_and_letter.len());
             let (digits, rest) = digits_and_letter.split_at(digit_end);
-            digits.len() == 4 && matches!(rest.len(), 0 | 1) && rest.chars().all(|c| c.is_ascii_lowercase())
+            digits.len() == 4
+                && matches!(rest.len(), 0 | 1)
+                && rest.chars().all(|c| c.is_ascii_lowercase())
         };
         let section_ok = section.is_none_or(|s| {
             !s.is_empty()
                 && s.split('.').all(|part| {
-                    let digits_end = part.find(|c: char| !c.is_ascii_digit()).unwrap_or(part.len());
+                    let digits_end = part
+                        .find(|c: char| !c.is_ascii_digit())
+                        .unwrap_or(part.len());
                     let (digits, rest) = part.split_at(digits_end);
-                    !digits.is_empty() && matches!(rest.len(), 0 | 1) && rest.chars().all(|c| c.is_ascii_lowercase())
+                    !digits.is_empty()
+                        && matches!(rest.len(), 0 | 1)
+                        && rest.chars().all(|c| c.is_ascii_lowercase())
                 })
         });
         if !id_ok || !section_ok {
