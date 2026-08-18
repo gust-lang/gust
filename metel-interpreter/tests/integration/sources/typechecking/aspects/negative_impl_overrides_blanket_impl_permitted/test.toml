@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0060§5"]
+rfc = ["rfc-0060§5", "rfc-0098§1"]
