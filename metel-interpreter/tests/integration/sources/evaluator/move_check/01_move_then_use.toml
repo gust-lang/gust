@@ -1,5 +1,6 @@
 [options]
 move_check = true
+rfc = ["rfc-0071§1"]
 
 [expect]
 status = "typecheck_error"
