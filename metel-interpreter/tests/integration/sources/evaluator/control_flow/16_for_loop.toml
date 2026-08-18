@@ -1,3 +1,2 @@
 [options]
-move_check = true
 rfc = ["rfc-0098§3"]
