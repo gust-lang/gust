@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0061§2", "rfc-0081§2.1"]
+rfc = ["rfc-0081§2.1"]
 
 [expect]
 status = "typecheck_error"
