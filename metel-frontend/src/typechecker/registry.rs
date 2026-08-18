@@ -498,8 +498,19 @@ fn register_program_decls(
                 continue;
             }
 
+            // #746: a method with its *own* generics (e.g. `fun describe<U:
+            // Aspect>` inside `extend Foo { ... }`, where `Foo` itself has no
+            // generics and neither does the impl block) needs the same
+            // polymorphic-scheme treatment as an impl-level generic -- it also
+            // has T-typed params that need TypeVars, not Named("U",[]).
+            // Missing this case used to route such methods through
+            // `register_impl_methods` (the concrete/fast path), which has no
+            // way to represent the method's own generic parameter, so nothing
+            // usable for call-time dispatch ever got registered for it.
+            let has_method_own_generics = ib.methods.iter().any(|m| !m.generics.is_empty());
             let is_generic_target = is_array_generic_target
                 || !ib.generics.is_empty()
+                || has_method_own_generics
                 || nominal_target_name.as_ref().is_some_and(|target_name| {
                     registry
                         .struct_generic_names_for(target_name.as_str())
@@ -733,27 +744,43 @@ fn register_aspect_decl(
 /// scheme later overwrites this one for `std::core`'s own module; downstream modules
 /// use this annotation-derived scheme directly. Static methods (no receiver) are
 /// handled as joined-key schemes elsewhere and skipped here.
+#[allow(clippy::too_many_lines)]
 fn register_generic_impl_method_schemes(
     ib: &crate::ast::ImplBlock,
     target_name: &str,
     gen: &mut TypeVarGenerator,
     registry: &mut TypeDefinitionRegistry,
 ) {
-    // Type params for the generic target — a struct or an enum.
+    // Type params for the generic target — a struct or an enum. A non-generic
+    // struct has no entry in `raw_struct_type_params` at all (registered only
+    // for structs with `sd.generics` non-empty -- an optimization elsewhere,
+    // not a "this isn't a struct" signal); fall back to `raw_struct_env`,
+    // which every struct is unconditionally registered into regardless of its
+    // own generics, before concluding `target_name` isn't a struct/enum at
+    // all (#746 -- needed so a method with its own generics on an otherwise
+    // non-generic target, e.g. `extend Foo { fun describe<U: Aspect>(...) }`,
+    // still resolves here instead of bailing).
     let type_params: Vec<TypeVar> =
         if let Some(tps) = registry.raw_struct_type_params().get(target_name).cloned() {
             tps
         } else if let Some(info) = registry.enum_info(target_name) {
             info.type_params.clone()
+        } else if registry.raw_struct_env().contains_key(target_name) {
+            Vec::new()
         } else {
             return;
         };
-    if type_params.is_empty() {
-        return;
-    }
-    let Some(generic_names) = registry.struct_generic_names_for(target_name).cloned() else {
-        return;
-    };
+    // #746: `type_params` (the *struct's* own params) may legitimately be
+    // empty here -- this function is also the registration path for a method
+    // that declares its own generics on an otherwise concrete target
+    // (`extend Foo { fun describe<U: Aspect>(...) }`). Do not bail just
+    // because the struct itself isn't generic; the per-method loop below
+    // already folds each method's own `generics` into `quantified`/
+    // `param_names` on top of whatever's here, empty or not.
+    let generic_names = registry
+        .struct_generic_names_for(target_name)
+        .cloned()
+        .unwrap_or_default();
     let type_gen_map: HashMap<String, TypeVar> = generic_names
         .iter()
         .cloned()
@@ -796,6 +823,22 @@ fn register_generic_impl_method_schemes(
             quantified.push(tv);
             param_names.push(g.name.clone());
         }
+        // #746: the scheme's own `.bounds`/`.neg_bounds` (used for call-site
+        // checking, e.g. `f.describe(bad_arg)`) previously only carried the
+        // struct's/impl's bounds (`by_var`/`by_neg_var`, shared across every
+        // method in this block) -- never a method's *own* bound. Merge this
+        // method's own bounds in on a per-method copy; sharing the base maps
+        // across methods but not mutating them keeps other methods in the
+        // same impl block from seeing a bound that isn't theirs.
+        let mut method_by_var = by_var.clone();
+        for (tv, bounds) in super::inference::collect_fun_type_var_bounds(method, &gen_map) {
+            method_by_var.entry(tv).or_default().extend(bounds);
+        }
+        let mut method_by_neg_var = by_neg_var.clone();
+        for (tv, bounds) in super::inference::collect_negative_fun_type_var_bounds(method, &gen_map)
+        {
+            method_by_neg_var.entry(tv).or_default().extend(bounds);
+        }
         let mut param_types = vec![self_ty.clone()];
         for p in method.params.iter().filter(|p| p.receiver.is_none()) {
             let ann = p
@@ -821,8 +864,8 @@ fn register_generic_impl_method_schemes(
             opaque_returns: vec![],
             ty: InferType::Fun(param_types, Box::new(ret_ty)),
         }
-        .with_bounds(&by_var)
-        .with_neg_bounds(&by_neg_var);
+        .with_bounds(&method_by_var)
+        .with_neg_bounds(&method_by_neg_var);
         // struct_tvars: only the type's params are pinned from the receiver;
         // method-level generics are recovered from the arguments at the call site.
         let struct_tvars = type_params.clone();
