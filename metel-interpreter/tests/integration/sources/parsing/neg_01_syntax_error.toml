@@ -1,0 +1,6 @@
+[expect]
+status = "parse_error"
+code = "P0001"
+line = 3
+col = 1
+contains = "neg_01_syntax_error.mtl"

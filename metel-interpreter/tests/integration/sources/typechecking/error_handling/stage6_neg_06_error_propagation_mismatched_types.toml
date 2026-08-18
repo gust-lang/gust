@@ -1,0 +1,5 @@
+[expect]
+status = "typecheck_error"
+code = "T0007"
+line = 11
+col = 20

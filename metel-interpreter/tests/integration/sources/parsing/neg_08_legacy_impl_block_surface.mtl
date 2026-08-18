@@ -1,0 +1,3 @@
+impl Counter {
+    fun bump(&var self) {}
+}
