@@ -34,11 +34,17 @@ one multi-file example (as opposed to one fence with multiple `// path.mtl` mark
 aren't detected — that would need guessing that two adjacent fences are a matching
 pair, which is fragile for the rare case it actually happens.
 
-Both of the above are marked, in the doc source, with an HTML comment on the line
-directly above the fence, so a human reading the doc sees why a block is exempt at
-its point of use rather than needing to check this script:
+Both of the above are marked, in the doc source, with a comment on the line directly
+above the fence, so a human reading the doc sees why a block is exempt at its point of
+use rather than needing to check this script. Plain Markdown uses an HTML comment;
+MDX tutorials use a JSX comment instead, since MDX doesn't render raw HTML comments:
 
     <!-- doc-example: skip reason="depends on an earlier block in this doc" -->
+    ```metel
+    ...
+    ```
+
+    {/* doc-example: skip reason="depends on an earlier block in this doc" */}
     ```metel
     ...
     ```
@@ -77,7 +83,9 @@ from pathlib import Path, PurePosixPath
 
 CODE_FENCE_RE = re.compile(r"```metel\n(.*?)```", re.DOTALL)
 MAIN_RE = re.compile(r"\bfun\s+main\b")
-MARKER_RE = re.compile(r'^<!--\s*doc-example:\s*(skip|expect-fail)\s*(?:reason="([^"]*)")?\s*-->$')
+MARKER_RE = re.compile(
+    r'^(?:<!--|\{/\*)\s*doc-example:\s*(skip|expect-fail)\s*(?:reason="([^"]*)")?\s*(?:-->|\*/\})$'
+)
 FILE_MARKER_RE = re.compile(r"^//\s*(\S+\.mtl)\s*$", re.MULTILINE)
 R0001_RE = re.compile(r"\[R0001\]")
 
