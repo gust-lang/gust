@@ -4,4 +4,4 @@ rfc = ["rfc-0060§1"]
 [expect]
 status = "typecheck_error"
 code = "T0014"
-line = 8
+line = 9
