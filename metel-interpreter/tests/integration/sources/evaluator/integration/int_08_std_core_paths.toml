@@ -1,3 +1,3 @@
 [options]
-rfc = ["rfc-0057§1", "rfc-0057§2", "rfc-0057§3", "rfc-0057§4", "rfc-0057§5"]
+rfc = ["rfc-0057§1"]
 move_check = true

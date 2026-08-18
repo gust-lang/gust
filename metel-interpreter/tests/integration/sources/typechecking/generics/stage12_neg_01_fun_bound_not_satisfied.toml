@@ -1,2 +1,8 @@
 [options]
-rfc = ["rfc-0040§1", "rfc-0040§2", "rfc-0040§5"]
+rfc = ["rfc-0040§1", "rfc-0040§2"]
+
+[expect]
+status = "typecheck_error"
+code = "T0012"
+line = 17
+col = 13
