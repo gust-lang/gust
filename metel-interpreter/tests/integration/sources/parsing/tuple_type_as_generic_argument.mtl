@@ -1,0 +1,8 @@
+// METEL-191 acceptance: a tuple as a generic type argument must also parse.
+fun pairs() -> List<(String, String)> {
+    return List::new();
+}
+
+fun main() {
+    let p = pairs();
+}

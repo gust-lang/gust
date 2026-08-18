@@ -1,0 +1,7 @@
+aspect Display {
+    fun show(&self) -> String;
+}
+
+impl Display for Counter {
+    fun show(&self) -> String { "x" }
+}

@@ -1,0 +1,7 @@
+fun takes_zero(f: () -> i64) -> i64 {
+    return f();
+}
+
+fun main() -> i64 {
+    return takes_zero(() -> i64 { return 42; });
+}

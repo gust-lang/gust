@@ -1,0 +1,17 @@
+// Calling a method whose receiver is `&var self` requires the receiver
+// expression itself to be a mutable (`var`) binding -- an immutable `let`
+// binding of the same struct type is rejected.
+struct Counter {
+    value: i64,
+}
+
+extend Counter {
+    fun increment(&var self) {
+        self.value += 1;
+    }
+}
+
+fun main() {
+    let counter = Counter { value = 0 };
+    counter.increment();
+}

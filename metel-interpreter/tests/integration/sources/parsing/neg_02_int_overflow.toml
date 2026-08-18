@@ -1,0 +1,5 @@
+[expect]
+status = "parse_error"
+code = "P0002"
+line = 1
+col = 14

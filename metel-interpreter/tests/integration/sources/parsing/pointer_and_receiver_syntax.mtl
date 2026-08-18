@@ -1,0 +1,21 @@
+struct Counter {
+    value: i64,
+}
+
+extend Counter {
+    fun increment(&var self) {
+        self.value += 1;
+    }
+
+    fun current(&self) -> i64 {
+        self.value
+    }
+}
+
+fun main() {
+    var value = 0;
+    let ptr: &var i64 = &var value;
+    ptr += 1;
+    let read_only: &i64 = ptr;
+    let _snapshot: i64 = read_only;
+}

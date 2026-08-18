@@ -1,0 +1,15 @@
+// RFC-0118 §1: the `record` marker and a row bound may be written at the
+// generic parameter's own declaration AND separately in a `where` clause for
+// the same parameter; the two positions compose. Also exercises §2a (a bound
+// field, `x`, may omit its type) and §2 (a negative where-clause bound is
+// enforced, not just parsed).
+fun f<record T: { x, y: i64, .. }>(value: T) -> i64
+where record T: !{ z } {
+    value.y
+}
+
+fun main() {
+    let ok = { x = "hi", y = 5 };
+    let result = f(ok);
+    assert(result == 5);
+}
