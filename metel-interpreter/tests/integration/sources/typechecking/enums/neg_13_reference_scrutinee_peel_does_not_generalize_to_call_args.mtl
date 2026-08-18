@@ -1,0 +1,19 @@
+// RFC-0108 §3: reference-transparency is scoped to match scrutinees only. A `&Colour`
+// value that matches fine as a scrutinee does not silently widen to `Colour` in a
+// call-argument position -- that is an ordinary type mismatch, not a peel.
+
+enum Colour { Red, Green, Blue }
+
+fun takes_by_value(c: Colour) -> String {
+    match c {
+        Colour::Red   => "red",
+        Colour::Green => "green",
+        Colour::Blue  => "blue",
+    }
+}
+
+fun main() {
+    let c = Colour::Green;
+    let r: &Colour = &c;
+    println(takes_by_value(r));
+}
