@@ -1,4 +1,4 @@
-// §3.2: unconditional impl + conditional impl for the same aspect/type
+// RFC-0036§3 and RFC-0036§3.2: unconditional impl + conditional impl for the same aspect/type
 // constructor → T0015 conflict. The unconditional impl has all-empty scoped
 // bounds, so provably_disjoint can never return true against it.
 

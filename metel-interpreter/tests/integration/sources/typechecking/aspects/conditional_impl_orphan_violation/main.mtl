@@ -1,0 +1,10 @@
+// RFC-0036 §3.3: a conditional impl obeys the orphan rule just as an
+// unconditional impl does.  This module owns neither imported half.
+import greet_aspect::Greet;
+import widget::Widget;
+
+extend<T: Display> Widget<T>: Greet { // ERROR[T0014]
+    fun greet(self) -> String { return "hi"; }
+}
+
+fun main() {}

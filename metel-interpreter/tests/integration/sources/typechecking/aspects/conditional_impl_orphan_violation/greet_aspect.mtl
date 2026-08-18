@@ -1,0 +1,3 @@
+public aspect Greet {
+    fun greet(self) -> String;
+}

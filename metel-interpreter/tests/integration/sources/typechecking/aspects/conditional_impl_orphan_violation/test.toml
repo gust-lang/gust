@@ -1,7 +1,9 @@
 [options]
-rfc = ["rfc-0116§6"]
+rfc = ["rfc-0036§3.3"]
 
 [expect]
 status = "typecheck_error"
 code = "T0014"
+line = 6
+col = 1
 contains = "orphan implementation"
