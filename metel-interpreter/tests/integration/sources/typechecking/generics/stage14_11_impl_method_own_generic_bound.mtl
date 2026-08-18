@@ -1,0 +1,57 @@
+// Regression test for issue #746: a generic method's *own* bound, declared
+// inside an `extend` block, was not recognized for aspect-method dispatch --
+// neither when the target struct has no generics of its own
+// (`extend Foo { fun describe<U: Aspect>(...) }`) nor when the method's own
+// bound is combined with the struct's own bound (RFC-0040 §7: "Bounds on
+// generic functions defined inside impl blocks are enforced with the same
+// rules [as free functions]... the impl block's own type parameter bounds
+// are in scope and do not need to be re-declared on individual methods").
+aspect Comparable {
+    fun compare(self, other: Self) -> i64;
+}
+
+aspect Display2 {
+    fun show(self) -> String;
+}
+
+struct SortedList<T: Comparable> {
+    items: T[],
+}
+
+struct Num { value: i64 }
+
+extend Num: Comparable {
+    fun compare(self, other: Num) -> i64 { self.value - other.value }
+}
+
+extend Num: Display2 {
+    fun show(self) -> String { "num" }
+}
+
+extend SortedList<T> {
+    // `T: Comparable` comes from the struct; `U: Display2` is this
+    // method's own additional bound.
+    fun describe<U: Display2>(self, item: T, other: T, label: U) -> String {
+        let cmp = item.compare(other);
+        label.show()
+    }
+}
+
+// A method's own bound on an otherwise non-generic target -- the specific
+// shape #746 was filed against.
+struct Foo { x: i64 }
+
+extend Foo {
+    fun describe<U: Display2>(self, label: U) -> String {
+        label.show()
+    }
+}
+
+fun main() {
+    let list = SortedList { items = [Num { value = 1 }] };
+    let n = Num { value = 42 };
+    assert(list.describe(Num { value = 1 }, Num { value = 2 }, n) == "num");
+
+    let f = Foo { x = 1 };
+    assert(f.describe(n) == "num");
+}

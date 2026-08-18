@@ -1832,6 +1832,20 @@ fn infer_impl_method(
         .iter()
         .map(|g| (g.name.clone(), ctx.fresh_type_var_raw()))
         .collect();
+    // #746: captured *before* the struct's own params are merged into
+    // `generic_map` below, so this holds exactly the method's own generics --
+    // used later to decide whether this method needs a polymorphic scheme
+    // even when the struct/impl contributes no generics of its own.
+    let method_own_tvars: Vec<TypeVar> = method
+        .generics
+        .iter()
+        .filter_map(|g| generic_map.get(&g.name).copied())
+        .collect();
+    // Captured at the same point, for the same reason: `generic_map` is later
+    // moved into `ctx.swap_type_params`, so the method's own bounds (used
+    // below to attach to the call-site-checked scheme) must be collected now.
+    let method_own_bounds = collect_fun_type_var_bounds(method, &generic_map);
+    let method_own_neg_bounds = collect_negative_fun_type_var_bounds(method, &generic_map);
 
     // Seed with the target struct/enum's generic params so that type annotations
     // referencing e.g. `T` in `impl SortedList<T>` resolve to TypeVars and
@@ -1895,6 +1909,17 @@ fn infer_impl_method(
                     .extend(ib_bounds.iter().cloned());
             }
         }
+    }
+
+    // #746: a method's *own* generic bound (`fun describe<U: Display2>(...)`,
+    // inline or via the method's own `where` clause) was never merged into
+    // `struct_bounds` -- only the struct's and the impl block's own bounds
+    // were. `generic_map` already carries the method's generics (seeded at
+    // the top of this function), so `collect_fun_type_var_bounds` -- the
+    // same helper `infer_fun_decl` uses for free functions -- picks them up
+    // correctly by name; merge them in the same union fashion as above.
+    for (tv, bounds) in collect_fun_type_var_bounds(method, &generic_map) {
+        struct_bounds.entry(tv).or_default().extend(bounds);
     }
 
     let te_to_infer = |te: &TypeExpr, ctx: &mut InferContext| -> Result<InferType, MetelError> {
@@ -2034,19 +2059,36 @@ fn infer_impl_method(
         })
         .collect();
 
-    // If the resolved method type still has free TypeVars from the struct's generic params,
+    // If the resolved method type still has free TypeVars from the struct's generic params
+    // *or the method's own* (#746 -- a method's own generic, e.g. `fun describe<U:
+    // Aspect>`, must keep this method polymorphic even on an otherwise concrete target,
+    // exactly as a free function with the same bound would stay polymorphic; missing
+    // the method-own half here used to let `resolved_fun_ty` register as a plain
+    // concrete `Type` in `method_env` whenever the struct itself had no generics,
+    // silently dropping the method's own bound from call-site checking, then failing
+    // with a confusing internal error when its body was later constructed at the
+    // wrong (unconditional) time instead of per call site),
     // store it as a polymorphic scheme so Pass 2 can instantiate it per call site.
     let struct_tvars_free: std::collections::HashSet<TypeVar> =
         struct_tvars_resolved.iter().copied().collect();
-    if !struct_tvars_free.is_empty()
+    let method_tvars_resolved: Vec<TypeVar> = method_own_tvars
+        .iter()
+        .map(|&tv| match partial_subst.apply(&InferType::Var(tv)) {
+            InferType::Var(v) => v,
+            _ => tv,
+        })
+        .collect();
+    let method_tvars_free: std::collections::HashSet<TypeVar> =
+        method_tvars_resolved.iter().copied().collect();
+    if (!struct_tvars_free.is_empty() || !method_tvars_free.is_empty())
         && free_vars(&resolved_fun_ty)
             .iter()
-            .any(|v| struct_tvars_free.contains(v))
+            .any(|v| struct_tvars_free.contains(v) || method_tvars_free.contains(v))
     {
         let mut scheme = generalize(resolved_fun_ty, &std::collections::HashSet::new());
         // RFC-0036 §2.2: attach impl-level bounds keyed by resolved tvars so
         // use-site checking can verify the concrete receiver satisfies them.
-        let by_var: std::collections::HashMap<TypeVar, Vec<GenericBound>> = impl_bounds
+        let mut by_var: std::collections::HashMap<TypeVar, Vec<GenericBound>> = impl_bounds
             .iter()
             .enumerate()
             .filter_map(|(i, bounds)| {
@@ -2057,7 +2099,7 @@ fn infer_impl_method(
                 Some((*resolved_tv, bounds.clone()))
             })
             .collect();
-        let by_neg_var: std::collections::HashMap<TypeVar, Vec<GenericBound>> = impl_neg_bounds
+        let mut by_neg_var: std::collections::HashMap<TypeVar, Vec<GenericBound>> = impl_neg_bounds
             .iter()
             .enumerate()
             .filter_map(|(i, bounds)| {
@@ -2068,6 +2110,31 @@ fn infer_impl_method(
                 Some((*resolved_tv, bounds.clone()))
             })
             .collect();
+        // #746: also attach the method's *own* bounds (e.g. `U: Display2` on
+        // `fun describe<U: Display2>`), keyed by U's *resolved* TypeVar --
+        // otherwise a bound violated at the call site (`f.describe(bad_arg)`)
+        // was never checked at all, only failing later, confusingly, when
+        // the body was reconstructed at call time.
+        for (tv, bounds) in &method_own_bounds {
+            let resolved_tv = match partial_subst.apply(&InferType::Var(*tv)) {
+                InferType::Var(v) => v,
+                _ => *tv,
+            };
+            by_var
+                .entry(resolved_tv)
+                .or_default()
+                .extend(bounds.clone());
+        }
+        for (tv, bounds) in &method_own_neg_bounds {
+            let resolved_tv = match partial_subst.apply(&InferType::Var(*tv)) {
+                InferType::Var(v) => v,
+                _ => *tv,
+            };
+            by_neg_var
+                .entry(resolved_tv)
+                .or_default()
+                .extend(bounds.clone());
+        }
         scheme = scheme.with_bounds(&by_var).with_neg_bounds(&by_neg_var);
         let scheme = if body_assoc_log.is_empty() {
             scheme
