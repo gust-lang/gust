@@ -1,0 +1,2 @@
+import facade::answer;
+fun main() -> i64 { answer() }

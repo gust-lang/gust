@@ -1,5 +1,5 @@
 // TYPECHECK_ERROR[conflicting implementation]
-// RFC-0081 SS2.2, issue #264: a negative impl is final -- no positive impl may
+// RFC-0081§2.2 and RFC-0081§3, issue #264: a negative impl is final -- no positive impl may
 // coexist with a negative impl for the same type and aspect. This falls out
 // of the existing overlap check (issue #238/RFC-0060), which doesn't special-
 // case polarity: two impls of the same aspect for the same concrete type

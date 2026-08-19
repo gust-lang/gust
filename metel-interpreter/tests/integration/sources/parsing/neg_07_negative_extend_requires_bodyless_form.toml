@@ -1,0 +1,6 @@
+[options]
+rfc = ["rfc-0102§3"]
+
+[expect]
+status = "parse_error"
+contains = "negative `extend` must use the bodyless"

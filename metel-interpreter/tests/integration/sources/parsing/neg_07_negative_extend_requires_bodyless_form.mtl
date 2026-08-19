@@ -1,0 +1,12 @@
+// RFC-0102 §3: the bodyless form is mandatory for a negative extend, not optional --
+// the explicit-braces spelling is rejected outright.
+
+aspect Displayable {
+    fun to_string(&self) -> String;
+}
+
+struct Handle { fd: i64 }
+
+extend Handle: !Displayable { }
+
+fun main() {}

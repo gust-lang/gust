@@ -1,0 +1,7 @@
+// A non-empty struct's bare name remains a name, not a constructor expression.
+
+struct Pair {
+    left: i64,
+}
+
+let pair: Pair = Pair;

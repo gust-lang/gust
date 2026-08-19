@@ -3,6 +3,7 @@ prelude = "default"
 
 [options]
 move_check = true
+rfc = ["rfc-0057§6", "rfc-0057§9", "rfc-0057§10"]
 
 [expect]
 status = "success"

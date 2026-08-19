@@ -1,0 +1,5 @@
+fun main() {
+    let matrix: [[i64; 2]; 2] = [[1, 2], [3, 4]];
+    assert(matrix[0][1] == 2);
+    assert(matrix[1][0] == 3);
+}

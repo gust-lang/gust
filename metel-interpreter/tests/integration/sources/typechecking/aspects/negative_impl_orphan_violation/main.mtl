@@ -1,0 +1,8 @@
+// RFC-0081 §3: "Negative impls follow the same orphan rules as positive impls" --
+// this module owns neither Marker nor Widget, so even a negative impl is rejected.
+import marker_aspect::Marker;
+import widget::Widget;
+
+extend Widget: !Marker; // ERROR[T0014]
+
+fun main() {}

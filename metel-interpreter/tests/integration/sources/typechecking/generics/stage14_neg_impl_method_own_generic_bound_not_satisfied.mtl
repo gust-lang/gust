@@ -1,0 +1,23 @@
+// Regression test for issue #746, negative half: a method's own bound
+// (declared inside an `extend` block, `where` form here) must still be
+// enforced at the call site, not silently accepted now that its body can
+// see it.
+aspect Display2 {
+    fun show(self) -> String;
+}
+
+struct Foo { x: i64 }
+
+extend Foo {
+    fun describe<U>(self, label: U) -> String where U: Display2 {
+        label.show()
+    }
+}
+
+struct Silent { value: i64 }
+
+fun main() {
+    let f = Foo { x = 1 };
+    let s = Silent { value = 1 };
+    f.describe(s); // ERROR[T0012]
+}

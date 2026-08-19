@@ -1,0 +1,7 @@
+[options]
+rfc = ["rfc-0037§1.1", "rfc-0037§4.1"]
+
+[expect]
+status = "typecheck_error"
+code = "T0001"
+line = 30

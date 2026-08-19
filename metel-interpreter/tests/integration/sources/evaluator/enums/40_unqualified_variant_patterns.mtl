@@ -1,4 +1,5 @@
-// RFC-0107: a bare variant name in a match arm resolves type-directed against the
+// RFC-0107§1, RFC-0107§1.1, RFC-0107§1.2, RFC-0107§1.3, RFC-0107§3, and RFC-0107§4:
+// a bare variant name in a match arm resolves type-directed against the
 // scrutinee's own enum. Covers no-field variants (parsed as a binding, rewritten to
 // an EnumVariant), fieldful variants (the new bare `Variant { fields }` grammar), the
 // still-valid qualified form, and bare `None` — which no longer has a dedicated

@@ -1,0 +1,2 @@
+import facade::secret;
+fun main() -> i64 { secret() }

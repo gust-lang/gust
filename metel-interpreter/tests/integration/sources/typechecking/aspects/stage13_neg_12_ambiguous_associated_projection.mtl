@@ -1,0 +1,15 @@
+aspect Deref {
+    type Target;
+    fun deref(&self) -> Target;
+}
+
+aspect Convert {
+    type Target;
+    fun convert(&self) -> Target;
+}
+
+fun ambiguous<T: Deref + Convert>(x: &T) -> T::Target {
+    x.deref()
+}
+
+fun main() {}

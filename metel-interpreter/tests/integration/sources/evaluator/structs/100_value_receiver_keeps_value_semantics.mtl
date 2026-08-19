@@ -1,0 +1,19 @@
+// RFC-0044 §2: `self` (a plain value receiver) keeps value semantics -- the
+// method body observes the passed value and returns a new one; the original
+// binding is untouched.
+struct Counter {
+    value: i64,
+}
+
+extend Counter {
+    fun incremented(self) -> Counter {
+        Counter { value = self.value + 1 }
+    }
+}
+
+fun main() {
+    let original = Counter { value = 0 };
+    let next = original.incremented();
+    assert(original.value == 0);
+    assert(next.value == 1);
+}

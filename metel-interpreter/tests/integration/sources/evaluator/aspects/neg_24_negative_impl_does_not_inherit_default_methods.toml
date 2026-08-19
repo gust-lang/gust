@@ -1,0 +1,6 @@
+[options]
+rfc = ["rfc-0081§1"]
+
+[expect]
+status = "typecheck_error"
+contains = "no method"

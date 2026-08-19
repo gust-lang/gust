@@ -1,0 +1,6 @@
+[options]
+rfc = ["rfc-0061§1", "rfc-0097§4"]
+
+[expect]
+status = "typecheck_error"
+contains = "orphan implementation"

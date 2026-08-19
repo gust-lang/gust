@@ -1,0 +1,6 @@
+[options]
+rfc = ["rfc-0060§2", "rfc-0060§5", "rfc-0081§2.2", "rfc-0081§3"]
+
+[expect]
+status = "typecheck_error"
+contains = "conflicting implementation"

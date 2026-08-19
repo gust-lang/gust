@@ -1,0 +1,9 @@
+[options]
+rfc = ["rfc-0081§2.4"]
+
+[expect]
+status = "typecheck_error"
+code = "T0012"
+line = 17
+col = 19
+contains = "bound not satisfied"
