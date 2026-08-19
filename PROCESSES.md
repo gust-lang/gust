@@ -38,8 +38,10 @@ flowchart TD
         MDI_main["main"]
         MDI_ci1["check-examples.yml"]
         MDI_ci2["check-mdx.yml"]
+        MDI_ci3["rfc-check.yml"]
         MDI_main --> MDI_ci1
         MDI_main --> MDI_ci2
+        MDI_main --> MDI_ci3
     end
 
     subgraph MC["metel-core"]
@@ -91,7 +93,7 @@ all.
 | Path | Trigger | Reads | Writes | Secret(s) |
 |---|---|---|---|---|
 | `.github/workflows/ci.yml` — `ci` job | push/PR to `develop`/`main` | this repo | — | — |
-| `.github/workflows/ci.yml` — `rfc-check` job | push/PR to `develop`/`main` | `docs` submodule (metel-docs-internal) | — | `DOCS_REPO_TOKEN` (read-only) |
+| `.github/workflows/ci.yml` — `rfc-check` job | push/PR to `develop`/`main` | `docs` submodule (metel-docs-internal), incl. `public/rfcs/COVERAGE-BASELINE.json`, this repo's `metel-interpreter/tests` | — | `DOCS_REPO_TOKEN` (read-only) |
 | `.github/workflows/ci.yml` — `doc-examples` job | push/PR to `develop`/`main` | `README.md`, `docs` submodule | — | `DOCS_REPO_TOKEN` |
 | `.github/workflows/ci.yml` — `inventory` job | push/PR to `develop`/`main` | this repo's own workflows/tools/commands | — | — |
 | `.github/workflows/release.yml` — `validate-release` | tag `vX.Y.Z` pushed | `docs` submodule | — | `DOCS_REPO_TOKEN` |
@@ -115,7 +117,8 @@ all.
 |---|---|---|---|---|
 | `.github/workflows/check-examples.yml` | push/PR to `main` | `public/getting-started`, `public/blog`, `public/reference`; the latest metel-core **release binary**; `tools/check_doc_examples.py` fetched live from metel-core `develop` | — | built-in `GITHUB_TOKEN` (public reads only) |
 | `.github/workflows/check-mdx.yml` | push/PR to `main` | `public/getting-started`, `public/reference`, `public/release-notes`, `public/blog`, via `tools/mdx-check-site` | — | — |
-| `public/rfcs/tools/rfc.py` | manual (`new`/`transition`/`supersede`/`check`/`index`) | `public/rfcs/` | `public/rfcs/` (moves files between lifecycle directories, edits frontmatter), `public/rfcs/INDEX.md` | — |
+| `.github/workflows/rfc-check.yml` (added 2026-08-19) | push/PR to `main` | this repo (`public/rfcs/` structural checks; the ADR-0049 coverage ratchet degrades to an informational skip here — `metel-interpreter/tests` isn't reachable from a bare checkout, see ADR-0049 §6; real enforcement is metel-core's `rfc-check` job, above) | — | — |
+| `public/rfcs/tools/rfc.py` | manual (`new`/`transition`/`supersede`/`check`/`index`) | `public/rfcs/`; `check`'s coverage ratchet also reads `metel-interpreter/tests` when reachable (see the metel-core `rfc-check` job, above) | `public/rfcs/` (moves files between lifecycle directories, edits frontmatter), `public/rfcs/INDEX.md`, `public/rfcs/REGISTRY.md` (`index --rebuild-registry`), `public/rfcs/COVERAGE-BASELINE.json` (`index --write-coverage-baseline`, added 2026-08-19) | — |
 | `public/rfcs/PROCESS.md` | — (process doc) | — | — | — |
 
 This repo is trunk-based (no `develop`/`main` split of its own) — every commit goes
