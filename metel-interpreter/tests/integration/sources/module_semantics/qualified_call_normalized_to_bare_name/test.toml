@@ -1,4 +1,6 @@
 runner = "full_pipeline"
 prelude = "empty"
+[options]
+rfc = ["rfc-0031§5"]
 [expect]
 status = "success"
