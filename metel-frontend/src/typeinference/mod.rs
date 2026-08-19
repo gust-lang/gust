@@ -536,7 +536,8 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             }
             unify(t1, t2)
         }
-        // [T; N] coerces to T[] (one-directional)
+        // [T; N] coerces to T[] (one-directional). `unify` callers use the
+        // actual type on the left and the expected type on the right.
         (InferType::Array(t1) | InferType::SizedArray(t1, _), InferType::Array(t2))
         | (InferType::Array(t1), InferType::SizedArray(t2, _))
         | (
