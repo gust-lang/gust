@@ -1,6 +1,5 @@
 [options]
-rfc = ["rfc-0041§6"]
+rfc = ["rfc-0041§2"]
 
 [expect]
 status = "parse_error"
-code = "P0001"
