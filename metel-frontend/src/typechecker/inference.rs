@@ -1000,6 +1000,36 @@ fn infer_decl(
             let val_ty = infer_expr(&ld.value, ctx, fun_generalizations)?;
             let bound_ty = if let Some(ann) = &ld.type_ann {
                 let declared = ann_to_infer(ann, ctx);
+                // RFC-0053 §4 (metel-core#757): `[T; N]` coerces to `T[]`,
+                // never the reverse. `unify()` stays bidirectional for
+                // Array/SizedArray -- it's shared by many symmetric/
+                // structural unification call sites unrelated to
+                // actual-vs-expected coercion checking, and an earlier
+                // attempt that made it asymmetric there broke 5+ existing
+                // fixtures (a match-pattern exhaustiveness case among them --
+                // the array-literal bypass that attempt needed to add here,
+                // to route around its own breaking change, itself broke a
+                // *different* case by skipping `constrain_with_read_copy`
+                // entirely for every array literal). So: check this one
+                // direction explicitly and narrowly instead, skipped for a
+                // literal (`[1, 2, 3]`) since a literal's Pass-1 type is
+                // always `Array` regardless of context -- construction
+                // validates a literal against its expected `[T; N]` shape
+                // separately, and only a non-literal RHS (a plain identifier
+                // already carrying a genuine `Array` type) is what this needs
+                // to catch.
+                if !matches!(&ld.value, Expr::Array(_, _)) {
+                    if let (InferType::Array(_), InferType::SizedArray(_, n)) = (&val_ty, &declared)
+                    {
+                        return Err(MetelError::type_error(
+                            crate::error::TypeErrorCode::T0001,
+                            format!(
+                                "expected a fixed-size array of {n} element(s), got a dynamically-sized array"
+                            ),
+                            &ld.span,
+                        ));
+                    }
+                }
                 constrain_with_read_copy(ctx, val_ty.clone(), declared, ld.span.clone())
             } else {
                 val_ty.clone()
@@ -1036,6 +1066,20 @@ fn infer_decl(
             let val_ty = infer_expr(&md.value, ctx, fun_generalizations)?;
             let bound_ty = if let Some(ann) = &md.type_ann {
                 let declared = ann_to_infer(ann, ctx);
+                // RFC-0053 §4 (metel-core#757): see the matching check in
+                // `Decl::Let` above for the full rationale.
+                if !matches!(&md.value, Expr::Array(_, _)) {
+                    if let (InferType::Array(_), InferType::SizedArray(_, n)) = (&val_ty, &declared)
+                    {
+                        return Err(MetelError::type_error(
+                            crate::error::TypeErrorCode::T0001,
+                            format!(
+                                "expected a fixed-size array of {n} element(s), got a dynamically-sized array"
+                            ),
+                            &md.span,
+                        ));
+                    }
+                }
                 constrain_with_read_copy(ctx, val_ty, declared, md.span.clone())
             } else {
                 val_ty

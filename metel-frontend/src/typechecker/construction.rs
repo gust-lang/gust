@@ -375,6 +375,44 @@ fn resolve_unqualified_variant_expr(
 
 /// Construct a `TypedBlock` for a generic (polymorphic) function body at call time.
 ///
+/// RFC-0053 §4 (metel-core#757): `[T; N]` coerces to `T[]`, never the reverse
+/// -- a `T[]` value has no statically-known length, so accepting it where a
+/// specific `[T; N]` is expected defeats the type's entire point.
+///
+/// `construct_expr`'s `expected_ty`/`hint` parameter is advisory, not
+/// enforced, for an argument that already has a fully-determined type of its
+/// own (a bare identifier, unlike an array literal, which `Expr::Array`'s own
+/// branch does shape against the hint) -- nothing else here rejects a `T[]`
+/// argument passed where the hint specifically requires a `[T; N]`.
+///
+/// This is deliberately its own narrow, direction-aware check rather than a
+/// change to `unify()`'s general Array/SizedArray matching: `unify()` is
+/// shared by many symmetric/structural unification call sites throughout the
+/// typechecker that have nothing to do with actual-vs-expected coercion
+/// checking, and making it asymmetric there breaks real, legitimate uses of
+/// the *valid* `[T; N]` -> `T[]` direction (confirmed directly -- an earlier
+/// attempt that changed `unify()` itself passed the two repros in the linked
+/// issue but failed 5 existing fixtures elsewhere in the corpus, plus a
+/// generic-method case and a match-pattern-exhaustiveness case found by hand
+/// that weren't in the corpus at all). Call this explicitly at every place an
+/// argument's constructed type needs checking against its expected/declared
+/// type instead.
+fn reject_dynamic_array_where_sized_expected(
+    expected: Option<&Type>,
+    actual: &TypedExpr,
+) -> Result<(), MetelError> {
+    if let (Some(Type::SizedArray(_, n)), Type::Array(_)) =
+        (expected, peel_type_references(actual.ty()))
+    {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0001,
+            format!("expected a fixed-size array of {n} element(s), got a dynamically-sized array"),
+            actual.span(),
+        ));
+    }
+    Ok(())
+}
+
 /// Instantiates `scheme` with fresh type vars, unifies each instantiated parameter
 /// type with the corresponding runtime argument type (via `arg_types`), then runs the
 /// construction pass on `body` with the resulting substitution.
@@ -397,7 +435,11 @@ fn construct_method_args(
             .collect();
         args.iter()
             .zip(arg_params.iter())
-            .map(|(a, hint)| construct_expr(a, *hint, ctx))
+            .map(|(a, hint)| {
+                let typed = construct_expr(a, *hint, ctx)?;
+                reject_dynamic_array_where_sized_expected(*hint, &typed)?;
+                Ok(typed)
+            })
             .collect()
     } else {
         args.iter().map(|a| construct_expr(a, None, ctx)).collect()
@@ -1777,6 +1819,18 @@ fn construct_expr(
                         "array index must be u64, got {}; use `expr as u64`",
                         typed_idx.ty()
                     ),
+                    span,
+                ));
+            }
+            if matches!(peel_type_references(typed_obj.ty()), Type::SizedArray(_, 0))
+                && matches!(
+                    index.as_ref(),
+                    Expr::Literal(Literal::Int(_) | Literal::SizedInt { .. }, _)
+                )
+            {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0001,
+                    "cannot index an empty fixed-size array with a literal index",
                     span,
                 ));
             }
@@ -3365,7 +3419,11 @@ fn construct_call(
     let typed_args: Vec<TypedExpr> = args
         .iter()
         .zip(param_hints.iter())
-        .map(|(a, hint)| construct_expr(a, hint.as_ref(), ctx))
+        .map(|(a, hint)| {
+            let typed = construct_expr(a, hint.as_ref(), ctx)?;
+            reject_dynamic_array_where_sized_expected(hint.as_ref(), &typed)?;
+            Ok(typed)
+        })
         .collect::<Result<_, _>>()?;
     let arg_types: Vec<&Type> = typed_args
         .iter()
@@ -3823,7 +3881,9 @@ fn try_generic_method_scheme(
             let hint = partial_params
                 .get(i + 1)
                 .and_then(|it| infer_type_to_type(&subst.apply(it), span).ok());
-            construct_expr(a, hint.as_ref(), ctx)
+            let typed = construct_expr(a, hint.as_ref(), ctx)?;
+            reject_dynamic_array_where_sized_expected(hint.as_ref(), &typed)?;
+            Ok(typed)
         })
         .collect::<Result<_, _>>()?;
     for (param_it, arg) in partial_params.iter().skip(1).zip(typed_args.iter()) {
