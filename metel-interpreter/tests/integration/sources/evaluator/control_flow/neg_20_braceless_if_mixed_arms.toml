@@ -1,0 +1,6 @@
+[options]
+rfc = ["rfc-0022§5"]
+
+[expect]
+status = "parse_error"
+contains = "mismatched if arm styles"

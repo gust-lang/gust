@@ -1,0 +1,25 @@
+// RFC-0034 §4: declaration bounds propagate to aspect extends.
+aspect Comparable {
+    fun compare(self, other: Self) -> i64;
+}
+
+aspect Labelled {
+    fun label(self) -> i64;
+}
+
+struct SortedList<T: Comparable> { item: T }
+
+extend SortedList<T>: Labelled {
+    fun label(self) -> i64 { self.item.compare(self.item) }
+}
+
+struct Num { value: i64 }
+extend Num: Comparable {
+    fun compare(self, other: Num) -> i64 { self.value - other.value }
+}
+
+fun main() -> i64 {
+    let n = Num { value = 4 };
+    let list = SortedList { item = n };
+    list.label()
+}

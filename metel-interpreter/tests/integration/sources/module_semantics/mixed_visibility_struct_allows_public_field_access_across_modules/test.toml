@@ -2,7 +2,7 @@ runner = "full_pipeline"
 prelude = "empty"
 
 [options]
-rfc = ["rfc-0098§2"]
+rfc = ["rfc-0098§2", "rfc-0032§1"]
 
 [expect]
 status = "success"

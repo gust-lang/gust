@@ -1,0 +1,12 @@
+// RFC-0010 §3: interpolation evaluates each placeholder exactly once, left to right.
+fun next(counter: &var i64) -> i64 {
+    *counter += 1;
+    *counter
+}
+
+fun main() {
+    var counter = 0;
+    let message = "${next(&var counter)} ${next(&var counter)}";
+    assert(message == "1 2");
+    assert(counter == 2);
+}

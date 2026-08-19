@@ -1,0 +1,6 @@
+[options]
+rfc = ["rfc-0022§4"]
+
+[expect]
+status = "parse_error"
+contains = "braceless if body may not contain an if–else expression"
