@@ -1,0 +1,5 @@
+[options]
+rfc = ["rfc-0032§8"]
+
+[expect]
+warnings = ["enclosing struct `Thing` is private"]

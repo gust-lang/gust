@@ -439,7 +439,7 @@ mod tests {
                     total_ns: 13,
                 },
                 evaluation: Default::default(),
-                move_check_warnings: Vec::new(),
+                warnings: Vec::new(),
             },
             EvaluatorFixtureRunReport {
                 phase_timings: EvaluatorFixturePhaseTimings {
@@ -450,7 +450,7 @@ mod tests {
                     total_ns: 14,
                 },
                 evaluation: Default::default(),
-                move_check_warnings: Vec::new(),
+                warnings: Vec::new(),
             },
         ];
 

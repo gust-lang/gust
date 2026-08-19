@@ -33,6 +33,9 @@ pub struct Expectation {
     pub contains: Option<String>,
     pub line: Option<usize>,
     pub col: Option<usize>,
+    /// Expected warning fragments, when this fixture exercises a warning.
+    /// Existing success fixtures do not implicitly assert that stderr is empty.
+    pub warnings: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -66,6 +69,7 @@ struct PartialConfig {
     contains: Option<String>,
     line: Option<usize>,
     col: Option<usize>,
+    warnings: Option<Vec<String>>,
     program_imports: Option<usize>,
     program_decls: Option<usize>,
     graph_module_count: Option<usize>,
@@ -159,6 +163,7 @@ impl Expectation {
             contains: None,
             line: None,
             col: None,
+            warnings: None,
         }
     }
 }
@@ -177,6 +182,7 @@ fn merge_config(defaults: FixtureConfig, partial: PartialConfig) -> FixtureConfi
             contains: partial.contains.or(defaults.expect.contains),
             line: partial.line.or(defaults.expect.line),
             col: partial.col.or(defaults.expect.col),
+            warnings: partial.warnings.or(defaults.expect.warnings),
         },
         program: ProgramChecks {
             imports: partial.program_imports.or(defaults.program.imports),
@@ -255,6 +261,7 @@ fn parse_sidecar(path: &Path) -> PartialConfig {
                         panic!("invalid integer for `col` in {}: {e}", path.display())
                     }))
                 }
+                "warnings" => partial.warnings = Some(parse_list(&value)),
                 other => panic!("unknown expect sidecar key `{other}` in {}", path.display()),
             },
             "program" => match key {
