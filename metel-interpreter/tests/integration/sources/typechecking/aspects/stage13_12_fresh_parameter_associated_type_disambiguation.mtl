@@ -1,0 +1,30 @@
+aspect Deref {
+    type Target;
+    fun deref(&self) -> Target;
+}
+
+aspect Convert {
+    type Target;
+    fun convert(&self) -> Target;
+}
+
+struct Number { value: i64 }
+
+extend Number: Deref {
+    type Target = i64;
+    fun deref(&self) -> i64 { self.value }
+}
+
+extend Number: Convert {
+    type Target = String;
+    fun convert(&self) -> String { "number" }
+}
+
+fun deref_value<T: Deref<Target = U> + Convert, U>(x: &T) -> U {
+    x.deref()
+}
+
+fun main() -> i64 {
+    let n = Number { value = 7 };
+    deref_value(&n)
+}
