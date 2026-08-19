@@ -1,0 +1,13 @@
+fun main() {
+    var calls = 0;
+    let calls_ref: &var i64 = &var calls;
+    let next = () -> i64 {
+        *calls_ref += 1;
+        *calls_ref
+    };
+    let values: [i64; 3] = [next(); 3];
+    assert(calls == 1);
+    assert(values[0] == 1);
+    assert(values[1] == 1);
+    assert(values[2] == 1);
+}
