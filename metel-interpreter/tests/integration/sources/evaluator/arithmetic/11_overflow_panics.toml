@@ -1,0 +1,6 @@
+[options]
+rfc = ["rfc-0007§4"]
+
+[expect]
+status = "runtime_error"
+contains = "overflow"

@@ -1,2 +1,3 @@
 [options]
 move_check = true
+rfc = ["rfc-0010§1", "rfc-0010§2", "rfc-0010§4", "rfc-0010§5"]
