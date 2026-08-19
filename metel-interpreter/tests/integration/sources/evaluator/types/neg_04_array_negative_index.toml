@@ -1,0 +1,6 @@
+[options]
+rfc = ["rfc-0007§5"]
+
+[expect]
+status = "typecheck_error"
+contains = "array index must be u64"

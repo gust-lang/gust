@@ -1,0 +1,6 @@
+[options]
+rfc = ["rfc-0030§5"]
+
+[expect]
+status = "parse_error"
+code = "P0001"
