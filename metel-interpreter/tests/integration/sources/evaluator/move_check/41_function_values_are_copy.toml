@@ -1,5 +1,6 @@
 [options]
 move_check = true
+rfc = ["rfc-0061§7", "rfc-0061§7.1", "rfc-0061§7.2"]
 
 [expect]
 status = "success"

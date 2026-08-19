@@ -1189,8 +1189,13 @@ fn construct_impl_method(
     // Also deferred whenever the *impl block itself* declares generics (RFC-0036/
     // RFC-0061) — `target_name` may not even name a real struct/enum in that case
     // (RFC-0061's structural targets), so `struct_generic_names_for` can't be relied
-    // on to catch it.
+    // on to catch it. And deferred whenever the *method itself* declares its own
+    // generics (RFC-0040 §7, issue #746) -- a method on an otherwise-concrete target
+    // (`extend Foo { fun describe<U: Aspect>(...) }`) is just as unresolvable here
+    // without call-site type args as an impl-level generic is; missing this case used
+    // to eagerly resolve `U` as a literal, nonexistent named type instead of deferring.
     let is_generic_target = impl_has_generics
+        || !method.generics.is_empty()
         || ctx
             .registry
             .struct_generic_names_for(target_name)

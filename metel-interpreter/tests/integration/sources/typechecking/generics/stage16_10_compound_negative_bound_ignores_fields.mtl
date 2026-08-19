@@ -1,0 +1,14 @@
+// RFC-0072 §2.4: `!Drop` concerns the compound type's own impl, not the
+// impls of its fields.  `Handle` implements Drop; `Wrapper` deliberately does not.
+aspect Drop { fun drop(self); }
+
+struct Handle { fd: i64 }
+extend Handle: Drop { fun drop(self) {} }
+
+struct Wrapper { inner: Handle }
+
+fun needs_no_drop<T: !Drop>(value: T) {}
+
+fun main() {
+    needs_no_drop(Wrapper { inner = Handle { fd = 3 } });
+}

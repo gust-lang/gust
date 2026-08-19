@@ -1,3 +1,6 @@
+[options]
+rfc = ["rfc-0116§6"]
+
 [expect]
 status = "typecheck_error"
 code = "T0014"

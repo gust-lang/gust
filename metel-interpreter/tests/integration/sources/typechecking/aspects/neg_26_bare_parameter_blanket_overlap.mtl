@@ -1,0 +1,11 @@
+// RFC-0097 §3: overlap between two bare-parameter blankets of the same local aspect
+// needs no new machinery -- it is caught by the same overlap detection RFC-0060 §2
+// already uses for named targets. `Copy` implies `Clone` (RFC-0080), so any `T: Copy`
+// also satisfies `T: Clone`, and these two blankets are not syntactically disjoint.
+
+aspect Marker {}
+
+extend<T: Copy> T: Marker {}
+extend<T: Clone> T: Marker {}
+
+fun main() {}

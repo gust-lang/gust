@@ -1,0 +1,12 @@
+// RFC-0071 §9a item 1: `&T` is `Copy` (a shared reference may be used
+// repeatedly); `&var T` is not (see 10_mut_ref_non_reborrow_move.mtl for the
+// negative half -- moving a `&var T` binding and then using it again is
+// rejected).
+fun show(r: &i64) -> i64 { *r }
+
+fun main() {
+    let x = 5;
+    let r = &x;
+    assert(show(r) == 5);
+    assert(show(r) == 5);
+}

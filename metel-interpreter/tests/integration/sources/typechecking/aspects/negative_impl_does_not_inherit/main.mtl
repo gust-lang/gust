@@ -1,0 +1,18 @@
+// RFC-0081 §2.4: a negative impl applies only to its own target.  `Rc` meets
+// the negative bound, while the separately positive `Arc` must not inherit it.
+aspect Send {
+    fun send(self);
+}
+
+struct Rc { value: i64 }
+struct Arc { value: i64 }
+
+extend Rc: !Send;
+extend Arc: Send { fun send(self) {} }
+
+fun needs_not_send<T: !Send>(value: T) {}
+
+fun main() {
+    needs_not_send(Rc { value = 1 });
+    needs_not_send(Arc { value = 2 }); // ERROR[T0012]
+}

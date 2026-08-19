@@ -1,5 +1,7 @@
 runner = "full_pipeline"
 prelude = "empty"
+[options]
+rfc = ["rfc-0031§3", "rfc-0031§7"]
 [expect]
 status = "typecheck_error"
 code = "T0010"

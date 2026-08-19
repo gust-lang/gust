@@ -1,0 +1,9 @@
+pub struct Counter {
+    pub value: i64,
+}
+
+fun main() {
+    let mut counter = Counter { value = 0 };
+    let ptr: &mut Counter = &mut counter;
+    ptr.value += 1;
+}

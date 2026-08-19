@@ -1,0 +1,11 @@
+// RFC-0107 §2: a bare variant tag is rewritten before exhaustiveness checking;
+// it is not a catch-all binding.
+enum Colour { Red, Blue }
+
+fun name(c: Colour) -> String {
+    match c {
+        Red => "red",
+    }
+}
+
+fun main() {}

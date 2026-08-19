@@ -1,0 +1,9 @@
+[options]
+rfc = ["rfc-0036§3", "rfc-0036§3.2"]
+
+[expect]
+status = "typecheck_error"
+code = "T0015"
+line = 24
+col = 1
+contains = "conflicting implementation"

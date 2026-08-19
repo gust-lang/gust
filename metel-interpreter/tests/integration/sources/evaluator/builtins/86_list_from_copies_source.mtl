@@ -1,0 +1,12 @@
+// List::from owns a copy, rather than an alias, of its source array.
+
+fun main() {
+    let source: i64[] = [1, 2];
+    var list = List::from(source);
+    list.push(3);
+
+    assert(source.len() == 2);
+    assert(source[0] == 1);
+    assert(source[1] == 2);
+    assert(list.len() == 3);
+}

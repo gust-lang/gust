@@ -1,0 +1,6 @@
+[options]
+rfc = ["rfc-0078§2"]
+
+[expect]
+status = "runtime_error"
+contains = "boom"

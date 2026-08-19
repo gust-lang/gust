@@ -1,4 +1,6 @@
 runner = "load_program"
+[options]
+rfc = ["rfc-0030§10"]
 [expect]
 status = "success"
 [program]

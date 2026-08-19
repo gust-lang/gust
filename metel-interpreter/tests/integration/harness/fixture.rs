@@ -48,6 +48,11 @@ pub struct FixtureConfig {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FixtureOptions {
     pub move_check: bool,
+    /// RFC-section citations this fixture demonstrates, e.g. `rfc-0061§7.2`.
+    /// See ADR-0049 for the grammar and the coverage checker that will
+    /// eventually consume this. Purely informational to the harness today --
+    /// parsed and validated, not yet read by anything else.
+    pub rfc: Vec<String>,
 }
 
 #[derive(Default)]
@@ -55,6 +60,7 @@ struct PartialConfig {
     runner: Option<RunnerKind>,
     prelude: Option<CorePreludeMode>,
     move_check: Option<bool>,
+    rfc: Option<Vec<String>>,
     status: Option<ExpectStatus>,
     code: Option<String>,
     contains: Option<String>,
@@ -163,6 +169,7 @@ fn merge_config(defaults: FixtureConfig, partial: PartialConfig) -> FixtureConfi
         prelude: partial.prelude.unwrap_or(defaults.prelude),
         options: FixtureOptions {
             move_check: partial.move_check.unwrap_or(defaults.options.move_check),
+            rfc: partial.rfc.unwrap_or(defaults.options.rfc),
         },
         expect: Expectation {
             status: partial.status.unwrap_or(defaults.expect.status),
@@ -228,6 +235,7 @@ fn parse_sidecar(path: &Path) -> PartialConfig {
             },
             "options" => match key {
                 "move_check" => partial.move_check = Some(parse_bool(&value)),
+                "rfc" => partial.rfc = Some(parse_rfc_list(&value, path)),
                 other => panic!(
                     "unknown options sidecar key `{other}` in {}",
                     path.display()
@@ -401,6 +409,57 @@ fn extract_annotation(line: &str, marker: &str) -> Option<String> {
     let rest = &line[start + marker.len()..];
     let end = rest.find(']')?;
     Some(rest[..end].to_string())
+}
+
+/// Parses and validates an `options.rfc` list against ADR-0049's citation
+/// grammar: `rfc-NNNN` or `rfc-NNNN§section`, where `section` is
+/// `part("."part)?` and `part` is `digit+letter?` (e.g. `7`, `9c`, `3a` --
+/// letter-suffixed sections are real, not hypothetical: RFC-0071 §9a-9c,
+/// RFC-0082 §3a, RFC-0118 §2a, RFC-0067a §3a, RFC-0110 §1a all exist). The
+/// RFC id itself can carry the same optional letter suffix -- `rfc-0067a`
+/// is a real, distinct RFC id (Reference Types), not a typo for `rfc-0067`
+/// (a different RFC, Lifetime Anchors) -- found the hard way when a
+/// migration first cited the wrong one and this validator accepted it
+/// anyway, because it only allowed the letter suffix on the section half.
+fn parse_rfc_list(raw: &str, path: &Path) -> Vec<String> {
+    let citations = parse_list(raw);
+    for citation in &citations {
+        let lower = citation.to_ascii_lowercase();
+        let (id, section) = match lower.split_once('§') {
+            Some((id, section)) => (id, Some(section)),
+            None => (lower.as_str(), None),
+        };
+        let id_ok = id.starts_with("rfc-") && {
+            let digits_and_letter = &id[4..];
+            let digit_end = digits_and_letter
+                .find(|c: char| !c.is_ascii_digit())
+                .unwrap_or(digits_and_letter.len());
+            let (digits, rest) = digits_and_letter.split_at(digit_end);
+            digits.len() == 4
+                && matches!(rest.len(), 0 | 1)
+                && rest.chars().all(|c| c.is_ascii_lowercase())
+        };
+        let section_ok = section.is_none_or(|s| {
+            !s.is_empty()
+                && s.split('.').all(|part| {
+                    let digits_end = part
+                        .find(|c: char| !c.is_ascii_digit())
+                        .unwrap_or(part.len());
+                    let (digits, rest) = part.split_at(digits_end);
+                    !digits.is_empty()
+                        && matches!(rest.len(), 0 | 1)
+                        && rest.chars().all(|c| c.is_ascii_lowercase())
+                })
+        });
+        if !id_ok || !section_ok {
+            panic!(
+                "invalid `rfc` citation `{citation}` in {} -- expected `rfc-NNNN` or \
+                 `rfc-NNNN§section` (section like `7`, `9c`, `7.2`), per ADR-0049",
+                path.display()
+            );
+        }
+    }
+    citations
 }
 
 fn parse_list(raw: &str) -> Vec<String> {
