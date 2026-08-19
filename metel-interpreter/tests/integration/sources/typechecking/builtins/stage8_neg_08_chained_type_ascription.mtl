@@ -1,0 +1,2 @@
+// RFC-0021 §4: an expression accepts at most one type ascription.
+let value = 1 : i64 : i64;

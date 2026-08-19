@@ -1,0 +1,5 @@
+[options]
+rfc = ["rfc-0010§3"]
+
+[expect]
+status = "success"
