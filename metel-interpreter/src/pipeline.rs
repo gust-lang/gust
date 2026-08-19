@@ -34,7 +34,7 @@ pub struct PhaseTimings {
 pub struct RunReport {
     pub phase_timings: PhaseTimings,
     pub evaluation: EvaluationReport,
-    pub move_check_warnings: Vec<String>,
+    pub warnings: Vec<String>,
 }
 
 #[allow(dead_code)] // public API used by the benchmark binary
@@ -52,7 +52,7 @@ pub struct EvaluatorFixturePhaseTimings {
 pub struct EvaluatorFixtureRunReport {
     pub phase_timings: EvaluatorFixturePhaseTimings,
     pub evaluation: EvaluationReport,
-    pub move_check_warnings: Vec<String>,
+    pub warnings: Vec<String>,
 }
 
 /// Run the full pipeline (load, resolve, normalize, coherence, typecheck,
@@ -82,17 +82,17 @@ pub fn run_file(filename: &str, options: &RunOptions) -> Result<RunReport, Metel
     let coherence_ns = elapsed_ns(started);
 
     let started = Instant::now();
-    let typed_graph = typechecker::check_graph(&normalized, &names, &CorePrelude::default())?;
+    let typed_report =
+        typechecker::check_graph_with_report(&normalized, &names, &CorePrelude::default())?;
     let typecheck_ns = elapsed_ns(started);
 
-    let move_check_warnings = if options.move_check {
-        move_check::check_graph(&typed_graph)?
-    } else {
-        Vec::new()
-    };
+    let mut warnings = typed_report.warnings;
+    if options.move_check {
+        warnings.extend(move_check::check_graph(&typed_report.graph)?);
+    }
 
     let started = Instant::now();
-    let elaborated = elaborator::elaborate(typed_graph, &names)?;
+    let elaborated = elaborator::elaborate(typed_report.graph, &names)?;
     let elaborate_ns = elapsed_ns(started);
 
     let started = Instant::now();
@@ -116,7 +116,7 @@ pub fn run_file(filename: &str, options: &RunOptions) -> Result<RunReport, Metel
             total_ns: elapsed_ns(total_started),
         },
         evaluation,
-        move_check_warnings,
+        warnings,
     })
 }
 
@@ -150,11 +150,10 @@ pub fn run_evaluator_fixture(
     let typed_report =
         typechecker::check_graph_with_report(&normalized, &names, &CorePrelude::default())?;
 
-    let move_check_warnings = if options.move_check {
-        move_check::check_graph(&typed_report.graph)?
-    } else {
-        Vec::new()
-    };
+    let mut warnings = typed_report.warnings;
+    if options.move_check {
+        warnings.extend(move_check::check_graph(&typed_report.graph)?);
+    }
 
     let elaborated = elaborator::elaborate(typed_report.graph, &names)?;
     let typecheck_ns = elapsed_ns(started);
@@ -177,7 +176,7 @@ pub fn run_evaluator_fixture(
             total_ns: elapsed_ns(total_started),
         },
         evaluation,
-        move_check_warnings,
+        warnings,
     })
 }
 

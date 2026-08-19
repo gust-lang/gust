@@ -1,0 +1,8 @@
+struct Thing {
+    public value: i64,
+}
+
+fun main() {
+    let t = Thing { value = 1 };
+    println(t.value.to_string());
+}

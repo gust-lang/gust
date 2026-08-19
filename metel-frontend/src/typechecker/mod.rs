@@ -52,6 +52,8 @@ struct CheckImplReport {
 pub struct CheckGraphReport {
     pub graph: TypedModuleGraph,
     pub timings: TypecheckPhaseTimings,
+    /// Non-fatal diagnostics emitted while checking the graph.
+    pub warnings: Vec<String>,
 }
 
 // ── ScopedEnv ─────────────────────────────────────────────────────────────────
@@ -267,6 +269,32 @@ fn check_pub_annotations(loaded: &LoadedModule, names: &ResolvedNames) -> Result
     Ok(())
 }
 
+/// Warn about field visibility that cannot have any cross-module effect because
+/// the enclosing struct is private (RFC-0032 D3).
+fn inert_public_field_warnings(loaded: &LoadedModule) -> Vec<String> {
+    loaded
+        .program
+        .decls
+        .iter()
+        .filter_map(|decl| match decl {
+            Decl::Struct(sd) if sd.visibility == Visibility::Private => Some(sd),
+            _ => None,
+        })
+        .flat_map(|sd| {
+            sd.fields
+                .iter()
+                .filter(|field| field.visibility == Visibility::Public)
+                .map(move |field| {
+                    format!(
+                        "field `{}.{}` is marked public, but enclosing struct `{}` is private; \
+                         the field cannot be reached across a module boundary, so the annotation is inert",
+                        sd.name, field.name, sd.name
+                    )
+                })
+        })
+        .collect()
+}
+
 // ── check_graph ───────────────────────────────────────────────────────────────
 
 /// Typecheck a normalized module graph. Processes modules in topological order
@@ -303,6 +331,7 @@ pub fn check_graph_with_report(
     // See ADR-0032.
     let mut type_registry = TypeDefinitionRegistry::new();
     let mut timings = TypecheckPhaseTimings::default();
+    let mut warnings = Vec::new();
     // Exported schemes are alpha-renamed into a dedicated high TypeVar range so
     // their ids can never collide with any module's local generator (which
     // restarts near 0 per module). Without this, an imported scheme whose
@@ -313,6 +342,7 @@ pub fn check_graph_with_report(
 
     for loaded in graph.modules() {
         check_pub_annotations(loaded, names)?;
+        warnings.extend(inert_public_field_warnings(loaded));
         let (imported_schemes, deferred_conflicts) =
             build_import_schemes(loaded, names, &global_exports, graph)?;
         let report = check_impl_with_report(
@@ -415,6 +445,7 @@ pub fn check_graph_with_report(
             type_registry,
         },
         timings,
+        warnings,
     })
 }
 

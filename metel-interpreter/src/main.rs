@@ -57,7 +57,7 @@ fn run(filename: &str, debug_ast: bool, move_check: bool) -> Result<(), MetelErr
                 ..pipeline::RunOptions::default()
             },
         )?;
-        for warning in report.move_check_warnings {
+        for warning in report.warnings {
             eprintln!("warning: {warning}");
         }
         return Ok(());

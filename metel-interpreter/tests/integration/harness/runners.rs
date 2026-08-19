@@ -8,20 +8,17 @@ use metel::{
 };
 
 use super::fixture::{
-    main_source_path, CorePreludeMode, ExpectStatus, FixtureConfig, FixtureOptions, GraphChecks,
-    ProgramChecks,
+    main_source_path, CorePreludeMode, ExpectStatus, FixtureConfig, GraphChecks, ProgramChecks,
 };
 
 pub fn run_fixture(path: &Path, config: &FixtureConfig) {
     let result = match config.runner {
         super::fixture::RunnerKind::Parse => run_parse(path),
-        super::fixture::RunnerKind::Typecheck => run_typecheck(path, &config.options),
-        super::fixture::RunnerKind::Evaluate => run_evaluate(path, &config.options),
+        super::fixture::RunnerKind::Typecheck => run_typecheck(path, config),
+        super::fixture::RunnerKind::Evaluate => run_evaluate(path, config),
         super::fixture::RunnerKind::LoadProgram => run_load_program(path, &config.program),
         super::fixture::RunnerKind::LoadGraph => run_load_graph(path, &config.graph),
-        super::fixture::RunnerKind::FullPipeline => {
-            run_full_pipeline(path, config.prelude, &config.options, &config.graph)
-        }
+        super::fixture::RunnerKind::FullPipeline => run_full_pipeline(path, config),
     };
 
     match config.expect.status {
@@ -68,30 +65,35 @@ fn run_parse(path: &Path) -> Result<(), MetelError> {
 // std::core, which drifted from the product path and could not run Metel-bodied
 // core free functions (e.g. the print/println Display wrappers, METEL-192). The
 // pub single-program API remains for the benchmark binary only.
-fn run_typecheck(path: &Path, options: &FixtureOptions) -> Result<(), MetelError> {
+fn run_typecheck(path: &Path, config: &FixtureConfig) -> Result<(), MetelError> {
     let graph = module_loader::load_root(main_source_path(path))?;
     let names = name_resolver::resolve(&graph)?;
     let normalized = path_normalizer::normalize(graph, &names)?;
     coherence::check(&normalized, &names)?;
-    let typed =
-        typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())?;
-    if options.move_check {
-        for warning in metel::move_check::check_graph(&typed)? {
+    let typed = typechecker::check_graph_with_report(
+        &normalized,
+        &names,
+        &typechecker::CorePrelude::default(),
+    )?;
+    assert_warnings(path, &typed.warnings, config.expect.warnings.as_deref());
+    if config.options.move_check {
+        for warning in metel::move_check::check_graph(&typed.graph)? {
             eprintln!("warning: {warning}");
         }
     }
     Ok(())
 }
 
-fn run_evaluate(path: &Path, options: &FixtureOptions) -> Result<(), MetelError> {
+fn run_evaluate(path: &Path, config: &FixtureConfig) -> Result<(), MetelError> {
     let report = pipeline::run_evaluator_fixture(
         &main_source_path(path).to_string_lossy(),
         &pipeline::RunOptions {
-            move_check: options.move_check,
+            move_check: config.options.move_check,
             ..pipeline::RunOptions::default()
         },
     )?;
-    for warning in report.move_check_warnings {
+    assert_warnings(path, &report.warnings, config.expect.warnings.as_deref());
+    for warning in report.warnings {
         eprintln!("warning: {warning}");
     }
     Ok(())
@@ -124,25 +126,43 @@ fn run_load_graph(path: &Path, checks: &GraphChecks) -> Result<(), MetelError> {
     Ok(())
 }
 
-fn run_full_pipeline(
-    path: &Path,
-    prelude_mode: CorePreludeMode,
-    options: &FixtureOptions,
-    checks: &GraphChecks,
-) -> Result<(), MetelError> {
+fn run_full_pipeline(path: &Path, config: &FixtureConfig) -> Result<(), MetelError> {
     let graph = module_loader::load_root(main_source_path(path))?;
-    assert_graph_checks(path, &graph, checks);
+    assert_graph_checks(path, &graph, &config.graph);
     let names = name_resolver::resolve(&graph)?;
     let normalized = path_normalizer::normalize(graph, &names)?;
     coherence::check(&normalized, &names)?;
-    let typed = typechecker::check_graph(&normalized, &names, &std_prelude(prelude_mode))?;
-    if options.move_check {
-        for warning in metel::move_check::check_graph(&typed)? {
+    let typed =
+        typechecker::check_graph_with_report(&normalized, &names, &std_prelude(config.prelude))?;
+    assert_warnings(path, &typed.warnings, config.expect.warnings.as_deref());
+    if config.options.move_check {
+        for warning in metel::move_check::check_graph(&typed.graph)? {
             eprintln!("warning: {warning}");
         }
     }
-    let elaborated = elaborator::elaborate(typed, &names)?;
+    let elaborated = elaborator::elaborate(typed.graph, &names)?;
     evaluator::evaluate_graph(elaborated)
+}
+
+fn assert_warnings(path: &Path, actual: &[String], expected: Option<&[String]>) {
+    let Some(expected) = expected else {
+        return;
+    };
+    assert_eq!(
+        actual.len(),
+        expected.len(),
+        "wrong warnings for {}",
+        path.display()
+    );
+    for expected_warning in expected {
+        assert!(
+            actual
+                .iter()
+                .any(|warning| warning.contains(expected_warning)),
+            "missing warning `{expected_warning}` for {}; got {actual:#?}",
+            path.display()
+        );
+    }
 }
 
 fn std_prelude(mode: CorePreludeMode) -> typechecker::CorePrelude {
