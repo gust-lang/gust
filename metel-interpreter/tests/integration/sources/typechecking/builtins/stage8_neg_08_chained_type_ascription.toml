@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0021§4"]
+spec = ["spec.types.type-ascription.legality-3"]
 
 [expect]
 status = "parse_error"

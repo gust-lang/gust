@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0098§3", "rfc-0042§2", "rfc-0042§3"]
+spec = ["spec.declarations.variables.mutable-bindings.legality-1", "spec.expressions.control-flow.for.legality-1"]

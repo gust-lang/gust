@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0106§1", "rfc-0106§2"]
+spec = ["spec.declarations.structs.instantiation-and-field-access.dynamics-2", "spec.declarations.enums.dynamics-1"]

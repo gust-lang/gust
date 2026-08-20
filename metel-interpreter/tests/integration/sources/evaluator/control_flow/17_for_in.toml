@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0042§4"]
+spec = ["spec.expressions.control-flow.for-in.legality-1", "spec.expressions.control-flow.for-in.dynamics-1"]

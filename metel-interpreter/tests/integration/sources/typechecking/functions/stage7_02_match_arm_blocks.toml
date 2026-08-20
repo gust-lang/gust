@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0018§1", "rfc-0018§2", "rfc-0018§3", "rfc-0018§4"]
+spec = ["spec.expressions.pattern-matching.legality-1", "spec.expressions.pattern-matching.dynamics-1", "spec.expressions.pattern-matching.legality-2"]

@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0103§1", "rfc-0103§2"]
+spec = ["spec.declarations.aspects.bodyless-aspect-declarations.legality-1"]
 
 [expect]
 status = "success"

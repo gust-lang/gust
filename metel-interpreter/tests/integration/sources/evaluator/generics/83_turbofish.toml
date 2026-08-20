@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0023§2"]
+spec = ["spec.functions.turbofish.legality-1"]
