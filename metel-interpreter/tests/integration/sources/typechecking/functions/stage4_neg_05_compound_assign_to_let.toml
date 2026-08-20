@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0042§1"]
+spec = ["spec.declarations.variables.immutable-bindings.legality-1"]
 
 [expect]
 status = "typecheck_error"

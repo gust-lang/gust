@@ -2,7 +2,8 @@ runner = "full_pipeline"
 prelude = "empty"
 
 [options]
-rfc = ["rfc-0098§2", "rfc-0032§1"]
+spec = ["spec.modules.visibility.legality-1"]
+rfc = ["rfc-0032§1"]
 
 [expect]
 status = "success"

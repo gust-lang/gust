@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0106§3"]
+spec = ["spec.declarations.enums.instantiation.legality-1"]
 
 [expect]
 status = "typecheck_error"

@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0021§2"]
+spec = ["spec.types.type-ascription.legality-2"]
 
 [expect]
 status = "typecheck_error"

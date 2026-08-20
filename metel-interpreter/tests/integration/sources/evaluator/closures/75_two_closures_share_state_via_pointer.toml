@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0006§3"]
+spec = ["spec.functions.closures.dynamics-3"]

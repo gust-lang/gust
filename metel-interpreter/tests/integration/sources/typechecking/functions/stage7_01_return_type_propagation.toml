@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0019§1", "rfc-0019§2"]
+spec = ["spec.types.type-inference.legality-1", "spec.types.type-inference.legality-2"]
