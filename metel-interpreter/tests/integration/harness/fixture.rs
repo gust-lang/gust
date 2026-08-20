@@ -56,6 +56,16 @@ pub struct FixtureOptions {
     /// eventually consume this. Purely informational to the harness today --
     /// parsed and validated, not yet read by anything else.
     pub rfc: Vec<String>,
+    /// Spec-block citations this fixture demonstrates, e.g.
+    /// `spec.declarations.structs.instantiation-and-field-access.legality-1`.
+    /// See ADR-0050 for the grammar and the coverage checker that will
+    /// eventually consume this -- same "parsed and validated, not yet read
+    /// by anything else" status `rfc` had before `rfc.py` existed. A
+    /// citation migrating from `rfc =` to `spec =` (ADR-0050 §7) retires the
+    /// `rfc =` entry it supersedes rather than accumulating both; a fixture
+    /// mid-migration can carry both fields at once for its still-unmigrated
+    /// citations.
+    pub spec: Vec<String>,
 }
 
 #[derive(Default)]
@@ -64,6 +74,7 @@ struct PartialConfig {
     prelude: Option<CorePreludeMode>,
     move_check: Option<bool>,
     rfc: Option<Vec<String>>,
+    spec: Option<Vec<String>>,
     status: Option<ExpectStatus>,
     code: Option<String>,
     contains: Option<String>,
@@ -175,6 +186,7 @@ fn merge_config(defaults: FixtureConfig, partial: PartialConfig) -> FixtureConfi
         options: FixtureOptions {
             move_check: partial.move_check.unwrap_or(defaults.options.move_check),
             rfc: partial.rfc.unwrap_or(defaults.options.rfc),
+            spec: partial.spec.unwrap_or(defaults.options.spec),
         },
         expect: Expectation {
             status: partial.status.unwrap_or(defaults.expect.status),
@@ -242,6 +254,7 @@ fn parse_sidecar(path: &Path) -> PartialConfig {
             "options" => match key {
                 "move_check" => partial.move_check = Some(parse_bool(&value)),
                 "rfc" => partial.rfc = Some(parse_rfc_list(&value, path)),
+                "spec" => partial.spec = Some(parse_spec_list(&value, path)),
                 other => panic!(
                     "unknown options sidecar key `{other}` in {}",
                     path.display()
@@ -462,6 +475,64 @@ fn parse_rfc_list(raw: &str, path: &Path) -> Vec<String> {
             panic!(
                 "invalid `rfc` citation `{citation}` in {} -- expected `rfc-NNNN` or \
                  `rfc-NNNN§section` (section like `7`, `9c`, `7.2`), per ADR-0049",
+                path.display()
+            );
+        }
+    }
+    citations
+}
+
+/// Parses and validates an `options.spec` list against ADR-0050's citation
+/// grammar: `spec.<file>.<section>.<kind>-<n>`, where `file` is a spec
+/// file's stem, `section` is one or more dot-separated kebab-case segments
+/// (the heading breadcrumb down to the block's immediate enclosing
+/// section), `kind` is `legality` or `dynamics`, and `n` is `digit+letter*`
+/// -- `letter*`, not a single optional letter, because a split block can be
+/// split again (`legality-1a` splitting into `legality-1aa`/`legality-1ab`,
+/// ADR-0050 §3). No colons anywhere in the grammar: ADR-0050 §3 found, by
+/// running a real `docusaurus build`, that Docusaurus's `{#custom-id}`
+/// heading-attribute mechanism silently corrupts a colon (truncated, and
+/// leaked into the visible rendered heading) rather than rejecting it --
+/// worse than a build failure, since nothing would flag it -- so the
+/// grammar avoids the character entirely and uses `.` as every separator.
+fn parse_spec_list(raw: &str, path: &Path) -> Vec<String> {
+    let citations = parse_list(raw);
+    for citation in &citations {
+        let valid = (|| {
+            let rest = citation.strip_prefix("spec.")?;
+            let segments: Vec<&str> = rest.split('.').collect();
+            // At minimum: file, one section segment, kind-n.
+            if segments.len() < 3 {
+                return None;
+            }
+            let (file, tail) = segments.split_first()?;
+            let (kind_n, section_parts) = tail.split_last()?;
+            if section_parts.is_empty() {
+                return None;
+            }
+            let is_kebab = |s: &str| {
+                !s.is_empty()
+                    && s.chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            };
+            if !is_kebab(file) || !section_parts.iter().all(|part| is_kebab(part)) {
+                return None;
+            }
+            let (kind, n) = kind_n.split_once('-')?;
+            if !matches!(kind, "legality" | "dynamics") {
+                return None;
+            }
+            let digit_end = n.find(|c: char| !c.is_ascii_digit()).unwrap_or(n.len());
+            let (digits, letters) = n.split_at(digit_end);
+            (!digits.is_empty() && letters.chars().all(|c| c.is_ascii_lowercase())).then_some(())
+        })()
+        .is_some();
+        if !valid {
+            panic!(
+                "invalid `spec` citation `{citation}` in {} -- expected \
+                 `spec.<file>.<section>.<kind>-<n>` (kind is `legality` or `dynamics`, `n` is \
+                 digits with an optional split-lineage letter suffix, no colons anywhere), \
+                 per ADR-0050",
                 path.display()
             );
         }
