@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0041§2"]
+spec = ["spec.functions.closures.legality-2"]
 
 [expect]
 status = "parse_error"
