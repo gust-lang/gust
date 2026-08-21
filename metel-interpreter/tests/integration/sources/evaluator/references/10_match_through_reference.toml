@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0107§1.1", "rfc-0108§1", "rfc-0108§1.1", "rfc-0108§1.2", "rfc-0108§1.3", "rfc-0108§1.4", "rfc-0108§2"]
+spec = ["spec.expressions.pattern-matching.unqualified-variant-patterns.legality-1", "spec.expressions.pattern-matching.matching-through-a-reference.legality-1", "spec.expressions.pattern-matching.matching-through-a-reference.legality-2", "spec.expressions.pattern-matching.matching-through-a-reference.legality-3", "spec.expressions.pattern-matching.matching-through-a-reference.dynamics-1", "spec.expressions.pattern-matching.matching-through-a-reference.dynamics-2", "spec.expressions.pattern-matching.matching-through-a-reference.legality-4"]

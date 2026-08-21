@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0108§3"]
+spec = ["spec.expressions.pattern-matching.matching-through-a-reference.legality-5"]
 
 [expect]
 status = "typecheck_error"
