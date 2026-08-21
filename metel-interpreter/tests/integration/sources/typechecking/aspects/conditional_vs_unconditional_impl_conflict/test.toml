@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0036§3", "rfc-0036§3.2"]
+spec = ["spec.declarations.aspects.implementing-an-aspect.legality-7", "spec.declarations.aspects.implementing-an-aspect.legality-9"]
 
 [expect]
 status = "typecheck_error"

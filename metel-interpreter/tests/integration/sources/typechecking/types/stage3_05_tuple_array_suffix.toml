@@ -1,3 +1,3 @@
 [options]
 move_check = true
-rfc = ["rfc-0061§6"]
+spec = ["spec.declarations.structural-aspect-bounds.legality-6"]

@@ -1,6 +1,5 @@
 [options]
-rfc = ["rfc-0061§2"]
-spec = ["spec.declarations.aspects.negative-impls.legality-5"]
+spec = ["spec.declarations.aspects.negative-impls.legality-5", "spec.declarations.structural-aspect-bounds.legality-2"]
 
 [expect]
 status = "typecheck_error"

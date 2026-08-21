@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0072§2.3"]
+spec = ["spec.declarations.aspects.negative-bounds.legality-5"]

@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0036§2.2"]
+spec = ["spec.declarations.aspects.implementing-an-aspect.legality-5"]

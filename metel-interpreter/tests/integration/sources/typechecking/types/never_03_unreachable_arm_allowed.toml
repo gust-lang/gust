@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0078§1.2", "rfc-0078§3.2", "rfc-0078§4.1"]
+spec = ["spec.types.never-type.legality-3", "spec.types.never-type.legality-6", "spec.types.never-type.legality-9"]

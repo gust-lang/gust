@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0061§7.3"]
+spec = ["spec.declarations.structural-aspect-bounds.legality-10"]
 
 [expect]
 status = "typecheck_error"
