@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0057§4"]
+spec = ["spec.runtime.string-methods.dynamics-1"]

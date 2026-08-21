@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0071§4"]
+spec = ["spec.ownership.copy-and-drop-are-mutually-exclusive.legality-1"]
 
 [expect]
 status = "typecheck_error"

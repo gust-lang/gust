@@ -3,7 +3,7 @@ prelude = "default"
 
 [options]
 move_check = true
-rfc = ["rfc-0057§6", "rfc-0057§9", "rfc-0057§10"]
+spec = ["spec.runtime.standard-library-modules.std-fs.dynamics-1", "spec.runtime.oserror.legality-1"]
 
 [expect]
 status = "success"

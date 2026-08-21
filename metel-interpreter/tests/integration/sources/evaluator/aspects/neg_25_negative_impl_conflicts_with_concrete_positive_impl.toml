@@ -1,5 +1,4 @@
 [options]
-rfc = ["rfc-0081§2.2", "rfc-0081§3"]
 spec = ["spec.declarations.aspects.aspect-implementation-coherence.legality-6", "spec.declarations.aspects.negative-impls.legality-2"]
 
 [expect]

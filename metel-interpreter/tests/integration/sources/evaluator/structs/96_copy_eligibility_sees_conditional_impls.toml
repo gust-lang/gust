@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0071§2"]
+spec = ["spec.ownership.copy.legality-1"]
