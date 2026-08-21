@@ -75,7 +75,16 @@ jobs:
         with:
           python-version: "3.x"
 
+      # A rigor block's `blocked` exemption (ADR-0050 §6) that names a GitHub
+      # issue gets checked live against the issues API here -- needs no
+      # secret (a single-issue GET on a public repo is anonymous-readable);
+      # GITHUB_TOKEN only raises the request above the unauthenticated rate
+      # limit. Degrades to skipping that one ref, never to a failure, if the
+      # request can't be made at all -- only a *confirmed* closed blocker
+      # fails this job.
       - name: rfc.py check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 docs/public/rfcs/tools/rfc.py check
 
   doc-examples:
