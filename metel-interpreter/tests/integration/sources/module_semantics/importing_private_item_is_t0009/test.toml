@@ -1,7 +1,6 @@
 runner = "full_pipeline"
 prelude = "empty"
 [options]
-rfc = ["rfc-0030§4"]
 spec = ["spec.modules.visibility.legality-1"]
 [expect]
 status = "typecheck_error"

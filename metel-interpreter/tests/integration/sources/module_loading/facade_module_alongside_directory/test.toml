@@ -1,6 +1,6 @@
 runner = "load_graph"
 [options]
-rfc = ["rfc-0030§3"]
+spec = ["spec.modules.file-to-module-mapping.legality-1"]
 [expect]
 status = "success"
 [graph]

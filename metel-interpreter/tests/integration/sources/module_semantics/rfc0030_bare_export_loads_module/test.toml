@@ -2,7 +2,7 @@ runner = "full_pipeline"
 prelude = "empty"
 
 [options]
-rfc = ["rfc-0030§9"]
+spec = ["spec.modules.module-graph-loading.legality-2"]
 
 [expect]
 status = "success"
