@@ -1,6 +1,7 @@
 runner = "load_graph"
 [options]
-rfc = ["rfc-0030§8", "rfc-0031§8"]
+rfc = ["rfc-0030§8"]
+spec = ["spec.modules.module-graph-loading.legality-1"]
 [expect]
 status = "load_error"
 contains = "cannot find module"

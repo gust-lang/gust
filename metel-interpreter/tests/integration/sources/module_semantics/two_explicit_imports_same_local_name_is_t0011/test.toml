@@ -1,7 +1,8 @@
 runner = "full_pipeline"
 prelude = "empty"
 [options]
-rfc = ["rfc-0030§7", "rfc-0031§6"]
+rfc = ["rfc-0030§7"]
+spec = ["spec.modules.import-conflicts.legality-1", "spec.modules.import-conflicts.legality-4"]
 [expect]
 status = "typecheck_error"
 code = "T0011"

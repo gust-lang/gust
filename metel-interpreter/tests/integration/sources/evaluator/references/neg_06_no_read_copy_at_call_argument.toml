@@ -1,6 +1,6 @@
 [options]
-rfc = ["rfc-0110§5", "rfc-0112§4.1"]
-spec = ["spec.types.references.reading-a-value-out-of-a-reference.legality-1"]
+rfc = ["rfc-0112§4.1"]
+spec = ["spec.types.references.reading-a-value-out-of-a-reference.legality-1", "spec.expressions.references.dynamics-7"]
 
 [expect]
 status = "typecheck_error"
