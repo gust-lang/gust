@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0007§4"]
+spec = ["spec.types.sized-numeric-types.dynamics-1"]
 
 [expect]
 status = "runtime_error"

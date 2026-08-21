@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0007§2"]
+spec = ["spec.types.char.legality-1"]

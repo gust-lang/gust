@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0010§3"]
+spec = ["spec.lexical.literals.dynamics-2"]
 
 [expect]
 status = "success"
