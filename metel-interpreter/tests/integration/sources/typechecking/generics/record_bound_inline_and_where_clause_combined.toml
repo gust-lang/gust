@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0118§1", "rfc-0118§2a", "rfc-0118§2"]
+spec = ["spec.types.generics.row-bounds.legality-1", "spec.types.generics.row-bounds.legality-2", "spec.types.generics.row-bounds.legality-3"]
 
 [expect]
 status = "success"

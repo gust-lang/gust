@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0060§2", "rfc-0060§6"]
+spec = ["spec.declarations.aspects.aspect-implementation-coherence.legality-6"]
 
 [expect]
 status = "typecheck_error"

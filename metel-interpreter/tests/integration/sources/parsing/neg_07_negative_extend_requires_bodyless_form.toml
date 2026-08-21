@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0102§3"]
+spec = ["spec.declarations.aspects.negative-impls.legality-3"]
 
 [expect]
 status = "parse_error"

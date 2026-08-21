@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0118§2"]
+spec = ["spec.types.generics.row-bounds.legality-2"]
 
 [expect]
 status = "parse_error"

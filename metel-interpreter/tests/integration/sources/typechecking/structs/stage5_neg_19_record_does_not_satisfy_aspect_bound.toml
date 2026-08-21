@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0116§3"]
+spec = ["spec.types.anonymous-records.legality-1"]
 
 [expect]
 status = "typecheck_error"
