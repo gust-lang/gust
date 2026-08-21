@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0044§6", "rfc-0044§8"]
+spec = ["spec.declarations.structs.receiver-forms.legality-2", "spec.declarations.structs.receiver-forms.legality-6"]

@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0053§5"]
+spec = ["spec.types.fixed-size-arrays.legality-5"]

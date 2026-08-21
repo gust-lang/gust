@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0111§1.4", "rfc-0111§3.1"]
+spec = ["spec.expressions.unqualified-variant-constructors.legality-4"]
 
 [expect]
 status = "typecheck_error"

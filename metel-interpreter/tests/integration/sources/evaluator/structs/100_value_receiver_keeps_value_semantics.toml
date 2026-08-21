@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0044§2"]
+spec = ["spec.declarations.structs.receiver-forms.dynamics-1"]
