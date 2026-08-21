@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0107§2"]
+spec = ["spec.expressions.pattern-matching.unqualified-variant-patterns.legality-4"]
 
 [expect]
 status = "typecheck_error"

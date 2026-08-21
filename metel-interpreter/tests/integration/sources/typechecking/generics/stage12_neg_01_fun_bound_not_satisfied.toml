@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0040§1", "rfc-0040§2"]
+spec = ["spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-7", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-8"]
 
 [expect]
 status = "typecheck_error"
