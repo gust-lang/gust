@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0078§4.1"]
+spec = ["spec.types.never-type.legality-9"]

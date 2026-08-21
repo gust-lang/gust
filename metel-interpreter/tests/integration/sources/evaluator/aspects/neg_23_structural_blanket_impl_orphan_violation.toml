@@ -1,6 +1,5 @@
 [options]
-rfc = ["rfc-0061§1"]
-spec = ["spec.declarations.aspects.aspect-implementation-coherence.legality-4"]
+spec = ["spec.declarations.aspects.aspect-implementation-coherence.legality-4", "spec.declarations.structural-aspect-bounds.legality-1"]
 
 [expect]
 status = "typecheck_error"

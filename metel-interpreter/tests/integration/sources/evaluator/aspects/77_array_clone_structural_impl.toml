@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0061§1.1", "rfc-0061§5"]
+spec = ["spec.types.arrays.legality-1", "spec.declarations.structural-aspect-bounds.legality-5"]
