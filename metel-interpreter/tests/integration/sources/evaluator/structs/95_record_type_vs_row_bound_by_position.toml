@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0118§4"]
+spec = ["spec.types.generics.row-bounds.legality-5"]

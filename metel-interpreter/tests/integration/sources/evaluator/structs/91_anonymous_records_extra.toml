@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0116§1", "rfc-0116§2", "rfc-0116§3", "rfc-0116§4"]
+spec = ["spec.types.anonymous-records.dynamics-1", "spec.types.anonymous-records.dynamics-2"]
