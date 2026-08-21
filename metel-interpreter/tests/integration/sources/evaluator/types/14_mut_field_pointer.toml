@@ -1,2 +1,3 @@
 [options]
-rfc = ["rfc-0067a§1", "rfc-0067a§2", "rfc-0067a§3", "rfc-0067a§3a", "rfc-0067a§4", "rfc-0045§1", "rfc-0045§2", "rfc-0045§3", "rfc-0045§4"]
+rfc = ["rfc-0067a§1", "rfc-0067a§2", "rfc-0067a§3", "rfc-0067a§3a", "rfc-0067a§4"]
+spec = ["spec.expressions.references.dynamics-1", "spec.expressions.references.dynamics-2", "spec.expressions.references.dynamics-3", "spec.expressions.references.dynamics-4"]

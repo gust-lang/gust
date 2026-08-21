@@ -1,2 +1,3 @@
 [options]
-rfc = ["rfc-0040§6", "rfc-0035§3"]
+rfc = ["rfc-0040§6"]
+spec = ["spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-3"]
