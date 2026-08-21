@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0030§12"]
+spec = ["spec.modules.removed-module-keywords.legality-1"]
 
 [expect]
 status = "parse_error"

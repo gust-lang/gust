@@ -1,6 +1,6 @@
 runner = "full_pipeline"
 prelude = "default"
 [options]
-rfc = ["rfc-0030§11"]
+spec = ["spec.modules.std-core-auto-import.legality-1"]
 [expect]
 status = "success"

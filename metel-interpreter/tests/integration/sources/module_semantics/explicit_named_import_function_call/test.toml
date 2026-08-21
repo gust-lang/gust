@@ -1,7 +1,6 @@
 runner = "full_pipeline"
 prelude = "empty"
 [options]
-rfc = ["rfc-0030§1"]
-spec = ["spec.modules.imports.legality-1"]
+spec = ["spec.modules.imports.legality-1", "spec.modules.imports.legality-4"]
 [expect]
 status = "success"

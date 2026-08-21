@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0030§5"]
+spec = ["spec.modules.file-header-ordering.legality-1"]
 
 [expect]
 status = "parse_error"

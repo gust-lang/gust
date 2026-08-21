@@ -1,6 +1,6 @@
 runner = "full_pipeline"
 prelude = "empty"
 [options]
-rfc = ["rfc-0030§2"]
+spec = ["spec.modules.re-exports.legality-2"]
 [expect]
 status = "success"
