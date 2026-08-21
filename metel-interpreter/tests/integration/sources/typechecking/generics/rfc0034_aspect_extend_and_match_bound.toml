@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0034§4"]
+spec = ["spec.declarations.aspects.aspect-bounds-on-struct-and-enum-type-parameters.legality-4"]

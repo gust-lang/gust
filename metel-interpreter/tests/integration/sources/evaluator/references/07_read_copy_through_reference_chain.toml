@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0067a§3"]
+spec = ["spec.types.references.reading-a-value-out-of-a-reference.legality-1"]

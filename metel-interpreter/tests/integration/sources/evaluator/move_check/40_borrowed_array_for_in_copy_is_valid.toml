@@ -1,6 +1,6 @@
 [options]
 move_check = true
-rfc = ["rfc-0126§1", "rfc-0126§2", "rfc-0126§4"]
+spec = ["spec.types.arrays.legality-1", "spec.types.fixed-size-arrays.legality-2"]
 
 [expect]
 status = "success"

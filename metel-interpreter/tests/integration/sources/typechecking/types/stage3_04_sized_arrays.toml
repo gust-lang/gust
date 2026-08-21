@@ -1,2 +1,3 @@
 [options]
-rfc = ["rfc-0126§3", "rfc-0126§4", "rfc-0053§3"]
+rfc = ["rfc-0053§3"]
+spec = ["spec.types.fixed-size-arrays.legality-1", "spec.types.fixed-size-arrays.legality-2"]

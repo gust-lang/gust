@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0034§2"]
+spec = ["spec.declarations.aspects.aspect-bounds-on-struct-and-enum-type-parameters.legality-2"]
 
 [expect]
 status = "typecheck_error"
