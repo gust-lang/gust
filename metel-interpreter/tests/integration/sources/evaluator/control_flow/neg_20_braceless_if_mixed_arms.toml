@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0022§5"]
+spec = ["spec.expressions.control-flow.if-else.legality-5"]
 
 [expect]
 status = "parse_error"

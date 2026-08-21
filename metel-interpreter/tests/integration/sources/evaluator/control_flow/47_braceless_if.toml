@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0022§1", "rfc-0022§3"]
+spec = ["spec.expressions.control-flow.if-else.legality-1", "spec.expressions.control-flow.if-else.legality-3"]

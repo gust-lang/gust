@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0007§5"]
+spec = ["spec.types.arrays.legality-2"]
 
 [expect]
 status = "typecheck_error"
