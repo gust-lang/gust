@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0053§8"]
+spec = ["spec.types.fixed-size-arrays.legality-8"]
 
 [expect]
 status = "parse_error"

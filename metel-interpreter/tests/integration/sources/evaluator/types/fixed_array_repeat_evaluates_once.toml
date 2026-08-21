@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0053§2"]
+spec = ["spec.types.fixed-size-arrays.dynamics-1"]
