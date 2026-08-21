@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0037§1.2"]
+spec = ["spec.declarations.aspects.aspect-bounds-on-function-type-parameters.dynamics-1"]

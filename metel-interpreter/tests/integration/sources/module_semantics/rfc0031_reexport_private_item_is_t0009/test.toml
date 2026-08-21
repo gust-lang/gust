@@ -2,7 +2,7 @@ runner = "full_pipeline"
 prelude = "empty"
 
 [options]
-rfc = ["rfc-0031§9"]
+spec = ["spec.modules.re-exports.legality-1"]
 
 [expect]
 status = "typecheck_error"

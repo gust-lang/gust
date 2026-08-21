@@ -1,2 +1,2 @@
 [options]
-rfc = ["rfc-0110§6"]
+spec = ["spec.expressions.references.dynamics-11"]
