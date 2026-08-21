@@ -1,6 +1,7 @@
 [options]
 move_check = true
-rfc = ["rfc-0071§8", "rfc-0126§1", "rfc-0126§2"]
+rfc = ["rfc-0071§8"]
+spec = ["spec.types.arrays.legality-1"]
 
 [expect]
 status = "typecheck_error"

@@ -1,2 +1,3 @@
 [options]
-rfc = ["rfc-0067a§1", "rfc-0067a§3"]
+rfc = ["rfc-0067a§1"]
+spec = ["spec.expressions.references.dynamics-5"]

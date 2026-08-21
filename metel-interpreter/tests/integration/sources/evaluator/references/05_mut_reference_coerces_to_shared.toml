@@ -1,3 +1,4 @@
 [options]
-rfc = ["rfc-0067a§1", "rfc-0067a§4"]
+rfc = ["rfc-0067a§1"]
+spec = ["spec.types.references.legality-1"]
 move_check = true
