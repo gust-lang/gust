@@ -1,2 +1,3 @@
 [options]
-rfc = ["rfc-0072§5", "rfc-0072§5.1", "rfc-0081§2", "rfc-0081§2.1", "rfc-0081§2.3", "rfc-0081§4", "rfc-0081§5"]
+rfc = ["rfc-0072§5", "rfc-0072§5.1"]
+spec = ["spec.declarations.aspects.negative-impls.legality-5"]

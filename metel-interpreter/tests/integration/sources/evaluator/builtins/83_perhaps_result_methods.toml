@@ -1,3 +1,3 @@
 [options]
 move_check = true
-rfc = ["rfc-0057§2"]
+spec = ["spec.runtime.core-sum-types.dynamics-1"]

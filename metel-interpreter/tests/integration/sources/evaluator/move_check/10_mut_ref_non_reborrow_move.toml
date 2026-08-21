@@ -1,6 +1,6 @@
 [options]
 move_check = true
-rfc = ["rfc-0071§9a"]
+spec = ["spec.ownership.references-and-moves.legality-1"]
 
 [expect]
 status = "typecheck_error"

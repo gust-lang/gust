@@ -1,6 +1,7 @@
 [options]
 move_check = true
-rfc = ["rfc-0061§7.4", "rfc-0071§9a"]
+rfc = ["rfc-0061§7.4"]
+spec = ["spec.ownership.partial-moves.which-constructs-support-partial-moves.legality-1"]
 
 [expect]
 status = "typecheck_error"
