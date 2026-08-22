@@ -1,5 +1,5 @@
 [options]
-spec = ["spec.types.never-type.dynamics-1"]
+spec = ["spec.types.never-type.dynamics-1", "spec.runtime.panics.dynamics-1"]
 
 [expect]
 status = "runtime_error"

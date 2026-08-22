@@ -1,2 +1,2 @@
 [options]
-spec = ["spec.types.char.legality-1"]
+spec = ["spec.types.char.legality-1", "spec.lexical.literals.legality-5", "spec.runtime.char-methods.dynamics-1"]

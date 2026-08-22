@@ -1,2 +1,2 @@
 [options]
-spec = ["spec.declarations.structs.receiver-forms.legality-5", "spec.declarations.structs.receiver-forms.legality-7"]
+spec = ["spec.declarations.structs.receiver-forms.legality-5", "spec.declarations.structs.receiver-forms.legality-7", "spec.runtime.built-in-aspects.iterable-t.legality-1"]

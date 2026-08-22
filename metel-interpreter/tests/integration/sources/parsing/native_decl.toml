@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.functions.native-functions-standard-library-only.legality-2", "spec.functions.native-functions-standard-library-only.legality-3"]

@@ -1,3 +1,3 @@
 [options]
 move_check = true
-spec = ["spec.lexical.literals.dynamics-1", "spec.lexical.literals.dynamics-3", "spec.lexical.literals.dynamics-4", "spec.types.list-t.dynamics-1", "spec.types.list-t.dynamics-2", "spec.types.list-t.dynamics-3", "spec.types.list-t.dynamics-4", "spec.types.list-t.legality-1"]
+spec = ["spec.lexical.literals.dynamics-1", "spec.lexical.literals.dynamics-3", "spec.lexical.literals.dynamics-4", "spec.types.list-t.dynamics-1", "spec.types.list-t.dynamics-2", "spec.types.list-t.dynamics-3", "spec.types.list-t.dynamics-4", "spec.types.list-t.legality-1", "spec.runtime.built-in-aspects.display.legality-1"]

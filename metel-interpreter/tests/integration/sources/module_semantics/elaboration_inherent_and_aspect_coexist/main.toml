@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.functions.associated-functions.legality-1"]

@@ -1,2 +1,2 @@
 [options]
-spec = ["spec.types.fixed-size-arrays.legality-3", "spec.types.fixed-size-arrays.legality-7"]
+spec = ["spec.types.fixed-size-arrays.legality-3", "spec.types.fixed-size-arrays.legality-7", "spec.runtime.array-methods.dynamics-1"]
