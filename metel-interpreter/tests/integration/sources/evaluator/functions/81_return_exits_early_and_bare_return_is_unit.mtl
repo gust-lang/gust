@@ -1,0 +1,16 @@
+fun early(flag: boolean) -> i64 {
+    if (flag) {
+        return 42;
+    }
+    let _only_reached_without_early_return = 1 / 0;
+    0
+}
+
+fun returns_unit() {
+    return;
+}
+
+fun main() {
+    assert(early(true) == 42);
+    let unit: () = returns_unit();
+}

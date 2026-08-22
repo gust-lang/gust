@@ -1,0 +1,6 @@
+[options]
+spec = ["spec.runtime.built-in-functions.dynamics-2"]
+
+[expect]
+status = "runtime_error"
+contains = "custom assertion failure"
