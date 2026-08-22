@@ -1,3 +1,6 @@
+[options]
+spec = ["spec.functions.the-operator.legality-2"]
+
 [expect]
 status = "typecheck_error"
 code = "T0007"

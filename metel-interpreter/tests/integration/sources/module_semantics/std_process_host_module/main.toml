@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.runtime.standard-library-modules.std-process.dynamics-1"]
