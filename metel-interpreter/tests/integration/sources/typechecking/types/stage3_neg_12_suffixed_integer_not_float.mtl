@@ -1,0 +1,4 @@
+fun main() {
+    // An unsuffixed `5` could adopt f64 here; the i64 suffix makes this literal concrete.
+    let _value: f64 = 5i64;
+}
