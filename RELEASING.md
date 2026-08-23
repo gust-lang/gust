@@ -1,12 +1,14 @@
 # Releasing
 
 Cutting a `vX.Y.Z` tag here triggers the entire public-facing release chain, end to
-end, across three repositories. This document describes that chain; the workflows
-themselves are `.github/workflows/release.yml` here and
+end, writing to `metel-website` (the only repo this chain writes to as of ADR-0051 —
+it reads `metel-core`'s own pinned `docs` submodule commit, which points at the public
+`metel-docs`, but doesn't write there anymore). This document describes that chain;
+the workflows themselves are `.github/workflows/release.yml` here and
 [`metel-website`'s `deploy.yml`](https://github.com/metel-lang/metel-website/blob/main/.github/workflows/deploy.yml).
 
 For the release chain in the context of every other script and CI workflow across all
-three repos — including the per-PR checks and the manual docs-only sync this document
+four repos — including the per-PR checks and the manual docs-only path this document
 doesn't cover — see [`PROCESSES.md`](PROCESSES.md).
 
 ## The chain
@@ -16,10 +18,10 @@ metel-core tag vX.Y.Z pushed
         │
         ▼
 release.yml (here, Stage A)
-  1. checks out this repo's docs submodule (metel-docs-internal, private,
-     read-only DOCS_REPO_TOKEN — the same credential #619's CI check uses)
-  2. mirrors that submodule's public/ tree into metel-docs (public), commits
-     only if content actually changed, pushes to main
+  1. checks out this repo's docs submodule (metel-docs, public,
+     unauthenticated — ADR-0051 retired the private-submodule sync this step
+     used to perform first; metel-docs is directly edited, nothing to mirror)
+  2. reads this repo's own pinned docs submodule commit
   3. in a fresh metel-website checkout: bumps its docs submodule pointer to
      that commit, runs `docusaurus docs:version X.Y.Z`, commits the generated
      versioned_docs/ + versioned_sidebars/ + versions.json (skipped if nothing
@@ -45,12 +47,16 @@ alone:
 
 | Secret | Lives in | Scope |
 |---|---|---|
-| `DOCS_REPO_TOKEN` | metel-core | Read-only, `metel-docs-internal` only (already exists, from #619) |
-| `DOCS_PUBLIC_TOKEN` | metel-core | Write, `metel-docs` only |
 | `WEBSITE_TOKEN` | metel-core | Write, `metel-website` only |
 | `VERCEL_TOKEN` / `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` | metel-website | Vercel deploy access for this project |
 
-No single credential spans all three repositories. `release.yml` triggers
+**`DOCS_REPO_TOKEN` and `DOCS_PUBLIC_TOKEN` are retired (ADR-0051).** `metel-docs` is
+public, so checking it out needs no credential at all, and `release.yml` doesn't write
+to it anymore — see `PROCESSES.md`'s Secrets section for the full explanation. Both
+secrets should be removed from `metel-core`'s repository settings, not just left
+provisioned and unused.
+
+No single credential spans more than one repository. `release.yml` triggers
 `deploy.yml` by pushing a real tag rather than a synthetic `repository_dispatch`
 event, so `metel-website`'s pipeline stays independently triggerable — pushing a
 `vX.Y.Z` tag directly to `metel-website` runs the exact same build-and-deploy
@@ -69,8 +75,9 @@ the staging URL `deploy.yml`'s job summary prints, is the approval instead.
 
 ## Failure handling
 
-There is no cross-repo rollback. If the chain fails partway — e.g. the `metel-docs`
-sync succeeds but the `metel-website` step errors — the run fails loudly (visible via
+There is no cross-repo rollback. If the chain fails partway — e.g. `release-chain`'s
+`metel-website` commit lands but `github-release`'s binary build errors (the two run
+independently) — the run fails loudly (visible via
 `gh run list --repo metel-lang/metel-core`) and stops there, leaving a partial but
 inspectable state rather than a silent inconsistency. Every write step diffs before
 committing, and the final tag step checks for the tag's existence first, so re-running
@@ -81,10 +88,10 @@ real work the second time.
 ## Provisioning the required secrets
 
 None of these can be created by an assistant holding only a personal access token
-scoped to this repo — each needs to be set up by hand, once:
+scoped to this repo — each needs to be set up by hand, once. (`DOCS_REPO_TOKEN` and
+`DOCS_PUBLIC_TOKEN` used to be provisioned here too — retired by ADR-0051, see "Why
+it's split this way" above; nothing to provision for `docs` submodule access anymore.)
 
-- **`DOCS_PUBLIC_TOKEN`**: a GitHub fine-grained PAT, "Only select repositories" →
-  `metel-docs`, `Contents: Read and write`. Store as a `metel-core` repo secret.
 - **`WEBSITE_TOKEN`**: a GitHub fine-grained PAT, "Only select repositories" →
   `metel-website`, `Contents: Read and write`. Store as a `metel-core` repo secret.
 - **`VERCEL_TOKEN`**: from the Vercel dashboard (Account Settings → Tokens), scoped to

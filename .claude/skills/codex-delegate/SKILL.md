@@ -66,7 +66,7 @@ Fix bug #NNN in this Rust codebase (a language interpreter for the Metel languag
 ## Constraints - important
 - Do NOT change <X>. It is a deliberately open design question (issue #NNN).
 - Do NOT modify anything under `docs/internal/rfcs/` — lifecycle-managed elsewhere.
-- You MAY update `docs/public/reference/spec/*.md` if behaviour changes.
+- You MAY update `docs/reference/spec/*.md` if behaviour changes.
 - Do not commit anything. Leave changes in the working tree.
 - There may be uncommitted changes from a previous task. Leave them alone.
 

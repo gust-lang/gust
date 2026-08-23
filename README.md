@@ -136,7 +136,7 @@ model, and linear types as a stricter opt-in layer above the affine default
 rather than a separate macro language, and fiber-based concurrency with typed channels
 — no `async`/`await`, no function coloring.
 
-All of this is designed in the open — see the [RFC process](docs/public/rfcs/) for the
+All of this is designed in the open — see the [RFC process](docs/rfcs/) for the
 proposals, the arguments for and against, and the decisions as they're made.
 
 ## Quick Start
@@ -195,19 +195,20 @@ metel-core/
 ## Resources
 
 - **Website:** [metel-lang.org](https://metel-lang.org)
-- **Language Specification:** [`docs/public/reference/spec/`](docs/public/reference/spec/)
-- **RFCs:** [`docs/public/rfcs/`](docs/public/rfcs/) — every language design decision,
+- **Language Specification:** [`docs/reference/spec/`](docs/reference/spec/)
+- **RFCs:** [`docs/rfcs/`](docs/rfcs/) — every language design decision,
   public at every stage
-- **Changelog:** [`docs/public/release-notes/changelog.md`](docs/public/release-notes/changelog.md)
+- **Changelog:** [`docs/release-notes/changelog.md`](docs/release-notes/changelog.md)
 - **Introducing Metel:** [the blog post](https://metel-lang.org/blog/introducing-metel)
   on why this exists and where it's headed
-- **Architecture:** [`docs/architecture/architecture.md`](docs/architecture/architecture.md),
-  plus `typechecker.md`/`evaluator.md` in each crate's own `docs/`
-- **Decision Records:** [`docs/architecture/decisions/`](docs/architecture/decisions/)
-  — why past decisions were made, and why some were reversed
+- **Architecture:** `metel-docs-internal/architecture/architecture.md` (separate,
+  private repo — not a local path under `docs/`, see `AGENTS.md`), plus
+  `typechecker.md`/`evaluator.md` in each crate's own `docs/`
+- **Decision Records:** `metel-docs-internal/architecture/decisions/` (separate,
+  private repo) — why past decisions were made, and why some were reversed
 - **Scripts and CI:** [`PROCESSES.md`](PROCESSES.md) — every script and CI workflow
-  across this repo, `metel-docs-internal`, and `metel-website`: what runs, what
-  triggers it, and which repo owns which secret
+  across this repo, `metel-docs`, `metel-docs-internal`, and `metel-website`: what
+  runs, what triggers it, and which repo owns which secret
 
 ## License
 

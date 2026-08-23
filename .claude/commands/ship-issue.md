@@ -67,7 +67,7 @@ A directory fixture's sidecar is `test.toml`; a single-file fixture's is `<name>
 Getting this wrong makes the sidecar silently inert — the fixture passes while checking
 nothing.
 
-**4. Spec accuracy** — every language-visible change is in `docs/public/reference/spec.md`
+**4. Spec accuracy** — every language-visible change is in `docs/reference/spec.md`
 and the linked section. Behaviour not in the spec does not exist.
 
 **5. Changelog** —
@@ -141,7 +141,7 @@ A non-fast-forwardable branch fails this call instead of silently growing a merg
 ## Notes
 
 - If the issue resolved an RFC open question, record the resolution in the RFC and run
-  `python3 docs/public/rfcs/tools/rfc.py check`.
+  `python3 docs/rfcs/tools/rfc.py check`.
 - If implementation of an RFC completed here, `rfc.py transition <id> --to implemented`.
 - For large tracker changes, use the paginated GitHub API and inspect its rate-limit
   responses; the former Codeberg/Tea pacing guidance no longer applies.
