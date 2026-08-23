@@ -204,8 +204,8 @@ metel-core/
 - **Architecture:** `metel-docs-internal/architecture/architecture.md` (separate,
   private repo — not a local path under `docs/`, see `AGENTS.md`), plus
   `typechecker.md`/`evaluator.md` in each crate's own `docs/`
-- **Decision Records:** `metel-docs-internal/architecture/decisions/` (separate,
-  private repo) — why past decisions were made, and why some were reversed
+- **Decision Records:** [`docs/architecture/decisions/`](docs/architecture/decisions/)
+  — why past decisions were made, and why some were reversed
 - **Scripts and CI:** [`PROCESSES.md`](PROCESSES.md) — every script and CI workflow
   across this repo, `metel-docs`, `metel-docs-internal`, and `metel-website`: what
   runs, what triggers it, and which repo owns which secret

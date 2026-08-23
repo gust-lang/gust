@@ -18,12 +18,15 @@ step in front of it). Update it as a real submodule: make docs edits in the subm
 commit them there, then update the pointer in this repo.
 
 **`metel-docs-internal` (a separate, non-submoduled repo) holds what stayed private:
-`internal/` and `reports/`, including this project's strategy corpus, *and*
-`architecture/decisions/` (ADRs).** None of it is checked out here — reading or
-writing any of it (including creating an ADR, "Decision Records" below) means a
-separate clone of `metel-docs-internal`, not a local path under `docs/`. This is a
-real workflow change from before ADR-0051, when `docs/` held all of it; flagged here
-because it's easy to miss.
+`internal/` and `reports/`, including this project's strategy corpus.** None of it is
+checked out here — reading or writing any of it means a separate clone of
+`metel-docs-internal`, not a local path under `docs/`. This is a real workflow change
+from before ADR-0051, when `docs/` held all of it; flagged here because it's easy to
+miss. **ADRs (`architecture/decisions/`) moved the other way** — amended 2026-08-23,
+after first staying with `internal/`/`reports/`: they're ordinary engineering
+documentation, not privacy-sensitive, and `metel-core` needed to reach them without a
+second submodule — so they live at `docs/architecture/decisions/` now, back to a
+local path (see "Decision Records" below).
 
 | Location | Purpose |
 |---|---|
@@ -49,7 +52,7 @@ because it's easy to miss.
 | `metel-docs-internal/architecture/architecture.md` *(separate repo)* | Interpreter pipeline and component boundaries |
 | `metel-frontend/docs/typechecker.md` | Typechecker theory and implementation notes |
 | `metel-interpreter/docs/evaluator.md` | Runtime values, signals, environment, and evaluator notes |
-| `metel-docs-internal/architecture/decisions/` *(separate repo)* | Architectural decision records |
+| `docs/architecture/decisions/` | Architectural decision records (ADR-0051, amended 2026-08-23 — moved here from `metel-docs-internal`) |
 
 Public docs no longer live at `docs/spec.md`, `docs/spec/`, or `docs/changelog.md`. Those paths are stale.
 
@@ -334,8 +337,7 @@ checks already passed on every branch that landed.
    reflect the pipeline, inference, construction, runtime, and builtin behavior as it
    now is. Read them against the release's diff rather than from memory.
 7. **Decision records** - every non-obvious architectural decision, reversal, or
-   workaround this release introduced has an ADR in
-   `metel-docs-internal/architecture/decisions/` (separate repo).
+   workaround this release introduced has an ADR in `docs/architecture/decisions/`.
    A reversal especially: the reason a past decision stopped holding is the part that
    gets lost, and the part the next person needs.
 8. **Issue hygiene** - the milestone's issues are genuinely closed with acceptance
@@ -380,8 +382,7 @@ means beyond the checks passing.
 
 1. Retrieve and read the full issue, including acceptance criteria, dependencies (referenced issue numbers), labels, and milestone.
 2. Read every spec section the task touches. The spec entry point is `docs/reference/spec.md`.
-3. Read relevant RFCs in `docs/rfcs/` and ADRs in `metel-docs-internal/architecture/decisions/`
-   (separate repo, not checked out here).
+3. Read relevant RFCs in `docs/rfcs/` and ADRs in `docs/architecture/decisions/`.
 4. Check dependency issues and confirm their implementation matches the contract this task depends on.
 5. If the spec is missing or ambiguous, update the spec first. If the choice is non-obvious, write an ADR before implementation.
 6. Note in the issue (a comment, or just the first commit) that work has started.
@@ -741,11 +742,15 @@ Stop and ask if:
 
 ## Decision Records
 
-**ADRs live in `metel-docs-internal/architecture/decisions/`, a separate repo not
-checked out here** (ADR-0051) — writing or reading one means a separate clone, not a
-local path under `docs/`.
+**ADRs live in `docs/architecture/decisions/`** — the `metel-docs` submodule, same as
+RFCs and the spec (ADR-0051, amended 2026-08-23: they started in
+`metel-docs-internal/architecture/decisions/`, a private repo not checked out here, but
+architecture decisions aren't private content, so they moved to sit alongside
+everything else `metel-core` reads through `docs/`). Create one the same way as any
+other `docs/` change: commit in the submodule, then update this repo's pointer on the
+issue branch (see "Branch Workflow" above).
 
-Create an ADR there when:
+Create an ADR when:
 
 - Multiple reasonable implementation options exist and the chosen tradeoff matters.
 - The decision changes or reverses a previous ADR or RFC.
