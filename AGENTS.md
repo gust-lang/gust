@@ -22,11 +22,11 @@ commit them there, then update the pointer in this repo.
 checked out here — reading or writing any of it means a separate clone of
 `metel-docs-internal`, not a local path under `docs/`. This is a real workflow change
 from before ADR-0051, when `docs/` held all of it; flagged here because it's easy to
-miss. **ADRs (`architecture/decisions/`) moved the other way** — amended 2026-08-23,
-after first staying with `internal/`/`reports/`: they're ordinary engineering
-documentation, not privacy-sensitive, and `metel-core` needed to reach them without a
-second submodule — so they live at `docs/architecture/decisions/` now, back to a
-local path (see "Decision Records" below).
+miss. **`architecture/` moved the other way, in full** — amended 2026-08-23, after
+first staying with `internal/`/`reports/`: ADRs first, then `architecture.md` itself
+too. Neither is privacy-sensitive, and `metel-core` needed to reach them without a
+second submodule — so both live under `docs/architecture/` now, back to a local path
+(see "Decision Records" below, and the table row below for `architecture.md`).
 
 | Location | Purpose |
 |---|---|
@@ -49,7 +49,7 @@ local path (see "Decision Records" below).
 | `metel-docs-internal/reports/strategy/OBJECTIVES.md` *(separate repo)* | **Living long-term objectives, current priorities, and open triggers** — persists across planning cycles; see "Strategic Planning" below. |
 | `metel-docs-internal/reports/strategy/PROCESS.md` *(separate repo)* | **How to run a strategic-overview cycle** — verification discipline, trigger lifecycle, and the dated overview's structural template. Read before running one. |
 | `metel-docs-internal/reports/` *(separate repo)* | Design reports and longer-form research notes |
-| `metel-docs-internal/architecture/architecture.md` *(separate repo)* | Interpreter pipeline and component boundaries |
+| `docs/architecture/architecture.md` | Interpreter pipeline and component boundaries (ADR-0051, amended 2026-08-23 — moved here from `metel-docs-internal`) |
 | `metel-frontend/docs/typechecker.md` | Typechecker theory and implementation notes |
 | `metel-interpreter/docs/evaluator.md` | Runtime values, signals, environment, and evaluator notes |
 | `docs/architecture/decisions/` | Architectural decision records (ADR-0051, amended 2026-08-23 — moved here from `metel-docs-internal`) |
@@ -331,8 +331,7 @@ checks already passed on every branch that landed.
 5. **Spec correctness** - spot-check that `docs/reference/spec.md` and its
    linked sections actually describe the behavior being released, not a stale or
    aspirational version of it.
-6. **Internal docs** - `metel-docs-internal/architecture/architecture.md` (separate
-   repo, not checked out here),
+6. **Internal docs** - `docs/architecture/architecture.md`,
    `metel-frontend/docs/typechecker.md`, and `metel-interpreter/docs/evaluator.md`
    reflect the pipeline, inference, construction, runtime, and builtin behavior as it
    now is. Read them against the release's diff rather than from memory.
@@ -687,8 +686,8 @@ Important module-system invariants:
 - `evaluator::evaluate_graph` consumes `TypedModuleGraph`.
 - Cross-module public APIs must be fully annotated; do not introduce cross-module type inference casually.
 
-If a change alters these boundaries, update `metel-docs-internal/architecture/architecture.md`
-(separate repo) and consider an ADR.
+If a change alters these boundaries, update `docs/architecture/architecture.md` and
+consider an ADR.
 
 ---
 

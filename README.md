@@ -201,8 +201,8 @@ metel-core/
 - **Changelog:** [`docs/release-notes/changelog.md`](docs/release-notes/changelog.md)
 - **Introducing Metel:** [the blog post](https://metel-lang.org/blog/introducing-metel)
   on why this exists and where it's headed
-- **Architecture:** `metel-docs-internal/architecture/architecture.md` (separate,
-  private repo — not a local path under `docs/`, see `AGENTS.md`), plus
+- **Architecture:** [`docs/architecture/architecture.md`](docs/architecture/architecture.md)
+  — moved here from `metel-docs-internal` (ADR-0051, amended 2026-08-23), plus
   `typechecker.md`/`evaluator.md` in each crate's own `docs/`
 - **Decision Records:** [`docs/architecture/decisions/`](docs/architecture/decisions/)
   — why past decisions were made, and why some were reversed
