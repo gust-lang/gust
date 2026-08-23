@@ -1,8 +1,15 @@
 name: Release
 
-# Stage A of the release chain described in RELEASING.md: a release tag here syncs
-# the public docs into metel-docs, cuts a new docs version + tag in metel-website, and
-# lets that tag trigger metel-website's own build-and-deploy workflow (Stage B).
+# Stage A of the release chain described in RELEASING.md: a release tag here bumps
+# metel-website's docs pointer to metel-core's own pinned `docs` (metel-docs) commit,
+# cuts a new docs version + tag in metel-website, and lets that tag trigger
+# metel-website's own build-and-deploy workflow (Stage B).
+#
+# ADR-0051 removed a step that used to live here: metel-docs was a mirror of
+# metel-docs-internal/public/, synced on every release. metel-docs is now the
+# directly-edited source, so there is nothing left to sync -- metel-website's docs
+# pointer bumps straight to whatever commit metel-core's own `docs` submodule is
+# already pinned to.
 #
 # Each step below writes to exactly one other repo, using a token scoped to that repo
 # alone -- no single credential spans all three. See RELEASING.md for the full
@@ -25,13 +32,11 @@ jobs:
     name: Validate the release is ready to publish
     runs-on: ubuntu-latest
     steps:
+      # `docs` (ADR-0051) is the public `metel-docs` repo -- a plain,
+      # unauthenticated HTTPS submodule checkout works, no token needed.
       - uses: actions/checkout@v4
-
-      - name: Point the docs submodule fetch at HTTPS + the docs-only token
-        run: git config --global url."https://x-access-token:${{ secrets.DOCS_REPO_TOKEN }}@github.com/".insteadOf "git@github.com:"
-
-      - name: Check out docs submodule
-        run: git submodule update --init docs
+        with:
+          submodules: true
 
       - name: Derive the release version
         id: version
@@ -48,7 +53,7 @@ jobs:
           python3 - "${{ steps.version.outputs.version }}" <<'PYEOF'
           import re, sys
           version = sys.argv[1]
-          text = open("docs/public/release-notes/changelog.md").read()
+          text = open("docs/release-notes/changelog.md").read()
           pattern = rf"^## v{re.escape(version)}\n(.*?)(?=^## v|\Z)"
           m = re.search(pattern, text, re.DOTALL | re.MULTILINE)
           if not m:
@@ -59,22 +64,16 @@ jobs:
           PYEOF
 
   release-chain:
-    name: Sync docs, cut website release
+    name: Bump website docs pointer, cut website release
     needs: validate-release
     runs-on: ubuntu-latest
     steps:
+      # `docs` (ADR-0051) is the public `metel-docs` repo -- a plain,
+      # unauthenticated HTTPS submodule checkout works, no token needed.
       - name: Checkout metel-core at the release tag
         uses: actions/checkout@v4
-
-      # Same technique as .github/workflows/ci.yml's rfc-check job: docs/ is a
-      # private submodule (metel-docs-internal) linked via SSH in .gitmodules --
-      # GitHub-hosted runners have no SSH key for it. DOCS_REPO_TOKEN is read-only,
-      # scoped to metel-docs-internal alone (already exists, from #619).
-      - name: Point the docs submodule fetch at HTTPS + the docs-only token
-        run: git config --global url."https://x-access-token:${{ secrets.DOCS_REPO_TOKEN }}@github.com/".insteadOf "git@github.com:"
-
-      - name: Check out docs submodule
-        run: git submodule update --init docs
+        with:
+          submodules: true
 
       # docs/internal/versioning.md: "patch > 0 always means the spec is unchanged
       # from the .0 release of that minor version." A patch's docs are therefore
@@ -111,39 +110,19 @@ jobs:
           git config --global user.name "Vlad Parfeniuc"
           git config --global user.email "vladislavparfeniuc@gmail.com"
 
-      # ── Step 1: sync metel-docs-internal's public/ into the public metel-docs repo ──
+      # ── Read the docs commit this release actually ships against ──
       #
-      # metel-docs is an exact mirror of metel-docs-internal/public/ (verified: same
-      # five top-level dirs, same rfcs/ stage subdirectories down to 0-draft -- RFCs
-      # are public at every stage in this project, nothing to filter). This has been a
-      # manual, and frequently stale, step until now.
-      - name: Checkout metel-docs (public)
-        uses: actions/checkout@v4
-        with:
-          repository: metel-lang/metel-docs
-          token: ${{ secrets.DOCS_PUBLIC_TOKEN }}
-          path: metel-docs-public
+      # ADR-0051: metel-docs is directly edited now, nothing to sync. Reading
+      # metel-core's own pinned submodule commit (rather than resolving
+      # metel-docs main independently, which the old sync step did) guarantees
+      # the spec content this release's own tests ran against and the spec
+      # content the website shows for it are the literal same commit, not two
+      # independently-resolved reads of a moving target.
+      - name: Read the pinned docs submodule commit
+        id: docs-sha
+        run: echo "sha=$(git rev-parse HEAD:docs)" >> "$GITHUB_OUTPUT"
 
-      - name: Sync public/ into metel-docs
-        id: sync-docs
-        run: |
-          set -e
-          rsync -a --delete --exclude='.git' docs/public/ metel-docs-public/
-          cd metel-docs-public
-          git add -A
-          if git diff --cached --quiet; then
-            echo "No content changes to sync for v${{ steps.version.outputs.version }}"
-          else
-            git commit -q -m "sync: public docs for v${{ steps.version.outputs.version }}
-
-          Mirrors metel-docs-internal/public/ at the commit metel-core's own docs
-          submodule is pinned to for this release. Automated by metel-core's
-          release.yml (metel-core#614)."
-            git push origin main
-          fi
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      # ── Step 2: bump metel-website's docs pointer, cut a new docs version, tag ──
+      # ── Bump metel-website's docs pointer, cut a new docs version, tag ──
       - name: Checkout metel-website
         uses: actions/checkout@v4
         with:
@@ -152,13 +131,13 @@ jobs:
           path: metel-website
           submodules: true
 
-      - name: Bump the docs submodule pointer to the just-synced commit
+      - name: Bump the docs submodule pointer to metel-core's pinned commit
         working-directory: metel-website
         run: |
           set -e
           cd docs
           git fetch origin main -q
-          git checkout "${{ steps.sync-docs.outputs.sha }}" -q
+          git checkout "${{ steps.docs-sha.outputs.sha }}" -q
           cd ..
           git add docs
 
@@ -187,14 +166,14 @@ jobs:
           elif [[ "${{ steps.version.outputs.is_minor }}" == "true" ]]; then
             git commit -q -m "release: v${{ steps.version.outputs.version }}
 
-          Bumps the docs submodule pointer to metel-docs@${{ steps.sync-docs.outputs.sha }}
+          Bumps the docs submodule pointer to metel-docs@${{ steps.docs-sha.outputs.sha }}
           and cuts a new versioned docs snapshot for this release. Automated by
           metel-core's release.yml (metel-core#614)."
             git push origin main
           else
             git commit -q -m "release: v${{ steps.version.outputs.version }}
 
-          Bumps the docs submodule pointer to metel-docs@${{ steps.sync-docs.outputs.sha }}.
+          Bumps the docs submodule pointer to metel-docs@${{ steps.docs-sha.outputs.sha }}.
           A patch release changes no language-visible behavior (see
           docs/internal/versioning.md), so its docs are identical to the minor
           version it patches -- no new versioned-docs snapshot is cut. Automated
@@ -229,15 +208,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      # `docs` (ADR-0051) is the public `metel-docs` repo -- a plain,
+      # unauthenticated HTTPS submodule checkout works, no token needed.
       - uses: actions/checkout@v4
-
-      # Same technique as release-chain: docs/ is a private submodule, needs the
-      # read-only DOCS_REPO_TOKEN (from #619) to check out over HTTPS.
-      - name: Point the docs submodule fetch at HTTPS + the docs-only token
-        run: git config --global url."https://x-access-token:${{ secrets.DOCS_REPO_TOKEN }}@github.com/".insteadOf "git@github.com:"
-
-      - name: Check out docs submodule
-        run: git submodule update --init docs
+        with:
+          submodules: true
 
       - name: Derive the release version
         id: version
@@ -254,7 +229,7 @@ jobs:
           python3 - "${{ steps.version.outputs.version }}" <<'PYEOF'
           import re, sys
           version = sys.argv[1]
-          text = open("docs/public/release-notes/changelog.md").read()
+          text = open("docs/release-notes/changelog.md").read()
           pattern = rf"^## v{re.escape(version)}\n(.*?)(?=^## v|\Z)"
           m = re.search(pattern, text, re.DOTALL | re.MULTILINE)
           if not m:
