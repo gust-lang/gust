@@ -75,11 +75,10 @@ spec entries were written against; if it doesn't, something bypassed the pair ru
 **5. Spec correctness** — spot-check `docs/reference/spec.md` and its linked
 sections against the behaviour actually being released, not an aspirational version of it.
 
-**6. Internal docs** — `metel-docs-internal/architecture/architecture.md` (separate
-repo, not checked out here — see AGENTS.md), `metel-frontend/docs/typechecker.md`, and
-`metel-interpreter/docs/evaluator.md` reflect the pipeline, inference, construction,
-runtime, and builtin behaviour as it now is. Read them against the release's diff, not
-from memory.
+**6. Internal docs** — `docs/architecture/architecture.md`,
+`metel-frontend/docs/typechecker.md`, and `metel-interpreter/docs/evaluator.md` reflect
+the pipeline, inference, construction, runtime, and builtin behaviour as it now is. Read
+them against the release's diff, not from memory.
 
 **7. Decision records** — every non-obvious architectural decision, reversal, or
 workaround this release introduced has an ADR in

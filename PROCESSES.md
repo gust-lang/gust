@@ -11,8 +11,10 @@ does, or which repo owns which secret, as a single system.
 `metel-docs-internal`'s (private) `public/` tree into `metel-docs` (public). `metel-docs`
 is now the directly-edited source for RFCs, the spec, and the rest of the exported
 surface, including the tooling that operates on it (`rfc.py` and its three CI
-workflows, all moved there). `metel-docs-internal` keeps only `internal/`, `reports/`,
-and `architecture/` — genuinely private content with no CI of its own anymore.
+workflows, all moved there). **Amended 2026-08-23: `architecture/` also moved to
+`metel-docs`** (first the ADRs, then `architecture.md` itself — neither was private
+content). `metel-docs-internal` keeps only `internal/` and `reports/` — genuinely
+private content with no CI of its own anymore.
 
 This doesn't replace those documents or duplicate their reasoning — it's the index of
 *what exists*, so "what would break if I changed X" is a read, not a grep across three
@@ -47,7 +49,7 @@ when bumping `metel-website`'s pointer.
 flowchart TD
     subgraph MDI["metel-docs-internal (private, trunk-based, no CI)"]
         direction TB
-        MDI_main["main\n(internal/, reports/, architecture/)"]
+        MDI_main["main\n(internal/, reports/)"]
     end
 
     subgraph MC["metel-core"]

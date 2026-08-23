@@ -55,7 +55,7 @@ git push -u origin <type>/$ARGUMENTS-<slug>
    - the code, by label: `evaluator` → `src/evaluator/` + `docs/evaluator.md`;
      `typechecker` → `src/typechecker/` + `docs/typechecker.md`; `type-inference` →
      `src/typeinference/`; `generics`/`aspects` → `src/types/`; `architecture` →
-     `docs/architecture.md`
+     `docs/architecture/architecture.md`
 
 6. **Summarise in 2–3 bullets** what will be done, derived from the acceptance criteria,
    and name the regression test each change will need — deciding this now (per-PR gate
