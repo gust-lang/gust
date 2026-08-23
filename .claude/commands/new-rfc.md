@@ -72,7 +72,7 @@ python3 docs/internal/rfcs/tools/rfc.py transition <id> --to <stage>
 | `0-draft/` | `draft` | Being written |
 | `1-under-review/` | `under-review` | Ready for evaluation |
 | `2-accepted/` | `accepted` | Design settled; not yet in the spec |
-| `3-integrated/` | `integrated` | Merged into `docs/public/reference/spec/`, worked examples checked against everything already integrated |
+| `3-integrated/` | `integrated` | Merged into `docs/reference/spec/`, worked examples checked against everything already integrated |
 | `4-implemented/` | `implemented` | Implemented and shipped |
 | `5-superseded/` | `superseded` | Replaced by a later RFC |
 | `6-refused/` | `refused` | Refused, with the decision recorded |

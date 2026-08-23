@@ -1,12 +1,18 @@
 # Scripts and CI Processes
 
-An inventory of every script and CI workflow across the three repositories this
-project spans — `metel-core` (this repo), `metel-docs-internal`, and `metel-website`
-— plus `metel-docs`, the public mirror none of them directly develop against but all
-of them read from or write to. Nothing else currently lists all of this in one place
-(metel-core#687): `RELEASING.md` covers the release chain specifically, `AGENTS.md`
-covers the per-PR/release gates, but neither says what runs on an ordinary PR, what
-the RFC tooling does, or which repo owns which secret, as a single system.
+An inventory of every script and CI workflow across the four repositories this
+project spans — `metel-core` (this repo), `metel-docs-internal`, `metel-docs`, and
+`metel-website`. Nothing else currently lists all of this in one place (metel-core#687):
+`RELEASING.md` covers the release chain specifically, `AGENTS.md` covers the per-PR/
+release gates, but neither says what runs on an ordinary PR, what the RFC tooling
+does, or which repo owns which secret, as a single system.
+
+**Updated 2026-08-23 for ADR-0051**, which retired the one-way sync from
+`metel-docs-internal`'s (private) `public/` tree into `metel-docs` (public). `metel-docs`
+is now the directly-edited source for RFCs, the spec, and the rest of the exported
+surface, including the tooling that operates on it (`rfc.py` and its three CI
+workflows, all moved there). `metel-docs-internal` keeps only `internal/`, `reports/`,
+and `architecture/` — genuinely private content with no CI of its own anymore.
 
 This doesn't replace those documents or duplicate their reasoning — it's the index of
 *what exists*, so "what would break if I changed X" is a read, not a grep across three
@@ -22,8 +28,8 @@ changelog: reflected when the change lands, not reconstructed from history later
 `tools/check_inventory.sh` enforces the slice of this actually reachable from
 metel-core's own CI: every workflow, `tools/` script, and slash command *in this repo*
 must be named somewhere in this file, checked by the `inventory` job in `ci.yml` on
-every PR. It cannot see `metel-docs-internal`'s or `metel-website`'s own workflow
-directories — there's no cheap way for one private repo's CI to watch another's file
+every PR. It cannot see `metel-docs`'s or `metel-website`'s own workflow
+directories — there's no cheap way for one repo's CI to watch another's file
 list on every push — so those two repos' slices rely on review catching a
 new/changed workflow with no matching update here, the same way review already has to
 catch a missing changelog entry that `tools/changelog-status.sh` can't see if the
@@ -31,17 +37,17 @@ underlying commit hasn't landed yet.
 
 ## The whole pipeline
 
+**Updated for ADR-0051**: `metel-docs-internal` no longer has any CI (its own three
+workflows moved to `metel-docs`, which is now directly edited and publicly readable —
+no token needed to check it out). `metel-core`'s `release.yml` no longer writes to
+`metel-docs` at all; it only reads `metel-core`'s own pinned `docs` submodule commit
+when bumping `metel-website`'s pointer.
+
 ```mermaid
 flowchart TD
-    subgraph MDI["metel-docs-internal (private, trunk-based)"]
+    subgraph MDI["metel-docs-internal (private, trunk-based, no CI)"]
         direction TB
-        MDI_main["main"]
-        MDI_ci1["check-examples.yml"]
-        MDI_ci2["check-mdx.yml"]
-        MDI_ci3["rfc-check.yml"]
-        MDI_main --> MDI_ci1
-        MDI_main --> MDI_ci2
-        MDI_main --> MDI_ci3
+        MDI_main["main\n(internal/, reports/, architecture/)"]
     end
 
     subgraph MC["metel-core"]
@@ -54,9 +60,15 @@ flowchart TD
         MC_branch --> MC_ci --> MC_develop --> MC_tag --> MC_rel
     end
 
-    subgraph MDPub["metel-docs (public mirror)"]
+    subgraph MDPub["metel-docs (public, directly edited)"]
         direction TB
         MD_main["main"]
+        MD_ci1["check-examples.yml"]
+        MD_ci2["check-mdx.yml"]
+        MD_ci3["rfc-check.yml"]
+        MD_main --> MD_ci1
+        MD_main --> MD_ci2
+        MD_main --> MD_ci3
     end
 
     subgraph MW["metel-website"]
@@ -73,15 +85,14 @@ flowchart TD
 
     PROD(["metel-lang.org"])
 
-    MC_ci -. "fetches check_doc_examples.py\nfrom metel-core@develop" .-> MDI_ci1
+    MC_ci -. "fetches check_doc_examples.py\nfrom metel-core@develop" .-> MD_ci1
     MC_ci -. "fetches check_doc_examples.py\nfrom metel-core@develop" .-> MW_ci
 
-    MC_rel -->|"1. rsync docs/public/\n(DOCS_PUBLIC_TOKEN)"| MD_main
-    MC_rel -->|"2. bump docs pointer, docusaurus\ndocs:version (WEBSITE_TOKEN)"| MW_main
+    MC_rel -->|"bump docs pointer to MC's pinned\nmetel-docs commit, docusaurus\ndocs:version (WEBSITE_TOKEN)"| MW_main
     MW_deploy -->|"staging URL in job summary"| MW_promote
     MW_promote -->|"human reviews, then approves"| PROD
 
-    MD_main -. "manual docs-only sync\n(no version tag — see below)" .-> MW_main
+    MD_main -. "manual docs-only bump\n(no version tag — see below)" .-> MW_main
 ```
 
 Solid arrows are automated triggers or writes. Dashed arrows are either a runtime
@@ -93,46 +104,73 @@ all.
 | Path | Trigger | Reads | Writes | Secret(s) |
 |---|---|---|---|---|
 | `.github/workflows/ci.yml` — `ci` job | push/PR to `develop`/`main` | this repo | — | — |
-| `.github/workflows/ci.yml` — `rfc-check` job | push/PR to `develop`/`main` | `docs` submodule (metel-docs-internal), incl. `public/rfcs/COVERAGE-BASELINE.json`, this repo's `metel-interpreter/tests` | — | `DOCS_REPO_TOKEN` (read-only) |
-| `.github/workflows/ci.yml` — `doc-examples` job | push/PR to `develop`/`main` | `README.md`, `docs` submodule | — | `DOCS_REPO_TOKEN` |
+| `.github/workflows/ci.yml` — `rfc-check` job | push/PR to `develop`/`main` | `docs` submodule (metel-docs, public), incl. `rfcs/COVERAGE-BASELINE.json`, this repo's `metel-interpreter/tests` | — | — |
+| `.github/workflows/ci.yml` — `doc-examples` job | push/PR to `develop`/`main` | `README.md`, `docs` submodule | — | — |
 | `.github/workflows/ci.yml` — `inventory` job | push/PR to `develop`/`main` | this repo's own workflows/tools/commands | — | — |
-| `.github/workflows/release.yml` — `validate-release` | tag `vX.Y.Z` pushed | `docs` submodule | — | `DOCS_REPO_TOKEN` |
-| `.github/workflows/release.yml` — `release-chain` | after `validate-release` | `docs` submodule | `metel-docs` main, `metel-website` main + tag | `DOCS_REPO_TOKEN`, `DOCS_PUBLIC_TOKEN`, `WEBSITE_TOKEN` |
-| `.github/workflows/release.yml` — `github-release` | after `validate-release` | `docs` submodule | this repo's GitHub Releases | `DOCS_REPO_TOKEN`, built-in `GITHUB_TOKEN` |
+| `.github/workflows/release.yml` — `validate-release` | tag `vX.Y.Z` pushed | `docs` submodule | — | — |
+| `.github/workflows/release.yml` — `release-chain` | after `validate-release` | `docs` submodule (reads this repo's own pinned commit, does not write to `metel-docs` — ADR-0051 removed the sync) | `metel-website` main + tag | `WEBSITE_TOKEN` |
+| `.github/workflows/release.yml` — `github-release` | after `validate-release` | `docs` submodule | this repo's GitHub Releases | built-in `GITHUB_TOKEN` |
 | `tools/check_doc_examples.py` | invoked by `doc-examples`, and fetched at runtime by both other repos' checkers | any path of `.md`/`.mdx`/`.mtl` files passed on the CLI | stdout only | — |
-| `tools/changelog-status.sh` | manual (`/ship-issue`, `/cut-release`) | `docs/public/release-notes/changelog.md`, git log | stdout only | — |
+| `tools/changelog-status.sh` | manual (`/ship-issue`, `/cut-release`) | `docs/release-notes/changelog.md`, git log | stdout only | — |
 | `tools/check_inventory.sh` | invoked by `ci.yml`'s `inventory` job | this file, this repo's own workflows/tools/commands | stdout only | — |
 | `.claude/commands/start-issue.md` | manual slash command | issue body, `develop` | new issue branch | — |
 | `.claude/commands/ship-issue.md` | manual slash command | issue branch | PR to `develop`, fast-forward merge | — |
 | `.claude/commands/cut-release.md` | manual slash command | `develop` | tag on `main`, triggers `release.yml` | — |
 | `.claude/commands/gap-analysis.md` | manual slash command | milestone's open issues | edited/created issues | — |
 | `.claude/commands/review-typechecker.md` | manual slash command | a typechecker/inference diff | review report | — |
-| `.claude/commands/new-rfc.md` | manual slash command | `docs/public/rfcs/` | new draft RFC | — |
+| `.claude/commands/new-rfc.md` | manual slash command | `docs/rfcs/` | new draft RFC | — |
 | `RELEASING.md` | — (process doc) | — | — | — |
 | `AGENTS.md` | — (process doc) | — | — | — |
 
+**No secret needed for `docs` submodule reads anymore** — `metel-docs` is public
+(ADR-0051), so `actions/checkout`'s `submodules: true` works unauthenticated. Before
+ADR-0051 every row above that touched the `docs` submodule needed `DOCS_REPO_TOKEN`
+(a read-only credential scoped to the then-private `metel-docs-internal`); that token
+and the SSH-to-HTTPS rewrite step it required are both gone.
+
 ## metel-docs-internal
+
+**No CI of its own as of ADR-0051** (2026-08-23) — its three workflows (below, under
+`metel-docs`) checked `public/`, which moved out. What's left is private-only content
+with nothing that needs checking on every push:
 
 | Path | Trigger | Reads | Writes | Secret(s) |
 |---|---|---|---|---|
-| `.github/workflows/check-examples.yml` | push/PR to `main` | `public/getting-started`, `public/blog`, `public/reference`; the latest metel-core **release binary**; `tools/check_doc_examples.py` fetched live from metel-core `develop` | — | built-in `GITHUB_TOKEN` (public reads only) |
-| `.github/workflows/check-mdx.yml` | push/PR to `main` | `public/getting-started`, `public/reference`, `public/release-notes`, `public/blog`, via `tools/mdx-check-site` | — | — |
-| `.github/workflows/rfc-check.yml` (added 2026-08-19) | push/PR to `main` | this repo (`public/rfcs/` structural checks; the ADR-0049 coverage ratchet degrades to an informational skip here — `metel-interpreter/tests` isn't reachable from a bare checkout, see ADR-0049 §6; real enforcement is metel-core's `rfc-check` job, above) | — | — |
-| `public/rfcs/tools/rfc.py` | manual (`new`/`transition`/`supersede`/`check`/`index`) | `public/rfcs/`; `check`'s coverage ratchet also reads `metel-interpreter/tests` when reachable (see the metel-core `rfc-check` job, above) | `public/rfcs/` (moves files between lifecycle directories, edits frontmatter), `public/rfcs/INDEX.md`, `public/rfcs/REGISTRY.md` (`index --rebuild-registry`), `public/rfcs/COVERAGE-BASELINE.json` (`index --write-coverage-baseline`, added 2026-08-19) | — |
-| `public/rfcs/PROCESS.md` | — (process doc) | — | — | — |
+| `reports/strategy/tools/strategy.py` | manual (`check`/`render`/`new`/`close`/`decide`/`cycle`/`archive`) | `reports/strategy/` entity files | `reports/strategy/OBJECTIVES.md`, `HEURISTICS.md` (generated views), entity files | — |
+| `reports/strategy/tools/rfc_cycle_prep.py` | manual, run at the start of a strategic-overview cycle | a `metel-docs`/`metel-docs-internal` checkout passed as an argument, GitHub milestones | `reports/strategy/.cycle-snapshot.json` | — (best-effort `GITHUB_TOKEN`/`GH_TOKEN` for the milestone check) |
+| `reports/strategy/PROCESS.md` | — (process doc) | — | — | — |
 
 This repo is trunk-based (no `develop`/`main` split of its own) — every commit goes
 straight to `main`, per its own `README.md`.
 
+## metel-docs
+
+**Public, directly edited (ADR-0051)** — the source of truth for RFCs, the language
+spec, and the rest of the exported documentation surface. Was a release-cadence mirror
+of `metel-docs-internal`'s `public/` tree until 2026-08-23; that sync, and the three
+workflows below, moved here from `metel-docs-internal` in the same change.
+
+| Path | Trigger | Reads | Writes | Secret(s) |
+|---|---|---|---|---|
+| `.github/workflows/check-examples.yml` | push/PR to `main` | `getting-started`, `blog`, `reference`; the latest metel-core **release binary**; `tools/check_doc_examples.py` fetched live from metel-core `develop` | — | built-in `GITHUB_TOKEN` (public reads only) |
+| `.github/workflows/check-mdx.yml` | push/PR to `main` | `getting-started`, `reference`, `release-notes`, `blog`, via `tools/mdx-check-site` | — | — |
+| `.github/workflows/rfc-check.yml` | push/PR to `main` | this repo (`rfcs/` structural checks; the ADR-0049 coverage ratchet degrades to an informational skip here — `metel-interpreter/tests` isn't reachable from a bare checkout, see ADR-0049 §6; real enforcement is metel-core's `rfc-check` job, above) | — | — |
+| `rfcs/tools/rfc.py` | manual (`new`/`transition`/`supersede`/`check`/`index`) | `rfcs/`; `check`'s coverage ratchet also reads `metel-interpreter/tests` when reachable (see the metel-core `rfc-check` job, above) | `rfcs/` (moves files between lifecycle directories, edits frontmatter), `rfcs/INDEX.md`, `rfcs/REGISTRY.md` (`index --rebuild-registry`), `rfcs/COVERAGE-BASELINE.json` (`index --write-coverage-baseline`) | — |
+| `rfcs/PROCESS.md` | — (process doc) | — | — | — |
+
+This repo's own branch/commit convention is not yet written down anywhere (flagged in
+ADR-0051 as worth a maintainer picking up separately — it currently has no root
+`README.md`).
+
 ### What is deliberately not checked
 
-`check_doc_examples.py` runs against `public/getting-started`, `public/blog`, and
-`public/reference` (plus `README.md` on metel-core's side, and `src/showcases` on
+`check_doc_examples.py` runs against `getting-started`, `blog`, and
+`reference` (plus `README.md` on metel-core's side, and `src/showcases` on
 metel-website's). Two directories holding a large number of ` ```metel ` fences are
 excluded **by decision, not by oversight** — recorded here so neither reads as a gap
 someone should close later:
 
-**`public/release-notes/changelog.md`** — the changelog's genre is documenting
+**`release-notes/changelog.md`** — the changelog's genre is documenting
 *rejections, known limitations, and before/after syntax transitions*, so it is the
 document most likely to quote syntax that deliberately does not compile, including in
 its newest entry. All three of its current fences are non-compiling by intent: bare
@@ -149,7 +187,7 @@ and each future release section would still need markers on its rejection exampl
 Worth revisiting only if changelog examples start being written as ordinary working
 code, which the genre argues against.)*
 
-**`public/rfcs/`** — 676 fences across 136 files, describing proposed, superseded, and
+**`rfcs/`** — 676 fences across 136 files, describing proposed, superseded, and
 refused syntax. An RFC at `0-draft` proposes syntax that does not exist yet; one at
 `6-refused` documents syntax deliberately never built. Neither can compile, and both
 are correct as written.
@@ -172,10 +210,16 @@ of "Introducing Metel" is worse than editing an archived post when syntax moves.
 
 | Secret | Lives in | Scope |
 |---|---|---|
-| `DOCS_REPO_TOKEN` | metel-core | Read-only, `metel-docs-internal` only |
-| `DOCS_PUBLIC_TOKEN` | metel-core | Write, `metel-docs` only |
 | `WEBSITE_TOKEN` | metel-core | Write, `metel-website` only |
 | `VERCEL_TOKEN` / `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` | metel-website | Vercel deploy access for this project |
+
+**`DOCS_REPO_TOKEN` and `DOCS_PUBLIC_TOKEN` are retired (ADR-0051, 2026-08-23).**
+`DOCS_REPO_TOKEN` existed to authenticate metel-core's `docs` submodule checkout when
+it pointed at the private `metel-docs-internal`; `metel-docs` is public, so
+`actions/checkout`'s `submodules: true` works unauthenticated and every job that used
+to need it no longer does. `DOCS_PUBLIC_TOKEN` existed to let `release.yml` push the
+sync commit into `metel-docs`; there's no sync anymore. Both secrets should be removed
+from metel-core's repository settings, not just left unused.
 
 No single credential spans more than one repository. `check-examples.yml` and
 `check-showcases.yml` need no secret of their own for the cross-repo reads they do —
@@ -186,48 +230,48 @@ public, so the workflow's own built-in `GITHUB_TOKEN` covers both.
 
 **A `tools/check_doc_examples.py` fix lands in metel-core.** It's live for
 metel-core's own `doc-examples` job immediately (same repo). It's invisible to
-`metel-docs-internal`'s `check-examples.yml` and `metel-website`'s
+`metel-docs`'s `check-examples.yml` and `metel-website`'s
 `check-showcases.yml` until it's merged to metel-core's `develop` branch specifically
 — both fetch from `develop`, not `main`, precisely so a script fix doesn't wait a full
 release cycle to reach them (see the comment in either workflow).
 
 **A version tag `vX.Y.Z` is pushed to metel-core's `main`.** `release.yml` runs:
 `validate-release` checks the changelog isn't still "in progress"; `release-chain`
-mirrors `docs/public/` into `metel-docs`, then bumps `metel-website`'s `docs` pointer
-and tags it; `github-release` builds the binary and publishes the GitHub Release —
-independently of `release-chain`, so one failing doesn't block the other. The new tag
-on `metel-website` is a real tag push, which is what triggers `deploy.yml` there
-(Stage B) — not a synthetic dispatch, so `metel-website`'s own pipeline stays
-independently testable by pushing a tag directly to it. `deploy.yml` builds once and
-deploys to Vercel staging; production is `promote.yml`, always manual, since GitHub's
-required-reviewer Environment protection needs a paid plan this org doesn't have — a
-human running `promote.yml` after reviewing the staging URL is the approval step
-instead.
+reads metel-core's own pinned `docs` (`metel-docs`) submodule commit and bumps
+`metel-website`'s `docs` pointer to it, then tags `metel-website` (ADR-0051 removed
+the sync step that used to sit in front of this — `metel-docs` is directly edited,
+nothing to mirror); `github-release` builds the binary and publishes the GitHub
+Release — independently of `release-chain`, so one failing doesn't block the other.
+The new tag on `metel-website` is a real tag push, which is what triggers
+`deploy.yml` there (Stage B) — not a synthetic dispatch, so `metel-website`'s own
+pipeline stays independently testable by pushing a tag directly to it. `deploy.yml`
+builds once and deploys to Vercel staging; production is `promote.yml`, always
+manual, since GitHub's required-reviewer Environment protection needs a paid plan
+this org doesn't have — a human running `promote.yml` after reviewing the staging
+URL is the approval step instead.
 
-**Only `metel-docs-internal` changed — no metel-core release is warranted.** Nothing
-above moves automatically; there is no workflow for this path today. The manual
-procedure, exercised directly rather than through a script:
+**A docs-only change lands directly in `metel-docs` — no metel-core release is
+warranted.** Nothing above moves automatically; there is no workflow for this path
+today (ADR-0051 made this simpler than it used to be — no more
+`metel-docs-internal` → `metel-docs` sync step, since `metel-docs` *is* the commit).
+The manual procedure, exercised directly rather than through a script:
 
-1. Merge the docs-internal PR to its `main`.
-2. Clone `metel-docs` fresh, `rsync -a --delete --exclude='.git'` the docs-internal
-   repo's `public/` into it, commit (only if content actually changed), push to `main`
-   — the same rsync `release-chain`'s `sync-docs` step runs, just without a release
-   tag driving it.
-3. In `metel-website`, bump the `docs` submodule pointer to that commit, run `npm run
-   typecheck && npm run build` to catch anything the sync broke, commit and push to
+1. Merge the `metel-docs` PR to its `main`.
+2. In `metel-website`, bump the `docs` submodule pointer to that commit, run `npm run
+   typecheck && npm run build` to catch anything the change broke, commit and push to
    `main` directly (no `docusaurus docs:version` step — that only runs for a real
    minor release).
-4. `npx vercel pull --environment=preview && npx vercel build && npx vercel deploy
+3. `npx vercel pull --environment=preview && npx vercel build && npx vercel deploy
    --prebuilt` to produce a staging deployment — the same three commands
    `deploy.yml` runs, from a local machine with the Vercel CLI already linked to the
    project (`.vercel/project.json`).
-5. Read the actual build output under `.vercel/output/static/` to confirm the fix is
+4. Read the actual build output under `.vercel/output/static/` to confirm the fix is
    really in it — Vercel's SSO/Deployment Protection on preview URLs makes a plain
    `curl` against the staging URL redirect to `vercel.com/sso-api` rather than show
    the page.
-6. `npx vercel pull --environment=production && npx vercel promote <staging-url>
+5. `npx vercel pull --environment=production && npx vercel promote <staging-url>
    --yes` — the same promotion `promote.yml` runs, manually.
-7. `curl` `https://metel-lang.org` directly (production has no SSO protection) to
+6. `curl` `https://metel-lang.org` directly (production has no SSO protection) to
    confirm the change is actually live.
 
 This path exists because it's genuinely been used, repeatedly, for docs-only fixes

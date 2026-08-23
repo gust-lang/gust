@@ -23,7 +23,7 @@ gh issue list --milestone  --state open
 Read each issue in full (`gh issue view <N>`) — description, labels, referenced issue numbers.
 Then read `docs/reports/strategy/OBJECTIVES.md` §2 (current priorities) and §3 (open
 triggers) for anything bearing on this milestone, and the spec sections in
-`docs/public/reference/spec/` the milestone's theme is likely to touch.
+`docs/reference/spec/` the milestone's theme is likely to touch.
 
 ### 1a. RFC lifecycle pre-check (hard gate)
 
@@ -85,7 +85,7 @@ meant to eliminate. Signs:
 - It splits cleanly into a spec change plus an implementation
 
 ### 2c. Spec and RFC alignment
-- Is there a section in `docs/public/reference/spec/` governing this behaviour? Does it
+- Is there a section in `docs/reference/spec/` governing this behaviour? Does it
   already describe the target behaviour, or must the spec change first?
 - Does this need an RFC? If so, does one exist, and is it at `3-integrated` or beyond?
 - Does it implement an already-integrated RFC? Note the id and check `impl_tracking`
@@ -184,7 +184,7 @@ gh issue edit <N> --body "<rewritten body>"
 
 - Extend the original intent; do not replace it.
 - Add explicit acceptance criteria, edge cases, and error behaviour.
-- Add `RFC: rfc-NNNN` and `Spec: docs/public/reference/spec/<section>.md` where identified.
+- Add `RFC: rfc-NNNN` and `Spec: docs/reference/spec/<section>.md` where identified.
 - Note the dependency direction explicitly (`Blocked by #N` / `Blocks #N`) — GitHub
   renders these as links but does not enforce them, so they are documentation.
 

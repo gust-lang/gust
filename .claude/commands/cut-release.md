@@ -43,7 +43,7 @@ Confirm closed issues had their acceptance criteria satisfied; a closed box is n
 
 ## Step 2 — Release gate
 
-**1. Changelog finalized** — `docs/public/release-notes/changelog.md`'s in-progress
+**1. Changelog finalized** — `docs/release-notes/changelog.md`'s in-progress
 section is complete and accurate against the commit range from Step 0. Reword for
 clarity, then replace the "in progress on `develop` — not yet released" line with the
 release date. Cross-check with:
@@ -60,7 +60,7 @@ commit as the changelog finalization.
 **3. RFC state** —
 
 ```bash
-python3 docs/internal/rfcs/tools/rfc.py check
+python3 docs/rfcs/tools/rfc.py check
 ```
 
 Reports clean. Any RFC this release implements end-to-end moves to `4-implemented`
@@ -72,15 +72,18 @@ part of the release commit. This is the only time `main`'s pointer moves. Since
 `metel-docs` is trunk-based, its `main` should already hold everything the changelog and
 spec entries were written against; if it doesn't, something bypassed the pair rule.
 
-**5. Spec correctness** — spot-check `docs/public/reference/spec.md` and its linked
+**5. Spec correctness** — spot-check `docs/reference/spec.md` and its linked
 sections against the behaviour actually being released, not an aspirational version of it.
 
-**6. Internal docs** — `metel-interpreter/docs/architecture.md`, `typechecker.md`, and
-`evaluator.md` reflect the pipeline, inference, construction, runtime, and builtin
-behaviour as it now is. Read them against the release's diff, not from memory.
+**6. Internal docs** — `metel-docs-internal/architecture/architecture.md` (separate
+repo, not checked out here — see AGENTS.md), `metel-frontend/docs/typechecker.md`, and
+`metel-interpreter/docs/evaluator.md` reflect the pipeline, inference, construction,
+runtime, and builtin behaviour as it now is. Read them against the release's diff, not
+from memory.
 
 **7. Decision records** — every non-obvious architectural decision, reversal, or
-workaround this release introduced has an ADR in `metel-interpreter/docs/decisions/`. A
+workaround this release introduced has an ADR in
+`metel-docs-internal/architecture/decisions/` (separate repo). A
 reversal especially: why a past decision stopped holding is the part that gets lost.
 
 **8. Full suite green on the release commit** — the per-PR gate ran per branch, but not
@@ -98,7 +101,7 @@ Confirm by reading the `test result:` lines and a 0-warning clippy tail.
 ```bash
 cargo build --release -p metel
 python3 tools/check_doc_examples.py --binary target/release/metel \
-    README.md docs/public/getting-started/tutorials docs/public/reference/spec
+    README.md docs/getting-started/tutorials docs/reference/spec
 ```
 
 Confirm by reading the CI job `doc-examples`'s result on the release commit rather than
@@ -136,10 +139,10 @@ verify they actually ran and succeeded:
    changelog section just finalized — not regenerated separately. The changelog is the
    single source of truth for release notes. A release binary (`metel`, Linux x86_64)
    is attached alongside it.
-2. If public documentation changed: `metel-docs` is synced from `metel-docs-internal`,
-   `metel-website`'s `docs` pointer and versioned docs snapshot are bumped, and the
-   website is built and deployed to staging (see `RELEASING.md`). Production promotion
-   is still a deliberate manual step — review the staging URL and run `promote.yml`.
+2. `metel-website`'s `docs` pointer is bumped to this repo's own pinned `metel-docs`
+   commit, its versioned docs snapshot cut, and the website built and deployed to
+   staging (see `RELEASING.md`). Production promotion is still a deliberate manual
+   step — review the staging URL and run `promote.yml`.
 
 Lift the freeze on `develop` once both are confirmed green.
 

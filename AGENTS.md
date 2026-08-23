@@ -12,36 +12,46 @@ The canonical repository remote is GitHub (`github.com/metel-lang/metel-core`). 
 
 ## Current Documentation Structure
 
-`docs/` is the private `metel-docs-internal` submodule. Update it as a real submodule: make docs edits in the submodule, commit them there, then update the pointer in this repo.
+`docs/` is the public `metel-docs` submodule (ADR-0051 — retired the old sync from a
+private `metel-docs-internal` submodule; `metel-docs` is now directly edited, no mirror
+step in front of it). Update it as a real submodule: make docs edits in the submodule,
+commit them there, then update the pointer in this repo.
+
+**`metel-docs-internal` (a separate, non-submoduled repo) holds what stayed private:
+`internal/` and `reports/`, including this project's strategy corpus, *and*
+`architecture/decisions/` (ADRs).** None of it is checked out here — reading or
+writing any of it (including creating an ADR, "Decision Records" below) means a
+separate clone of `metel-docs-internal`, not a local path under `docs/`. This is a
+real workflow change from before ADR-0051, when `docs/` held all of it; flagged here
+because it's easy to miss.
 
 | Location | Purpose |
 |---|---|
-| `docs/README.md` | Authoritative public/internal docs layout |
-| `docs/public/getting-started/` | Intro, quickstart, and tutorials |
-| `docs/public/reference/spec.md` | Language specification entry point |
-| `docs/public/reference/spec/` | Spec sections: lexical, types, declarations, functions, expressions, modules, runtime, grammar |
-| `docs/public/reference/error-codes.md` | Error code reference |
-| `docs/public/release-notes/changelog.md` | Version changelog and release notes |
-| `docs/internal/versioning.md` | Version numbering and doc/changelog conventions. **Not** the RFC lifecycle — see below. |
-| `docs/public/rfcs/PROCESS.md` | **Authoritative RFC lifecycle, working rules, and tooling reference.** Read this before touching any RFC. |
-| `docs/public/rfcs/INDEX.md` | Thematic snapshot of all RFCs by cluster and status — check before opening a new RFC to avoid duplicating one that already exists. |
-| `docs/public/rfcs/tools/rfc.py` | The lifecycle tool (`new`/`transition`/`supersede`/`check`/`index`) — mechanizes the procedural parts of PROCESS.md. Run `rfc.py check` after any manual RFC edit. |
-| `docs/public/rfcs/0-draft/` | Draft RFCs being written |
-| `docs/public/rfcs/1-under-review/` | RFCs ready for evaluation |
-| `docs/public/rfcs/2-accepted/` | Design settled; not yet integrated into the spec |
-| `docs/public/rfcs/3-integrated/` | Merged into `docs/public/reference/spec/` with worked examples checked for soundness against everything else already integrated; not yet implemented — see `impl_status`/`impl_tracking` below |
-| `docs/public/rfcs/4-implemented/` | Implemented and shipped |
-| `docs/public/rfcs/5-superseded/` | RFCs replaced by later RFCs |
-| `docs/public/rfcs/6-refused/` | RFCs refused with a recorded decision |
-| `docs/reports/strategy/OBJECTIVES.md` | **Living long-term objectives, current priorities, and open triggers** — persists across planning cycles; see "Strategic Planning" below. |
-| `docs/reports/strategy/PROCESS.md` | **How to run a strategic-overview cycle** — verification discipline, trigger lifecycle, and the dated overview's structural template. Read before running one. |
-| `docs/reports/` | Design reports and longer-form research notes |
-| `docs/architecture/architecture.md` | Interpreter pipeline and component boundaries |
+| `docs/getting-started/` | Intro, quickstart, and tutorials |
+| `docs/reference/spec.md` | Language specification entry point |
+| `docs/reference/spec/` | Spec sections: lexical, types, declarations, functions, expressions, modules, runtime, grammar |
+| `docs/reference/error-codes.md` | Error code reference |
+| `docs/release-notes/changelog.md` | Version changelog and release notes |
+| `metel-docs-internal/internal/versioning.md` *(separate repo, not checked out here)* | Version numbering and doc/changelog conventions. **Not** the RFC lifecycle — see below. |
+| `docs/rfcs/PROCESS.md` | **Authoritative RFC lifecycle, working rules, and tooling reference.** Read this before touching any RFC. |
+| `docs/rfcs/INDEX.md` | Thematic snapshot of all RFCs by cluster and status — check before opening a new RFC to avoid duplicating one that already exists. |
+| `docs/rfcs/tools/rfc.py` | The lifecycle tool (`new`/`transition`/`supersede`/`check`/`index`) — mechanizes the procedural parts of PROCESS.md. Run `rfc.py check` after any manual RFC edit. |
+| `docs/rfcs/0-draft/` | Draft RFCs being written |
+| `docs/rfcs/1-under-review/` | RFCs ready for evaluation |
+| `docs/rfcs/2-accepted/` | Design settled; not yet integrated into the spec |
+| `docs/rfcs/3-integrated/` | Merged into `docs/reference/spec/` with worked examples checked for soundness against everything else already integrated; not yet implemented — see `impl_status`/`impl_tracking` below |
+| `docs/rfcs/4-implemented/` | Implemented and shipped |
+| `docs/rfcs/5-superseded/` | RFCs replaced by later RFCs |
+| `docs/rfcs/6-refused/` | RFCs refused with a recorded decision |
+| `metel-docs-internal/reports/strategy/OBJECTIVES.md` *(separate repo)* | **Living long-term objectives, current priorities, and open triggers** — persists across planning cycles; see "Strategic Planning" below. |
+| `metel-docs-internal/reports/strategy/PROCESS.md` *(separate repo)* | **How to run a strategic-overview cycle** — verification discipline, trigger lifecycle, and the dated overview's structural template. Read before running one. |
+| `metel-docs-internal/reports/` *(separate repo)* | Design reports and longer-form research notes |
+| `metel-docs-internal/architecture/architecture.md` *(separate repo)* | Interpreter pipeline and component boundaries |
 | `metel-frontend/docs/typechecker.md` | Typechecker theory and implementation notes |
 | `metel-interpreter/docs/evaluator.md` | Runtime values, signals, environment, and evaluator notes |
-| `docs/architecture/decisions/` | Architectural decision records |
+| `metel-docs-internal/architecture/decisions/` *(separate repo)* | Architectural decision records |
 
-Public docs no longer live at `docs/public/spec.md`, `docs/public/spec/`, or `docs/public/changelog.md`. Those paths are stale.
+Public docs no longer live at `docs/spec.md`, `docs/spec/`, or `docs/changelog.md`. Those paths are stale.
 
 *(Removed 2026-08-02, during the v0.12.0 pre-release review: this slot previously warned that `spec.md`'s frontmatter said `version: v0.7.0` and that its Overview described the memory model as "reference counting, no ownership semantics required". **Both were fixed some releases ago and the warning outlived them** — verified directly against the file. Kept as a note rather than deleted silently, because a stale warning is worse than none: it trains readers to skip warnings. `internal/versioning.md`'s release checklist now carries a standing item to re-check notes like this one each release.)*
 
@@ -59,7 +69,7 @@ kept in sync with the RFC file by hand (or by API call) because Plane had no nat
 notion of "this issue's status lives in a git file." GitHub issues don't try to
 mirror RFC status at all — the RFC file's own directory and frontmatter (`status`,
 and from `3-integrated` onward, `impl_status`/`impl_tracking`) are already the single
-source of truth, per `docs/public/rfcs/PROCESS.md`. An RFC gets an issue only once
+source of truth, per `docs/rfcs/PROCESS.md`. An RFC gets an issue only once
 it reaches `3-integrated` and needs real implementation tracked — one issue per RFC
 (or per tightly-coupled cluster), linked back via that RFC's `impl_tracking` field.
 There is nothing to keep in sync in the other direction; the issue never needs to
@@ -198,19 +208,20 @@ git push -u origin feat/<issue>-<slug>
 - **Rebase onto `develop`, never merge `develop` in.** If `develop` moved, rebase and
   force-push *your* branch. See "Merging: Fast-Forward Only" above — this is what makes
   the fast-forward possible at all.
-- If public docs changed, commit in `docs/` first — straight to `metel-docs-internal main`; that
-  repo is trunk-based with no branch tier of its own, see its `README.md` — then commit
-  the updated submodule pointer here, on the issue branch. The pointer is never bumped
-  directly on `develop` or `main`: `develop`'s pointer only moves as a side effect of a
-  branch merging in (it's fine for it to lag `metel-docs-internal main` — treat it like a
-  dependency pin, not a freshness target), and `main`'s only moves at release time (see
-  "Release Workflow" below).
-- **Update `docs/public/release-notes/changelog.md` as each feature or fix lands, not later.**
+- If public docs changed, commit in `docs/` first — to `metel-docs main` (ADR-0051:
+  `metel-docs` is directly edited now; check that repo's own current conventions for
+  whether that means a direct commit or a branch+PR, since it has no stated workflow
+  of its own as of this writing) — then commit the updated submodule pointer here, on
+  the issue branch. The pointer is never bumped directly on `develop` or `main`:
+  `develop`'s pointer only moves as a side effect of a branch merging in (it's fine
+  for it to lag `metel-docs main` — treat it like a dependency pin, not a freshness
+  target), and `main`'s only moves at release time (see "Release Workflow" below).
+- **Update `docs/release-notes/changelog.md` as each feature or fix lands, not later.**
   Add the entry under the current in-progress version's section (create it, marked "in progress
   on `develop` — not yet released", if this is the first change targeting a new version).
 
   **The changelog is in the `docs/` submodule, so this can never be one commit** — the code
-  commit lands here, the entry lands in `metel-docs-internal`, and the pointer bump lands here again.
+  commit lands here, the entry lands in `metel-docs`, and the pointer bump lands here again.
   That split is why this rule quietly failed for the whole of v0.12.0: an instruction to write
   the entry "in the same commit" describes something impossible, so it degraded into "later",
   which meant never. Treat it as a **pair**: the code commit, then immediately the docs commit
@@ -260,7 +271,7 @@ branch and run again.
    A directory fixture's sidecar is `test.toml`; a single-file fixture's is `<name>.toml`.
    Getting this wrong makes the sidecar silently inert — the fixture passes while checking
    nothing, which is how six migrated fixtures skipped move checking entirely.
-5. **Spec accuracy** - every language-visible change is documented in `docs/public/reference/spec.md` and the linked spec section.
+5. **Spec accuracy** - every language-visible change is documented in `docs/reference/spec.md` and the linked spec section.
 6. **Changelog** - `tools/changelog-status.sh` reports no unlogged commits for this branch's
    work. This is a completeness check, not first authorship — see "While the Branch Is Open"
    above. A failure here means entries were batched, not that the check is noisy.
@@ -296,33 +307,35 @@ the exact failure mode this workflow is designed against — plus the repository
 sweeps that no single pull request owns. It does **not** re-run the per-PR gate; those
 checks already passed on every branch that landed.
 
-1. **Changelog finalized** - `docs/public/release-notes/changelog.md`'s in-progress
+1. **Changelog finalized** - `docs/release-notes/changelog.md`'s in-progress
    section is complete and accurate against everything merged into `develop` since
    the last release. Reword for clarity if needed, then replace the "in progress on
    `develop` — not yet released" line with the release date.
-2. **Version number chosen** - per `docs/internal/versioning.md`'s major/minor/patch
+2. **Version number chosen** - per `metel-docs-internal/internal/versioning.md`'s
+   (separate repo, not checked out here) major/minor/patch
    rule (spec changes require at least a minor bump; a patch must not touch
    language-visible behavior at all). Bump `metel-interpreter/Cargo.toml`'s
    `version` to match, in the same commit as the changelog finalization.
-3. **RFC state** - `python3 docs/public/rfcs/tools/rfc.py check` reports clean.
+3. **RFC state** - `python3 docs/rfcs/tools/rfc.py check` reports clean.
    Any RFC the release actually implements end-to-end should be at `4-implemented`
    (`rfc.py transition <id> --to implemented`), not left at `3-integrated` with
    stale "Not yet implemented" spec callouts.
 4. **Docs submodule in lockstep** - bump the `docs` submodule pointer to
-   `metel-docs-internal main`'s current tip as part of the release commit (this is the
-   only time `main`'s pointer moves at all). Since `metel-docs-internal` is trunk-based
-   with no long-lived branches of its own, its `main` should already hold
-   everything the changelog/spec entries above were written against — this step
-   should never require reconciling an unmerged docs branch first.
-5. **Spec correctness** - spot-check that `docs/public/reference/spec.md` and its
+   `metel-docs main`'s current tip as part of the release commit (this is the
+   only time `main`'s pointer moves at all). Confirm `metel-docs main` already holds
+   everything the changelog/spec entries above were written against before bumping —
+   this step should never require reconciling an unmerged docs branch first.
+5. **Spec correctness** - spot-check that `docs/reference/spec.md` and its
    linked sections actually describe the behavior being released, not a stale or
    aspirational version of it.
-6. **Internal docs** - `docs/architecture/architecture.md`,
+6. **Internal docs** - `metel-docs-internal/architecture/architecture.md` (separate
+   repo, not checked out here),
    `metel-frontend/docs/typechecker.md`, and `metel-interpreter/docs/evaluator.md`
    reflect the pipeline, inference, construction, runtime, and builtin behavior as it
    now is. Read them against the release's diff rather than from memory.
 7. **Decision records** - every non-obvious architectural decision, reversal, or
-   workaround this release introduced has an ADR in `docs/architecture/decisions/`.
+   workaround this release introduced has an ADR in
+   `metel-docs-internal/architecture/decisions/` (separate repo).
    A reversal especially: the reason a past decision stopped holding is the part that
    gets lost, and the part the next person needs.
 8. **Issue hygiene** - the milestone's issues are genuinely closed with acceptance
@@ -366,8 +379,9 @@ means beyond the checks passing.
 ### Before Starting a Task
 
 1. Retrieve and read the full issue, including acceptance criteria, dependencies (referenced issue numbers), labels, and milestone.
-2. Read every spec section the task touches. The spec entry point is `docs/public/reference/spec.md`.
-3. Read relevant RFCs in `docs/public/rfcs/` and ADRs in `docs/architecture/decisions/`.
+2. Read every spec section the task touches. The spec entry point is `docs/reference/spec.md`.
+3. Read relevant RFCs in `docs/rfcs/` and ADRs in `metel-docs-internal/architecture/decisions/`
+   (separate repo, not checked out here).
 4. Check dependency issues and confirm their implementation matches the contract this task depends on.
 5. If the spec is missing or ambiguous, update the spec first. If the choice is non-obvious, write an ADR before implementation.
 6. Note in the issue (a comment, or just the first commit) that work has started.
@@ -514,9 +528,10 @@ destructor invocation and notes the project has already hit that failure mode tw
 
 ## RFC Workflow
 
-RFCs live in `docs/public/rfcs/`. **`docs/public/rfcs/PROCESS.md` is the sole
+RFCs live in `docs/rfcs/`. **`docs/rfcs/PROCESS.md` is the sole
 authority on the RFC lifecycle, working rules, and tooling** — read it, don't rely on
-the summary below for anything beyond a quick orientation. `docs/internal/versioning.md`
+the summary below for anything beyond a quick orientation.
+`metel-docs-internal/internal/versioning.md` (separate repo, not checked out here)
 covers version numbering and changelog conventions only; it does **not** define the RFC
 lifecycle (its own RFC-lifecycle section is stale and superseded by PROCESS.md — see the
 note in that file).
@@ -526,7 +541,7 @@ An RFC has exactly one state, represented by its directory:
 - `0-draft/` - `draft`
 - `1-under-review/` - `under-review`
 - `2-accepted/` - `accepted`
-- `3-integrated/` - `integrated` — merged into `docs/public/reference/spec/`, worked
+- `3-integrated/` - `integrated` — merged into `docs/reference/spec/`, worked
   examples checked against everything else already integrated; not yet implemented
 - `4-implemented/` - `implemented`
 - `5-superseded/` - `superseded`
@@ -536,7 +551,7 @@ Rules:
 
 - The RFC document is the source of truth for design details.
 - The directory is the source of truth for the RFC's lifecycle state; frontmatter
-  `status` must match it. Run `python3 docs/public/rfcs/tools/rfc.py check` after any
+  `status` must match it. Run `python3 docs/rfcs/tools/rfc.py check` after any
   manual edit — it validates this and more (dangling references, duplicate ids).
 - Accepted RFCs must reach `3-integrated` (spec updated, worked examples written) before
   implementation work begins — this is what used to be tracked by the now-retired
@@ -551,21 +566,27 @@ Rules:
   sets `impl_status: implemented`.
 
 If an existing RFC's folder, frontmatter status, or `impl_status` contradicts
-`docs/public/rfcs/PROCESS.md`, stop and resolve the documentation workflow
+`docs/rfcs/PROCESS.md`, stop and resolve the documentation workflow
 inconsistency before implementing against it.
 
 ---
 
 ## Strategic Planning
 
+**Lives entirely in `metel-docs-internal`, a separate repo not checked out here** (ADR-0051
+— `reports/strategy/` stayed private, unlike the public docs `docs/` now points at).
+Consulting or updating it means a separate clone; there is no local path under `docs/`
+for any of it.
+
 Goals, current priorities, and open triggers (watch-list items that
 should prompt a re-check when conditions change) live in
-`docs/reports/strategy/OBJECTIVES.md` — a living document, updated in place, not a
-dated snapshot. Periodic dated narrative snapshots (`docs/reports/strategy/
-strategic-overview-YYYY-MM-DD.md`) remain the point-in-time record of what was found
-and decided each planning cycle; `OBJECTIVES.md` is what each cycle reads from and
-writes back to, so priorities and triggers persist between cycles instead of being
-reconstructed from whichever dated file is most recent.
+`metel-docs-internal/reports/strategy/OBJECTIVES.md` — a living document, updated in
+place, not a dated snapshot. Periodic dated narrative snapshots
+(`metel-docs-internal/reports/strategy/strategic-overview-YYYY-MM-DD.md`) remain the
+point-in-time record of what was found and decided each planning cycle;
+`OBJECTIVES.md` is what each cycle reads from and writes back to, so priorities and
+triggers persist between cycles instead of being reconstructed from whichever dated
+file is most recent.
 
 Rules (content lives in `OBJECTIVES.md` itself, not duplicated here):
 
@@ -575,20 +596,21 @@ Rules (content lives in `OBJECTIVES.md` itself, not duplicated here):
   in place, adds anything new, and appends to the review log — *then* decides whether a
   new dated snapshot is warranted. Triggering a new dated snapshot is event-based (a
   real inflection point), not calendar-based, and stays human-prompted rather than
-  agent-initiated — see `docs/reports/strategy/PROCESS.md` §5.
-- `OBJECTIVES.md` does not replace `docs/public/rfcs/INDEX.md` (RFC-level thematic
+  agent-initiated — see `reports/strategy/PROCESS.md` §5 (within `metel-docs-internal`).
+- `OBJECTIVES.md` does not replace `docs/rfcs/INDEX.md` (RFC-level thematic
   state) or `PROCESS.md` (RFC lifecycle mechanics) — it's the layer above both, tracking
   why priorities are what they are, not RFC-by-RFC status.
-- **`docs/reports/strategy/PROCESS.md` is the methodology reference — read it before
-  running a strategic-overview cycle.** It covers what's not obvious from `OBJECTIVES.md`
-  alone: the verification discipline (every claim checked against a primary source, not
-  restated from memory or frontmatter), the trigger append-only lifecycle and closure
-  bar, and the dated overview's structural template.
+- **`reports/strategy/PROCESS.md` (within `metel-docs-internal`) is the methodology
+  reference — read it before running a strategic-overview cycle.** It covers what's not
+  obvious from `OBJECTIVES.md` alone: the verification discipline (every claim checked
+  against a primary source, not restated from memory or frontmatter), the trigger
+  append-only lifecycle and closure bar, and the dated overview's structural template.
 - **If the user makes an explicit priority call or redirect at any point — not only
   during a strategic-overview cycle — log it immediately to `OBJECTIVES.md` §0's
   Operator Directives**, rather than waiting for the next cycle to reconstruct it after
   the fact. This is the one place operator intent enters the process as a first-class
-  input rather than inferred evidence; see `docs/reports/strategy/PROCESS.md` §1.
+  input rather than inferred evidence; see `reports/strategy/PROCESS.md` §1 (within
+  `metel-docs-internal`).
 
 ---
 
@@ -632,10 +654,11 @@ Commit only on an issue branch, never directly on `develop` or `main`.
 
 - The spec is the source of truth for language-visible behavior.
 - The spec contains rules and syntax, not rationale, history, or open questions. Put rationale in RFCs or ADRs.
-- New public behavior must be documented in `docs/public/reference/spec/`.
-- Runtime builtins documented in `docs/public/reference/spec/runtime.md` must match what the interpreter registers.
-- Version-visible changes must be reflected in `docs/public/release-notes/changelog.md` when the change lands, not batched for later — see "Branch Workflow" above.
-- Patch releases must not introduce spec changes; see `docs/internal/versioning.md`.
+- New public behavior must be documented in `docs/reference/spec/`.
+- Runtime builtins documented in `docs/reference/spec/runtime.md` must match what the interpreter registers.
+- Version-visible changes must be reflected in `docs/release-notes/changelog.md` when the change lands, not batched for later — see "Branch Workflow" above.
+- Patch releases must not introduce spec changes; see
+  `metel-docs-internal/internal/versioning.md` (separate repo).
 
 ---
 
@@ -663,7 +686,8 @@ Important module-system invariants:
 - `evaluator::evaluate_graph` consumes `TypedModuleGraph`.
 - Cross-module public APIs must be fully annotated; do not introduce cross-module type inference casually.
 
-If a change alters these boundaries, update `docs/architecture/architecture.md` and consider an ADR.
+If a change alters these boundaries, update `metel-docs-internal/architecture/architecture.md`
+(separate repo) and consider an ADR.
 
 ---
 
@@ -717,7 +741,11 @@ Stop and ask if:
 
 ## Decision Records
 
-Create an ADR in `docs/architecture/decisions/` when:
+**ADRs live in `metel-docs-internal/architecture/decisions/`, a separate repo not
+checked out here** (ADR-0051) — writing or reading one means a separate clone, not a
+local path under `docs/`.
+
+Create an ADR there when:
 
 - Multiple reasonable implementation options exist and the chosen tradeoff matters.
 - The decision changes or reverses a previous ADR or RFC.
@@ -734,10 +762,22 @@ When code intentionally encodes an ADR-backed invariant that may look wrong, add
 
 ## Wiki and Public Docs Release Workflow
 
-Core consumes `metel-docs-internal` through its docs submodule. The public website
-consumes the separately exported public `metel-docs` repository.
+**This section predates ADR-0051 and `release.yml`'s automation (metel-core#614) and is
+now largely redundant with both** — "Release Workflow" above already states that
+nothing in the release chain is manual except cutting the tag, and the mechanics below
+(bump the submodule pointer, cut a versioned snapshot, publish) are exactly what
+`release.yml`'s `release-chain` job does automatically. Left in place rather than
+deleted, since it's still the right manual sequence for a docs-only change *not* tied
+to a `metel` release tag — flagged here as a real candidate for removal or a rewrite
+scoped explicitly to that narrower case, not something decided unilaterally in this
+pass.
 
-When a task or release affects public documentation:
+Core consumes `metel-docs` through its docs submodule (ADR-0051 — directly, no private
+mirror in front of it anymore). The public website consumes the same `metel-docs`
+repository.
+
+When a task affects public documentation outside the automated release chain (e.g. a
+docs-only fix that shouldn't wait for the next release tag):
 
 1. Update and commit `docs/` first.
 2. Update this repo's `docs` submodule pointer on the issue branch.

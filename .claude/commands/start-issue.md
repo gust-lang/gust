@@ -48,7 +48,7 @@ git push -u origin <type>/$ARGUMENTS-<slug>
 ```
 
 5. **Read the substance before touching code**, per AGENTS.md § Task Workflow:
-   - every spec section the issue touches, from `docs/public/reference/spec.md`
+   - every spec section the issue touches, from `docs/reference/spec.md`
    - any RFC in `docs/internal/rfcs/` the issue implements or depends on — and check its
      lifecycle stage: implementation work does not start on an RFC below `3-integrated`
    - ADRs in `metel-interpreter/docs/decisions/` governing the area
