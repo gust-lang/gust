@@ -5,7 +5,7 @@
 # accurate, just that nothing added here is invisible to the one document meant to
 # list it all.
 #
-# This can only see metel-core's own files. metel-docs-internal's and
+# This can only see metel-core's own files. metel-docs's and
 # metel-website's workflows aren't reachable from this repo's CI on every push --
 # PROCESSES.md's "Keeping this current" section covers those two by review instead.
 #

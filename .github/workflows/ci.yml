@@ -54,22 +54,14 @@ jobs:
     name: rfc.py check
     runs-on: ubuntu-latest
     steps:
+      # `docs` (ADR-0051) is the public `metel-docs` repo -- a plain,
+      # unauthenticated HTTPS submodule checkout works, no token needed.
+      # Before ADR-0051 this pulled a private submodule (metel-docs-internal)
+      # and needed DOCS_REPO_TOKEN's SSH-to-HTTPS rewrite; that credential and
+      # this dance are both gone now that the submodule itself is public.
       - uses: actions/checkout@v4
-
-      # `docs` is a private submodule (metel-docs-internal), linked via SSH in
-      # .gitmodules -- GitHub-hosted runners have no SSH key for it. Rewrite
-      # the URL to HTTPS so DOCS_REPO_TOKEN (a fine-grained PAT scoped
-      # read-only to metel-docs-internal alone -- it has no access to this
-      # repo, and no write access to that one either) can authenticate the
-      # clone. actions/checkout's own `token` input only covers the *main*
-      # repo checkout, which already uses the workflow's built-in
-      # GITHUB_TOKEN; a separate, differently-scoped credential is needed
-      # for the submodule specifically, since it's a different, private repo.
-      - name: point submodule fetch at HTTPS + the docs-only token
-        run: git config --global url."https://x-access-token:${{ secrets.DOCS_REPO_TOKEN }}@github.com/".insteadOf "git@github.com:"
-
-      - name: check out docs submodule
-        run: git submodule update --init docs
+        with:
+          submodules: true
 
       - uses: actions/setup-python@v5
         with:
@@ -85,22 +77,17 @@ jobs:
       - name: rfc.py check
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python3 docs/public/rfcs/tools/rfc.py check
+        run: python3 docs/rfcs/tools/rfc.py check
 
   doc-examples:
     name: doc examples
     runs-on: ubuntu-latest
     steps:
+      # `docs` (ADR-0051) is the public `metel-docs` repo -- same
+      # unauthenticated submodule checkout as rfc-check, above.
       - uses: actions/checkout@v4
-
-      # Same HTTPS-rewrite pattern as rfc-check, above, for the same reason:
-      # `docs` is a private submodule and GitHub-hosted runners have no SSH
-      # key provisioned for it.
-      - name: point submodule fetch at HTTPS + the docs-only token
-        run: git config --global url."https://x-access-token:${{ secrets.DOCS_REPO_TOKEN }}@github.com/".insteadOf "git@github.com:"
-
-      - name: check out docs submodule
-        run: git submodule update --init docs
+        with:
+          submodules: true
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -113,11 +100,11 @@ jobs:
           python-version: "3.x"
 
       # Checks README.md plus whatever commit the docs submodule is
-      # currently pinned to -- not necessarily metel-docs-internal's latest
-      # main. metel-docs-internal has its own copy of this workflow that
-      # checks its own current main against the latest release binary, so a
-      # broken example there is caught immediately rather than waiting for
-      # this repo's submodule pointer to move.
+      # currently pinned to -- not necessarily metel-docs's latest main.
+      # metel-docs has its own copy of this workflow that checks its own
+      # current main against the latest release binary, so a broken example
+      # there is caught immediately rather than waiting for this repo's
+      # submodule pointer to move.
       #
       # The paths are the *directory* getting-started and the *directory*
       # reference, not their `tutorials`/`spec` subdirectories -- narrower
@@ -138,9 +125,9 @@ jobs:
         run: |
           python3 tools/check_doc_examples.py --binary target/release/metel \
             README.md \
-            docs/public/getting-started \
-            docs/public/blog \
-            docs/public/reference
+            docs/getting-started \
+            docs/blog \
+            docs/reference
 
   inventory:
     name: inventory doc up to date
@@ -149,7 +136,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # Guards only this repo's own slice of PROCESSES.md (metel-core#687) --
-      # see the script's own header for why metel-docs-internal's and
-      # metel-website's workflows aren't checkable from here.
+      # see the script's own header for why metel-docs's and metel-website's
+      # workflows aren't checkable from here.
       - name: check PROCESSES.md lists every workflow/script/command
         run: tools/check_inventory.sh

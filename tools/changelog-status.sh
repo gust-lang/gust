@@ -21,7 +21,7 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-changelog="docs/public/release-notes/changelog.md"
+changelog="docs/release-notes/changelog.md"
 if [[ ! -f "$changelog" ]]; then
     echo "error: $changelog not found — is the docs submodule checked out?" >&2
     exit 1
