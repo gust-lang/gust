@@ -83,7 +83,7 @@ from memory.
 
 **7. Decision records** — every non-obvious architectural decision, reversal, or
 workaround this release introduced has an ADR in
-`metel-docs-internal/architecture/decisions/` (separate repo). A
+`docs/architecture/decisions/`. A
 reversal especially: why a past decision stopped holding is the part that gets lost.
 
 **8. Full suite green on the release commit** — the per-PR gate ran per branch, but not
