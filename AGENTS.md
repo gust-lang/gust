@@ -765,32 +765,35 @@ When code intentionally encodes an ADR-backed invariant that may look wrong, add
 
 ---
 
-## Wiki and Public Docs Release Workflow
+## Manual Docs-Only Publish (Outside a Release Tag)
 
-**This section predates ADR-0051 and `release.yml`'s automation (metel-core#614) and is
-now largely redundant with both** — "Release Workflow" above already states that
-nothing in the release chain is manual except cutting the tag, and the mechanics below
-(bump the submodule pointer, cut a versioned snapshot, publish) are exactly what
-`release.yml`'s `release-chain` job does automatically. Left in place rather than
-deleted, since it's still the right manual sequence for a docs-only change *not* tied
-to a `metel` release tag — flagged here as a real candidate for removal or a rewrite
-scoped explicitly to that narrower case, not something decided unilaterally in this
-pass.
+**Scoped rewrite, 2026-08-23** — this used to be a broader "Wiki and Public Docs Release
+Workflow" section; most of it described the release-tag path, which `release.yml`'s
+`release-chain` job (metel-core#614) now runs automatically end to end. What's left below
+is the one case that automation does not cover: `release.yml` triggers only on a
+`v[0-9]+.[0-9]+.[0-9]+` tag push, so a docs-only change that should reach the public site
+*without* waiting for the next release tag still needs these steps done by hand.
 
-Core consumes `metel-docs` through its docs submodule (ADR-0051 — directly, no private
-mirror in front of it anymore). The public website consumes the same `metel-docs`
-repository.
+Core consumes `metel-docs` through its `docs` submodule (ADR-0051 — directly, no private
+mirror in front of it anymore). `metel-website` consumes the same `metel-docs` repository,
+but not automatically outside a release: its own `docs` pointer only moves when
+`release.yml` bumps it.
 
-When a task affects public documentation outside the automated release chain (e.g. a
-docs-only fix that shouldn't wait for the next release tag):
+When a task affects public documentation and should publish before the next release tag:
 
 1. Update and commit `docs/` first.
 2. Update this repo's `docs` submodule pointer on the issue branch.
-3. Update `metel-website` to point at the same docs commit.
-4. For public releases, generate the versioned website snapshot if the release process requires it.
-5. Publish only after the docs version and website pointer match.
+3. Update `metel-website`'s `docs` submodule pointer to the same commit, and deploy it —
+   `metel-website` has no automation of its own watching for this; someone has to push it.
+4. If the change needs to show up in a *versioned* docs snapshot (not just the `next`/unreleased
+   view), cut that snapshot the same way `release.yml` does, rather than waiting for a
+   release tag to do it.
+5. Publish only after `metel-website`'s docs version and pointer match what was committed
+   in step 1.
 
-Do not assume automatic publication unless the release workflow explicitly says it exists.
+Do not assume automatic publication for anything on this path — that's exactly what
+`release.yml` provides for the release-tag path, and exactly what this section exists
+because it does not provide otherwise.
 
 ---
 
