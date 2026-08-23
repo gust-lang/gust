@@ -1,5 +1,5 @@
 [options]
-rfc = ["rfc-0032§8"]
+spec = ["spec.modules.visibility.legality-5"]
 
 [expect]
 warnings = ["enclosing struct `Thing` is private"]

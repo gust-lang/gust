@@ -1,0 +1,1 @@
+public enum Token { Inner { public kind: i64, offset: i64 } }
