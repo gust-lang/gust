@@ -1,0 +1,7 @@
+[options]
+spec = ["spec.types.generics.row-bounds.legality-7"]
+
+[expect]
+status = "typecheck_error"
+code = "T0003"
+line = 5

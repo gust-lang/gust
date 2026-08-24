@@ -3832,7 +3832,78 @@ fn infer_pattern(
             rest,
             span: pat_span,
         } => {
-            if *rest {
+            // #646: an abstract, row-bounded generic type parameter (`<record T:
+            // { x: f64, .. }>`) has no concrete field count for `unify`'s exact-match
+            // `InferType::Record` arm to check against -- resolve it the same way
+            // `resolve_row_bound_field` already does for field access, instead of
+            // falling into that unify path (which would either reject a legitimate
+            // row-bound match or, worse, silently demand fields the bound never
+            // promised).
+            let peeled = peel_all_references(&ctx.solve()?.apply(scrutinee_ty));
+            let row_bounds = if let InferType::Var(tv) = &peeled {
+                ctx.bounds_for_type_var(*tv).map(|bounds| {
+                    bounds
+                        .into_iter()
+                        .filter(|b| matches!(b, GenericBound::Row(_)))
+                        .collect::<Vec<_>>()
+                })
+            } else {
+                None
+            }
+            .filter(|rows| !rows.is_empty());
+
+            if let Some(row_bounds) = row_bounds {
+                let InferType::Var(tv) = &peeled else {
+                    unreachable!("row_bounds is only Some when peeled is a Var")
+                };
+                let is_open = row_bounds
+                    .iter()
+                    .any(|b| matches!(b, GenericBound::Row(row) if row.open));
+                if *rest {
+                    // Non-binding rest: permits fields the pattern doesn't name,
+                    // including ones the bound itself never lists (an open bound's
+                    // "possibly more" is exactly this — unnamed and undiscoverable).
+                } else if is_open {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0001,
+                        "a record pattern can't exhaustively match an open row bound -- \
+                         its full field set isn't known here; add a trailing `..`",
+                        pat_span,
+                    ));
+                } else {
+                    let bound_fields: Vec<&str> = row_bounds
+                        .iter()
+                        .filter_map(|b| match b {
+                            GenericBound::Row(row) => Some(row),
+                            GenericBound::Aspect(_) => None,
+                        })
+                        .flat_map(|row| row.fields.iter().map(|f| f.label.as_str()))
+                        .collect();
+                    let missing: Vec<&str> = bound_fields
+                        .iter()
+                        .filter(|name| !fields.iter().any(|f| f == *name))
+                        .copied()
+                        .collect();
+                    if !missing.is_empty() {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0001,
+                            format!(
+                                "record pattern does not name field(s) {} of the row-bounded \
+                                 type parameter -- name them or add `..`",
+                                missing.join(", ")
+                            ),
+                            pat_span,
+                        ));
+                    }
+                }
+                for field_name in fields {
+                    match resolve_row_bound_field(ctx, *tv, field_name, pat_span) {
+                        Some(Ok(field_ty)) => ctx.bind_mono(field_name, field_ty, false),
+                        Some(Err(e)) => return Err(e),
+                        None => unreachable!("row bound already confirmed present above"),
+                    }
+                }
+            } else if *rest {
                 // Anonymous records unify structurally and exactly today (see
                 // `unify`'s `InferType::Record` arm) -- no notion of "at least
                 // these fields, maybe more" yet. Reject `..` here explicitly
@@ -3840,25 +3911,27 @@ fn infer_pattern(
                 // fail later with a confusing "cannot unify" that doesn't name
                 // the real reason. RFC-0032/0034 are about named structs, which
                 // `Pattern::Struct` above already handles; open-row anonymous
-                // record patterns are a distinct, unrequested feature.
+                // record patterns (this arm) are the row-bounded case handled above --
+                // a *concrete* record scrutinee still has no open-row support.
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0001,
                     "`..` is not yet supported in an anonymous record pattern -- \
                      name every field, or match a named struct instead",
                     pat_span,
                 ));
-            }
-            let field_vars: Vec<(String, InferType)> = fields
-                .iter()
-                .map(|name| (name.clone(), ctx.fresh_var()))
-                .collect();
-            ctx.add_constraint(
-                scrutinee_ty.clone(),
-                InferType::Record(field_vars.clone()),
-                pat_span.clone(),
-            );
-            for (name, ty) in field_vars {
-                ctx.bind_mono(&name, ty, false);
+            } else {
+                let field_vars: Vec<(String, InferType)> = fields
+                    .iter()
+                    .map(|name| (name.clone(), ctx.fresh_var()))
+                    .collect();
+                ctx.add_constraint(
+                    scrutinee_ty.clone(),
+                    InferType::Record(field_vars.clone()),
+                    pat_span.clone(),
+                );
+                for (name, ty) in field_vars {
+                    ctx.bind_mono(&name, ty, false);
+                }
             }
         }
         Pattern::Array {
