@@ -374,6 +374,7 @@ fn register_program_decls(
                     sd.name.clone(),
                     fields,
                     current_module_path.to_vec(),
+                    sd.visibility.clone(),
                 );
             }
             Decl::Struct(sd) => {
@@ -403,6 +404,7 @@ fn register_program_decls(
                     sd.name.clone(),
                     fields,
                     current_module_path.to_vec(),
+                    sd.visibility.clone(),
                 );
                 registry.register_struct_type_params(sd.name.clone(), type_params);
                 registry.register_struct_generic_names(
