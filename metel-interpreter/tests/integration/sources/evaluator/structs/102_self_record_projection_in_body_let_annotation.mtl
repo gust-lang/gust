@@ -1,0 +1,18 @@
+// #774 architectural revision: a body-internal `let x: Self.{ field } = ...;`
+// annotation resolves the same way `Self.{ field }` already does in param/return
+// position, now that `Self` is bound as an ordinary type parameter for the whole
+// method rather than only its own signature.
+
+struct Handle { fd: i64, name: String }
+
+extend Handle {
+    fun narrow_let(self) -> i64 {
+        let x: Self.{ fd } = { fd = self.fd };
+        return x.fd;
+    }
+}
+
+fun main() {
+    let h = Handle { fd = 3, name = "stdin" };
+    assert(h.narrow_let() == 3);
+}

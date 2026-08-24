@@ -125,6 +125,12 @@ struct ConstructCtx<'a> {
     references: Option<&'a HashMap<Span, SymbolId>>,
     /// Inferred closure return types recorded during Pass 1, keyed by closure span.
     closure_return_types: Option<&'a HashMap<Span, InferType>>,
+    /// Concrete target-type name `Self` denotes in the innermost enclosing impl-block
+    /// method body (None outside one). #774 (revised): a body-internal `let x:
+    /// Self.{ field }`/`Self::AssocType` annotation resolves through this the same
+    /// way `construct_impl_method`'s own param/return-type resolution already does,
+    /// instead of each call site needing `self_ty_name` threaded in by hand.
+    current_self_type_name: Option<String>,
 }
 
 impl<'a> ConstructCtx<'a> {
@@ -159,6 +165,7 @@ impl<'a> ConstructCtx<'a> {
             current_module,
             references,
             closure_return_types,
+            current_self_type_name: None,
         };
         // Derive concrete types for all monomorphic entries in scheme_env.
         // Both builtins and user functions are populated here — no second registration site.
@@ -260,6 +267,13 @@ impl<'a> ConstructCtx<'a> {
     fn pop_return_type(&mut self, prev: Option<Type>) {
         self.current_return_ty = prev;
     }
+
+    fn push_self_type_name(&mut self, name: Option<String>) -> Option<String> {
+        std::mem::replace(&mut self.current_self_type_name, name)
+    }
+    fn pop_self_type_name(&mut self, prev: Option<String>) {
+        self.current_self_type_name = prev;
+    }
     fn push_break_type(&mut self, ty: Option<Type>) -> Option<Type> {
         std::mem::replace(&mut self.current_break_ty, ty)
     }
@@ -286,13 +300,20 @@ impl<'a> ConstructCtx<'a> {
 
     /// Convert a type expression to an `InferType`, substituting generic param names
     /// to their `TypeVars` when `self.generic_params` is populated (construction-at-call-time).
+    /// `Self` resolves through `current_self_type_name` when set (#774, revised) --
+    /// e.g. a body-internal `let x: Self.{ field }` inside an impl-block method.
     fn type_expr_to_infer_ctx(&self, te: &TypeExpr) -> InferType {
         let assoc_ctx = AssocResolveCtx {
             registry: self.registry,
             current_module: self.current_module,
             current_aspect: None,
         };
-        type_expr_to_infer_with_assoc_ctx(te, &self.generic_params, None, &assoc_ctx)
+        type_expr_to_infer_with_assoc_ctx(
+            te,
+            &self.generic_params,
+            self.current_self_type_name.as_deref(),
+            &assoc_ctx,
+        )
     }
 }
 
@@ -1300,7 +1321,9 @@ fn construct_impl_method(
         ctx.bind(&p.name, ty.clone());
     }
     let saved_return = ctx.push_return_type(ret_ty.clone());
+    let saved_self = ctx.push_self_type_name(Some(target_name.to_string()));
     let typed_block = construct_block(&method.body, ret_ty.as_ref(), ctx)?;
+    ctx.pop_self_type_name(saved_self);
     ctx.pop_return_type(saved_return);
     ctx.pop_scope();
     Ok(TypedFunDecl {
@@ -1393,7 +1416,9 @@ fn construct_default_aspect_method(
         ctx.bind(&p.name, ty.clone());
     }
     let saved_return = ctx.push_return_type(ret_ty.clone());
+    let saved_self = ctx.push_self_type_name(Some(target_name.to_string()));
     let typed_block = construct_block(body, ret_ty.as_ref(), ctx)?;
+    ctx.pop_self_type_name(saved_self);
     ctx.pop_return_type(saved_return);
     ctx.pop_scope();
     Ok(TypedFunDecl {
