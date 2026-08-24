@@ -2549,7 +2549,7 @@ fn infer_block(
                         visibility: f.visibility.clone(),
                     })
                     .collect();
-                ctx.register_struct_fields(sd.name.clone(), fields);
+                ctx.register_struct_fields(sd.name.clone(), fields, sd.visibility.clone());
             }
             Decl::Enum(ed) => {
                 let variants = ed
@@ -3228,6 +3228,7 @@ fn infer_expr(
                 &struct_name,
                 ctx.current_module_path(),
                 ctx.registry().struct_declaring_module(&struct_name),
+                ctx.registry().struct_visibility_for(&struct_name),
                 span,
                 "access",
             )?;
@@ -4622,13 +4623,31 @@ fn check_field_visibility(
     type_name: &str,
     current_module_path: &[String],
     declaring_module: Option<&Vec<String>>,
+    container_visibility: Option<&Visibility>,
     span: &Span,
     action: &str,
 ) -> Result<(), MetelError> {
-    if field.visibility == Visibility::Public
-        || is_same_declaring_module(current_module_path, declaring_module)
-    {
+    if is_same_declaring_module(current_module_path, declaring_module) {
         return Ok(());
+    }
+    // RFC-0032 §7 / #776: a `public` field grant is conditional on the
+    // enclosing type's own visibility, not an independent grant -- a public
+    // field on a private struct must stay unreachable across a module
+    // boundary even once a value of that type is obtained some other way
+    // (e.g. via a public constructor function that never names the type).
+    let container_is_private = container_visibility == Some(&Visibility::Private);
+    if field.visibility == Visibility::Public && !container_is_private {
+        return Ok(());
+    }
+    if container_is_private && field.visibility == Visibility::Public {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0009,
+            format!(
+                "visibility error: cannot {action} field `{}` of `{type_name}` from outside its declaring module: `{type_name}` itself is private, so its public field is not reachable",
+                field.name
+            ),
+            span,
+        ));
     }
     Err(MetelError::type_error(
         TypeErrorCode::T0009,
@@ -4704,6 +4723,7 @@ fn infer_enum_variant_literal(
             &format!("{enum_name}::{variant_name}"),
             ctx.current_module_path(),
             enum_decl_module.as_ref(),
+            None,
             span,
             "construct",
         )?;
@@ -4789,6 +4809,7 @@ fn infer_struct_literal(
             &struct_name,
             ctx.current_module_path(),
             struct_decl_module.as_ref(),
+            ctx.registry().struct_visibility_for(&struct_name),
             span,
             "construct",
         )?;
@@ -4918,6 +4939,7 @@ fn infer_field_assign_type(
         &struct_name,
         ctx.current_module_path(),
         ctx.registry().struct_declaring_module(&struct_name),
+        ctx.registry().struct_visibility_for(&struct_name),
         target_span,
         "assign to",
     )?;
@@ -5036,6 +5058,7 @@ fn infer_enum_variant_pattern(
             &format!("{enum_name}::{variant_name}"),
             ctx.current_module_path(),
             enum_decl_module.as_ref(),
+            None,
             pat_span,
             "pattern-match on",
         )?;
@@ -5103,6 +5126,7 @@ fn infer_struct_pattern(
             struct_name,
             ctx.current_module_path(),
             struct_decl_module.as_ref(),
+            ctx.registry().struct_visibility_for(struct_name),
             pat_span,
             "pattern-match on",
         )?;

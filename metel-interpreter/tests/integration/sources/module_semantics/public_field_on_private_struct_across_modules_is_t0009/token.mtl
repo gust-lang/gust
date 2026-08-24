@@ -1,0 +1,2 @@
+struct Secret { public value: i64 }
+public fun make() -> Secret { return Secret { value = 42 }; }

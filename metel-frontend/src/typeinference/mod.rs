@@ -1501,6 +1501,13 @@ pub struct TypeDefinitionRegistry {
     struct_env: HashMap<String, Vec<FieldEntry>>,
     /// struct name → declaring module path.
     struct_decl_modules: HashMap<String, Vec<String>>,
+    /// struct name → the struct's own `pub`/private visibility (RFC-0032 §7,
+    /// issue #776). Consulted alongside a field's own `visibility` by
+    /// `check_field_visibility`: a `public` field on a private struct must not
+    /// become reachable across a module boundary just because a value of that
+    /// type was obtained some other way (e.g. via a public constructor
+    /// function that never names the type itself).
+    struct_visibility: HashMap<String, Visibility>,
     /// Ordered type-parameter `TypeVars` per generic struct (absent for non-generic structs).
     struct_type_params: HashMap<String, Vec<TypeVar>>,
     /// Ordered type-parameter names per generic struct/enum. Parallel to `struct_type_params`.
@@ -1777,6 +1784,7 @@ impl TypeDefinitionRegistry {
         Self {
             struct_env: HashMap::new(),
             struct_decl_modules: HashMap::new(),
+            struct_visibility: HashMap::new(),
             struct_type_params: HashMap::new(),
             struct_generic_names: HashMap::new(),
             method_scheme_env: HashMap::new(),
@@ -1932,13 +1940,20 @@ impl TypeDefinitionRegistry {
         name: String,
         fields: Vec<FieldEntry>,
         declaring_module: Vec<String>,
+        visibility: Visibility,
     ) {
         self.struct_env.insert(name.clone(), fields);
         self.struct_decl_modules
             .insert(name.clone(), declaring_module);
+        self.struct_visibility.insert(name.clone(), visibility);
         if let Some(scope) = self.struct_scope_stack.last_mut() {
             scope.push(name);
         }
+    }
+
+    #[must_use]
+    pub fn struct_visibility_for(&self, name: &str) -> Option<&Visibility> {
+        self.struct_visibility.get(name)
     }
 
     pub fn push_struct_scope(&mut self) {
@@ -1950,6 +1965,7 @@ impl TypeDefinitionRegistry {
             for name in names {
                 self.struct_env.remove(&name);
                 self.struct_decl_modules.remove(&name);
+                self.struct_visibility.remove(&name);
             }
         }
     }
@@ -2908,6 +2924,11 @@ impl TypeDefinitionRegistry {
                 .entry(k.clone())
                 .or_insert_with(|| v.clone());
         }
+        for (k, v) in &other.struct_visibility {
+            self.struct_visibility
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
+        }
         for (k, v) in &other.struct_type_params {
             self.struct_type_params
                 .entry(k.clone())
@@ -3303,9 +3324,14 @@ impl InferContext {
         &mut self,
         name: String,
         fields: Vec<crate::typeinference::FieldEntry>,
+        visibility: Visibility,
     ) {
-        self.registry
-            .register_struct_fields(name, fields, self.current_module_path.clone());
+        self.registry.register_struct_fields(
+            name,
+            fields,
+            self.current_module_path.clone(),
+            visibility,
+        );
     }
 
     #[must_use]

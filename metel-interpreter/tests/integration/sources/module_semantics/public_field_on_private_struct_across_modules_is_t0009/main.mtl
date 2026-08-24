@@ -1,0 +1,10 @@
+// #776: `public` on a field is conditional on the enclosing struct's own
+// visibility, not an independent grant. `Secret` is not `public`, so its
+// `public value: i64` field must stay unreachable across a module boundary
+// even once a `Secret` is obtained via `make()`, a public function that
+// never names `Secret` itself.
+import token::make;
+fun main() -> i64 {
+    let s = make();
+    return s.value;
+}
