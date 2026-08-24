@@ -1,0 +1,12 @@
+// Turbofish disambiguates T, which appears only in the return position;
+// ascription disambiguates the otherwise-ambiguous `None` argument, since a
+// generic-scheme callee's own parameter types aren't available as hints for
+// its arguments at all (unlike a concrete, non-generic callee) -- both
+// mechanisms are doing real, independent work in the same call.
+fun make<T>(fallback: Perhaps<i64>) -> T {
+    return make(fallback);
+}
+
+fun main() {
+    make::<i64>(None : Perhaps<i64>);
+}

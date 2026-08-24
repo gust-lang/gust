@@ -1,0 +1,5 @@
+[options]
+spec = ["spec.functions.turbofish.legality-2", "spec.types.type-ascription.legality-1"]
+
+[expect]
+status = "success"
