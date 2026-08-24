@@ -123,11 +123,15 @@ pub(super) fn match_pattern(
             _ => false,
         },
 
-        Pattern::Record { fields, .. } => match value {
+        // #646: `rest` (`..`) allows the record to carry more fields than the pattern
+        // names -- the runtime value for a row-bounded generic parameter (`<record T:
+        // { x: f64, .. }>`) is an ordinary `Value::Record` like any other, so the same
+        // subset-match `Pattern::Struct` already does above applies here verbatim.
+        Pattern::Record { fields, rest, .. } => match value {
             Value::Record {
                 fields: record_fields,
             } => {
-                if record_fields.len() != fields.len() {
+                if !rest && record_fields.len() != fields.len() {
                     return false;
                 }
                 for field_name in fields {
