@@ -1540,7 +1540,7 @@ impl<'a> Checker<'a> {
                     );
                 }
             }
-            Pattern::Record { fields, .. } => {
+            Pattern::Record { fields, .. } | Pattern::Struct { fields, .. } => {
                 for field in fields {
                     let child = place
                         .clone()
@@ -1598,7 +1598,9 @@ impl<'a> Checker<'a> {
                     Self::observe_pattern_bindings(item, state);
                 }
             }
-            Pattern::Record { fields, .. } | Pattern::EnumVariant { fields, .. } => {
+            Pattern::Record { fields, .. }
+            | Pattern::EnumVariant { fields, .. }
+            | Pattern::Struct { fields, .. } => {
                 for field in fields {
                     state.bind(field);
                 }
@@ -2853,7 +2855,9 @@ fn bind_pattern_names(pattern: &Pattern, into: &mut HashSet<String>) {
                 bind_pattern_names(item, into);
             }
         }
-        Pattern::EnumVariant { fields, .. } | Pattern::Record { fields, .. } => {
+        Pattern::EnumVariant { fields, .. }
+        | Pattern::Struct { fields, .. }
+        | Pattern::Record { fields, .. } => {
             for field in fields {
                 into.insert(field.clone());
             }

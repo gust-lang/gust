@@ -1,0 +1,20 @@
+aspect Show {
+    fun show(&self) -> String;
+}
+
+struct Wrapper<T: Show> { value: T }
+
+extend i64: Show {
+    fun show(&self) -> String { "i64" }
+}
+
+fun describe<T: Show>(w: Wrapper<T>) -> String {
+    match w {
+        Wrapper { value } => value.show(),
+    }
+}
+
+fun main() {
+    let w = Wrapper { value = 5 };
+    println(describe(w));
+}

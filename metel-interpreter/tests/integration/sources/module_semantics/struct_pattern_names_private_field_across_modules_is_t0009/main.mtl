@@ -1,0 +1,10 @@
+import token::Token;
+import token::make_token;
+
+fun main() {
+    let t = make_token(1, 2);
+    let x = match t {
+        Token { kind, offset } => kind + offset,
+    };
+    println(x);
+}

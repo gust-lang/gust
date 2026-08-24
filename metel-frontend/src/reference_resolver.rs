@@ -422,7 +422,9 @@ fn bind_pattern(pattern: &Pattern, bind: &mut dyn FnMut(&str)) {
     match pattern {
         Pattern::Wildcard(_) | Pattern::Literal(_, _) => {}
         Pattern::Binding(name, _) => bind(name),
-        Pattern::EnumVariant { fields, .. } | Pattern::Record { fields, .. } => {
+        Pattern::EnumVariant { fields, .. }
+        | Pattern::Struct { fields, .. }
+        | Pattern::Record { fields, .. } => {
             for f in fields {
                 bind(f);
             }
