@@ -93,6 +93,36 @@ pub(super) fn match_pattern(
             }
         }
 
+        // RFC-0032 §4/§5, RFC-0034 §5: a named struct pattern. `rest` (`..`) allows
+        // the struct to carry more fields than the pattern names, the way an array's
+        // rest pattern allows more elements than its explicit prefix -- without it,
+        // the pattern must name every one of the struct's fields (already enforced
+        // as a static exhaustiveness check in inference.rs, checked again here since
+        // a Value carries no static guarantee of its own field count).
+        Pattern::Struct {
+            name, fields, rest, ..
+        } => match value {
+            Value::Struct {
+                name: value_name,
+                fields: struct_fields,
+                ..
+            } if value_name == name => {
+                if !rest && struct_fields.len() != fields.len() {
+                    return false;
+                }
+                for field_name in fields {
+                    match struct_fields.get(field_name) {
+                        Some(v) => {
+                            out.insert(field_name.clone(), v.clone());
+                        }
+                        None => return false,
+                    }
+                }
+                true
+            }
+            _ => false,
+        },
+
         Pattern::Record { fields, .. } => match value {
             Value::Record {
                 fields: record_fields,

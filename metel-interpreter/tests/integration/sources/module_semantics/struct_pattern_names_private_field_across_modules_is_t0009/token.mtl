@@ -1,0 +1,5 @@
+public struct Token { public kind: i64, offset: i64 }
+
+public fun make_token(kind: i64, offset: i64) -> Token {
+    return Token { kind = kind, offset = offset };
+}

@@ -2780,11 +2780,22 @@ fn construct_match(
         }),
         _ => None,
     };
+    // RFC-0032 §4/§5, RFC-0034 §5: same idea, for a struct rather than an enum --
+    // Pass 2's own counterpart of `infer_match`'s parallel resolution (inference.rs),
+    // since construction re-derives everything from the AST rather than reusing
+    // Pass 1's rewritten patterns.
+    let scrutinee_struct_name: Option<String> = match &scrutinee_ty {
+        Type::Named(name, _) if ctx.registry.struct_fields(name).is_some() => Some(name.clone()),
+        _ => None,
+    };
     let mut typed_arms = vec![];
     for arm in &m.arms {
-        let pattern = match &scrutinee_variants {
-            Some((enum_name, variants)) => resolve_bare_variant(&arm.pattern, enum_name, variants),
-            None => arm.pattern.clone(),
+        let pattern = if let Some((enum_name, variants)) = &scrutinee_variants {
+            resolve_bare_variant(&arm.pattern, enum_name, variants)
+        } else if let Some(struct_name) = &scrutinee_struct_name {
+            resolve_struct_pattern(&arm.pattern, struct_name)
+        } else {
+            arm.pattern.clone()
         };
         ctx.push_scope();
         construct_pattern_bindings(&pattern, &scrutinee_ty, ctx)?;
@@ -2989,7 +3000,16 @@ fn check_match_exhaustiveness(
 
 fn is_catch_all_pattern(pattern: &Pattern) -> bool {
     match pattern {
-        Pattern::Wildcard(_) | Pattern::Binding(_, _) | Pattern::Record { .. } => true,
+        // A struct pattern, like `Record`, is irrefutable by construction: field
+        // sub-patterns here are always plain bindings (no `field: subpattern` form),
+        // and `infer_struct_pattern` already requires either every field named or a
+        // trailing `..` (RFC-0032 §5) before this point is ever reached -- so an
+        // unguarded arm with one always covers the entire struct type, regardless of
+        // which fields it names.
+        Pattern::Wildcard(_)
+        | Pattern::Binding(_, _)
+        | Pattern::Record { .. }
+        | Pattern::Struct { .. } => true,
         // A tuple pattern is irrefutable when every element is also irrefutable.
         Pattern::Tuple(pats, _) => pats.iter().all(is_catch_all_pattern),
         // An array pattern with a rest binding is irrefutable if all explicit elems are.
@@ -3041,18 +3061,48 @@ pub(super) fn resolve_bare_variant(
             Pattern::EnumVariant {
                 path: vec![enum_name.to_string(), name.clone()],
                 fields: vec![],
+                rest: false,
                 span: span.clone(),
             }
         }
-        Pattern::EnumVariant { path, fields, span }
-            if path.len() == 1 && variants.iter().any(|(vn, _)| vn == &path[0]) =>
-        {
+        Pattern::EnumVariant {
+            path,
+            fields,
+            rest,
+            span,
+        } if path.len() == 1 && variants.iter().any(|(vn, _)| vn == &path[0]) => {
             Pattern::EnumVariant {
                 path: vec![enum_name.to_string(), path[0].clone()],
                 fields: fields.clone(),
+                rest: *rest,
                 span: span.clone(),
             }
         }
+        _ => pattern.clone(),
+    }
+}
+
+/// RFC-0032 §4/§5, RFC-0034 §5: rewrite a one-segment `EnumVariant` pattern into a
+/// `Struct` pattern when it names `struct_name`, the scrutinee's own struct -- the
+/// struct-pattern counterpart of `resolve_bare_variant` above. Shares that function's
+/// grammar ambiguity (`Point { x, y }` parses as a one-segment `EnumVariant` regardless
+/// of whether `Point` is an enum or a struct) and its resolution strategy (let the
+/// scrutinee's type decide, once it's known). Once rewritten, every downstream
+/// consumer sees a `Pattern::Struct`, so field binding, visibility checking, and
+/// runtime matching need no further disambiguation.
+pub(super) fn resolve_struct_pattern(pattern: &Pattern, struct_name: &str) -> Pattern {
+    match pattern {
+        Pattern::EnumVariant {
+            path,
+            fields,
+            rest,
+            span,
+        } if path.len() == 1 && path[0] == struct_name => Pattern::Struct {
+            name: struct_name.to_string(),
+            fields: fields.clone(),
+            rest: *rest,
+            span: span.clone(),
+        },
         _ => pattern.clone(),
     }
 }
@@ -3076,12 +3126,20 @@ fn construct_pattern_bindings(
                 construct_pattern_bindings(pat, elem_ty, ctx)?;
             }
         }
-        Pattern::EnumVariant { path, fields, span } => {
+        Pattern::EnumVariant {
+            path,
+            fields,
+            rest: _,
+            span,
+        } => {
             let [enum_name, variant_name] = path.as_slice() else {
                 return Err(MetelError::internal("invalid pattern path"));
             };
             let _ = span;
             bind_enum_variant_fields(enum_name, variant_name, fields, scrutinee_ty, ctx)?;
+        }
+        Pattern::Struct { name, fields, .. } => {
+            bind_struct_pattern_fields(name, fields, scrutinee_ty, ctx)?;
         }
         Pattern::Record { fields, .. } => {
             let Type::Record(record_fields) = scrutinee_ty else {
@@ -3326,6 +3384,46 @@ fn bind_enum_variant_fields(
                 MetelError::internal(format!(
                     "no field `{field_name}` on variant `{variant_name}`"
                 ))
+            })?;
+        let concrete = infer_type_to_type(&remap.apply(&template_ty), &field_span)?;
+        ctx.bind(field_name, concrete);
+    }
+    Ok(())
+}
+
+/// RFC-0032 §4/§5, RFC-0034 §5: Pass 2 counterpart of `infer_struct_pattern` --
+/// field-visibility and exhaustiveness were already checked in Pass 1 against the
+/// scrutinee's unsubstituted type; this binds each named field to its concrete
+/// (generic-substituted) type for the arm body, the same shape as
+/// `bind_enum_variant_fields` above.
+fn bind_struct_pattern_fields(
+    struct_name: &str,
+    fields: &[String],
+    scrutinee_ty: &Type,
+    ctx: &mut ConstructCtx,
+) -> Result<(), MetelError> {
+    let struct_fields = ctx
+        .registry
+        .struct_fields(struct_name)
+        .ok_or_else(|| MetelError::internal(format!("unknown struct `{struct_name}`")))?
+        .clone();
+    let type_params = ctx
+        .registry
+        .struct_type_params_for(struct_name)
+        .cloned()
+        .unwrap_or_default();
+    let type_args = extract_type_args_from_type(scrutinee_ty);
+    let mut remap = Substitution::new();
+    for (&tp, arg_ty) in type_params.iter().zip(type_args.iter()) {
+        remap.bind(tp, InferType::Concrete(arg_ty.clone()));
+    }
+    for field_name in fields {
+        let (template_ty, field_span) = struct_fields
+            .iter()
+            .find(|entry| entry.name == *field_name)
+            .map(|entry| (entry.ty.clone(), entry.span.clone()))
+            .ok_or_else(|| {
+                MetelError::internal(format!("no field `{field_name}` on `{struct_name}`"))
             })?;
         let concrete = infer_type_to_type(&remap.apply(&template_ty), &field_span)?;
         ctx.bind(field_name, concrete);
@@ -5090,6 +5188,7 @@ fn construct_propagate_error(
         pattern: Pattern::EnumVariant {
             path: vec!["Result".to_string(), "Ok".to_string()],
             fields: vec!["value".to_string()],
+            rest: false,
             span: span.clone(),
         },
         guard: None,
@@ -5123,6 +5222,7 @@ fn construct_propagate_error(
         pattern: Pattern::EnumVariant {
             path: vec!["Result".to_string(), "Err".to_string()],
             fields: vec!["error".to_string()],
+            rest: false,
             span: span.clone(),
         },
         guard: None,

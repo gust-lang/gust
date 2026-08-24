@@ -3727,12 +3727,12 @@ fn infer_match(
     // too, so a one-segment fieldful pattern (`Some { value }`) doesn't hit
     // `infer_pattern`'s two-segment path assertion, and a bare no-field variant
     // (`Red`) is typed as the variant rather than a spurious binding.
-    let scrutinee_enum_name = match &scrutinee_ty {
+    let scrutinee_named_ty = match &scrutinee_ty {
         InferType::Named(name, _) | InferType::Concrete(Type::Named(name, _)) => Some(name.clone()),
         _ => None,
     };
     let scrutinee_variants: Option<(String, Vec<(String, bool)>)> =
-        scrutinee_enum_name.and_then(|name| {
+        scrutinee_named_ty.clone().and_then(|name| {
             ctx.get_enum(&name).map(|info| {
                 (
                     name.clone(),
@@ -3743,13 +3743,19 @@ fn infer_match(
                 )
             })
         });
+    // RFC-0032 §4/§5, RFC-0034 §5: same idea, for a struct rather than an enum -- a
+    // name can't be both, so this and `scrutinee_variants` above are mutually
+    // exclusive by construction.
+    let scrutinee_struct_name: Option<String> =
+        scrutinee_named_ty.filter(|name| ctx.get_struct_fields(name).is_some());
     let result_var = ctx.fresh_var();
     for arm in &m.arms {
-        let pattern = match &scrutinee_variants {
-            Some((enum_name, variants)) => {
-                super::construction::resolve_bare_variant(&arm.pattern, enum_name, variants)
-            }
-            None => arm.pattern.clone(),
+        let pattern = if let Some((enum_name, variants)) = &scrutinee_variants {
+            super::construction::resolve_bare_variant(&arm.pattern, enum_name, variants)
+        } else if let Some(struct_name) = &scrutinee_struct_name {
+            super::construction::resolve_struct_pattern(&arm.pattern, struct_name)
+        } else {
+            arm.pattern.clone()
         };
         ctx.push_scope();
         infer_pattern(&pattern, &scrutinee_ty, ctx)?;
@@ -3764,6 +3770,7 @@ fn infer_match(
     Ok(result_var)
 }
 
+#[allow(clippy::too_many_lines)]
 fn infer_pattern(
     pattern: &Pattern,
     scrutinee_ty: &InferType,
@@ -3793,6 +3800,7 @@ fn infer_pattern(
         Pattern::EnumVariant {
             path,
             fields,
+            rest: _,
             span: pat_span,
         } => {
             let [enum_name, variant_name] = path.as_slice() else {
@@ -3811,10 +3819,35 @@ fn infer_pattern(
                 ctx,
             )?;
         }
-        Pattern::Record {
+        Pattern::Struct {
+            name,
             fields,
+            rest,
             span: pat_span,
         } => {
+            infer_struct_pattern(name, fields, *rest, scrutinee_ty, pat_span, ctx)?;
+        }
+        Pattern::Record {
+            fields,
+            rest,
+            span: pat_span,
+        } => {
+            if *rest {
+                // Anonymous records unify structurally and exactly today (see
+                // `unify`'s `InferType::Record` arm) -- no notion of "at least
+                // these fields, maybe more" yet. Reject `..` here explicitly
+                // rather than parse it and either silently ignore it or let it
+                // fail later with a confusing "cannot unify" that doesn't name
+                // the real reason. RFC-0032/0034 are about named structs, which
+                // `Pattern::Struct` above already handles; open-row anonymous
+                // record patterns are a distinct, unrequested feature.
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0001,
+                    "`..` is not yet supported in an anonymous record pattern -- \
+                     name every field, or match a named struct instead",
+                    pat_span,
+                ));
+            }
             let field_vars: Vec<(String, InferType)> = fields
                 .iter()
                 .map(|name| (name.clone(), ctx.fresh_var()))
@@ -3872,6 +3905,7 @@ fn pattern_span(pattern: &Pattern) -> &Span {
         | Pattern::Literal(_, s)
         | Pattern::Tuple(_, s)
         | Pattern::EnumVariant { span: s, .. }
+        | Pattern::Struct { span: s, .. }
         | Pattern::Record { span: s, .. }
         | Pattern::Array { span: s, .. } => s,
     }
@@ -4805,6 +4839,88 @@ fn infer_enum_variant_pattern(
             other => other.clone(),
         };
         ctx.bind_mono(field_name, field_ty, false);
+    }
+    Ok(())
+}
+
+/// RFC-0032 §4/§5, RFC-0034 §5: a named-struct pattern (`Point { x, y }`,
+/// `Token { kind, span, .. }`), already rewritten from a one-segment `EnumVariant`
+/// by `resolve_struct_pattern` -- this is the struct counterpart of
+/// `infer_enum_variant_pattern` above, same field-visibility check included, plus
+/// the exhaustiveness requirement enum-variant patterns don't have: a struct
+/// pattern must name every field unless it ends in `..` (RFC-0032 §5).
+fn infer_struct_pattern(
+    struct_name: &str,
+    fields: &[String],
+    rest: bool,
+    scrutinee_ty: &InferType,
+    pat_span: &Span,
+    ctx: &mut InferContext,
+) -> Result<(), MetelError> {
+    let struct_decl_module = ctx.registry().struct_declaring_module(struct_name).cloned();
+    let struct_fields = ctx
+        .get_struct_fields(struct_name)
+        .ok_or_else(|| {
+            MetelError::type_error(
+                TypeErrorCode::T0003,
+                format!("unknown struct `{struct_name}` in pattern"),
+                pat_span,
+            )
+        })?
+        .clone();
+    let type_params = ctx
+        .get_struct_type_params(struct_name)
+        .cloned()
+        .unwrap_or_default();
+    let mut remap: HashMap<TypeVar, InferType> = HashMap::new();
+    for &tp in &type_params {
+        remap.insert(tp, ctx.fresh_var());
+    }
+    let type_args: Vec<InferType> = type_params.iter().map(|tp| remap[tp].clone()).collect();
+    ctx.add_constraint(
+        scrutinee_ty.clone(),
+        InferType::Named(struct_name.to_string(), type_args),
+        pat_span.clone(),
+    );
+    for field_name in fields {
+        let field = struct_fields
+            .iter()
+            .find(|f| f.name == *field_name)
+            .ok_or_else(|| {
+                MetelError::type_error(
+                    TypeErrorCode::T0003,
+                    format!("no field `{field_name}` on `{struct_name}`"),
+                    pat_span,
+                )
+            })?;
+        check_field_visibility(
+            field,
+            struct_name,
+            ctx.current_module_path(),
+            struct_decl_module.as_ref(),
+            pat_span,
+            "pattern-match on",
+        )?;
+        let field_ty = match &field.ty {
+            InferType::Var(v) => remap.get(v).cloned().unwrap_or_else(|| field.ty.clone()),
+            other => other.clone(),
+        };
+        ctx.bind_mono(field_name, field_ty, false);
+    }
+    if !rest && fields.len() != struct_fields.len() {
+        let missing: Vec<&str> = struct_fields
+            .iter()
+            .map(|f| f.name.as_str())
+            .filter(|name| !fields.iter().any(|f| f == name))
+            .collect();
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0001,
+            format!(
+                "pattern for `{struct_name}` does not name field(s) {} -- name them or add `..`",
+                missing.join(", ")
+            ),
+            pat_span,
+        ));
     }
     Ok(())
 }

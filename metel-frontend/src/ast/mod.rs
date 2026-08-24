@@ -617,10 +617,32 @@ pub enum Pattern {
     EnumVariant {
         path: Vec<String>,
         fields: Vec<String>,
+        /// RFC-0032 §4/§5: a trailing bare `..`, omitting the fields not named.
+        /// A one-segment `path` here is ambiguous until name resolution/
+        /// inference sees the scrutinee's type: it's a bare fieldful variant
+        /// (RFC-0107, `resolve_bare_variant`) if the scrutinee is that enum,
+        /// or a struct pattern (`resolve_struct_pattern`, RFC-0032/0034) if
+        /// the scrutinee is that struct instead. Rewritten to `Pattern::Struct`
+        /// in the latter case; every other consumer sees only genuine
+        /// (two-segment) enum-variant patterns.
+        rest: bool,
         span: Span,
     },
+    /// A named struct pattern (`Point { x, y }`, `Token { kind, span, .. }`),
+    /// rewritten from a one-segment `EnumVariant` by `resolve_struct_pattern`
+    /// once the scrutinee's type identifies which struct is meant — never
+    /// produced directly by the parser (RFC-0032 §4/§5, RFC-0034 §5).
+    Struct {
+        name: String,
+        fields: Vec<String>,
+        rest: bool,
+        span: Span,
+    },
+    /// A bare, unnamed record pattern (`{ x, y }`) — always structural,
+    /// matching `Type::Record`, never a named struct.
     Record {
         fields: Vec<String>,
+        rest: bool,
         span: Span,
     },
     Tuple(Vec<Pattern>, Span),

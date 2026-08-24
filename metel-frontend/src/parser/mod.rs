@@ -1676,6 +1676,7 @@ fn shift_pattern_span(pattern: &mut Pattern, base_start: usize, base_line: u32, 
         | Pattern::Binding(_, span)
         | Pattern::Literal(_, span)
         | Pattern::EnumVariant { span, .. }
+        | Pattern::Struct { span, .. }
         | Pattern::Record { span, .. } => shift_span(span, base_start, base_line, base_col),
         Pattern::Tuple(items, span) => {
             for item in items {
@@ -2362,6 +2363,23 @@ fn parse_match_arm(
     })
 }
 
+/// `field_pat_list = { ident ~ ("," ~ ident)* ~ ("," ~ record_rest)? ~ ","? | record_rest }`
+/// (RFC-0032 §4/§5) -- shared by `record_pattern` and `enum_pattern`'s fieldful forms.
+/// Returns (named fields, whether a trailing `..` was present).
+fn parse_field_pat_list(pair: pest::iterators::Pair<Rule>) -> (Vec<String>, bool) {
+    let mut fields = vec![];
+    let mut rest = false;
+    for child in pair.into_inner() {
+        match child.as_rule() {
+            Rule::ident => fields.push(child.as_str().to_string()),
+            Rule::record_rest => rest = true,
+            _ => {}
+        }
+    }
+    (fields, rest)
+}
+
+#[allow(clippy::too_many_lines)]
 fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pattern, MetelError> {
     match pair.as_rule() {
         Rule::pattern => {
@@ -2387,33 +2405,45 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
         }
         Rule::record_pattern => {
             let span = Span::of(&pair, filename);
-            let mut fields: Vec<String> =
-                pair.into_inner().map(|p| p.as_str().to_string()).collect();
+            let field_list = pair
+                .into_inner()
+                .find(|p| p.as_rule() == Rule::field_pat_list)
+                .ok_or_else(|| MetelError::internal("record_pattern: missing field_pat_list"))?;
+            let (mut fields, rest) = parse_field_pat_list(field_list);
             sort_record_labels(&mut fields, filename, &span, "record pattern")?;
-            Ok(Pattern::Record { fields, span })
+            Ok(Pattern::Record { fields, rest, span })
         }
         Rule::enum_pattern => {
             let span = Span::of(&pair, filename);
             // Two grammar alternatives share this rule: qualified `Enum::Variant`
             // (optionally `{ fields }`) and, per RFC-0107, bare fieldful `Variant
-            // { fields }`. They're distinguished by the presence of `::`: the
-            // qualified form's first two idents are the path, the bare form's first
-            // (and only) path ident is the variant name, resolved to its enum against
-            // the scrutinee type during type-checking (`resolve_bare_variant`).
-            let qualified = pair.as_str().contains("::");
-            let idents: Vec<String> = pair
-                .into_inner()
-                .filter(|p| p.as_rule() == Rule::ident)
-                .map(|p| p.as_str().to_string())
-                .collect();
-            let path_len = if qualified { 2 } else { 1 };
-            let (path, fields) = if idents.len() > path_len {
-                let (p, f) = idents.split_at(path_len);
-                (p.to_vec(), f.to_vec())
-            } else {
-                (idents, vec![])
-            };
-            Ok(Pattern::EnumVariant { path, fields, span })
+            // { fields }` -- the latter also covers a struct pattern (`Point { x, y }`),
+            // ambiguous with a bare enum variant until the scrutinee's type is known
+            // (`resolve_bare_variant` / `resolve_struct_pattern`). Every top-level
+            // `Rule::ident` child here is a path segment (one for the bare form, two
+            // for `Enum::Variant`) -- `field_pat_list`'s own idents are a separate
+            // top-level child, not flattened into this iteration, harvested below via
+            // its own `Rule::field_pat_list` arm.
+            let mut path = vec![];
+            let mut fields = vec![];
+            let mut rest = false;
+            for child in pair.into_inner() {
+                match child.as_rule() {
+                    Rule::ident => path.push(child.as_str().to_string()),
+                    Rule::field_pat_list => {
+                        let (f, r) = parse_field_pat_list(child);
+                        fields = f;
+                        rest = r;
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Pattern::EnumVariant {
+                path,
+                fields,
+                rest,
+                span,
+            })
         }
         Rule::literal_pattern => {
             let span = Span::of(&pair, filename);
