@@ -60,36 +60,86 @@ fn build_assoc_projection_map(
 /// function's generic type params with the corresponding `TypeVar` rather than
 /// producing a Named type.  Must be used for all annotations inside function
 /// bodies; bare `type_expr_to_infer` ignores the param map.
-fn ann_to_infer(te: &TypeExpr, ctx: &InferContext) -> InferType {
-    let params = ctx.type_params();
-    if !params.is_empty() {
-        // Check for abstract-case projection first.
-        if let TypeExpr::Projection {
-            base,
-            ref assoc_name,
-            ..
-        } = te
-        {
-            if let TypeExpr::Named(ref n, _) = **base {
-                if let Some(&base_tv) = params.get(n.as_str()) {
-                    if let Some(bounds) = ctx.bounds_for_type_var(base_tv) {
-                        for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
-                            if let Some(decls) = ctx.registry().aspect_assoc_type_decls(aspect) {
-                                if decls.iter().any(|d| d.name == *assoc_name) {
-                                    // Cannot mint a new var here (need &mut ctx).
-                                    // Return a Named placeholder; the caller that has
-                                    // &mut ctx (infer_fun_decl/infer_impl_method) handles
-                                    // the real projection var minting.
-                                    return InferType::Named(format!("{n}::{assoc_name}"), vec![]);
-                                }
+///
+/// Takes `&mut InferContext` (not `&`) so the abstract-case branch below can mint a
+/// real `fresh_assoc_projection_var` directly, the same one `infer_fun_decl`'s and
+/// `infer_impl_method`'s own signature-resolution closures already mint for a
+/// `T::AssocType` (or, since #740/#774's revision, `Self::AssocType`) appearing in a
+/// param or return-type position. Every call site already holds `&mut ctx` for other
+/// reasons (`infer_expr`, `ctx.solve()`, `ctx.bind_mono`, ...), so this doesn't
+/// restrict any of them -- it used to return an inert `Named` placeholder here
+/// instead, correct only where *something else* backfilled it afterward, which is
+/// true of the two signature call sites but not of a body-internal `let x:
+/// T::AssocType = ...;`/`mut`/`Expr::Ascribe`/`Expr::Cast`/closure-param annotation,
+/// none of which have any such backfill step. The type var minted here needs no
+/// backfill of its own: unlike the *scheme's* `assoc_projections` map (resolved at
+/// a later call site, once the caller's concrete argument pins the base type), this
+/// is resolved by ordinary unification against whatever the body already
+/// constrains that base type variable to, within the same inference pass.
+fn ann_to_infer(te: &TypeExpr, ctx: &mut InferContext) -> InferType {
+    // Check for abstract-case projection first.
+    if let TypeExpr::Projection {
+        base,
+        ref assoc_name,
+        ..
+    } = te
+    {
+        if let TypeExpr::Named(ref n, _) = **base {
+            if let Some(base_tv) = ctx.type_params().get(n.as_str()).copied() {
+                let mut matching_aspect = None;
+                if let Some(bounds) = ctx.bounds_for_type_var(base_tv) {
+                    for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
+                        if let Some(decls) = ctx.registry().aspect_assoc_type_decls(aspect) {
+                            if decls.iter().any(|d| d.name == *assoc_name) {
+                                matching_aspect = Some(aspect.to_string());
+                                break;
                             }
                         }
+                    }
+                }
+                if let Some(aspect) = matching_aspect {
+                    return InferType::Var(
+                        ctx.fresh_assoc_projection_var(base_tv, &aspect, assoc_name),
+                    );
+                }
+            }
+        }
+    }
+    // #774 (revised): a record projection whose one-segment path names a type param
+    // already bound to a concrete `Named` type (`Self`, always; an ordinary generic
+    // only incidentally, if something upstream already pinned it) -- resolve it by
+    // asking the solver what that type param currently stands for, rather than
+    // needing a `self_ty_name` threaded in from a caller that (here, in body
+    // position) has no such name to give. `type_expr_to_infer_with_ctx`'s own
+    // `AssocResolveCtx` always carries `self_ty_name: None`, which is right for a
+    // context with no enclosing `Self` at all -- this only fires when there
+    // demonstrably is one.
+    if let TypeExpr::RecordProjection { path, .. } = te {
+        if let [name] = path.as_slice() {
+            if let Some(base_tv) = ctx.type_params().get(name.as_str()).copied() {
+                if let Ok(solved) = ctx.solve() {
+                    if let InferType::Named(concrete_name, _)
+                    | InferType::Concrete(Type::Named(concrete_name, _)) =
+                        solved.apply(&InferType::Var(base_tv))
+                    {
+                        let assoc_ctx = AssocResolveCtx {
+                            registry: ctx.registry(),
+                            current_module: ctx.current_module_path(),
+                            current_aspect: None,
+                        };
+                        return type_expr_to_infer_with_assoc_ctx(
+                            te,
+                            &HashMap::new(),
+                            Some(&concrete_name),
+                            &assoc_ctx,
+                        );
                     }
                 }
             }
         }
     }
-    type_expr_to_infer_with_ctx(te, params, ctx)
+    let params = ctx.type_params().clone();
+    type_expr_to_infer_with_ctx(te, &params, ctx)
 }
 
 /// Register the names of all direct `FunDecl`s in `decls` with fresh type
@@ -1999,8 +2049,58 @@ fn infer_impl_method(
         struct_bounds.entry(tv).or_default().extend(bounds);
     }
 
+    // Include struct TypeVars in self type so call-site unification resolves correctly.
+    // For a primitive target (`impl Display for i64`) the self type must be the
+    // concrete primitive, since call sites produce `Concrete(Type::I64)` and the
+    // unifier has no Named↔Concrete bridge (METEL-181).
+    let self_ty = if let Some(element_tv) = struct_tvars_ordered
+        .first()
+        .copied()
+        .filter(|_| array_target_generic_name.is_some())
+    {
+        InferType::Array(Box::new(InferType::Var(element_tv)))
+    } else if let Some(prim) = primitive_type_from_name(target_name) {
+        InferType::Concrete(prim)
+    } else if struct_tvars_ordered.is_empty() {
+        InferType::Named(target_name.to_string(), vec![])
+    } else {
+        InferType::Named(
+            target_name.to_string(),
+            struct_tvars_ordered
+                .iter()
+                .map(|&tv| InferType::Var(tv))
+                .collect(),
+        )
+    };
+
+    // #740/#774 (revised): `Self` is not a name special-cased per call site -- it is
+    // this method's own type parameter, always instantiated to `self_ty`. Binding it
+    // into `generic_map`/`struct_bounds` the same way an ordinary bound generic
+    // (`T: Container`) already is lets every existing generic-param-aware path
+    // (the `T::AssocType` abstract case just below, `fresh_assoc_projection_var`,
+    // aspect-bound checking) resolve `Self::AssocType` for free, with no bespoke
+    // "if n == Self" branch of its own -- and, unlike that branch (which only ever
+    // covered this function's own param/return-type resolution), also reaches a
+    // body-internal `let x: Self::Item = ...;` statement's annotation, resolved
+    // through the ordinary `ann_to_infer` path, which already has its own
+    // `ctx.type_params()`-based abstract-case check for exactly this shape.
+    let self_type_var = ctx.fresh_type_var_raw();
+    generic_map.insert("Self".to_string(), self_type_var);
+    if let Some(aspect) = &ib.aspect_name {
+        struct_bounds
+            .entry(self_type_var)
+            .or_default()
+            .push(GenericBound::Aspect(aspect.clone()));
+    }
+    ctx.add_constraint(
+        InferType::Var(self_type_var),
+        self_ty.clone(),
+        ib.span.clone(),
+    );
+
     let te_to_infer = |te: &TypeExpr, ctx: &mut InferContext| -> Result<InferType, MetelError> {
-        // RFC-0082 §2 abstract-case: T::AssocType where T is a generic param.
+        // RFC-0082 §2 abstract-case: T::AssocType where T is a generic param -- `Self`
+        // included, now that it's bound into `generic_map` above like any other.
         if let TypeExpr::Projection {
             base,
             ref assoc_name,
@@ -2037,34 +2137,6 @@ fn infer_impl_method(
                     }
                     return Ok(InferType::Named(format!("{n}::{assoc_name}"), vec![]));
                 }
-                // #740 part A: `Self::AssocType` inside this impl block's own method
-                // signature/body -- resolve it directly against this impl's own
-                // `type AssocType = ...;` definition, the same source
-                // `aspect_impl_method_signature_matches`'s conformance check already
-                // uses for the aspect-declared side. Without this, `Self::Item`
-                // fell through to the generic `Named` fallback below with no
-                // `AssocResolveCtx`/`current_aspect` threaded through it, producing
-                // an unresolved `Box1::Item` placeholder that could never unify with
-                // the real concrete type.
-                if n == "Self" {
-                    if let Some(assoc_def) =
-                        ib.assoc_type_defs.iter().find(|d| d.name == *assoc_name)
-                    {
-                        return Ok(if let Some(self_replacement) = &structural_self_type_expr {
-                            let lowered =
-                                substitute_structural_self(&assoc_def.ty, self_replacement);
-                            type_expr_to_infer_with_generics(&lowered, &generic_map)
-                        } else if generic_map.is_empty() {
-                            type_expr_to_infer_with_self(&assoc_def.ty, target_name)
-                        } else {
-                            type_expr_to_infer_with_generics_and_self(
-                                &assoc_def.ty,
-                                &generic_map,
-                                target_name,
-                            )
-                        });
-                    }
-                }
             }
         }
         Ok(if let Some(self_replacement) = &structural_self_type_expr {
@@ -2077,7 +2149,10 @@ fn infer_impl_method(
             // fields -- unlike `Self::AssocType`, handled entirely above via the
             // abstract-case branch and `fresh_assoc_projection_var`, a record
             // projection's resolution genuinely lives in `conversions.rs` and needs
-            // both pieces of context at once.
+            // both pieces of context at once. Still needs `self_ty_name` explicitly:
+            // `resolve_record_projection_type` looks up a struct's fields by name
+            // directly, not through `generic_map`'s TypeVar indirection the way an
+            // ordinary `Named` lookup now can for `Self`.
             let assoc_ctx = AssocResolveCtx {
                 registry: ctx.registry(),
                 current_module: ctx.current_module_path(),
@@ -2085,30 +2160,6 @@ fn infer_impl_method(
             };
             type_expr_to_infer_with_assoc_ctx(te, &generic_map, Some(target_name), &assoc_ctx)
         })
-    };
-
-    // Include struct TypeVars in self type so call-site unification resolves correctly.
-    // For a primitive target (`impl Display for i64`) the self type must be the
-    // concrete primitive, since call sites produce `Concrete(Type::I64)` and the
-    // unifier has no Named↔Concrete bridge (METEL-181).
-    let self_ty = if let Some(element_tv) = struct_tvars_ordered
-        .first()
-        .copied()
-        .filter(|_| array_target_generic_name.is_some())
-    {
-        InferType::Array(Box::new(InferType::Var(element_tv)))
-    } else if let Some(prim) = primitive_type_from_name(target_name) {
-        InferType::Concrete(prim)
-    } else if struct_tvars_ordered.is_empty() {
-        InferType::Named(target_name.to_string(), vec![])
-    } else {
-        InferType::Named(
-            target_name.to_string(),
-            struct_tvars_ordered
-                .iter()
-                .map(|&tv| InferType::Var(tv))
-                .collect(),
-        )
     };
     // #740 part B: swap the assoc-projection log in *before* resolving the
     // signature (params and return type), the same fix and for the same reason

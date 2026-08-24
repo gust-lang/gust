@@ -1,0 +1,33 @@
+// #740/#774 architectural revision: `Self` is bound as an ordinary type parameter
+// (like a bound generic `T`) for the whole of an impl-block method's inference, not
+// just its own param/return-type resolution -- so a body-internal `let`/`mut`
+// annotation naming `Self::AssocType` resolves too, through the same general
+// mechanism every other generic-param-aware position already uses. Also covers the
+// same shape for an *ordinary* bound generic (`T::Item`), confirmed as a real,
+// pre-existing gap independent of `Self` while investigating this.
+
+aspect Container {
+    type Item;
+    fun get(&self) -> Item;
+}
+
+struct Box1 { v: i64 }
+
+extend Box1: Container {
+    type Item = i64;
+    fun get(&self) -> i64 {
+        let x: Self::Item = self.v;
+        return x;
+    }
+}
+
+fun unwrap<T: Container>(c: &T) -> i64 {
+    let x: T::Item = c.get();
+    return x;
+}
+
+fun main() {
+    let b = Box1 { v = 7 };
+    assert(b.get() == 7);
+    assert(unwrap(&b) == 7);
+}
