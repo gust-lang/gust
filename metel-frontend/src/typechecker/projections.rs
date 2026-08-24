@@ -65,7 +65,7 @@ pub(super) fn check(
         struct_order,
     };
     for (index, decl) in program.decls.iter().enumerate() {
-        cx.decl(decl, Some(index), &HashSet::new(), false, &[])?;
+        cx.decl(decl, Some(index), &HashSet::new(), false, None, &[])?;
     }
     Ok(())
 }
@@ -77,27 +77,29 @@ struct Cx<'a> {
 }
 
 impl Cx<'_> {
+    #[allow(clippy::too_many_arguments)]
     fn decl(
         &self,
         decl: &Decl,
         at: Option<usize>,
         generics: &HashSet<String>,
         self_allowed: bool,
+        self_target: Option<&str>,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
         match decl {
-            Decl::Fun(fun) => self.fun(fun, generics, self_allowed, local_types)?,
+            Decl::Fun(fun) => self.fun(fun, generics, self_allowed, self_target, local_types)?,
             Decl::Let(d) => {
                 if let Some(t) = &d.type_ann {
-                    self.ty(t, &d.span, generics, self_allowed, local_types)?;
+                    self.ty(t, &d.span, generics, self_allowed, self_target, local_types)?;
                 }
-                self.expr(&d.value, generics, self_allowed, local_types)?;
+                self.expr(&d.value, generics, self_allowed, self_target, local_types)?;
             }
             Decl::Mut(d) => {
                 if let Some(t) = &d.type_ann {
-                    self.ty(t, &d.span, generics, self_allowed, local_types)?;
+                    self.ty(t, &d.span, generics, self_allowed, self_target, local_types)?;
                 }
-                self.expr(&d.value, generics, self_allowed, local_types)?;
+                self.expr(&d.value, generics, self_allowed, self_target, local_types)?;
             }
             Decl::Struct(sd) => {
                 let scope = Self::with_generics(generics, &sd.generics);
@@ -111,7 +113,16 @@ impl Cx<'_> {
                 for f in &sd.fields {
                     // `at` marks this struct's own position, so a field projecting a
                     // struct declared later can be reported precisely.
-                    self.ty_at(&f.type_ann, &f.span, at, &scope, false, false, local_types)?;
+                    self.ty_at(
+                        &f.type_ann,
+                        &f.span,
+                        at,
+                        &scope,
+                        false,
+                        None,
+                        false,
+                        local_types,
+                    )?;
                 }
             }
             Decl::Enum(ed) => {
@@ -125,7 +136,7 @@ impl Cx<'_> {
                 )?;
                 for v in &ed.variants {
                     for f in &v.fields {
-                        self.ty(&f.type_ann, &f.span, &scope, false, local_types)?;
+                        self.ty(&f.type_ann, &f.span, &scope, false, None, local_types)?;
                     }
                 }
             }
@@ -133,7 +144,9 @@ impl Cx<'_> {
                 self.impl_block(ib, generics, local_types)?;
             }
             Decl::Aspect(ad) => self.aspect(ad, generics, local_types)?,
-            Decl::Stmt(stmt) => self.stmt(stmt, generics, self_allowed, local_types)?,
+            Decl::Stmt(stmt) => {
+                self.stmt(stmt, generics, self_allowed, self_target, local_types)?;
+            }
         }
         Ok(())
     }
@@ -143,6 +156,7 @@ impl Cx<'_> {
         fun: &FunDecl,
         inherited_generics: &HashSet<String>,
         self_allowed: bool,
+        self_target: Option<&str>,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
         let generics = Self::with_generics(inherited_generics, &fun.generics);
@@ -154,12 +168,19 @@ impl Cx<'_> {
             local_types,
         )?;
         for p in &fun.params {
-            self.param(p, &generics, self_allowed, local_types)?;
+            self.param(p, &generics, self_allowed, self_target, local_types)?;
         }
         if let Some(t) = &fun.return_type {
-            self.ty_return(t, &fun.span, &generics, self_allowed, local_types)?;
+            self.ty_return(
+                t,
+                &fun.span,
+                &generics,
+                self_allowed,
+                self_target,
+                local_types,
+            )?;
         }
-        self.block(&fun.body, &generics, self_allowed, local_types)
+        self.block(&fun.body, &generics, self_allowed, self_target, local_types)
     }
 
     fn block(
@@ -167,6 +188,7 @@ impl Cx<'_> {
         block: &Block,
         generics: &HashSet<String>,
         self_allowed: bool,
+        self_target: Option<&str>,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
         let mut types = HashSet::new();
@@ -184,10 +206,23 @@ impl Cx<'_> {
         let mut nested_local_types = local_types.to_vec();
         nested_local_types.push(types);
         for d in &block.stmts {
-            self.decl(d, None, generics, self_allowed, &nested_local_types)?;
+            self.decl(
+                d,
+                None,
+                generics,
+                self_allowed,
+                self_target,
+                &nested_local_types,
+            )?;
         }
         if let Some(tail) = &block.tail {
-            self.expr(tail, generics, self_allowed, &nested_local_types)?;
+            self.expr(
+                tail,
+                generics,
+                self_allowed,
+                self_target,
+                &nested_local_types,
+            )?;
         }
         Ok(())
     }
@@ -197,12 +232,19 @@ impl Cx<'_> {
         stmt: &Stmt,
         generics: &HashSet<String>,
         self_allowed: bool,
+        self_target: Option<&str>,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
         match stmt {
             Stmt::While(w) => {
-                self.expr(&w.condition, generics, self_allowed, local_types)?;
-                self.block(&w.body, generics, self_allowed, local_types)
+                self.expr(
+                    &w.condition,
+                    generics,
+                    self_allowed,
+                    self_target,
+                    local_types,
+                )?;
+                self.block(&w.body, generics, self_allowed, self_target, local_types)
             }
             Stmt::For(f) => {
                 if let Some(init) = &f.init {
@@ -212,6 +254,7 @@ impl Cx<'_> {
                             None,
                             generics,
                             self_allowed,
+                            self_target,
                             local_types,
                         )?,
                         ForInit::Mut(d) => self.decl(
@@ -219,24 +262,33 @@ impl Cx<'_> {
                             None,
                             generics,
                             self_allowed,
+                            self_target,
                             local_types,
                         )?,
-                        ForInit::Expr(e) => self.expr(e, generics, self_allowed, local_types)?,
+                        ForInit::Expr(e) => {
+                            self.expr(e, generics, self_allowed, self_target, local_types)?;
+                        }
                     }
                 }
                 if let Some(condition) = &f.condition {
-                    self.expr(condition, generics, self_allowed, local_types)?;
+                    self.expr(condition, generics, self_allowed, self_target, local_types)?;
                 }
                 if let Some(step) = &f.step {
-                    self.expr(step, generics, self_allowed, local_types)?;
+                    self.expr(step, generics, self_allowed, self_target, local_types)?;
                 }
-                self.block(&f.body, generics, self_allowed, local_types)
+                self.block(&f.body, generics, self_allowed, self_target, local_types)
             }
             Stmt::ForIn(f) => {
-                self.expr(&f.iterable, generics, self_allowed, local_types)?;
-                self.block(&f.body, generics, self_allowed, local_types)
+                self.expr(
+                    &f.iterable,
+                    generics,
+                    self_allowed,
+                    self_target,
+                    local_types,
+                )?;
+                self.block(&f.body, generics, self_allowed, self_target, local_types)
             }
-            Stmt::Expr(e) => self.expr(e, generics, self_allowed, local_types),
+            Stmt::Expr(e) => self.expr(e, generics, self_allowed, self_target, local_types),
         }
     }
 
@@ -246,9 +298,19 @@ impl Cx<'_> {
         span: &Span,
         generics: &HashSet<String>,
         self_allowed: bool,
+        self_target: Option<&str>,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
-        self.ty_at(te, span, None, generics, self_allowed, false, local_types)
+        self.ty_at(
+            te,
+            span,
+            None,
+            generics,
+            self_allowed,
+            self_target,
+            false,
+            local_types,
+        )
     }
 
     fn ty_return(
@@ -257,9 +319,19 @@ impl Cx<'_> {
         span: &Span,
         generics: &HashSet<String>,
         self_allowed: bool,
+        self_target: Option<&str>,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
-        self.ty_at(te, span, None, generics, self_allowed, true, local_types)
+        self.ty_at(
+            te,
+            span,
+            None,
+            generics,
+            self_allowed,
+            self_target,
+            true,
+            local_types,
+        )
     }
 
     /// Recurse through a type expression, checking every projection inside it — so a
@@ -267,6 +339,11 @@ impl Cx<'_> {
     ///
     /// `field_of` is `Some(index)` only when this type is a struct field's annotation; see
     /// the forward-reference note in `check`.
+    ///
+    /// `self_target` is the enclosing impl block's own concrete target name, when known
+    /// (#774) — distinct from `self_allowed`, since `Self` is legal but has no concrete
+    /// name to resolve to inside an aspect's own (abstract) method declaration. Only a
+    /// `RecordProjection` whose path is exactly `Self` ever reads it.
     #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
     fn ty_at(
         &self,
@@ -275,12 +352,13 @@ impl Cx<'_> {
         field_of: Option<usize>,
         generics: &HashSet<String>,
         self_allowed: bool,
+        self_target: Option<&str>,
         impl_aspect_allowed: bool,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
         match te {
             TypeExpr::RecordProjection { path, fields, span } => {
-                self.projection(path, fields, span, field_of)
+                self.projection(path, fields, span, field_of, self_target)
             }
             TypeExpr::Named(name, args) => {
                 if !self.is_type_name(name, generics, self_allowed, local_types) {
@@ -293,6 +371,7 @@ impl Cx<'_> {
                         field_of,
                         generics,
                         self_allowed,
+                        self_target,
                         impl_aspect_allowed,
                         local_types,
                     )?;
@@ -307,6 +386,7 @@ impl Cx<'_> {
                         field_of,
                         generics,
                         self_allowed,
+                        self_target,
                         impl_aspect_allowed,
                         local_types,
                     )?;
@@ -321,6 +401,7 @@ impl Cx<'_> {
                         field_of,
                         generics,
                         self_allowed,
+                        self_target,
                         impl_aspect_allowed,
                         local_types,
                     )?;
@@ -336,6 +417,7 @@ impl Cx<'_> {
                 field_of,
                 generics,
                 self_allowed,
+                self_target,
                 impl_aspect_allowed,
                 local_types,
             ),
@@ -347,6 +429,7 @@ impl Cx<'_> {
                         field_of,
                         generics,
                         self_allowed,
+                        self_target,
                         impl_aspect_allowed,
                         local_types,
                     )?;
@@ -358,6 +441,7 @@ impl Cx<'_> {
                         field_of,
                         generics,
                         self_allowed,
+                        self_target,
                         impl_aspect_allowed,
                         local_types,
                     )?;
@@ -372,7 +456,14 @@ impl Cx<'_> {
                         span,
                     ));
                 }
-                self.aspect_type(bound, span, generics, self_allowed, local_types)
+                self.aspect_type(
+                    bound,
+                    span,
+                    generics,
+                    self_allowed,
+                    self_target,
+                    local_types,
+                )
             }
             TypeExpr::Projection { base, .. } => self.ty_at(
                 base,
@@ -380,6 +471,7 @@ impl Cx<'_> {
                 field_of,
                 generics,
                 self_allowed,
+                self_target,
                 impl_aspect_allowed,
                 local_types,
             ),
@@ -405,20 +497,39 @@ impl Cx<'_> {
         // `Self` becomes meaningful only inside an extend block, where it names this
         // concrete target. It cannot name the target itself: no enclosing type exists
         // at that point.
-        self.ty(&ib.target_type, &ib.span, &generics, false, local_types)?;
+        self.ty(
+            &ib.target_type,
+            &ib.span,
+            &generics,
+            false,
+            None,
+            local_types,
+        )?;
         if let Some(aspect) = &ib.aspect_name {
             if !self.registry.is_visible_aspect(self.current_module, aspect) {
                 return Err(Self::unknown_aspect(aspect, &ib.span));
             }
         }
+        // #774: the concrete name `Self` resolves to inside this block, threaded through
+        // so a `Self.{ field }` record projection (not just bare `Self`) can resolve it
+        // too. `impl_target_head` mirrors how `inference.rs` recovers the same name for
+        // the actual signature/body resolution this pass validates ahead of.
+        let self_target = crate::typechecker::impl_target_head(&ib.target_type);
         for arg in &ib.aspect_type_args {
-            self.ty(arg, &ib.span, &generics, true, local_types)?;
+            self.ty(arg, &ib.span, &generics, true, self_target, local_types)?;
         }
         for assoc in &ib.assoc_type_defs {
-            self.ty(&assoc.ty, &assoc.span, &generics, true, local_types)?;
+            self.ty(
+                &assoc.ty,
+                &assoc.span,
+                &generics,
+                true,
+                self_target,
+                local_types,
+            )?;
         }
         for method in &ib.methods {
-            self.fun(method, &generics, true, local_types)?;
+            self.fun(method, &generics, true, self_target, local_types)?;
         }
         Ok(())
     }
@@ -433,7 +544,7 @@ impl Cx<'_> {
         generics.extend(aspect.generics.iter().cloned());
         for assoc in &aspect.assoc_types {
             for bound in &assoc.bounds {
-                self.bound(bound, &assoc.span, &generics, true, local_types)?;
+                self.bound(bound, &assoc.span, &generics, true, None, local_types)?;
             }
         }
         // RFC-0082 §1.2: inside an aspect's own method signatures, a bare
@@ -455,14 +566,19 @@ impl Cx<'_> {
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
         let generics = Self::with_generics(inherited_generics, &method.generics);
+        // `Self` is legal here (an aspect method may take or return `Self`) but has no
+        // concrete name yet -- an aspect declares an interface, not a specific
+        // implementor, so `self_target` stays `None`; a `Self.{ field }` projection
+        // still cannot resolve inside an aspect's own abstract declaration, same as
+        // before this fix (#774 is about impl blocks, which do have a concrete target).
         for param in &method.params {
-            self.param(param, &generics, true, local_types)?;
+            self.param(param, &generics, true, None, local_types)?;
         }
         if let Some(ret) = &method.return_type {
-            self.ty_return(ret, &method.span, &generics, true, local_types)?;
+            self.ty_return(ret, &method.span, &generics, true, None, local_types)?;
         }
         if let Some(body) = &method.default_body {
-            self.block(body, &generics, true, local_types)?;
+            self.block(body, &generics, true, None, local_types)?;
         }
         Ok(())
     }
@@ -472,10 +588,18 @@ impl Cx<'_> {
         param: &Param,
         generics: &HashSet<String>,
         self_allowed: bool,
+        self_target: Option<&str>,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
         if let Some(ty) = &param.type_ann {
-            self.ty(ty, &param.span, generics, self_allowed, local_types)?;
+            self.ty(
+                ty,
+                &param.span,
+                generics,
+                self_allowed,
+                self_target,
+                local_types,
+            )?;
         }
         Ok(())
     }
@@ -490,13 +614,13 @@ impl Cx<'_> {
     ) -> Result<(), MetelError> {
         for param in generic_params {
             for bound in &param.bounds {
-                self.bound(bound, span, generics, false, local_types)?;
+                self.bound(bound, span, generics, false, None, local_types)?;
             }
         }
         if let Some(where_clause) = where_clause {
             for constraint in &where_clause.constraints {
                 for bound in &constraint.bounds {
-                    self.bound(bound, span, generics, false, local_types)?;
+                    self.bound(bound, span, generics, false, None, local_types)?;
                 }
             }
         }
@@ -509,22 +633,44 @@ impl Cx<'_> {
         fallback_span: &Span,
         generics: &HashSet<String>,
         self_allowed: bool,
+        self_target: Option<&str>,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
         match &bound.head {
             BoundHead::Aspect(aspect) => {
-                self.aspect_type(aspect, &bound.span, generics, self_allowed, local_types)?;
+                self.aspect_type(
+                    aspect,
+                    &bound.span,
+                    generics,
+                    self_allowed,
+                    self_target,
+                    local_types,
+                )?;
             }
             BoundHead::Row(row) => {
                 for field in &row.fields {
                     if let Some(ty) = &field.ty {
-                        self.ty(ty, fallback_span, generics, self_allowed, local_types)?;
+                        self.ty(
+                            ty,
+                            fallback_span,
+                            generics,
+                            self_allowed,
+                            self_target,
+                            local_types,
+                        )?;
                     }
                 }
             }
         }
         for (_, ty) in &bound.assoc_bindings {
-            self.ty(ty, &bound.span, generics, self_allowed, local_types)?;
+            self.ty(
+                ty,
+                &bound.span,
+                generics,
+                self_allowed,
+                self_target,
+                local_types,
+            )?;
         }
         Ok(())
     }
@@ -535,6 +681,7 @@ impl Cx<'_> {
         span: &Span,
         generics: &HashSet<String>,
         self_allowed: bool,
+        self_target: Option<&str>,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
         let TypeExpr::Named(name, args) = aspect else {
@@ -548,7 +695,7 @@ impl Cx<'_> {
             return Err(Self::unknown_aspect(name, span));
         }
         for arg in args {
-            self.ty(arg, span, generics, self_allowed, local_types)?;
+            self.ty(arg, span, generics, self_allowed, self_target, local_types)?;
         }
         Ok(())
     }
@@ -559,6 +706,7 @@ impl Cx<'_> {
         expr: &Expr,
         generics: &HashSet<String>,
         self_allowed: bool,
+        self_target: Option<&str>,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
         match expr {
@@ -570,13 +718,13 @@ impl Cx<'_> {
             | Expr::Continue(_) => Ok(()),
             Expr::Tuple(items, _) | Expr::Array(items, _) => {
                 for item in items {
-                    self.expr(item, generics, self_allowed, local_types)?;
+                    self.expr(item, generics, self_allowed, self_target, local_types)?;
                 }
                 Ok(())
             }
             Expr::RecordLiteral { fields, .. } | Expr::StructLiteral { fields, .. } => {
                 for (_, value) in fields {
-                    self.expr(value, generics, self_allowed, local_types)?;
+                    self.expr(value, generics, self_allowed, self_target, local_types)?;
                 }
                 Ok(())
             }
@@ -585,7 +733,7 @@ impl Cx<'_> {
             | Expr::FieldAccess { object: value, .. }
             | Expr::TupleAccess { object: value, .. }
             | Expr::PropagateError { expr: value, .. } => {
-                self.expr(value, generics, self_allowed, local_types)
+                self.expr(value, generics, self_allowed, self_target, local_types)
             }
             Expr::BinOp(left, _, right, _)
             | Expr::Index {
@@ -593,12 +741,12 @@ impl Cx<'_> {
                 index: right,
                 ..
             } => {
-                self.expr(left, generics, self_allowed, local_types)?;
-                self.expr(right, generics, self_allowed, local_types)
+                self.expr(left, generics, self_allowed, self_target, local_types)?;
+                self.expr(right, generics, self_allowed, self_target, local_types)
             }
             Expr::Assign { target, value, .. } => {
-                self.assign_target(target, generics, self_allowed, local_types)?;
-                self.expr(value, generics, self_allowed, local_types)
+                self.assign_target(target, generics, self_allowed, self_target, local_types)?;
+                self.expr(value, generics, self_allowed, self_target, local_types)
             }
             Expr::Call {
                 callee,
@@ -606,12 +754,12 @@ impl Cx<'_> {
                 args,
                 span,
             } => {
-                self.expr(callee, generics, self_allowed, local_types)?;
+                self.expr(callee, generics, self_allowed, self_target, local_types)?;
                 for ty in type_args {
-                    self.ty(ty, span, generics, self_allowed, local_types)?;
+                    self.ty(ty, span, generics, self_allowed, self_target, local_types)?;
                 }
                 for arg in args {
-                    self.expr(arg, generics, self_allowed, local_types)?;
+                    self.expr(arg, generics, self_allowed, self_target, local_types)?;
                 }
                 Ok(())
             }
@@ -622,12 +770,12 @@ impl Cx<'_> {
                 span,
                 ..
             } => {
-                self.expr(receiver, generics, self_allowed, local_types)?;
+                self.expr(receiver, generics, self_allowed, self_target, local_types)?;
                 for ty in type_args {
-                    self.ty(ty, span, generics, self_allowed, local_types)?;
+                    self.ty(ty, span, generics, self_allowed, self_target, local_types)?;
                 }
                 for arg in args {
-                    self.expr(arg, generics, self_allowed, local_types)?;
+                    self.expr(arg, generics, self_allowed, self_target, local_types)?;
                 }
                 Ok(())
             }
@@ -636,20 +784,33 @@ impl Cx<'_> {
                 target_type,
                 span,
             } => {
-                self.expr(expr, generics, self_allowed, local_types)?;
-                self.ty(target_type, span, generics, self_allowed, local_types)
+                self.expr(expr, generics, self_allowed, self_target, local_types)?;
+                self.ty(
+                    target_type,
+                    span,
+                    generics,
+                    self_allowed,
+                    self_target,
+                    local_types,
+                )
             }
             Expr::Ascribe { expr, ann, span } => {
-                self.expr(expr, generics, self_allowed, local_types)?;
-                self.ty(ann, span, generics, self_allowed, local_types)
+                self.expr(expr, generics, self_allowed, self_target, local_types)?;
+                self.ty(ann, span, generics, self_allowed, self_target, local_types)
             }
             Expr::Match(m) => {
-                self.expr(&m.scrutinee, generics, self_allowed, local_types)?;
+                self.expr(
+                    &m.scrutinee,
+                    generics,
+                    self_allowed,
+                    self_target,
+                    local_types,
+                )?;
                 for arm in &m.arms {
                     if let Some(guard) = &arm.guard {
-                        self.expr(guard, generics, self_allowed, local_types)?;
+                        self.expr(guard, generics, self_allowed, self_target, local_types)?;
                     }
-                    self.block(&arm.body, generics, self_allowed, local_types)?;
+                    self.block(&arm.body, generics, self_allowed, self_target, local_types)?;
                 }
                 Ok(())
             }
@@ -659,14 +820,28 @@ impl Cx<'_> {
                 else_branch,
                 ..
             } => {
-                self.expr(condition, generics, self_allowed, local_types)?;
-                self.block(then_branch, generics, self_allowed, local_types)?;
+                self.expr(condition, generics, self_allowed, self_target, local_types)?;
+                self.block(
+                    then_branch,
+                    generics,
+                    self_allowed,
+                    self_target,
+                    local_types,
+                )?;
                 if let Some(else_branch) = else_branch {
-                    self.block(else_branch, generics, self_allowed, local_types)?;
+                    self.block(
+                        else_branch,
+                        generics,
+                        self_allowed,
+                        self_target,
+                        local_types,
+                    )?;
                 }
                 Ok(())
             }
-            Expr::Loop { body, .. } => self.block(body, generics, self_allowed, local_types),
+            Expr::Loop { body, .. } => {
+                self.block(body, generics, self_allowed, self_target, local_types)
+            }
             Expr::Closure {
                 params,
                 return_type,
@@ -674,22 +849,22 @@ impl Cx<'_> {
                 span,
             } => {
                 for param in params {
-                    self.param(param, generics, self_allowed, local_types)?;
+                    self.param(param, generics, self_allowed, self_target, local_types)?;
                 }
                 if let Some(ret) = return_type {
-                    self.ty_return(ret, span, generics, self_allowed, local_types)?;
+                    self.ty_return(ret, span, generics, self_allowed, self_target, local_types)?;
                 }
-                self.block(body, generics, self_allowed, local_types)
+                self.block(body, generics, self_allowed, self_target, local_types)
             }
             Expr::Return(ret) => {
                 if let Some(value) = &ret.value {
-                    self.expr(value, generics, self_allowed, local_types)?;
+                    self.expr(value, generics, self_allowed, self_target, local_types)?;
                 }
                 Ok(())
             }
             Expr::Break(ret) => {
                 if let Some(value) = &ret.value {
-                    self.expr(value, generics, self_allowed, local_types)?;
+                    self.expr(value, generics, self_allowed, self_target, local_types)?;
                 }
                 Ok(())
             }
@@ -701,6 +876,7 @@ impl Cx<'_> {
         target: &AssignTarget,
         generics: &HashSet<String>,
         self_allowed: bool,
+        self_target: Option<&str>,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
         match target {
@@ -708,11 +884,11 @@ impl Cx<'_> {
             AssignTarget::FieldAccess { object, .. }
             | AssignTarget::TupleAccess { object, .. }
             | AssignTarget::Deref { object, .. } => {
-                self.expr(object, generics, self_allowed, local_types)
+                self.expr(object, generics, self_allowed, self_target, local_types)
             }
             AssignTarget::Index { object, index, .. } => {
-                self.expr(object, generics, self_allowed, local_types)?;
-                self.expr(index, generics, self_allowed, local_types)
+                self.expr(object, generics, self_allowed, self_target, local_types)?;
+                self.expr(index, generics, self_allowed, self_target, local_types)
             }
         }
     }
@@ -786,15 +962,35 @@ impl Cx<'_> {
         fields: &[String],
         span: &Span,
         field_of: Option<usize>,
+        self_target: Option<&str>,
     ) -> Result<(), MetelError> {
-        let target = path.join("::");
-        let spelling = format!("{target}.{{ {} }}", fields.join(", "));
+        // #774: `Self` resolves to the enclosing impl's own concrete target the same way
+        // it does for a plain `TypeExpr::Named("Self", ..)` -- see `conversions.rs`'s own
+        // fix for the same gap in the actual (fallible-free) resolution this pass guards.
+        let resolved_owned;
+        let target: &str = if path.len() == 1 && path[0] == "Self" {
+            match self_target {
+                Some(t) => {
+                    resolved_owned = t.to_string();
+                    &resolved_owned
+                }
+                // No concrete target known here (inside an aspect's own abstract
+                // declaration) -- fall through to the pre-existing "unknown type Self"
+                // diagnosis below; still spelled `Self` in that case, since there is no
+                // real name to substitute.
+                None => "Self",
+            }
+        } else {
+            resolved_owned = path.join("::");
+            &resolved_owned
+        };
+        let spelling = format!("{}.{{ {} }}", path.join("::"), fields.join(", "));
 
         // Forward reference from a struct field: the registry is complete *here*, so the
         // lookups below would succeed, but the field's stored type was converted before
         // the target existed and is already a stand-in. Report it now rather than let it
         // reappear as an opaque `cannot unify … with B.{ x }` at the first use.
-        if let (Some(site), Some(&target_at)) = (field_of, self.struct_order.get(target.as_str())) {
+        if let (Some(site), Some(&target_at)) = (field_of, self.struct_order.get(target)) {
             if target_at > site {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0003,
@@ -808,12 +1004,12 @@ impl Cx<'_> {
 
         let Some((struct_name, raw_fields)) = self
             .registry
-            .projection_struct_fields(self.current_module, &target)
+            .projection_struct_fields(self.current_module, target)
         else {
             // Not a projectable struct. Distinguish "wrong kind of type" from "no such
             // type" — the fix differs, and the blunt version of this message was the
             // reason this pass exists.
-            let reason = match self.registry.visible_type_kind(self.current_module, &target) {
+            let reason = match self.registry.visible_type_kind(self.current_module, target) {
                 Some(VisibleTypeKind::Enum) => format!(
                     "`{target}` is an enum; only structs have a row to project (an enum is a sum, not a product)"
                 ),

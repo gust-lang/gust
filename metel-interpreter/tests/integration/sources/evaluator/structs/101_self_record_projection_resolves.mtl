@@ -1,0 +1,30 @@
+// #774: `Self` resolves inside a record projection (`Self.{ field }`) exactly as
+// it does as a plain type in the same position -- confirmed by writing the same
+// method both ways and getting the same result from the same shaped argument.
+// Before the fix, only the `Handle.{ fd }` (concrete-name) spelling resolved;
+// `Self.{ fd }` failed with "unknown type `Self`" during the eager
+// projections-validity pass, and -- once that pass no longer masked it -- a
+// second, independent gap in the real signature resolution (no registry access
+// at the one place `Self` alone already had a target name to resolve against)
+// surfaced right behind it.
+//
+// Called with an anonymous record literal, not a `Handle` value: whether a
+// nominal struct coerces to its own record projection's type at a call site is
+// a separate, pre-existing question (unrelated to `Self`, reproduces identically
+// for the `Handle.{ fd }` spelling) -- not what this fixture is about.
+
+struct Handle { fd: i64, name: String }
+
+extend Handle {
+    fun describe_self(h: Self.{ fd }) -> i64 {
+        return h.fd;
+    }
+    fun describe_named(h: Handle.{ fd }) -> i64 {
+        return h.fd;
+    }
+}
+
+fun main() {
+    assert(Handle::describe_self({ fd = 3 }) == 3);
+    assert(Handle::describe_named({ fd = 3 }) == 3);
+}

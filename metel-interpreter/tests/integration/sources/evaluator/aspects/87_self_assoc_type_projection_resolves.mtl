@@ -1,0 +1,23 @@
+// #740 part A: RFC-0082 §1.2 says the bare-name sugar (`Item` alone) is sugar for
+// `Self::Item` -- so the spelled-out form must resolve identically inside the same
+// impl-block method signature, not just the sugar. Exercises both the return type
+// and the signature-conformance check against the aspect's own (sugared) declaration.
+
+aspect Container {
+    type Item;
+    fun get(&self) -> Item;
+}
+
+struct Box1 { v: i64 }
+
+extend Box1: Container {
+    type Item = i64;
+    fun get(&self) -> Self::Item {
+        return self.v;
+    }
+}
+
+fun main() {
+    let b = Box1 { v = 7 };
+    assert(b.get() == 7);
+}

@@ -19,8 +19,8 @@ use crate::typeinference::{
 use crate::types::Type;
 
 use super::conversions::{
-    infer_type_to_type, resolved_to_type, type_expr_to_infer_with_assoc_ctx,
-    type_expr_to_infer_with_self, type_to_infer, AssocResolveCtx,
+    infer_type_to_type, resolved_to_type, type_expr_to_infer_with_assoc_ctx, type_to_infer,
+    AssocResolveCtx,
 };
 use super::SchemeEnv;
 
@@ -1257,7 +1257,19 @@ fn construct_impl_method(
 
     let self_ty = super::inference::primitive_type_from_name(target_name)
         .unwrap_or_else(|| Type::Named(target_name.to_string(), vec![]));
-    let te_to_infer = |te: &TypeExpr| type_expr_to_infer_with_self(te, target_name);
+    // #774: `type_expr_to_infer_with_self` resolves `Self` but carries no
+    // `AssocResolveCtx` (no registry access), which `Self.{ field }` needs to look
+    // up the target struct's actual fields -- mirrors the same fix in inference.rs's
+    // own `infer_impl_method`, this pass's Pass-1 counterpart.
+    let empty_generics: HashMap<String, TypeVar> = HashMap::new();
+    let assoc_ctx = AssocResolveCtx {
+        registry: ctx.registry,
+        current_module: ctx.current_module,
+        current_aspect: None,
+    };
+    let te_to_infer = |te: &TypeExpr| {
+        type_expr_to_infer_with_assoc_ctx(te, &empty_generics, Some(target_name), &assoc_ctx)
+    };
     let param_types: Vec<Type> = method
         .params
         .iter()
@@ -1334,7 +1346,19 @@ fn construct_default_aspect_method(
 ) -> Result<TypedFunDecl, MetelError> {
     let self_ty = super::inference::primitive_type_from_name(target_name)
         .unwrap_or_else(|| Type::Named(target_name.to_string(), vec![]));
-    let te_to_infer = |te: &TypeExpr| type_expr_to_infer_with_self(te, target_name);
+    // #774: `type_expr_to_infer_with_self` resolves `Self` but carries no
+    // `AssocResolveCtx` (no registry access), which `Self.{ field }` needs to look
+    // up the target struct's actual fields -- mirrors the same fix in inference.rs's
+    // own `infer_impl_method`, this pass's Pass-1 counterpart.
+    let empty_generics: HashMap<String, TypeVar> = HashMap::new();
+    let assoc_ctx = AssocResolveCtx {
+        registry: ctx.registry,
+        current_module: ctx.current_module,
+        current_aspect: None,
+    };
+    let te_to_infer = |te: &TypeExpr| {
+        type_expr_to_infer_with_assoc_ctx(te, &empty_generics, Some(target_name), &assoc_ctx)
+    };
     let param_types: Vec<Type> = method
         .params
         .iter()
