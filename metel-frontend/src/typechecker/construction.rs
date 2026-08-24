@@ -1713,6 +1713,27 @@ fn construct_expr(
             if ctx.can_be_unqualified_variant(name) {
                 return resolve_unqualified_variant_expr(name, expected_ty, span, ctx);
             }
+            // #736: `name` may be a real, checked declaration -- a generic
+            // function's own scheme is deliberately kept out of `ctx.env`
+            // (see the `GenericClosure` construction above for why: call
+            // sites resolve it through `scheme_env` instead), so a bare,
+            // non-call reference to it reaches here. It genuinely exists;
+            // `undefined name` would be a lie. Generic functions are
+            // call-only today (`functions.md`'s first-class-functions
+            // carve-out; RFC-0138 proposes lifting this) -- say so instead.
+            if let Some(scheme) = ctx.scheme_env.get(name.as_str()) {
+                if !scheme.quantified_vars.is_empty() {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0003,
+                        format!(
+                            "generic function `{name}` cannot be referenced except by \
+                             direct call; a generic function is not yet a first-class \
+                             value (RFC-0138)"
+                        ),
+                        span,
+                    ));
+                }
+            }
             Err(MetelError::type_error(
                 TypeErrorCode::T0003,
                 format!("undefined name `{name}`"),
