@@ -3764,7 +3764,10 @@ fn construct_call(
     if explicit_tys.is_some() {
         if let Type::Fun(params, _) = fun_ty_for_hints {
             if params.len() == typed_args.len()
-                && typed_args.iter().zip(params.iter()).any(|(a, p)| a.ty() != p)
+                && typed_args
+                    .iter()
+                    .zip(params.iter())
+                    .any(|(a, p)| a.ty() != p)
             {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0001,
