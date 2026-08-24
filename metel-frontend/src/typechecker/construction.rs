@@ -3749,6 +3749,32 @@ fn construct_call(
         typed_args
     };
 
+    // #775: turbofish pins each quantified var directly from the explicit
+    // `::<T>` types, bypassing the unification against actual argument types
+    // that an inferred call gets for free inside instantiate_scheme_for_call.
+    // Nothing downstream checked the arguments actually agree with those
+    // pinned types, so a real mismatch (`identity::<i64>("hello")`) was
+    // silently accepted. The reconstruction-with-hints step above already
+    // resolves the one legitimate case that can *look* like a mismatch here
+    // — an unsuffixed integer literal defaulted before the turbofish type was
+    // known (`clamp::<i32>(5, 0, 10)`) — so check for a real mismatch after
+    // it runs, not before: `construct_expr` doesn't coerce a value to a hint
+    // it structurally can't satisfy, so anything still disagreeing here is
+    // genuine, not a literal that just needed the hint.
+    if explicit_tys.is_some() {
+        if let Type::Fun(params, _) = fun_ty_for_hints {
+            if params.len() == typed_args.len()
+                && typed_args.iter().zip(params.iter()).any(|(a, p)| a.ty() != p)
+            {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0001,
+                    "argument type mismatch",
+                    span,
+                ));
+            }
+        }
+    }
+
     // Auto-deref: calling through a &Fun or &mut Fun is allowed.
     let fun_ty_inner = match &fun_ty {
         Type::Reference(inner) | Type::MutReference(inner)

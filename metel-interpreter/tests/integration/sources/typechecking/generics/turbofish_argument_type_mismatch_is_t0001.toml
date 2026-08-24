@@ -1,0 +1,7 @@
+[options]
+spec = ["spec.functions.turbofish.legality-2"]
+
+[expect]
+status = "typecheck_error"
+code = "T0001"
+line = 4
