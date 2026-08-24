@@ -935,22 +935,40 @@ fn aspect_impl_method_signature_matches(
                 .map(|(actual_name, _, var)| ((*actual_name).to_string(), *var)),
         )
         .collect();
-    let actual_env = SignatureEnv {
-        generic_vars: actual_generic_vars,
+    // Resolving `aspect_type_args`/`assoc_type_defs`' own type exprs (the values on
+    // the right of `type Item = i64;`) never itself needs an alias-type lookup, so
+    // this pass can run with an empty map.
+    let alias_resolve_env = SignatureEnv {
+        generic_vars: actual_generic_vars.clone(),
         alias_types: HashMap::new(),
         self_ty: self_ty.clone(),
     };
     let mut alias_types: HashMap<String, InferType> = aspect_generics
         .iter()
         .zip(&ib.aspect_type_args)
-        .map(|(name, arg)| (name.clone(), signature_type_expr_to_infer(arg, &actual_env)))
+        .map(|(name, arg)| {
+            (
+                name.clone(),
+                signature_type_expr_to_infer(arg, &alias_resolve_env),
+            )
+        })
         .collect();
     for assoc_type in &ib.assoc_type_defs {
         alias_types.insert(
             assoc_type.name.clone(),
-            signature_type_expr_to_infer(&assoc_type.ty, &actual_env),
+            signature_type_expr_to_infer(&assoc_type.ty, &alias_resolve_env),
         );
     }
+    // #740 part A: the *actual* (impl) method's own signature can spell its
+    // associated type as `Self::Item` just as legitimately as the aspect's declared
+    // signature can spell it as bare `Item` (§1.2 sugar) -- both need the same
+    // `alias_types` to resolve, or `fun get(&self) -> Self::Item { ... }` gets
+    // compared against `fun get(&self) -> Item;` using two different resolutions of
+    // the same associated type and fails this check as a false mismatch.
+    let actual_env = SignatureEnv {
+        alias_types: alias_types.clone(),
+        ..alias_resolve_env
+    };
     let declared_generic_vars: HashMap<String, TypeVar> = declared
         .generics
         .iter()
@@ -1569,6 +1587,22 @@ fn infer_fun_decl(
         Ok(type_expr_to_infer_with_ctx(te, &generic_map, ctx))
     };
 
+    // #740 part B: swap the assoc-projection log in *before* resolving the
+    // signature (params and return type), not just before the body. A
+    // `T::AssocType` return-type annotation (e.g. `unwrap<T: Container>(c: &T)
+    // -> T::Item`) mints its projection placeholder here, via `te_to_infer`'s
+    // abstract-case branch above -- before this swap used to run, that
+    // recording landed in whatever log preceded this function (or was lost
+    // entirely at the top level) instead of this function's own isolated log,
+    // so `build_assoc_projection_map` below never saw it and the scheme's
+    // `assoc_projections` came back empty. The instantiation-time backfill in
+    // `instantiate_scheme_for_call` (construction.rs) was always correct; it
+    // just never had anything to backfill, since the projection was never
+    // attached to the scheme in the first place -- which is exactly why this
+    // failed with "cannot infer type" even for `let r = unwrap(&b);` calls
+    // whose argument fully determines every type involved.
+    let (saved_assoc_memo, saved_assoc_log) = ctx.swap_assoc_projections();
+
     let param_types: Vec<InferType> = fun
         .params
         .iter()
@@ -1617,7 +1651,6 @@ fn infer_fun_decl(
         generic_map.iter().map(|(n, &tv)| (tv, n.clone())).collect();
     let saved_type_params = ctx.swap_type_params(generic_map);
     let saved_tp_bounds = ctx.swap_type_param_bounds(type_var_bounds.clone());
-    let (saved_assoc_memo, saved_assoc_log) = ctx.swap_assoc_projections();
     let saved_row_field_vars = ctx.swap_row_field_vars();
     let saved_ret = ctx.push_return_type(ret_ty.clone());
     let body_ty = infer_block(&fun.body, ctx, fun_generalizations)?;
@@ -2004,15 +2037,53 @@ fn infer_impl_method(
                     }
                     return Ok(InferType::Named(format!("{n}::{assoc_name}"), vec![]));
                 }
+                // #740 part A: `Self::AssocType` inside this impl block's own method
+                // signature/body -- resolve it directly against this impl's own
+                // `type AssocType = ...;` definition, the same source
+                // `aspect_impl_method_signature_matches`'s conformance check already
+                // uses for the aspect-declared side. Without this, `Self::Item`
+                // fell through to the generic `Named` fallback below with no
+                // `AssocResolveCtx`/`current_aspect` threaded through it, producing
+                // an unresolved `Box1::Item` placeholder that could never unify with
+                // the real concrete type.
+                if n == "Self" {
+                    if let Some(assoc_def) =
+                        ib.assoc_type_defs.iter().find(|d| d.name == *assoc_name)
+                    {
+                        return Ok(if let Some(self_replacement) = &structural_self_type_expr {
+                            let lowered =
+                                substitute_structural_self(&assoc_def.ty, self_replacement);
+                            type_expr_to_infer_with_generics(&lowered, &generic_map)
+                        } else if generic_map.is_empty() {
+                            type_expr_to_infer_with_self(&assoc_def.ty, target_name)
+                        } else {
+                            type_expr_to_infer_with_generics_and_self(
+                                &assoc_def.ty,
+                                &generic_map,
+                                target_name,
+                            )
+                        });
+                    }
+                }
             }
         }
         Ok(if let Some(self_replacement) = &structural_self_type_expr {
             let lowered = substitute_structural_self(te, self_replacement);
             type_expr_to_infer_with_generics(&lowered, &generic_map)
-        } else if generic_map.is_empty() {
-            type_expr_to_infer_with_self(te, target_name)
         } else {
-            type_expr_to_infer_with_generics_and_self(te, &generic_map, target_name)
+            // #774: `type_expr_to_infer_with_self`/`_with_generics_and_self` resolve
+            // `Self` correctly but carry no `AssocResolveCtx` (so no registry access),
+            // which `Self.{ field }` needs to look up the target struct's actual
+            // fields -- unlike `Self::AssocType`, handled entirely above via the
+            // abstract-case branch and `fresh_assoc_projection_var`, a record
+            // projection's resolution genuinely lives in `conversions.rs` and needs
+            // both pieces of context at once.
+            let assoc_ctx = AssocResolveCtx {
+                registry: ctx.registry(),
+                current_module: ctx.current_module_path(),
+                current_aspect: ib.aspect_name.as_deref(),
+            };
+            type_expr_to_infer_with_assoc_ctx(te, &generic_map, Some(target_name), &assoc_ctx)
         })
     };
 
@@ -2039,6 +2110,19 @@ fn infer_impl_method(
                 .collect(),
         )
     };
+    // #740 part B: swap the assoc-projection log in *before* resolving the
+    // signature (params and return type), the same fix and for the same reason
+    // as `infer_fun_decl`'s own swap above -- a `T::AssocType` return-type
+    // annotation records its projection placeholder while `param_types`/`ret_ty`
+    // are computed below, and that needs to land in this method's own isolated
+    // log rather than whatever preceded it (or nothing, at the top level), or
+    // `build_assoc_projection_map` never sees it and the scheme's
+    // `assoc_projections` comes back empty regardless of what the body itself
+    // does. Applies uniformly to native methods too (taken/restored below,
+    // after the `if`) since a native method's signature is exactly as capable
+    // of naming a projection as a non-native one's, even with no body to swap
+    // around on its own.
+    let (saved_assoc_memo, saved_assoc_log) = ctx.swap_assoc_projections();
     let param_types: Vec<InferType> = method
         .params
         .iter()
@@ -2060,7 +2144,6 @@ fn infer_impl_method(
     // Native methods have no Metel body; their signature comes entirely from
     // annotations (METEL-181). Skip body inference but still register the
     // method scheme below so call sites resolve.
-    let mut body_assoc_log = Vec::new();
     if method.native.is_none() {
         ctx.push_scope();
         for (p, pt) in method.params.iter().zip(param_types.iter()) {
@@ -2070,7 +2153,6 @@ fn infer_impl_method(
         }
         let saved_type_params = ctx.swap_type_params(generic_map);
         let saved_tp_bounds = ctx.swap_type_param_bounds(struct_bounds);
-        let (saved_assoc_memo, saved_assoc_log) = ctx.swap_assoc_projections();
         let saved_row_field_vars = ctx.swap_row_field_vars();
         let saved_ret = ctx.push_return_type(ret_ty.clone());
         let body_ty = infer_block(&method.body, ctx, fun_generalizations)?;
@@ -2079,11 +2161,10 @@ fn infer_impl_method(
         ctx.restore_row_field_vars(saved_row_field_vars);
         ctx.swap_type_param_bounds(saved_tp_bounds);
         ctx.swap_type_params(saved_type_params);
-        let body_assoc_log_inner = ctx.take_recorded_assoc_projections();
-        ctx.restore_assoc_projections(saved_assoc_memo, saved_assoc_log);
         ctx.pop_scope();
-        body_assoc_log = body_assoc_log_inner;
     }
+    let body_assoc_log = ctx.take_recorded_assoc_projections();
+    ctx.restore_assoc_projections(saved_assoc_memo, saved_assoc_log);
 
     let solved = ctx.solve()?;
     let partial_subst = ctx.default_literal_vars(&solved);
@@ -5201,7 +5282,7 @@ pub(super) fn lower_impl_aspects_in_program(program: Program) -> Program {
 /// declared generics, context the parser doesn't have.
 fn lower_projections_in_decl(decl: Decl) -> Decl {
     match decl {
-        Decl::Fun(fun) => Decl::Fun(lower_projections_in_fun(&fun, &[])),
+        Decl::Fun(fun) => Decl::Fun(lower_projections_in_fun(&fun, &[], false)),
         Decl::Let(let_decl) => Decl::Let(crate::ast::LetDecl {
             type_ann: let_decl.type_ann.as_ref().map(|t| {
                 lower_projections_in_type(t, &std::collections::HashSet::new(), &let_decl.span)
@@ -5220,7 +5301,7 @@ fn lower_projections_in_decl(decl: Decl) -> Decl {
             methods: ib
                 .methods
                 .iter()
-                .map(|m| lower_projections_in_fun(m, &ib.generics))
+                .map(|m| lower_projections_in_fun(m, &ib.generics, true))
                 .collect(),
             ..ib
         }),
@@ -5277,7 +5358,7 @@ fn lower_projections_in_decl_with_generics(
             methods: ib
                 .methods
                 .iter()
-                .map(|m| lower_projections_in_fun(m, &ib.generics))
+                .map(|m| lower_projections_in_fun(m, &ib.generics, true))
                 .collect(),
             ..ib.clone()
         }),
@@ -5623,13 +5704,30 @@ fn lower_projections_in_type(
 /// Generic-parameter names in scope for lowering projections in `fun`'s signature:
 /// its own generics plus (for impl methods) the impl block's, since a method can
 /// reference either (`T` from `impl<T> Aspect for Type<T>`, or its own `<U>`).
-fn lower_projections_in_fun(fun: &FunDecl, extra_generics: &[GenericParam]) -> FunDecl {
-    let names: std::collections::HashSet<String> = fun
+///
+/// `self_in_scope` adds `Self` to that set for impl-block methods (#740 part A):
+/// `Self::AssocType` is exactly as much a projection as `T::AssocType` is, but
+/// `Self` is never a declared `GenericParam` on the function or the impl block, so
+/// it needs its own entry rather than falling out of `fun.generics`/`extra_generics`
+/// the way `T` does. This also fixes a real correctness bug beyond just the missing
+/// name: an impl-block method with *no* ordinary generics at all (e.g. `extend Box1:
+/// Container { fun get(&self) -> Self::Item { ... } }`) used to hit the `names.is_empty()`
+/// early return below and skip lowering entirely, so `Self::Item` never became a
+/// `TypeExpr::Projection` in the first place -- not even the recognition step ran.
+fn lower_projections_in_fun(
+    fun: &FunDecl,
+    extra_generics: &[GenericParam],
+    self_in_scope: bool,
+) -> FunDecl {
+    let mut names: std::collections::HashSet<String> = fun
         .generics
         .iter()
         .chain(extra_generics)
         .map(|g| g.name.clone())
         .collect();
+    if self_in_scope {
+        names.insert("Self".to_string());
+    }
     if names.is_empty() {
         return fun.clone();
     }

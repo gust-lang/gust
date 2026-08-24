@@ -37,16 +37,29 @@ fn unresolved_record_projection_type(path: &[String], fields: &[String]) -> Infe
 fn resolve_record_projection_type(
     path: &[String],
     fields: &[String],
+    self_ty_name: Option<&str>,
     assoc_ctx: Option<&AssocResolveCtx<'_>>,
 ) -> InferType {
+    // #774: `Self` resolves to the enclosing impl's own target type everywhere else
+    // a plain type name can appear (see the `TypeExpr::Named` arm below) -- a record
+    // projection's own path never got the same treatment, so `Self.{ fd }` looked up
+    // a struct literally named "Self" (never found) instead of the real target.
+    let lookup_name = if path.len() == 1 && path[0] == "Self" {
+        self_ty_name.map(str::to_string)
+    } else {
+        None
+    };
+    // Errors still show the source spelling (`Self.{ fd }`), not the resolved target
+    // name -- resolving `Self` is this function's job, not a rewrite of what the
+    // programmer wrote.
     let display_name = path.join("::");
     let Some(ctx) = assoc_ctx else {
         return unresolved_record_projection_type(path, fields);
     };
-    let Some((_struct_name, raw_fields)) = ctx
-        .registry
-        .projection_struct_fields(ctx.current_module, &display_name)
-    else {
+    let Some((_struct_name, raw_fields)) = ctx.registry.projection_struct_fields(
+        ctx.current_module,
+        lookup_name.as_deref().unwrap_or(&display_name),
+    ) else {
         return unresolved_record_projection_type(path, fields);
     };
 
@@ -271,7 +284,7 @@ fn type_expr_to_infer_in_context(
             InferType::Named(format!("{base_name_str}::{assoc_name}"), vec![])
         }
         TypeExpr::RecordProjection { path, fields, .. } => {
-            resolve_record_projection_type(path, fields, assoc_ctx)
+            resolve_record_projection_type(path, fields, self_ty_name, assoc_ctx)
         }
     }
 }

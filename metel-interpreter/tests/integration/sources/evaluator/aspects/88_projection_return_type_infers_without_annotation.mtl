@@ -1,0 +1,33 @@
+// #740 part B: `T::AssocType` in a generic function's return position must produce a
+// concrete inferred type at a call site whose argument fully determines T, exactly
+// as it does when a caller happens to check the result against an expected type
+// (compare 74_projection_call_site_resolution.mtl, whose only call site is
+// annotated). Before the fix, the projection's placeholder was recorded in a log
+// window that started *after* the return-type annotation had already been resolved,
+// so the scheme's own `assoc_projections` came back empty and this failed with
+// "cannot infer type" even though the argument alone determines everything.
+
+aspect Container {
+    type Item;
+    fun get(&self) -> Item;
+}
+
+struct Box1 { v: i64 }
+
+extend Box1: Container {
+    type Item = i64;
+    fun get(&self) -> i64 {
+        return self.v;
+    }
+}
+
+fun unwrap<T: Container>(c: &T) -> T::Item {
+    return c.get();
+}
+
+fun main() {
+    let b = Box1 { v = 7 };
+    let r = unwrap(&b);
+    assert(r == 7);
+    assert(unwrap(&b) == 7);
+}
