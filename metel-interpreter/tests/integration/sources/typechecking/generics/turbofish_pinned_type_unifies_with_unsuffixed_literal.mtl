@@ -1,0 +1,5 @@
+fun clamp<T>(x: T, lo: T, hi: T) -> T { x }
+
+fun main() -> i32 {
+    return clamp::<i32>(5, 0, 10);
+}
