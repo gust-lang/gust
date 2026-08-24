@@ -8,10 +8,15 @@
 // at the one place `Self` alone already had a target name to resolve against)
 // surfaced right behind it.
 //
-// Called with an anonymous record literal, not a `Handle` value: whether a
-// nominal struct coerces to its own record projection's type at a call site is
-// a separate, pre-existing question (unrelated to `Self`, reproduces identically
-// for the `Handle.{ fd }` spelling) -- not what this fixture is about.
+// Called with `h.{ fd }` -- RFC-0116's expression-position projection, which
+// evaluates the real `Handle` value and extracts a genuine `{ fd: i64 }` record
+// from it -- rather than a bare `Handle` value. A parameter typed `Self.{ fd }`/
+// `Handle.{ fd }` intentionally does not accept a bare struct value: no implicit
+// struct-to-record coercion exists anywhere (RFC-0118's already-shipped row-bound
+// rule is the same principle: "only a record satisfies a row bound; a nominal
+// struct is rejected even when it has matching fields"). `.{ fd }` is the
+// explicit, already-implemented way to produce the narrower value the parameter
+// asks for -- not a workaround, the intended pairing.
 
 struct Handle { fd: i64, name: String }
 
@@ -25,6 +30,7 @@ extend Handle {
 }
 
 fun main() {
-    assert(Handle::describe_self({ fd = 3 }) == 3);
-    assert(Handle::describe_named({ fd = 3 }) == 3);
+    let h = Handle { fd = 3, name = "stdin" };
+    assert(Handle::describe_self(h.{ fd }) == 3);
+    assert(Handle::describe_named(h.{ fd }) == 3);
 }

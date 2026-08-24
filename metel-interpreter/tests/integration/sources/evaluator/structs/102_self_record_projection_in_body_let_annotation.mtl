@@ -1,13 +1,15 @@
 // #774 architectural revision: a body-internal `let x: Self.{ field } = ...;`
 // annotation resolves the same way `Self.{ field }` already does in param/return
 // position, now that `Self` is bound as an ordinary type parameter for the whole
-// method rather than only its own signature.
+// method rather than only its own signature. The value side uses `self.{ fd }`
+// (RFC-0116's expression-position projection on the receiver itself), the
+// idiomatic way to produce it -- not an anonymous record literal built by hand.
 
 struct Handle { fd: i64, name: String }
 
 extend Handle {
     fun narrow_let(self) -> i64 {
-        let x: Self.{ fd } = { fd = self.fd };
+        let x: Self.{ fd } = self.{ fd };
         return x.fd;
     }
 }
