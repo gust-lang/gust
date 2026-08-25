@@ -55,7 +55,7 @@ flowchart TD
     subgraph MC["metel-core"]
         direction TB
         MC_branch["issue branch"]
-        MC_ci["ci.yml\n(test/clippy/fmt, rfc-check,\ndoc-examples, inventory)"]
+        MC_ci["ci.yml\n(test/clippy/fmt, rfc-check,\ndoc-examples, inventory,\npublish-develop-binary)"]
         MC_develop["develop"]
         MC_tag["tag vX.Y.Z on main"]
         MC_rel["release.yml\nvalidate-release -> release-chain\n+ github-release"]
@@ -87,8 +87,8 @@ flowchart TD
 
     PROD(["metel-lang.org"])
 
-    MC_ci -. "fetches check_doc_examples.py\nfrom metel-core@develop" .-> MD_ci1
-    MC_ci -. "fetches check_doc_examples.py\nfrom metel-core@develop" .-> MW_ci
+    MC_ci -. "fetches check_doc_examples.py\n+ downloads develop-latest binary\nfrom metel-core@develop" .-> MD_ci1
+    MC_ci -. "fetches check_doc_examples.py\n+ downloads develop-latest binary\nfrom metel-core@develop" .-> MW_ci
 
     MC_rel -->|"bump docs pointer to MC's pinned\nmetel-docs commit, docusaurus\ndocs:version (WEBSITE_TOKEN)"| MW_main
     MW_deploy -->|"staging URL in job summary"| MW_promote
@@ -108,6 +108,7 @@ all.
 | `.github/workflows/ci.yml` — `ci` job | push/PR to `develop`/`main` | this repo | — | — |
 | `.github/workflows/ci.yml` — `rfc-check` job | push/PR to `develop`/`main` | `docs` submodule (metel-docs, public), incl. `rfcs/COVERAGE-BASELINE.json`, this repo's `metel-interpreter/tests` | — | — |
 | `.github/workflows/ci.yml` — `doc-examples` job | push/PR to `develop`/`main` | `README.md`, `docs` submodule | — | — |
+| `.github/workflows/ci.yml` — `publish-develop-binary` job | push to `develop` only (not PRs) | this repo, at the pushed commit | this repo's GitHub Releases — rolling pre-release `develop-latest`, deleted and recreated each run (metel-core#696) | built-in `GITHUB_TOKEN` (`contents: write`, this repo only) |
 | `.github/workflows/ci.yml` — `inventory` job | push/PR to `develop`/`main` | this repo's own workflows/tools/commands | — | — |
 | `.github/workflows/release.yml` — `validate-release` | tag `vX.Y.Z` pushed | `docs` submodule | — | — |
 | `.github/workflows/release.yml` — `release-chain` | after `validate-release` | `docs` submodule (reads this repo's own pinned commit, does not write to `metel-docs` — ADR-0051 removed the sync) | `metel-website` main + tag | `WEBSITE_TOKEN` |
@@ -154,7 +155,7 @@ workflows below, moved here from `metel-docs-internal` in the same change.
 
 | Path | Trigger | Reads | Writes | Secret(s) |
 |---|---|---|---|---|
-| `.github/workflows/check-examples.yml` | push/PR to `main` | `getting-started`, `blog`, `reference`; the latest metel-core **release binary**; `tools/check_doc_examples.py` fetched live from metel-core `develop` | — | built-in `GITHUB_TOKEN` (public reads only) |
+| `.github/workflows/check-examples.yml` | push/PR to `main` | `getting-started`, `blog`, `reference`; metel-core's rolling **`develop-latest` pre-release binary** (metel-core#696 — not the latest stable release; see that repo's `publish-develop-binary` job); `tools/check_doc_examples.py` fetched live from metel-core `develop` | — | built-in `GITHUB_TOKEN` (public reads only) |
 | `.github/workflows/check-mdx.yml` | push/PR to `main` | `getting-started`, `reference`, `release-notes`, `blog`, via `tools/mdx-check-site` | — | — |
 | `.github/workflows/rfc-check.yml` | push/PR to `main` | this repo (`rfcs/` structural checks; the ADR-0049 coverage ratchet degrades to an informational skip here — `metel-interpreter/tests` isn't reachable from a bare checkout, see ADR-0049 §6; real enforcement is metel-core's `rfc-check` job, above) | — | — |
 | `rfcs/tools/rfc.py` | manual (`new`/`transition`/`supersede`/`check`/`index`) | `rfcs/`; `check`'s coverage ratchet also reads `metel-interpreter/tests` when reachable (see the metel-core `rfc-check` job, above) | `rfcs/` (moves files between lifecycle directories, edits frontmatter), `rfcs/INDEX.md`, `rfcs/REGISTRY.md` (`index --rebuild-registry`), `rfcs/COVERAGE-BASELINE.json` (`index --write-coverage-baseline`) | — |
@@ -204,7 +205,7 @@ of "Introducing Metel" is worse than editing an archived post when syntax moves.
 
 | Path | Trigger | Reads | Writes | Secret(s) |
 |---|---|---|---|---|
-| `.github/workflows/check-showcases.yml` | push/PR to `main` | `src/showcases/*.mtl`; the latest metel-core release binary; `tools/check_doc_examples.py` fetched live from metel-core `develop` | — | built-in `GITHUB_TOKEN` |
+| `.github/workflows/check-showcases.yml` | push/PR to `main` | `src/showcases/*.mtl`; metel-core's rolling `develop-latest` pre-release binary (metel-core#696); `tools/check_doc_examples.py` fetched live from metel-core `develop` | — | built-in `GITHUB_TOKEN` |
 | `.github/workflows/deploy.yml` | tag `vX.Y.Z` pushed (normally by `release.yml`, but a tag pushed here directly triggers the identical pipeline) | this repo, including the `docs` submodule | Vercel **staging** deployment | `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` |
 | `.github/workflows/promote.yml` | manual (`workflow_dispatch`, given a staging `deployment_url` + `tag`) | the named staging deployment | Vercel **production** alias (`metel-lang.org`) | `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` |
 
@@ -225,8 +226,11 @@ from metel-core's repository settings, not just left unused.
 
 No single credential spans more than one repository. `check-examples.yml` and
 `check-showcases.yml` need no secret of their own for the cross-repo reads they do —
-both `tools/check_doc_examples.py`'s source and metel-core's release binaries are
-public, so the workflow's own built-in `GITHUB_TOKEN` covers both.
+both `tools/check_doc_examples.py`'s source and metel-core's `develop-latest`
+pre-release binary are public reads, so the workflow's own built-in `GITHUB_TOKEN`
+covers both. Publishing that pre-release, on metel-core's side, is a same-repo write
+(`publish-develop-binary`'s own `contents: write`) — no cross-repo credential needed
+there either.
 
 ## What triggers what — worked examples
 
@@ -236,6 +240,13 @@ metel-core's own `doc-examples` job immediately (same repo). It's invisible to
 `check-showcases.yml` until it's merged to metel-core's `develop` branch specifically
 — both fetch from `develop`, not `main`, precisely so a script fix doesn't wait a full
 release cycle to reach them (see the comment in either workflow).
+
+**A language-visible change merges to metel-core's `develop`, documented the same
+day per `AGENTS.md`'s Branch Workflow.** `publish-develop-binary` rebuilds and
+republishes `develop-latest` on that same push. The next PR against `metel-docs` or
+`metel-website` that touches the newly-documented example downloads that binary, not
+last release's — so the example is checked for real immediately, with no `skip`/
+`expect-fail` marker needed just because the feature hasn't shipped yet (metel-core#696).
 
 **A version tag `vX.Y.Z` is pushed to metel-core's `main`.** `release.yml` runs:
 `validate-release` checks the changelog isn't still "in progress"; `release-chain`
