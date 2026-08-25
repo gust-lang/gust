@@ -129,6 +129,79 @@ jobs:
             docs/blog \
             docs/reference
 
+  # metel-core#696: metel-docs' and metel-website's own doc-example checkers
+  # validated against the latest *stable release* binary, while AGENTS.md's
+  # Branch Workflow requires documenting a language-visible change the
+  # moment it lands on `develop` -- so a feature documented the day it
+  # merges could not be checked for real until the *next release*, and the
+  # only available escape hatch (`skip`/`expect-fail`) is permanent, with
+  # nothing prompting removal once the release catches up. Considered
+  # building `develop` from source in both downstream repos' own CI instead
+  # (rejected: doubles their PR latency by the ~2 minutes this job's own
+  # `cargo build --release -p metel` step already costs, on every PR, in
+  # two more repos) and a `since="X.Y.Z"` doc-example marker compared
+  # against the binary's own `--version` (rejected for now: real design
+  # surface of its own -- a new marker kind, version-comparison logic --
+  # and worth revisiting only if this approach turns out not to be enough
+  # in practice).
+  #
+  # This job pays the one build metel-core's own `doc-examples` job already
+  # pays for anyway, once per push to `develop` (not per PR -- pushes to
+  # `develop` are far rarer than PRs), and republishes it as a rolling
+  # pre-release (tag `develop-latest`, overwritten every push) that
+  # metel-docs/metel-website download exactly the way they already download
+  # the latest *stable* release today -- their own CI cost doesn't change
+  # at all. This also fully closes the gap #696 identifies rather than
+  # working around it: every doc example is checked against what `develop`
+  # can actually run right now, permanently, with no exemption vocabulary
+  # ever needed for a develop-only feature.
+  publish-develop-binary:
+    name: publish rolling develop binary
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: build metel
+        run: cargo build --release -p metel
+
+      - name: package the binary
+        run: |
+          cp target/release/metel metel-linux-x86_64
+          sha256sum metel-linux-x86_64 > metel-linux-x86_64.sha256
+
+      # `develop-latest` is a rolling tag, not a real release: deleted and
+      # recreated on every push rather than updated in place, so the tag
+      # always points at the exact commit (`--target`) that produced the
+      # binary attached to it -- an in-place asset overwrite would leave
+      # the tag pointing at whatever commit first created it. Known,
+      # accepted cost: for the few seconds between delete and recreate, a
+      # consumer job that happens to run in that exact window sees no
+      # `develop-latest` release at all and fails; pushes straight to
+      # `develop` are rare enough, and a failed consumer job cheap enough
+      # to retry, that building the extra machinery to close that window
+      # (keep the release and only swap assets, force-move the tag
+      # separately) isn't worth it unless this turns out to bite in
+      # practice.
+      - name: publish rolling develop-latest pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          gh release delete develop-latest --repo "${{ github.repository }}" --yes --cleanup-tag 2>/dev/null || true
+          gh release create develop-latest \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --prerelease \
+            --title "develop (rolling build)" \
+            --notes "Automated rolling build of \`develop\`@${{ github.sha }}. Not a stable release -- overwritten on every push to \`develop\` and may change or disappear without notice. Published so metel-docs' and metel-website's doc-example checkers can validate against current \`develop\` behavior without either repo paying a full build on every PR (metel-core#696)." \
+            metel-linux-x86_64 metel-linux-x86_64.sha256
+
   inventory:
     name: inventory doc up to date
     runs-on: ubuntu-latest
