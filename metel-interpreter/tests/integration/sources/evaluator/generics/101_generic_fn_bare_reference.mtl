@@ -1,4 +1,4 @@
-// Regression (metel-core#736, RFC-0138): a bare reference to an already-declared
+// Regression (metel-core#736, RFC-0138§1): a bare reference to an already-declared
 // generic function -- `let alias = identity;`, with no call syntax at the
 // reference site -- used to fail typechecking entirely ("generic function
 // `identity` cannot be referenced except by direct call"), even though a
