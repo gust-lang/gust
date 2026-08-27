@@ -1,0 +1,13 @@
+// Regression (metel-core#857, RFC-0137 slice 1): a genuine (non-full-width) branded
+// residual never satisfies a row bound either -- eligibility for structural
+// matching is scoped to the brand alone (RFC-0137 sec3), and a struct's brand is
+// never visible to matching regardless of how narrow its current row is.
+
+struct Handle { fd: i64, name: String, extra: i64 }
+
+fun wants_a_record<record T: { fd: i64, .. }>(t: T) -> i64 { t.fd }
+
+fun main() {
+    let h = Handle { fd = 3, name = "x", extra = 9 };
+    let _ = wants_a_record(h.{ fd });
+}

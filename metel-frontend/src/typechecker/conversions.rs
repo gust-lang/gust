@@ -56,7 +56,7 @@ fn resolve_record_projection_type(
     let Some(ctx) = assoc_ctx else {
         return unresolved_record_projection_type(path, fields);
     };
-    let Some((_struct_name, raw_fields)) = ctx.registry.projection_struct_fields(
+    let Some((struct_name, raw_fields)) = ctx.registry.projection_struct_fields(
         ctx.current_module,
         lookup_name.as_deref().unwrap_or(&display_name),
     ) else {
@@ -72,7 +72,23 @@ fn resolve_record_projection_type(
         };
         projected.push((field_name.clone(), entry.ty.clone()));
     }
-    InferType::Record(projected)
+    // RFC-0137 (metel-core#857): a projection off a real struct is branded, not a bare
+    // Record -- that's the entire point (Self.{ fd } must reject an unrelated anonymous
+    // record literal of the same shape). A projection naming every field the struct
+    // declares normalizes back to the plain Named type instead of constructing a
+    // Residual (§3's own worked example: full-width projection is still just the
+    // struct, not a distinct form) -- `Type::Residual`'s own invariant requires this.
+    if projected.len() == raw_fields.len() {
+        return InferType::Named(struct_name.to_string(), vec![]);
+    }
+    // `Residual::fields` is always lexicographically sorted by label (mirrors
+    // `Record`'s own invariant) so derived `PartialEq`/structural unification compare
+    // correctly regardless of the source projection's written field order.
+    projected.sort_by(|(a, _), (b, _)| a.cmp(b));
+    InferType::Residual {
+        brand: struct_name.to_string(),
+        fields: projected,
+    }
 }
 
 // Exhaustive match over every TypeExpr variant; splitting it up would scatter
@@ -366,6 +382,13 @@ pub(super) fn infer_type_to_type(ty: &InferType, span: &Span) -> Result<Type, Me
             let args = a?;
             Ok(Type::Named(name.clone(), args))
         }
+        InferType::Residual { brand, fields } => Ok(Type::Residual {
+            brand: brand.clone(),
+            fields: fields
+                .iter()
+                .map(|(name, ty)| Ok((name.clone(), infer_type_to_type(ty, span)?)))
+                .collect::<Result<Vec<_>, MetelError>>()?,
+        }),
     }
 }
 

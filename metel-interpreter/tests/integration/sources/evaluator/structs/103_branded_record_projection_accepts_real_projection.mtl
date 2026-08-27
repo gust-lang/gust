@@ -1,0 +1,17 @@
+// Regression (metel-core#857, RFC-0137 slice 1): a struct's own field projection is
+// now branded -- Self.{ fd } accepts a value actually projected from a real Handle
+// (h.{ fd }), the case this fixture confirms still works. The companion negative
+// case (a bare anonymous record of the same shape must now be REJECTED, which is
+// the actual bug this closes) lives in typechecking/structs, since it's a T0001
+// rejection, not something evaluable.
+
+struct Handle { fd: i64, name: String }
+
+extend Handle {
+    fun describe(h: Self.{ fd }) -> i64 { h.fd }
+}
+
+fun main() {
+    let handle = Handle { fd = 3, name = "x" };
+    assert(Handle::describe(handle.{ fd }) == 3);
+}

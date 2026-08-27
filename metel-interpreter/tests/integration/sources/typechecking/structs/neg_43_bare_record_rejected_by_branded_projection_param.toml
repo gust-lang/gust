@@ -1,0 +1,6 @@
+[expect]
+status = "typecheck_error"
+code = "T0001"
+
+[options]
+spec = ["spec.ownership.narrowing.legality-2", "spec.ownership.passing-a-residual-to-a-function.legality-1"]
