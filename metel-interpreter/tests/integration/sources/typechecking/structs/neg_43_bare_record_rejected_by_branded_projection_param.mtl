@@ -1,0 +1,16 @@
+// Regression (metel-core#857, RFC-0137 slice 1): this is the actual motivating bug
+// -- Self.{ fd } used to accept a bare anonymous record literal of the same shape
+// exactly as readily as a value actually derived from a real Handle, since the
+// projection resolved to an unbranded record type. Now rejected: a struct's own
+// projection is branded, and a same-shaped anonymous record never carries that
+// brand.
+
+struct Handle { fd: i64, name: String }
+
+extend Handle {
+    fun describe(h: Self.{ fd }) -> i64 { h.fd }
+}
+
+fun main() {
+    let _ = Handle::describe({ fd = 3 });
+}

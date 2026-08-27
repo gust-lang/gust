@@ -108,6 +108,15 @@ pub enum InferType {
     MutReference(Box<InferType>),
     /// A named type (struct, enum) with type arguments.
     Named(String, Vec<InferType>),
+    /// A narrowed residual of a struct's own row (RFC-0137, metel-core#857/#836) --
+    /// mirrors `Type::Residual`; see that variant's doc comment for the invariants
+    /// (`fields` lexicographically sorted, always a strict non-empty subset of the
+    /// brand's declared row, distinct from `Record` specifically so it never unifies
+    /// with a same-shaped anonymous record).
+    Residual {
+        brand: String,
+        fields: Vec<(String, InferType)>,
+    },
 }
 
 impl InferType {
@@ -196,6 +205,16 @@ impl std::fmt::Display for InferType {
                 }
                 Ok(())
             }
+            InferType::Residual { brand, fields } => {
+                write!(f, "{brand}.{{ ")?;
+                for (i, (name, ty)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{name}: {ty}")?;
+                }
+                write!(f, " }}")
+            }
         }
     }
 }
@@ -266,7 +285,7 @@ fn collect_free_vars_in_order(
                 collect_free_vars_in_order(t, known, local, next);
             }
         }
-        InferType::Record(fields) => {
+        InferType::Record(fields) | InferType::Residual { fields, .. } => {
             for (_, t) in fields {
                 collect_free_vars_in_order(t, known, local, next);
             }
@@ -397,6 +416,13 @@ impl Substitution {
             InferType::Named(name, args) => {
                 InferType::Named(name.clone(), args.iter().map(|a| self.apply(a)).collect())
             }
+            InferType::Residual { brand, fields } => InferType::Residual {
+                brand: brand.clone(),
+                fields: fields
+                    .iter()
+                    .map(|(name, ty)| (name.clone(), self.apply(ty)))
+                    .collect(),
+            },
         }
     }
 
@@ -454,6 +480,7 @@ fn occurs_in(var: TypeVar, ty: &InferType) -> bool {
         | InferType::Reference(t)
         | InferType::MutReference(t) => occurs_in(var, t),
         InferType::Named(_, args) => args.iter().any(|a| occurs_in(var, a)),
+        InferType::Residual { fields, .. } => fields.iter().any(|(_, ty)| occurs_in(var, ty)),
     }
 }
 
@@ -551,6 +578,34 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             let mut subst = Substitution::new();
             for (a1, a2) in args1.iter().zip(args2.iter()) {
                 let s = unify(&subst.apply(a1), &subst.apply(a2))?;
+                subst.compose_in_place(&s);
+            }
+            Ok(subst)
+        }
+        // RFC-0137 (metel-core#857): a residual unifies only with another residual of
+        // the *same brand* and the *same field set* -- deliberately not with a bare
+        // Record of matching shape (that's the whole point of branding it), and not
+        // with the brand's own whole Named type either (a genuine Residual, by
+        // construction, is never full-width -- see `Type::Residual`'s own doc comment).
+        (
+            InferType::Residual {
+                brand: brand1,
+                fields: fields1,
+            },
+            InferType::Residual {
+                brand: brand2,
+                fields: fields2,
+            },
+        ) => {
+            if brand1 != brand2 || fields1.len() != fields2.len() {
+                return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
+            }
+            let mut subst = Substitution::new();
+            for ((name1, ty1), (name2, ty2)) in fields1.iter().zip(fields2.iter()) {
+                if name1 != name2 {
+                    return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
+                }
+                let s = unify(&subst.apply(ty1), &subst.apply(ty2))?;
                 subst.compose_in_place(&s);
             }
             Ok(subst)
@@ -930,7 +985,7 @@ fn collect_free_vars(ty: &InferType, vars: &mut HashSet<TypeVar>) {
                 collect_free_vars(t, vars);
             }
         }
-        InferType::Record(fields) => {
+        InferType::Record(fields) | InferType::Residual { fields, .. } => {
             for (_, ty) in fields {
                 collect_free_vars(ty, vars);
             }
@@ -2380,7 +2435,11 @@ impl TypeDefinitionRegistry {
             }
         }
         match ty {
-            InferType::Record(fields) => {
+            // RFC-0137 (metel-core#857): a residual auto-derives Send/Sync from its own
+            // current fields' composition exactly like Record does -- narrowing/branding
+            // only affects eligibility for row-bound/structural matching (see `unify`),
+            // not this unrelated field-composition mechanism.
+            InferType::Record(fields) | InferType::Residual { fields, .. } => {
                 if aspect_name == "Send" || aspect_name == "Sync" {
                     return fields.iter().all(|(_, field_ty)| {
                         self.infer_type_satisfies_aspect(

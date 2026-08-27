@@ -2160,7 +2160,9 @@ fn construct_expr(
         } => {
             let typed_obj = construct_expr(object, None, ctx)?;
             let peeled = peel_type_references(typed_obj.ty());
-            if let Type::Record(fields) = peeled {
+            // RFC-0137 (metel-core#857): a Residual resolves field access exactly like
+            // Record does -- directly from its own field list.
+            if let Type::Record(fields) | Type::Residual { fields, .. } = peeled {
                 let field_ty = fields
                     .iter()
                     .find(|(name, _)| name == field)
@@ -2607,6 +2609,12 @@ fn construct_expr(
             };
             let mut projected_fields = Vec::with_capacity(fields.len());
             let mut record_ty = Vec::with_capacity(fields.len());
+            // RFC-0137 (metel-core#857): the struct's own total declared field count,
+            // captured once, decides whether this projection is full-width -- a
+            // full-width projection normalizes to the plain struct type instead of a
+            // branded Residual (§3's own worked example: naming every field is still
+            // just the struct, not a distinct form).
+            let mut total_field_count: Option<usize> = None;
             for field in fields {
                 let field_ty = if let Some(type_params) =
                     ctx.registry.raw_struct_type_params().get(&struct_name)
@@ -2620,6 +2628,7 @@ fn construct_expr(
                                     "missing raw fields for `{struct_name}`"
                                 ))
                             })?;
+                    total_field_count.get_or_insert(raw_fields.len());
                     let raw_ty = raw_fields
                         .iter()
                         .find(|entry| entry.name == *field)
@@ -2637,7 +2646,9 @@ fn construct_expr(
                     }
                     infer_type_to_type(&remap.apply(&raw_ty), span)?
                 } else {
-                    ctx.get_struct_fields(&struct_name)
+                    let entries = ctx.get_struct_fields(&struct_name);
+                    total_field_count.get_or_insert(entries.map_or(0, Vec::len));
+                    entries
                         .and_then(|entries| entries.iter().find(|(name, _, _)| name == field))
                         .map(|(_, ty, _)| ty.clone())
                         .ok_or_else(|| {
@@ -2659,9 +2670,20 @@ fn construct_expr(
                     },
                 ));
             }
+            let ty = if total_field_count == Some(record_ty.len()) {
+                Type::Named(struct_name.clone(), type_args.clone())
+            } else {
+                // `Residual::fields` is always lexicographically sorted (mirrors
+                // `Record`'s own invariant), regardless of the projection's written order.
+                record_ty.sort_by(|(a, _), (b, _)| a.cmp(b));
+                Type::Residual {
+                    brand: struct_name.clone(),
+                    fields: record_ty,
+                }
+            };
             Ok(TypedExpr::RecordLiteral {
                 fields: projected_fields,
-                ty: Type::Record(record_ty),
+                ty,
                 span: span.clone(),
             })
         }
@@ -5383,6 +5405,11 @@ fn type_to_type_expr(ty: &Type) -> TypeExpr {
         Type::Named(name, args) => {
             TypeExpr::Named(name.clone(), args.iter().map(type_to_type_expr).collect())
         }
+        Type::Residual { brand, fields } => TypeExpr::RecordProjection {
+            path: vec![brand.clone()],
+            fields: fields.iter().map(|(name, _)| name.clone()).collect(),
+            span: Span::new(0, 0, ""),
+        },
     }
 }
 

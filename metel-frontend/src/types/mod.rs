@@ -31,6 +31,24 @@ pub enum Type {
     Fun(Vec<Type>, Box<Type>),
     /// A named type (struct, enum) with concrete type arguments after monomorphisation.
     Named(String, Vec<Type>),
+    /// A narrowed residual of a struct's own row (RFC-0137, metel-core#857/#836) --
+    /// `Handle.{ fd }`, produced by a struct's own field projection (`h.{ fd }`) when
+    /// the projected fields are a genuine proper subset of the struct's declared row.
+    /// Distinct from `Record`: a `Residual` carries the originating struct's brand and
+    /// unifies only with another `Residual`/`Named` of the *same* brand, never with a
+    /// same-shaped anonymous record -- that brand check is the entire point (RFC-0137
+    /// §3's "eligibility" gate). `fields` is always lexicographically sorted by label,
+    /// the same invariant `Record` maintains, so derived `PartialEq` compares
+    /// correctly regardless of the source projection's written order. A projection
+    /// naming *every* field the struct declares normalizes back to plain `Named`
+    /// instead of constructing this variant (RFC-0137 §3's own worked example: a
+    /// full-width projection is still just the struct, not a distinct form) -- so a
+    /// `Residual`'s `fields` is always a strict, non-empty subset of the brand's own
+    /// declared row.
+    Residual {
+        brand: String,
+        fields: Vec<(String, Type)>,
+    },
 }
 
 impl Type {
@@ -128,6 +146,16 @@ impl std::fmt::Display for Type {
                     write!(f, ">")?;
                 }
                 Ok(())
+            }
+            Type::Residual { brand, fields } => {
+                write!(f, "{brand}.{{ ")?;
+                for (i, (name, ty)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{name}: {ty}")?;
+                }
+                write!(f, " }}")
             }
         }
     }

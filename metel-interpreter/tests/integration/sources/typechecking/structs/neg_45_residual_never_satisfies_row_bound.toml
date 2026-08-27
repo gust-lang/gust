@@ -1,0 +1,7 @@
+[expect]
+status = "typecheck_error"
+code = "T0012"
+contains = "is not a record"
+
+[options]
+spec = ["spec.ownership.narrowing.legality-2"]

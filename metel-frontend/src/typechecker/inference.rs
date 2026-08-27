@@ -277,7 +277,11 @@ fn infer_type_to_concrete_if_closed(ty: &InferType) -> Option<Type> {
             .map(infer_type_to_concrete_if_closed)
             .collect::<Option<Vec<_>>>()
             .map(|args| Type::Named(name.clone(), args)),
-        InferType::Never | InferType::Var(_) | InferType::Fun(_, _) | InferType::Record(_) => None,
+        InferType::Never
+        | InferType::Var(_)
+        | InferType::Fun(_, _)
+        | InferType::Record(_)
+        | InferType::Residual { .. } => None,
     }
 }
 
@@ -362,6 +366,13 @@ fn substitute_impl_params(
             InferType::Named(name.clone(), args.iter().map(go).collect())
         }
         InferType::Fun(ps, ret) => InferType::Fun(ps.iter().map(go).collect(), Box::new(go(ret))),
+        InferType::Residual { brand, fields } => InferType::Residual {
+            brand: brand.clone(),
+            fields: fields
+                .iter()
+                .map(|(label, field_ty)| (label.clone(), go(field_ty)))
+                .collect(),
+        },
         InferType::Concrete(_) | InferType::Never => ty.clone(),
     }
 }
@@ -3174,7 +3185,10 @@ fn infer_expr(
             let obj_ty = infer_expr(object, ctx, fun_generalizations)?;
             let obj_ty = ctx.solve()?.apply(&obj_ty);
             let peeled = peel_all_references(&obj_ty);
-            if let InferType::Record(fields) = &peeled {
+            // RFC-0137 (metel-core#857): a Residual resolves field access exactly like
+            // Record does -- directly from its own field list, no struct-registry lookup
+            // needed (it already carries each projected field's resolved type).
+            if let InferType::Record(fields) | InferType::Residual { fields, .. } = &peeled {
                 return fields
                     .iter()
                     .find(|(name, _)| name == field)
@@ -3654,7 +3668,20 @@ fn infer_expr(
                     };
                 projected.push((field.clone(), ty));
             }
-            Ok(InferType::Record(projected))
+            // RFC-0137 (metel-core#857): branded, not a bare Record -- and a full-width
+            // projection normalizes back to the plain struct type (mirrors
+            // `resolve_record_projection_type` in `conversions.rs`, which does the same
+            // for the type-annotation form; both must agree, or a signature naming
+            // `Self.{ fd }` and a call site producing it from `h.{ fd }` would disagree
+            // over what type it actually is).
+            if projected.len() == declared_fields.len() {
+                return Ok(InferType::Named(struct_name, type_args));
+            }
+            projected.sort_by(|(a, _), (b, _)| a.cmp(b));
+            Ok(InferType::Residual {
+                brand: struct_name,
+                fields: projected,
+            })
         }
         Expr::Ascribe { expr, ann, span } => {
             let inner_ty = infer_expr(expr, ctx, fun_generalizations)?;

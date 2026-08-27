@@ -2311,6 +2311,18 @@ fn substitute_named_generics(
         InferType::MutReference(inner) => {
             InferType::MutReference(Box::new(substitute_named_generics(inner, named_samples)))
         }
+        InferType::Residual { brand, fields } => InferType::Residual {
+            brand: brand.clone(),
+            fields: fields
+                .iter()
+                .map(|(name, field_ty)| {
+                    (
+                        name.clone(),
+                        substitute_named_generics(field_ty, named_samples),
+                    )
+                })
+                .collect(),
+        },
         InferType::Concrete(_) | InferType::Var(_) | InferType::Never => ty.clone(),
     }
 }
@@ -2387,6 +2399,18 @@ fn type_to_infer_under_generic_env(
                     .collect(),
             )
         }
+        Type::Residual { brand, fields } => InferType::Residual {
+            brand: brand.clone(),
+            fields: fields
+                .iter()
+                .map(|(name, field_ty)| {
+                    (
+                        name.clone(),
+                        type_to_infer_under_generic_env(field_ty, placeholders),
+                    )
+                })
+                .collect(),
+        },
     }
 }
 
@@ -2447,6 +2471,13 @@ fn infer_to_type(ty: &crate::typeinference::InferType) -> Option<Type> {
             name.clone(),
             args.iter().map(infer_to_type).collect::<Option<Vec<_>>>()?,
         )),
+        InferType::Residual { brand, fields } => Some(Type::Residual {
+            brand: brand.clone(),
+            fields: fields
+                .iter()
+                .map(|(name, ty)| infer_to_type(ty).map(|ty| (name.clone(), ty)))
+                .collect::<Option<Vec<_>>>()?,
+        }),
         InferType::Var(_) => None,
     }
 }
