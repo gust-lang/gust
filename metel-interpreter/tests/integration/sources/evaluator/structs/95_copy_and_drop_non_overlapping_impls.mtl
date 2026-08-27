@@ -15,7 +15,7 @@ struct Disjoint<T> {
 extend<T: Copy> Disjoint<T>: Copy;
 
 extend<T: !Copy> Disjoint<T>: Drop {
-    fun drop(self) {}
+    fun drop(&var self) {}
 }
 
 struct Reach<T> {
@@ -29,7 +29,7 @@ struct Reach<T> {
 extend<T: Copy> Reach<T>: Copy;
 
 extend Reach<String>: Drop {
-    fun drop(self) {}
+    fun drop(&var self) {}
 }
 
 fun main() {

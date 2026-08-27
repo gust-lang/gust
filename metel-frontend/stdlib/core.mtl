@@ -195,7 +195,7 @@ public aspect Copy {
 }
 
 public aspect Drop {
-    fun drop(self);
+    fun drop(&var self);
 }
 
 public aspect Eq {

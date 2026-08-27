@@ -1192,8 +1192,8 @@ fn construct_fun_decl(fun: &FunDecl, ctx: &mut ConstructCtx) -> Result<TypedDecl
 /// `Drop` has type-level effects that are implemented and correct *today*, and
 /// none of them involve the destructor running: `Copy`/`Drop` exclusion,
 /// `T: !Drop` bounds, the ban on `Drop` for anonymous records, and the move
-/// checker's refusal to partially move a `Drop` value. An empty `fun drop(self)
-/// {}` claims nothing that is not delivered. A body with statements in it does.
+/// checker's refusal to partially move a `Drop` value. An empty `fun drop(&var
+/// self) {}` claims nothing that is not delivered. A body with statements in it does.
 fn reject_inert_destructor(ib: &ImplBlock, ctx: &ConstructCtx) -> Result<(), MetelError> {
     if ib.polarity != crate::ast::Polarity::Positive {
         return Ok(());

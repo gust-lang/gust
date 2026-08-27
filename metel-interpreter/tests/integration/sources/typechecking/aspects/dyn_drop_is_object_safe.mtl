@@ -1,10 +1,9 @@
 // Regression (metel-core#865, RFC-0008 slice 1, §3's "Standard library
-// object-safety" list): `std::core::Drop` is object-safe even though its one
-// method, `fun drop(self);`, takes `self` by value -- which rule 1 would
-// otherwise reject. `drop` is never dispatched through the ordinary
-// per-method vtable at all; it fires through the vtable's own dedicated drop
-// slot (§2/§5), so rule 1's receiver-shape requirement (which exists to
-// guarantee ordinary vtable dispatch is possible) doesn't apply to it.
+// object-safety" list): `std::core::Drop` is object-safe by the ordinary
+// rule -- its one method, `fun drop(&var self);`, takes an ordinary `&var
+// Self` receiver (RFC-0071, revised 2026-08-27; was `self` by value, which
+// would have needed a dedicated rule-1 exception here -- see that revision's
+// note for why).
 
 fun a(x: dyn Drop) -> i64 { 0 }
 

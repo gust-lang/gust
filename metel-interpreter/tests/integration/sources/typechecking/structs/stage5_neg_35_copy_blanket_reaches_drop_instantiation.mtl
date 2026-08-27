@@ -15,7 +15,7 @@ struct Reach<T> {
 extend<T: Copy> Reach<T>: Copy;
 
 extend Reach<i64>: Drop {
-    fun drop(self) {}
+    fun drop(&var self) {}
 }
 
 fun main() {}

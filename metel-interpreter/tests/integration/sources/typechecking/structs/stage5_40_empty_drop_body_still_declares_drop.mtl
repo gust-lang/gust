@@ -5,7 +5,7 @@ struct Handle {
 // An empty body claims nothing that is not delivered, so it stays legal: the
 // type-level effects of `Drop` are implemented today, only invocation is not.
 extend Handle: Drop {
-    fun drop(self) {}
+    fun drop(&var self) {}
 }
 
 fun takes_non_drop<T: !Drop>(value: T) -> i64 { 1 }

@@ -13,7 +13,7 @@ struct Overlap<T> {
 extend<T: Copy> Overlap<T>: Copy;
 
 extend<T: Display> Overlap<T>: Drop {
-    fun drop(self) {}
+    fun drop(&var self) {}
 }
 
 fun main() {}

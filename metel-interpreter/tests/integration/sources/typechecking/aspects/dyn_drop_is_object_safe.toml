@@ -1,2 +1,2 @@
 [options]
-spec = ["spec.declarations.aspects.dyn-aspect.legality-5"]
+spec = ["spec.declarations.aspects.dyn-aspect.legality-2"]
