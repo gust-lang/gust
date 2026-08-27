@@ -1,2 +1,3 @@
 [options]
 move_check = true
+spec = ["spec.ownership.partial-moves.legality-3"]
