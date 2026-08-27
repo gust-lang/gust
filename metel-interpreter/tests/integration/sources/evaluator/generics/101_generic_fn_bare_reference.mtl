@@ -1,0 +1,13 @@
+// Regression (metel-core#736, RFC-0138): a bare reference to an already-declared
+// generic function -- `let alias = identity;`, with no call syntax at the
+// reference site -- used to fail typechecking entirely ("generic function
+// `identity` cannot be referenced except by direct call"), even though a
+// non-generic named function is genuinely first-class today (`let f = add;`).
+
+fun identity<T>(x: T) -> T { return x; }
+
+fun main() {
+    let alias = identity;
+    assert(alias(3) == 3);
+    assert(alias("hi") == "hi");
+}

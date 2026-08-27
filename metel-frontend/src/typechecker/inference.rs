@@ -1102,10 +1102,22 @@ fn infer_decl(
             } else {
                 val_ty.clone()
             };
-            // Let-polymorphism: generalize unannotated closure-valued let bindings.
+            // metel-core#736 / RFC-0138: a bare reference to an already-declared
+            // generic function (`let alias = identity;`) is, for this purpose, the
+            // same shape as a closure literal -- `identity` was already auto-
+            // instantiated with fresh vars by the `ctx.lookup` inside `infer_expr`
+            // above, so re-generalizing that (still fully free, since nothing else
+            // constrained it) below reconstructs a scheme equivalent to `identity`'s
+            // own, under `alias`'s name.
+            let is_generic_fn_ref = matches!(&ld.value, Expr::Ident(name, _)
+                if ctx.poly_scheme(name).is_some_and(|s| !s.quantified_vars.is_empty()));
+            // Let-polymorphism: generalize unannotated closure-valued let bindings
+            // (and, per the above, bare references to an existing generic function).
             // If the resolved type still has free variables, they are quantified into a
             // polymorphic scheme so each call site gets a fresh instantiation.
-            if matches!(&ld.value, Expr::Closure { .. }) && ld.type_ann.is_none() {
+            if (matches!(&ld.value, Expr::Closure { .. }) || is_generic_fn_ref)
+                && ld.type_ann.is_none()
+            {
                 let solved = ctx.solve()?;
                 let partial_subst = ctx.default_literal_vars(&solved);
                 let resolved_ty = partial_subst.apply(&val_ty);

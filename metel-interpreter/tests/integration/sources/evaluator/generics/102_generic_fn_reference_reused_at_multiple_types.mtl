@@ -1,0 +1,25 @@
+// Regression (metel-core#736, RFC-0138): a `let`-bound alias of a generic
+// function stays genuinely polymorphic across its own later uses -- the same
+// let-polymorphism guarantee `52_let_polymorphism.mtl` already covers for a
+// closure literal, here for a bare reference to a *named* generic function.
+
+fun identity<T>(x: T) -> T { return x; }
+fun first_of_two<T>(a: T, b: T) -> T { return a; }
+
+fun main() {
+    let id_alias = identity;
+
+    // Used at i64, boolean, String.
+    assert(id_alias(42) == 42);
+    assert(id_alias(true));
+    assert(id_alias("hello") == "hello");
+
+    // In arithmetic context, and nested (an alias call feeding another).
+    assert(id_alias(10) + id_alias(20) == 30);
+    assert(id_alias(id_alias(99)) == 99);
+
+    // A second, independently generic alias in the same scope.
+    let pick_alias = first_of_two;
+    assert(pick_alias(7, 8) == 7);
+    assert(pick_alias("x", "y") == "x");
+}

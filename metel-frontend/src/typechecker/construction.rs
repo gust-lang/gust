@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::ast::{
     AspectMethod, AssignTarget, BinOp, Block, Decl, Expr, ForInit, FunDecl, ImplBlock, Literal,
-    MatchExpr, Pattern, Program, Span, Stmt, TypeExpr, UnaryOp,
+    MatchExpr, Param, Pattern, Program, Span, Stmt, TypeExpr, UnaryOp,
 };
 use crate::error::{MetelError, TypeErrorCode};
 use crate::symbols::SymbolId;
@@ -26,6 +26,9 @@ use super::SchemeEnv;
 
 type ConcreteFields = Vec<(String, Type, Span)>;
 type ConcreteStructEnv = HashMap<String, ConcreteFields>;
+/// metel-core#736 / RFC-0138: a generic `FunDecl`'s own shape, keyed by name in
+/// `ConstructCtx::fn_table`. See that field's doc comment.
+type FnDeclShape = (Vec<Param>, Option<TypeExpr>, Block);
 
 /// Build the concrete (fully-resolved `Type`) struct field map from inference results.
 /// Generic structs are excluded — they are resolved per-use-site during construction.
@@ -131,6 +134,14 @@ struct ConstructCtx<'a> {
     /// way `construct_impl_method`'s own param/return-type resolution already does,
     /// instead of each call site needing `self_ty_name` threaded in by hand.
     current_self_type_name: Option<String>,
+    /// metel-core#736 / RFC-0138: scope-stacked table of generic `FunDecl`s visible
+    /// at the current construction point (top-level, hoisted in `construct_program`;
+    /// nested, hoisted per-block in `construct_block`, mirroring the local-struct
+    /// hoist just above it). Lets a bare `Expr::Ident` reference to a generic
+    /// function (`let alias = identity;`) recover `identity`'s own `params`/
+    /// `return_type`/`body` to build a `GenericClosure` node from, the same shape
+    /// `construct_decl`'s closure-literal special case already builds one from.
+    fn_table: Vec<HashMap<String, FnDeclShape>>,
 }
 
 impl<'a> ConstructCtx<'a> {
@@ -166,6 +177,7 @@ impl<'a> ConstructCtx<'a> {
             references,
             closure_return_types,
             current_self_type_name: None,
+            fn_table: vec![HashMap::new()],
         };
         // Derive concrete types for all monomorphic entries in scheme_env.
         // Both builtins and user functions are populated here — no second registration site.
@@ -183,9 +195,11 @@ impl<'a> ConstructCtx<'a> {
 
     fn push_scope(&mut self) {
         self.env.push(HashMap::new());
+        self.fn_table.push(HashMap::new());
     }
     fn pop_scope(&mut self) {
         self.env.pop();
+        self.fn_table.pop();
     }
 
     fn push_struct_scope(&mut self) {
@@ -217,6 +231,26 @@ impl<'a> ConstructCtx<'a> {
 
     fn lookup(&self, name: &str) -> Option<&Type> {
         self.env.iter().rev().find_map(|s| s.get(name))
+    }
+
+    /// metel-core#736 / RFC-0138: register a generic `FunDecl`'s own shape (its
+    /// `params`/`return_type`/`body`) in the innermost scope, so a later bare
+    /// reference to it (`let alias = name;`) can build a `GenericClosure` from it.
+    fn register_fn_decl(
+        &mut self,
+        name: impl Into<String>,
+        params: Vec<Param>,
+        return_type: Option<TypeExpr>,
+        body: Block,
+    ) {
+        self.fn_table
+            .last_mut()
+            .unwrap()
+            .insert(name.into(), (params, return_type, body));
+    }
+
+    fn lookup_fn_decl(&self, name: &str) -> Option<&FnDeclShape> {
+        self.fn_table.iter().rev().find_map(|s| s.get(name))
     }
 
     /// Resolve the stable `SymbolId` of a direct-call callee, if it refers to a
@@ -782,6 +816,21 @@ pub(super) fn construct_program(
         closure_return_types,
     )?;
 
+    // metel-core#736 / RFC-0138: hoist every top-level `FunDecl`'s own shape into
+    // `ctx.fn_table` before constructing any declaration, so a bare reference to a
+    // generic function (`let alias = identity;`) can find it regardless of
+    // declaration order -- mirroring the local-struct hoist in `construct_block`.
+    for decl in &program.decls {
+        if let Decl::Fun(fd) = decl {
+            ctx.register_fn_decl(
+                fd.name.clone(),
+                fd.params.clone(),
+                fd.return_type.clone(),
+                fd.body.clone(),
+            );
+        }
+    }
+
     let mut out = vec![];
     for decl in &program.decls {
         let mut typed = construct_decl(decl, &mut ctx)?;
@@ -820,6 +869,7 @@ pub(super) fn construct_program(
     Ok(out)
 }
 
+#[allow(clippy::too_many_lines)]
 fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<TypedDecl, MetelError> {
     match decl {
         Decl::Let(ld) => {
@@ -849,6 +899,39 @@ fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<TypedDecl, Mete
                             def_id: None,
                             span: ld.span.clone(),
                         }));
+                    }
+                }
+            }
+            // metel-core#736 / RFC-0138: a bare reference to an already-declared
+            // generic function (`let alias = identity;`) needs the same treatment
+            // as the closure-literal case above -- the widened inference-side gate
+            // (`infer_decl`'s `Decl::Let` arm) re-generalizes `alias` into
+            // `scheme_env` under its own name whenever this shape matches, so the
+            // check below is exactly the closure case's own check, just sourcing
+            // `params`/`return_type`/`body` from the referenced function's own
+            // declaration (via `ctx.fn_table`, hoisted in `construct_program`/
+            // `construct_block`) instead of an inline literal.
+            if let Expr::Ident(name, ident_span) = &ld.value {
+                if let Some(scheme) = ctx.scheme_env.get(ld.name.as_str()) {
+                    if !scheme.quantified_vars.is_empty() {
+                        if let Some((params, return_type, body)) = ctx.lookup_fn_decl(name) {
+                            let (params, return_type, body) =
+                                (params.clone(), return_type.clone(), body.clone());
+                            return Ok(TypedDecl::Let(TypedLetDecl {
+                                name: ld.name.clone(),
+                                type_ann: ld.type_ann.clone(),
+                                value: TypedExpr::GenericClosure {
+                                    name: Some(ld.name.clone()),
+                                    params,
+                                    return_type,
+                                    body,
+                                    ty: Type::Unit,
+                                    span: ident_span.clone(),
+                                },
+                                def_id: None,
+                                span: ld.span.clone(),
+                            }));
+                        }
                     }
                 }
             }
@@ -1459,6 +1542,21 @@ fn construct_block(
             ctx.register_local_struct(sd.name.clone(), fields);
         }
     }
+    // metel-core#736 / RFC-0138: hoist this block's own nested `FunDecl`s the same
+    // way, so a bare reference to a nested generic function works regardless of
+    // whether the reference textually precedes or follows the declaration --
+    // matching how `hoist_fun_decls` already makes nested mutual recursion work
+    // on the inference side.
+    for decl in &block.stmts {
+        if let Decl::Fun(fd) = decl {
+            ctx.register_fn_decl(
+                fd.name.clone(),
+                fd.params.clone(),
+                fd.return_type.clone(),
+                fd.body.clone(),
+            );
+        }
+    }
     let mut stmts = vec![];
     for stmt in &block.stmts {
         stmts.push(construct_decl(stmt, ctx)?);
@@ -1723,6 +1821,79 @@ fn construct_expr(
             // carve-out; RFC-0138 proposes lifting this) -- say so instead.
             if let Some(scheme) = ctx.scheme_env.get(name.as_str()) {
                 if !scheme.quantified_vars.is_empty() {
+                    // metel-core#736 / RFC-0138 §4: a concrete expected type here
+                    // (a higher-order call argument whose own parameter position is
+                    // monomorphic, or an explicitly-annotated `let`) instantiates
+                    // this one reference once, at this one use site -- rank-1, not
+                    // let-polymorphism, so no `GenericClosure`/`fn_table` lookup is
+                    // needed: `instantiate_scheme_for_call` (the same helper a
+                    // direct call already uses) unifies `expected_ty`'s own param
+                    // types against the scheme exactly as if they were argument
+                    // types.
+                    if let Some(Type::Fun(expected_params, _)) = expected_ty {
+                        let arity_matches = matches!(
+                            &scheme.ty,
+                            InferType::Fun(p, _) if p.len() == expected_params.len()
+                        );
+                        if arity_matches {
+                            let arg_types: Vec<&Type> = expected_params.iter().collect();
+                            if let Ok((concrete, var_map)) = instantiate_scheme_for_call(
+                                scheme,
+                                &arg_types,
+                                span,
+                                &mut ctx.gen,
+                                ctx.registry,
+                                ctx.current_module,
+                            ) {
+                                check_fun_call_bounds(
+                                    name,
+                                    &var_map,
+                                    span,
+                                    ctx.registry,
+                                    ctx.current_module,
+                                )?;
+                                check_scheme_bounds(
+                                    name,
+                                    scheme,
+                                    &var_map,
+                                    span,
+                                    ctx.registry,
+                                    ctx.current_module,
+                                )?;
+                                check_fun_call_assoc_eq(
+                                    name,
+                                    &var_map,
+                                    span,
+                                    ctx.registry,
+                                    ctx.current_module,
+                                )?;
+                                check_scheme_assoc_eq(
+                                    name,
+                                    scheme,
+                                    &var_map,
+                                    span,
+                                    ctx.registry,
+                                    ctx.current_module,
+                                )?;
+                                check_fun_call_neg_bounds(
+                                    name,
+                                    &var_map,
+                                    span,
+                                    ctx.registry,
+                                    ctx.current_module,
+                                )?;
+                                check_scheme_neg_bounds(
+                                    name,
+                                    scheme,
+                                    &var_map,
+                                    span,
+                                    ctx.registry,
+                                    ctx.current_module,
+                                )?;
+                                return Ok(TypedExpr::Ident(name.clone(), concrete, span.clone()));
+                            }
+                        }
+                    }
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0003,
                         format!(

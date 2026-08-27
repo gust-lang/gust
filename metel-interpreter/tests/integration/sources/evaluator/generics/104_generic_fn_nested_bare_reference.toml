@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.functions.first-class-functions.legality-2"]

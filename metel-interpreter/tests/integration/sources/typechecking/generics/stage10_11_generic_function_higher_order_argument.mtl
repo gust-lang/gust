@@ -1,0 +1,15 @@
+// #736 / RFC-0138 §4: a generic function named directly in a higher-order
+// argument position now typechecks, when the receiving parameter position is
+// itself concrete -- superseding the old `stage10_neg_05` fixture, which
+// asserted the call-only restriction this change lifts. `apply` itself being
+// non-generic isolates the case: it's `identity`'s own referenceability being
+// exercised here, not `apply`'s. See
+// `evaluator/generics/103_generic_fn_higher_order_argument.mtl` for the
+// runtime counterpart.
+
+fun identity<T>(x: T) -> T { return x; }
+fun apply(f: (i64) -> i64, x: i64) -> i64 { return f(x); }
+
+fun main() {
+    apply(identity, 3);
+}
