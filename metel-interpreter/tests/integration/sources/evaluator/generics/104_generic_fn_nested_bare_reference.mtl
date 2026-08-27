@@ -1,0 +1,15 @@
+// Regression (metel-core#736, RFC-0138 §5): the bare-reference and
+// higher-order-argument cases both need to work identically for a *nested*
+// generic function, not just a top-level one -- `hoist_fun_decls` already
+// makes nested mutual recursion work per-block on the inference side, and the
+// construction-side `fn_table` hoist mirrors that for this mechanism.
+
+fun main() {
+    fun identity<T>(x: T) -> T { return x; }
+    fun apply_i64(f: (i64) -> i64, x: i64) -> i64 { return f(x); }
+
+    let alias = identity;
+    assert(alias(5) == 5);
+    assert(alias("nested") == "nested");
+    assert(apply_i64(identity, 9) == 9);
+}

@@ -1,0 +1,15 @@
+// Regression (metel-core#736, RFC-0138 §4): a generic function referenced by
+// name, passed directly as a higher-order argument to a *monomorphic* function
+// (its own parameter position fully concrete) -- rank-1, one instantiation at
+// this one call site. Companion to `99_list_map_named_function.mtl`, which
+// covers the same shape for a non-generic named function argument.
+
+fun identity<T>(x: T) -> T { return x; }
+
+fun apply_i64(f: (i64) -> i64, x: i64) -> i64 { return f(x); }
+fun apply_str(f: (String) -> String, x: String) -> String { return f(x); }
+
+fun main() {
+    assert(apply_i64(identity, 7) == 7);
+    assert(apply_str(identity, "hi") == "hi");
+}

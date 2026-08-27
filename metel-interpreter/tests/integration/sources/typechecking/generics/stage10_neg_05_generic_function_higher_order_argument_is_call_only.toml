@@ -1,8 +1,0 @@
-[options]
-spec = ["spec.functions.first-class-functions.legality-2"]
-
-[expect]
-status = "typecheck_error"
-code = "T0003"
-line = 10
-col = 11

@@ -1,0 +1,12 @@
+// #736 / RFC-0138: a bare reference to an already-declared generic function
+// now typechecks -- superseding the old `stage10_neg_04` fixture, which
+// asserted the call-only restriction this change lifts. See
+// `evaluator/generics/101_generic_fn_bare_reference.mtl` for the runtime
+// counterpart.
+
+fun identity<T>(x: T) -> T { return x; }
+
+fun main() {
+    let alias = identity;
+    alias(3);
+}
