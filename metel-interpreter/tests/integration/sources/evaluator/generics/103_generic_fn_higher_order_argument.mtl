@@ -1,4 +1,4 @@
-// Regression (metel-core#736, RFC-0138 §4): a generic function referenced by
+// Regression (metel-core#736, RFC-0138§4): a generic function referenced by
 // name, passed directly as a higher-order argument to a *monomorphic* function
 // (its own parameter position fully concrete) -- rank-1, one instantiation at
 // this one call site. Companion to `99_list_map_named_function.mtl`, which

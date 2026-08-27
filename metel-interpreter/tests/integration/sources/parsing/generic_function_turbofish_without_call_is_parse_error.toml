@@ -1,0 +1,5 @@
+[options]
+spec = ["spec.functions.turbofish.legality-3"]
+
+[expect]
+status = "parse_error"

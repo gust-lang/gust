@@ -1,0 +1,10 @@
+// Negative, deliberately out of scope (RFC-0138 §5): the turbofish production is
+// fused to a following call's parentheses -- there is no standalone
+// instantiation-without-calling value form. `identity::<i64>` alone, not followed
+// by `(...)`, is a parse error, not a type error.
+
+fun identity<T>(x: T) -> T { return x; }
+
+fun main() {
+    let alias = identity::<i64>;
+}
