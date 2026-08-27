@@ -302,6 +302,22 @@ fn type_expr_to_infer_in_context(
         TypeExpr::RecordProjection { path, fields, .. } => {
             resolve_record_projection_type(path, fields, self_ty_name, assoc_ctx)
         }
+        // RFC-0008: `dyn Aspect` — an existential type, not lowered away the way
+        // `ImplAspect` is. `bound` is always a `named_type` (parser guarantees this
+        // via `dyn_type = { "dyn" ~ named_type }`), so its name is the principal
+        // aspect and its args are the aspect's own type arguments.
+        TypeExpr::DynAspect { bound, .. } => {
+            let TypeExpr::Named(aspect, args) = bound.as_ref() else {
+                unreachable!("dyn_type grammar only ever produces a named_type bound")
+            };
+            InferType::Dyn {
+                aspect: aspect.clone(),
+                type_args: args
+                    .iter()
+                    .map(|a| type_expr_to_infer_in_context(a, generics, self_ty_name, assoc_ctx))
+                    .collect(),
+            }
+        }
     }
 }
 
@@ -387,6 +403,13 @@ pub(super) fn infer_type_to_type(ty: &InferType, span: &Span) -> Result<Type, Me
             fields: fields
                 .iter()
                 .map(|(name, ty)| Ok((name.clone(), infer_type_to_type(ty, span)?)))
+                .collect::<Result<Vec<_>, MetelError>>()?,
+        }),
+        InferType::Dyn { aspect, type_args } => Ok(Type::Dyn {
+            aspect: aspect.clone(),
+            type_args: type_args
+                .iter()
+                .map(|a| infer_type_to_type(a, span))
                 .collect::<Result<Vec<_>, MetelError>>()?,
         }),
     }

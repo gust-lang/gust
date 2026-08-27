@@ -1,0 +1,7 @@
+[expect]
+status = "typecheck_error"
+code = "T0025"
+contains = "references the associated type Item"
+
+[options]
+spec = ["spec.declarations.aspects.dyn-aspect.legality-4"]

@@ -27,6 +27,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::inference::primitive_type_from_name;
+use super::object_safety::check_object_safe;
 use crate::ast::{
     AspectDecl, AspectMethod, AssignTarget, Block, Bound, BoundHead, Decl, Expr, ForInit, FunDecl,
     GenericParam, ImplBlock, Param, Program, Span, Stmt, TypeExpr, WhereClause,
@@ -475,6 +476,67 @@ impl Cx<'_> {
                 impl_aspect_allowed,
                 local_types,
             ),
+            // RFC-0008: `dyn Aspect`. Unlike `ImplAspect`, this is a real existential
+            // type -- no `impl_aspect_allowed` positional gate -- so it's legal
+            // anywhere an ordinary type is. `aspect_type` confirms the operand names
+            // a real, visible aspect; object safety is then checked independently,
+            // since a `dyn` bound additionally requires RFC-0008 §3's three rules,
+            // which an `impl Aspect`/generic bound never needed.
+            TypeExpr::DynAspect { bound, .. } => {
+                self.aspect_type(
+                    bound,
+                    span,
+                    generics,
+                    self_allowed,
+                    self_target,
+                    local_types,
+                )?;
+                let TypeExpr::Named(aspect_name, _) = bound.as_ref() else {
+                    unreachable!("dyn_type grammar only ever produces a named_type bound")
+                };
+                // `std::core::Drop` is a deliberate exception to rule 1 (RFC-0008 §3's
+                // own "Standard library object-safety" list): `fun drop(self);` takes
+                // self by value, which rule 1 would otherwise reject, but `drop` is
+                // never dispatched through the ordinary per-method vtable at all --
+                // it fires through the vtable's own dedicated drop slot (§2/§5),
+                // which needs no receiver-shape guarantee the way an ordinary
+                // dispatched call does. Matched by declaring module, not by name, so
+                // a user module's own unrelated `Drop` aspect is unaffected -- the
+                // same discipline `reject_inert_destructor` (construction.rs) and
+                // `coherence.rs`'s `Copy`/`Drop` exclusion both already use.
+                let is_std_core_drop = aspect_name == "Drop"
+                    && self
+                        .registry
+                        .aspect_declaring_module(aspect_name)
+                        .is_some_and(|module| {
+                            module.as_slice() == ["std".to_string(), "core".to_string()]
+                        });
+                let object_safety_result = if is_std_core_drop {
+                    Ok(())
+                } else {
+                    let methods = self
+                        .registry
+                        .aspect_method_defs(aspect_name)
+                        .map_or(&[][..], Vec::as_slice);
+                    let assoc_type_names: HashSet<&str> = self
+                        .registry
+                        .aspect_assoc_type_decls(aspect_name)
+                        .map(|decls| decls.iter().map(|d| d.name.as_str()).collect())
+                        .unwrap_or_default();
+                    check_object_safe(methods, &assoc_type_names)
+                };
+                if let Err(violation) = object_safety_result {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0025,
+                        format!(
+                            "aspect {aspect_name} is not object-safe\n       reason: {aspect_name}::{} {}\n       use impl {aspect_name} (static dispatch) instead",
+                            violation.method_name, violation.reason
+                        ),
+                        span,
+                    ));
+                }
+                Ok(())
+            }
             TypeExpr::Unit => Ok(()),
         }
     }

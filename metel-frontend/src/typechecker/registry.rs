@@ -1043,6 +1043,10 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
             fields: fields.clone(),
             span: span.clone(),
         },
+        TypeExpr::DynAspect { bound, span } => TypeExpr::DynAspect {
+            bound: Box::new(substitute_structural_self(bound.as_ref(), replacement)),
+            span: span.clone(),
+        },
     }
 }
 

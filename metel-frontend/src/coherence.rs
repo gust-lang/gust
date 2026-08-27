@@ -119,9 +119,12 @@ fn canonicalize(names: &ResolvedNames, current_module: &[String], ty: &TypeExpr)
         ),
         // `T::AssocType` (RFC-0082) isn't resolved to a concrete type at this pass
         // either — both stay opaque until issue #242 does that resolution for real.
+        // `dyn Aspect` (RFC-0008) is existential, never a concrete impl target, so
+        // it stays opaque here for the same reason.
         TypeExpr::ImplAspect { .. }
         | TypeExpr::Projection { .. }
-        | TypeExpr::RecordProjection { .. } => CanonicalType::Opaque,
+        | TypeExpr::RecordProjection { .. }
+        | TypeExpr::DynAspect { .. } => CanonicalType::Opaque,
     }
 }
 

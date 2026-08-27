@@ -44,6 +44,7 @@ pub enum TypeErrorCode {
     T0022, // `impl Aspect` used outside parameter or return position
     T0023, // Assignment through a non-owning view (`T[]`)
     T0024, // Read-copy of a non-`Copy` value out of a reference (RFC-0067a §3a)
+    T0025, // Aspect is not object-safe, used in `dyn` position (RFC-0008 §3)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

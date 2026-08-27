@@ -1097,6 +1097,7 @@ fn runtime_type_key(ty: &TypeExpr) -> String {
         TypeExpr::RecordProjection { path, fields, .. } => {
             format!("{} .{{ {} }}", path.join("::"), fields.join(", "))
         }
+        TypeExpr::DynAspect { bound, .. } => format!("dyn {}", runtime_type_key(bound)),
     }
 }
 

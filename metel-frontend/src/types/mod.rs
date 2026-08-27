@@ -49,6 +49,17 @@ pub enum Type {
         brand: String,
         fields: Vec<(String, Type)>,
     },
+    /// `dyn Aspect` (RFC-0008, metel-core#865) -- an unsized existential type: the
+    /// concrete type is erased, dispatch happens through a vtable. `aspect` names
+    /// the principal (method-bearing) aspect; `type_args` are that aspect's own
+    /// type arguments (`dyn Callable<i64, i64>` -> `["i64", "i64"]`). Unlike
+    /// `Named`, this never refers to one concrete type -- unification is only ever
+    /// against another `Dyn` of the same aspect and args, never against a `Named`
+    /// concrete implementor (that asymmetry is what makes it existential).
+    Dyn {
+        aspect: String,
+        type_args: Vec<Type>,
+    },
 }
 
 impl Type {
@@ -156,6 +167,20 @@ impl std::fmt::Display for Type {
                     write!(f, "{name}: {ty}")?;
                 }
                 write!(f, " }}")
+            }
+            Type::Dyn { aspect, type_args } => {
+                write!(f, "dyn {aspect}")?;
+                if !type_args.is_empty() {
+                    write!(f, "<")?;
+                    for (i, a) in type_args.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{a}")?;
+                    }
+                    write!(f, ">")?;
+                }
+                Ok(())
             }
         }
     }

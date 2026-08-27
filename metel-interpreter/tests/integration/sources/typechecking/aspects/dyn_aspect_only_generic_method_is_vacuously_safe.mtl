@@ -1,0 +1,16 @@
+// Regression (metel-core#865, RFC-0008 slice 1, §3 rule 2): an aspect whose
+// *only* method is generic is still object-safe -- it contributes zero vtable
+// entries, the same as a marker aspect declaring no methods at all (RFC-0008
+// §3's own Send/Sync example: "marker aspects with no methods; object-safe").
+// Verified against the real interpreter before writing this expectation:
+// rejecting this case was in the sub-issue's original acceptance-criteria
+// draft, but that was a mistake caught during implementation -- there is
+// nothing in RFC-0008 §3 that disqualifies a zero-vtable-entry aspect.
+
+aspect OnlyGeneric {
+    fun map<U>(&self, f: U) -> i64;
+}
+
+fun a(x: dyn OnlyGeneric) -> i64 { 0 }
+
+fun main() {}

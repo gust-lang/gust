@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.declarations.aspects.dyn-aspect.legality-5"]

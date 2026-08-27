@@ -1,0 +1,14 @@
+// Regression (metel-core#865, RFC-0008 slice 1): `dyn Aspect` cannot be an
+// `extend` target -- it's existential, there is no one concrete type to
+// register an impl against (the same reason `impl Aspect` can't be an impl
+// target either). Joins the existing tuple/record/fun/array-target rejections
+// this pass already covers.
+
+aspect Local {
+    fun f(&self) -> i64;
+}
+
+extend dyn Local: Local { // ERROR[T0001]
+}
+
+fun main() {}
