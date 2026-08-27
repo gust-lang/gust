@@ -1,0 +1,7 @@
+[expect]
+status = "typecheck_error"
+code = "T0025"
+contains = "Consumer::consume takes self by value"
+
+[options]
+spec = ["spec.declarations.aspects.dyn-aspect.legality-2"]

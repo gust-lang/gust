@@ -1,0 +1,16 @@
+// Regression (metel-core#865, RFC-0008 slice 1, §3 rule 3): an aspect whose
+// method signature references one of its own associated types is not
+// object-safe -- the vtable entry's shape would depend on the concrete impl's
+// binding for that associated type, which `dyn Aspect` has erased. Uses a
+// custom aspect since `Deref` (RFC-0008 §3's own example) isn't a real
+// stdlib aspect yet.
+
+aspect Container {
+    type Item;
+
+    fun get(&self) -> Item;
+}
+
+fun a(x: dyn Container) -> i64 { 0 }
+
+fun main() {}

@@ -277,6 +277,14 @@ fn infer_type_to_concrete_if_closed(ty: &InferType) -> Option<Type> {
             .map(infer_type_to_concrete_if_closed)
             .collect::<Option<Vec<_>>>()
             .map(|args| Type::Named(name.clone(), args)),
+        InferType::Dyn { aspect, type_args } => type_args
+            .iter()
+            .map(infer_type_to_concrete_if_closed)
+            .collect::<Option<Vec<_>>>()
+            .map(|type_args| Type::Dyn {
+                aspect: aspect.clone(),
+                type_args,
+            }),
         InferType::Never
         | InferType::Var(_)
         | InferType::Fun(_, _)
@@ -298,6 +306,7 @@ fn mentions_type_param(ty: &TypeExpr, params: &std::collections::HashSet<&str>) 
         | TypeExpr::MutReference(inner) => go(inner),
         TypeExpr::Fun(ps, ret) => ps.iter().any(go) || ret.as_deref().is_some_and(go),
         TypeExpr::Projection { base, .. } => go(base),
+        TypeExpr::DynAspect { bound, .. } => go(bound),
         TypeExpr::Unit | TypeExpr::ImplAspect { .. } | TypeExpr::RecordProjection { .. } => false,
     }
 }
@@ -372,6 +381,10 @@ fn substitute_impl_params(
                 .iter()
                 .map(|(label, field_ty)| (label.clone(), go(field_ty)))
                 .collect(),
+        },
+        InferType::Dyn { aspect, type_args } => InferType::Dyn {
+            aspect: aspect.clone(),
+            type_args: type_args.iter().map(go).collect(),
         },
         InferType::Concrete(_) | InferType::Never => ty.clone(),
     }
@@ -907,6 +920,15 @@ fn signature_type_expr_to_infer(te: &TypeExpr, env: &SignatureEnv) -> InferType 
             format!("{}.{{ {} }}", path.join("::"), fields.join(", ")),
             vec![],
         ),
+        TypeExpr::DynAspect { bound, .. } => {
+            let TypeExpr::Named(aspect, args) = bound.as_ref() else {
+                unreachable!("dyn_type grammar only ever produces a named_type bound")
+            };
+            InferType::Dyn {
+                aspect: aspect.clone(),
+                type_args: args.iter().map(go).collect(),
+            }
+        }
     }
 }
 
@@ -1469,6 +1491,7 @@ fn type_expr_contains_impl_aspect(te: &TypeExpr) -> bool {
                     .as_ref()
                     .is_some_and(|r| type_expr_contains_impl_aspect(r))
         }
+        TypeExpr::DynAspect { bound, .. } => type_expr_contains_impl_aspect(bound),
         TypeExpr::Unit | TypeExpr::Projection { .. } | TypeExpr::RecordProjection { .. } => false,
     }
 }
@@ -1540,6 +1563,10 @@ fn rewrite_impl_aspect_returns(
             ret.as_ref()
                 .map(|r| Box::new(rewrite_impl_aspect_returns(r, counter, replacements))),
         ),
+        TypeExpr::DynAspect { bound, span } => TypeExpr::DynAspect {
+            bound: Box::new(rewrite_impl_aspect_returns(bound, counter, replacements)),
+            span: span.clone(),
+        },
         TypeExpr::Unit | TypeExpr::Projection { .. } | TypeExpr::RecordProjection { .. } => {
             te.clone()
         }
@@ -2448,6 +2475,10 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
         TypeExpr::RecordProjection { path, fields, span } => TypeExpr::RecordProjection {
             path: path.clone(),
             fields: fields.clone(),
+            span: span.clone(),
+        },
+        TypeExpr::DynAspect { bound, span } => TypeExpr::DynAspect {
+            bound: Box::new(substitute_structural_self(bound.as_ref(), replacement)),
             span: span.clone(),
         },
     }
@@ -5359,6 +5390,14 @@ fn lower_impl_aspect_param_type(
             assoc_name: assoc_name.clone(),
             span: span.clone(),
         },
+        // `dyn Aspect` is never lowered away (unlike `ImplAspect`, it's a real
+        // existential type, not per-call-site generic sugar) -- only recurse into
+        // its own type args, in case one of *those* happens to be `impl Aspect`
+        // (`dyn Callable<impl Foo, i64>`).
+        TypeExpr::DynAspect { bound, span } => TypeExpr::DynAspect {
+            bound: Box::new(lower_impl_aspect_param_type(bound, counter, extra_generics)),
+            span: span.clone(),
+        },
         TypeExpr::RecordProjection { .. } | TypeExpr::Unit => type_expr.clone(),
     }
 }
@@ -5812,6 +5851,10 @@ fn lower_projections_in_type(
         },
         // Already a projection (e.g. re-run on already-lowered input) — nothing to do.
         TypeExpr::Projection { .. } | TypeExpr::RecordProjection { .. } => te.clone(),
+        TypeExpr::DynAspect { bound, span } => TypeExpr::DynAspect {
+            bound: Box::new(go(bound)),
+            span: span.clone(),
+        },
     }
 }
 

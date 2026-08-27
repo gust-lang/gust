@@ -1,0 +1,11 @@
+// Regression (metel-core#865, RFC-0008 slice 1, §3 rule 1): a method with no
+// `self` receiver at all (an associated function) cannot be dispatched
+// through a vtable -- there is no instance to dispatch against.
+
+aspect Factory {
+    fun create() -> i64;
+}
+
+fun a(x: dyn Factory) -> i64 { 0 }
+
+fun main() {}

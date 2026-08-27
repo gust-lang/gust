@@ -2323,6 +2323,13 @@ fn substitute_named_generics(
                 })
                 .collect(),
         },
+        InferType::Dyn { aspect, type_args } => InferType::Dyn {
+            aspect: aspect.clone(),
+            type_args: type_args
+                .iter()
+                .map(|arg| substitute_named_generics(arg, named_samples))
+                .collect(),
+        },
         InferType::Concrete(_) | InferType::Var(_) | InferType::Never => ty.clone(),
     }
 }
@@ -2411,6 +2418,13 @@ fn type_to_infer_under_generic_env(
                 })
                 .collect(),
         },
+        Type::Dyn { aspect, type_args } => InferType::Dyn {
+            aspect: aspect.clone(),
+            type_args: type_args
+                .iter()
+                .map(|arg| type_to_infer_under_generic_env(arg, placeholders))
+                .collect(),
+        },
     }
 }
 
@@ -2476,6 +2490,13 @@ fn infer_to_type(ty: &crate::typeinference::InferType) -> Option<Type> {
             fields: fields
                 .iter()
                 .map(|(name, ty)| infer_to_type(ty).map(|ty| (name.clone(), ty)))
+                .collect::<Option<Vec<_>>>()?,
+        }),
+        InferType::Dyn { aspect, type_args } => Some(Type::Dyn {
+            aspect: aspect.clone(),
+            type_args: type_args
+                .iter()
+                .map(infer_to_type)
                 .collect::<Option<Vec<_>>>()?,
         }),
         InferType::Var(_) => None,

@@ -1,0 +1,8 @@
+// Regression (metel-core#865, RFC-0008 slice 1, §3 rule 1): `Clone` is not
+// object-safe -- `clone` returns `Self`, and dispatching through a vtable
+// requires knowing the concrete return size, which `dyn Aspect` erases. This
+// is RFC-0008 §3's own worked example, against the real stdlib `Clone`.
+
+fun a(x: dyn Clone) -> i64 { 0 }
+
+fun main() {}

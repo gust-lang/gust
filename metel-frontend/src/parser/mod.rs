@@ -2754,6 +2754,18 @@ fn parse_type_expr(
                 span,
             })
         }
+        Rule::dyn_type => {
+            let span = Span::of(&pair, filename);
+            let bound_pair = pair
+                .into_inner()
+                .next()
+                .ok_or_else(|| MetelError::internal("dyn_type: expected bound"))?;
+            let bound = parse_type_expr(bound_pair, filename)?;
+            Ok(TypeExpr::DynAspect {
+                bound: Box::new(bound),
+                span,
+            })
+        }
         r => Err(MetelError::internal(format!(
             "type_expr: unexpected rule {r:?}"
         ))),

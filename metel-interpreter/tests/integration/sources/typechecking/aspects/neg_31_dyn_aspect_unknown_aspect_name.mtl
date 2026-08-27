@@ -1,0 +1,7 @@
+// Regression (metel-core#865, RFC-0008 slice 1): `dyn` reuses the same
+// aspect-name resolution `impl Aspect` already uses (`aspect_type`) -- an
+// unresolvable name is rejected the same way, not silently accepted.
+
+fun a(x: dyn NotReal) -> i64 { 0 }
+
+fun main() {}

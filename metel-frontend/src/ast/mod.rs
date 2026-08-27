@@ -787,6 +787,14 @@ pub enum TypeExpr {
         fields: Vec<String>,
         span: Span,
     },
+    /// `dyn Aspect` (RFC-0008) — an unsized existential type: the concrete type is
+    /// erased, dispatch happens through a vtable. Unlike `ImplAspect`, this is a real
+    /// type (not per-call-site generic sugar), so it is not positionally restricted
+    /// and is never lowered away.
+    DynAspect {
+        bound: Box<TypeExpr>,
+        span: Span,
+    },
 }
 
 // ── Literals ──────────────────────────────────────────────────────────────────

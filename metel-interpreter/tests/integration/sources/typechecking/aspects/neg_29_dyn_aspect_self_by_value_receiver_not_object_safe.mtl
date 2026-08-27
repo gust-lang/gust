@@ -1,0 +1,11 @@
+// Regression (metel-core#865, RFC-0008 slice 1, §3 rule 1): a by-move `self`
+// receiver is not object-safe -- moving a value requires knowing its size at
+// compile time, which `dyn Aspect` (unsized) doesn't have.
+
+aspect Consumer {
+    fun consume(self) -> i64;
+}
+
+fun a(x: dyn Consumer) -> i64 { 0 }
+
+fun main() {}

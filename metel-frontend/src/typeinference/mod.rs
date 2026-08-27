@@ -117,6 +117,13 @@ pub enum InferType {
         brand: String,
         fields: Vec<(String, InferType)>,
     },
+    /// `dyn Aspect` (RFC-0008, metel-core#865) -- mirrors `Type::Dyn`; see that
+    /// variant's doc comment for the invariants (unifies only with another `Dyn`
+    /// of the same aspect and args, never with a `Named` concrete implementor).
+    Dyn {
+        aspect: String,
+        type_args: Vec<InferType>,
+    },
 }
 
 impl InferType {
@@ -215,6 +222,20 @@ impl std::fmt::Display for InferType {
                 }
                 write!(f, " }}")
             }
+            InferType::Dyn { aspect, type_args } => {
+                write!(f, "dyn {aspect}")?;
+                if !type_args.is_empty() {
+                    write!(f, "<")?;
+                    for (i, a) in type_args.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{a}")?;
+                    }
+                    write!(f, ">")?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -294,7 +315,10 @@ fn collect_free_vars_in_order(
         | InferType::SizedArray(t, _)
         | InferType::Reference(t)
         | InferType::MutReference(t) => collect_free_vars_in_order(t, known, local, next),
-        InferType::Named(_, args) => {
+        InferType::Named(_, args)
+        | InferType::Dyn {
+            type_args: args, ..
+        } => {
             for a in args {
                 collect_free_vars_in_order(a, known, local, next);
             }
@@ -423,6 +447,10 @@ impl Substitution {
                     .map(|(name, ty)| (name.clone(), self.apply(ty)))
                     .collect(),
             },
+            InferType::Dyn { aspect, type_args } => InferType::Dyn {
+                aspect: aspect.clone(),
+                type_args: type_args.iter().map(|a| self.apply(a)).collect(),
+            },
         }
     }
 
@@ -481,6 +509,7 @@ fn occurs_in(var: TypeVar, ty: &InferType) -> bool {
         | InferType::MutReference(t) => occurs_in(var, t),
         InferType::Named(_, args) => args.iter().any(|a| occurs_in(var, a)),
         InferType::Residual { fields, .. } => fields.iter().any(|(_, ty)| occurs_in(var, ty)),
+        InferType::Dyn { type_args, .. } => type_args.iter().any(|a| occurs_in(var, a)),
     }
 }
 
@@ -506,6 +535,10 @@ fn bind_var(var: TypeVar, ty: &InferType) -> Result<Substitution, MetelError> {
 /// # Errors
 /// Returns an error if the types are structurally incompatible or if the occurs
 /// check detects an infinite type.
+// Exhaustive match over every InferType pairing; splitting it up would scatter
+// one coherent dispatch table across many small functions with no real gain in
+// clarity (same rationale as `type_expr_to_infer_in_context`, `infer_fun_decl`).
+#[allow(clippy::too_many_lines)]
 pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
     match (a, b) {
         // Never is the bottom type — it coerces to any type.
@@ -606,6 +639,32 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
                     return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
                 }
                 let s = unify(&subst.apply(ty1), &subst.apply(ty2))?;
+                subst.compose_in_place(&s);
+            }
+            Ok(subst)
+        }
+        // RFC-0008 (metel-core#865): `dyn Aspect` unifies only with another `dyn`
+        // of the *same* principal aspect and the *same* type arguments --
+        // deliberately never with a `Named` concrete implementor (that asymmetry
+        // is the entire point of an existential type: the concrete type behind
+        // the fat pointer is erased, so nothing downstream may recover it by
+        // unifying against it directly).
+        (
+            InferType::Dyn {
+                aspect: aspect1,
+                type_args: args1,
+            },
+            InferType::Dyn {
+                aspect: aspect2,
+                type_args: args2,
+            },
+        ) => {
+            if aspect1 != aspect2 || args1.len() != args2.len() {
+                return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
+            }
+            let mut subst = Substitution::new();
+            for (a1, a2) in args1.iter().zip(args2.iter()) {
+                let s = unify(&subst.apply(a1), &subst.apply(a2))?;
                 subst.compose_in_place(&s);
             }
             Ok(subst)
@@ -980,7 +1039,7 @@ fn collect_free_vars(ty: &InferType, vars: &mut HashSet<TypeVar>) {
             }
             collect_free_vars(ret, vars);
         }
-        InferType::Tuple(ts) | InferType::Named(_, ts) => {
+        InferType::Tuple(ts) | InferType::Named(_, ts) | InferType::Dyn { type_args: ts, .. } => {
             for t in ts {
                 collect_free_vars(t, vars);
             }
@@ -1451,6 +1510,10 @@ impl fmt::Display for GenericBound {
                 }
                 TypeExpr::RecordProjection { path, fields, .. } => {
                     write!(f, "{}.{{ {} }}", path.join("::"), fields.join(", "))
+                }
+                TypeExpr::DynAspect { bound, .. } => {
+                    f.write_str("dyn ")?;
+                    write_type_expr(f, bound)
                 }
             }
         }
@@ -2611,6 +2674,12 @@ impl TypeDefinitionRegistry {
                 }
                 self.impl_aspect_env_has(current_module, name, aspect_name)
             }
+            // A `dyn Aspect` value satisfies exactly the aspect it's existentially
+            // quantified over -- no impl lookup needed, that's what the erasure
+            // already guarantees at the coercion site (RFC-0008 §6). Marker
+            // aspects (`dyn Aspect + Send`, RFC-0008 §9) aren't part of this
+            // slice's representation yet, so there is nothing else to check here.
+            InferType::Dyn { aspect, .. } => aspect == aspect_name,
         }
     }
 

@@ -5410,6 +5410,13 @@ fn type_to_type_expr(ty: &Type) -> TypeExpr {
             fields: fields.iter().map(|(name, _)| name.clone()).collect(),
             span: Span::new(0, 0, ""),
         },
+        Type::Dyn { aspect, type_args } => TypeExpr::DynAspect {
+            bound: Box::new(TypeExpr::Named(
+                aspect.clone(),
+                type_args.iter().map(type_to_type_expr).collect(),
+            )),
+            span: Span::new(0, 0, ""),
+        },
     }
 }
 

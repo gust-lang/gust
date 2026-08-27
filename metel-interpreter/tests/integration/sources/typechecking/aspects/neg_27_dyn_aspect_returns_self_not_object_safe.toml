@@ -1,0 +1,7 @@
+[expect]
+status = "typecheck_error"
+code = "T0025"
+contains = "Clone::clone returns Self"
+
+[options]
+spec = ["spec.declarations.aspects.dyn-aspect.legality-2"]

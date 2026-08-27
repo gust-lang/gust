@@ -1,0 +1,20 @@
+// Regression (metel-core#865, RFC-0008 slice 1): `dyn Aspect` parses and
+// typechecks in every position an ordinary type can appear in -- unlike
+// `impl Aspect`, it is a real existential type, not positionally restricted to
+// parameter/return position (RFC-0008 §1).
+
+struct Handle { fd: i64 }
+extend Handle: Display {
+    fun to_string(&self) -> String { "handle" }
+}
+
+fun by_value(x: dyn Display) -> i64 { 0 }
+fun by_ref(x: &dyn Display) -> i64 { 0 }
+fun by_mut_ref(x: &var dyn Display) -> i64 { 0 }
+fun as_array(x: dyn Display[]) -> i64 { 0 }
+// Return position: no coercion needed here (that's slice 2's job) -- the
+// parameter is already `&dyn Display`, so this just unifies identically-typed
+// positions against each other.
+fun passthrough(x: &dyn Display) -> &dyn Display { x }
+
+fun main() {}

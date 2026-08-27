@@ -1,0 +1,13 @@
+// Regression (metel-core#865, RFC-0008 slice 1, §3 rule 2): a method with its
+// own type parameters is excluded from the vtable, but doesn't by itself make
+// the aspect non-object-safe -- the aspect stays object-safe as long as its
+// non-generic methods satisfy rules 1 and 3 on their own.
+
+aspect Mapper {
+    fun map<U>(&self, f: U) -> i64;
+    fun describe(&self) -> String;
+}
+
+fun a(x: dyn Mapper) -> i64 { 0 }
+
+fun main() {}

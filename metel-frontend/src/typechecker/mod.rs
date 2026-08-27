@@ -19,6 +19,7 @@ use crate::typeinference::{
 mod construction;
 mod conversions;
 mod inference;
+mod object_safety;
 mod overload;
 mod projections;
 pub use overload::core_native_symbol;
@@ -762,6 +763,10 @@ pub(crate) fn reject_unregisterable_impl_target(
         // RFC-0116's row projection (`Handle.{ fd }`) — a residual, not a fresh
         // nominal type, so it has no registry key of its own either.
         TypeExpr::RecordProjection { .. } => "a record projection",
+        // `dyn Aspect` is existential -- there is no one concrete type to
+        // register an impl against, the same reason `impl Aspect` can't be an
+        // impl target either.
+        TypeExpr::DynAspect { .. } => "a `dyn Aspect` type",
         TypeExpr::Named(_, _) => unreachable!("nominal targets returned early"),
     };
     // T0001, not T0003 — T0003 is "undefined name", and nothing here is

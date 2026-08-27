@@ -1,0 +1,12 @@
+// Regression (metel-core#865, RFC-0008 slice 1): `dyn Aspect<Args>` -- a
+// generic aspect's own type arguments lower correctly (RFC-0008 §1's
+// `dyn Callable<i64, i64>` example, using a user-defined aspect since
+// `Callable` itself isn't a real stdlib aspect yet).
+
+aspect Converter<A, B> {
+    fun convert(&self, x: A) -> B;
+}
+
+fun a(x: dyn Converter<i64, String>) -> i64 { 0 }
+
+fun main() {}
