@@ -18,6 +18,7 @@ use crate::typeinference::{
 
 mod construction;
 mod conversions;
+mod handoff;
 mod inference;
 mod object_safety;
 mod overload;
@@ -1079,6 +1080,10 @@ fn check_impl_with_report(
     registry::register_builtin_schemes(&mut scheme_env, std_prelude);
     let scheme_env_ns = elapsed_ns(started);
 
+    // Freeze decisions made by inference before construction starts. The typed-AST
+    // pass receives concrete facts rather than mutable inference representation.
+    let resolved_facts = handoff::ResolvedInferenceFacts::resolve(&ctx, &subst)?;
+
     // Pass 2: construct typed AST for the current module only.
     // The registry owns all type definitions; ConstructCtx derives concrete envs from it.
     let started = Instant::now();
@@ -1092,7 +1097,7 @@ fn check_impl_with_report(
         &overloads,
         current_module_path,
         references,
-        Some(ctx.closure_return_types()),
+        &resolved_facts,
     )?;
     let construction_ns = elapsed_ns(started);
 
