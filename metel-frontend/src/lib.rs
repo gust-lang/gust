@@ -12,6 +12,7 @@ pub mod ast;
 pub mod coherence;
 pub mod elaborator;
 pub mod error;
+pub(crate) mod flow_state;
 pub mod module_loader;
 pub mod module_paths;
 pub mod move_check;
