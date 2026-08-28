@@ -142,6 +142,57 @@ fn ann_to_infer(te: &TypeExpr, ctx: &mut InferContext) -> InferType {
     type_expr_to_infer_with_ctx(te, &params, ctx)
 }
 
+/// RFC-0008 §6 / metel-core#876: `ann` names an array (`T[]`) or sized-array
+/// (`[T; N]`) whose element type is written as `dyn Aspect` — returns that
+/// element bound. Purely syntactic on the *unconverted* annotation, no
+/// `ctx` involved, so calling it costs nothing and allocates no fresh var,
+/// unlike converting the whole annotation via `ann_to_infer`.
+fn dyn_array_elem_ann(ann: &TypeExpr) -> Option<&TypeExpr> {
+    let elem = match ann {
+        TypeExpr::Array(elem) | TypeExpr::SizedArray(elem, _) => elem.as_ref(),
+        _ => return None,
+    };
+    matches!(elem, TypeExpr::DynAspect { .. }).then_some(elem)
+}
+
+/// RFC-0008 §6 / metel-core#876: infer a `dyn Aspect`-annotated array
+/// literal's elements against the *known* declared element type directly,
+/// instead of `infer_expr`'s ordinary `Expr::Array` handling, which unifies
+/// every element against the first element's own inferred type — that would
+/// reject two different concrete types in one literal outright, before
+/// either ever gets a chance to coerce to the aspect, defeating the entire
+/// point of a heterogeneous `dyn Aspect` array (`List<dyn Aspect>` covers
+/// the same use case via `push`, one element at a time, so this is the
+/// array-literal-specific gap).
+///
+/// Constraining each element against `elem_ty` (rather than unifying them
+/// against each other) reuses the ordinary `ctx.add_constraint` mechanism —
+/// nothing new: the already-existing permissive `Dyn`-vs-concrete `unify`
+/// arm (RFC-0008 slice 2) already accepts any concrete element against a
+/// `Dyn` element type, deferring the real aspect-satisfaction check to
+/// `maybe_dyn_coerce` in Pass 2 construction, same as every other coercion
+/// site.
+///
+/// Scoped narrowly to the two call sites that already have a genuine
+/// annotation in hand (`Decl::Let`/`Decl::Mut`) — a heterogeneous array
+/// literal used directly as a function argument or struct field, with no
+/// annotated binding in between, is unaffected (Pass 1 doesn't thread an
+/// expected type into any other sub-expression); bind it to a `let`/`var`
+/// first if that's ever needed.
+fn infer_dyn_array_literal(
+    elems: &[Expr],
+    elem_ty: &InferType,
+    span: &Span,
+    ctx: &mut InferContext,
+    fun_generalizations: &mut Vec<FunGeneralization>,
+) -> Result<InferType, MetelError> {
+    for elem in elems {
+        let ty = infer_expr(elem, ctx, fun_generalizations)?;
+        ctx.add_constraint(ty, elem_ty.clone(), span.clone());
+    }
+    Ok(InferType::Array(Box::new(elem_ty.clone())))
+}
+
 /// Register the names of all direct `FunDecl`s in `decls` with fresh type
 /// variables so that forward references and mutual recursion work.
 /// The function type of a `native` declaration, built from its annotations,
@@ -1099,7 +1150,14 @@ fn infer_decl(
     match decl {
         Decl::Let(ld) => {
             let env_fvs = ctx.env_free_vars();
-            let val_ty = infer_expr(&ld.value, ctx, fun_generalizations)?;
+            let val_ty = if let (Expr::Array(elems, arr_span), Some(elem_ann)) =
+                (&ld.value, ld.type_ann.as_ref().and_then(dyn_array_elem_ann))
+            {
+                let elem_ty = ann_to_infer(elem_ann, ctx);
+                infer_dyn_array_literal(elems, &elem_ty, arr_span, ctx, fun_generalizations)?
+            } else {
+                infer_expr(&ld.value, ctx, fun_generalizations)?
+            };
             let bound_ty = if let Some(ann) = &ld.type_ann {
                 let declared = ann_to_infer(ann, ctx);
                 // RFC-0053 §4 (metel-core#757): `[T; N]` coerces to `T[]`,
@@ -1177,7 +1235,14 @@ fn infer_decl(
             Ok(InferType::unit())
         }
         Decl::Mut(md) => {
-            let val_ty = infer_expr(&md.value, ctx, fun_generalizations)?;
+            let val_ty = if let (Expr::Array(elems, arr_span), Some(elem_ann)) =
+                (&md.value, md.type_ann.as_ref().and_then(dyn_array_elem_ann))
+            {
+                let elem_ty = ann_to_infer(elem_ann, ctx);
+                infer_dyn_array_literal(elems, &elem_ty, arr_span, ctx, fun_generalizations)?
+            } else {
+                infer_expr(&md.value, ctx, fun_generalizations)?
+            };
             let bound_ty = if let Some(ann) = &md.type_ann {
                 let declared = ann_to_infer(ann, ctx);
                 // RFC-0053 §4 (metel-core#757): see the matching check in
