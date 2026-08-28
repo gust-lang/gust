@@ -14,7 +14,7 @@
 // ── Aspects ────────────────────────────────────────────────────────────────────
 
 aspect Printable {
-    fun format(self) -> String;
+    fun format(&self) -> String;
 }
 
 aspect From<T> {
