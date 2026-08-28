@@ -3,7 +3,7 @@
 // so the evaluator routes each to the right impl without one shadowing the other.
 
 aspect Printable {
-    fun summary(self) -> String;
+    fun summary(&self) -> String;
 }
 
 struct Counter {

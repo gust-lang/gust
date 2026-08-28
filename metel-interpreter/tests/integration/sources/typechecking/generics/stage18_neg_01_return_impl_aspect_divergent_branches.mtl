@@ -20,8 +20,8 @@ extend MyInt: Display {
 }
 
 extend MyString: Display {
-	fun display(self) -> String {
-		self.value
+	fun display(&self) -> String {
+		self.value.clone()
 	}
 }
 

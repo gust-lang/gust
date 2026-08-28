@@ -1069,7 +1069,8 @@ fn aspect_impl_method_signature_matches(
         .iter()
         .zip(&declared.params)
         .all(|(actual, expected)| {
-            std::mem::discriminant(&actual.receiver) == std::mem::discriminant(&expected.receiver)
+            actual.receiver.as_ref().map(std::mem::discriminant)
+                == expected.receiver.as_ref().map(std::mem::discriminant)
                 && signature_param_type(actual, &actual_env)
                     == signature_param_type(expected, &expected_env)
         })

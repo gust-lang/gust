@@ -9,8 +9,8 @@ struct MyString {
 }
 
 extend MyString: Display {
-	fun display(self) -> String {
-		self.value
+	fun display(&self) -> String {
+		self.value.clone()
 	}
 }
 
