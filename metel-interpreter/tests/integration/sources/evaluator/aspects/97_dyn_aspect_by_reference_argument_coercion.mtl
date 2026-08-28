@@ -1,0 +1,21 @@
+// RFC-0008 §6: coercion behind a shared reference (`&dyn Aspect`). Real gap
+// found during a targeted edge-case audit: `maybe_dyn_coerce` only ever
+// matched a bare `Type::Dyn`, never `Type::Reference(Dyn)` -- so this
+// position was never actually checked anywhere, at any site, even though
+// Pass 1's `unify` already accepted the shape (deliberately, deferring the
+// real check here). Fixed by adding a reference-peeling branch to
+// `maybe_dyn_coerce` itself, which closes the gap at every site at once
+// (see neg_36 for the corresponding rejection, and 91 for the same shape
+// at a `let` site specifically).
+
+struct Rock { }
+
+extend Rock: Display {
+    fun to_string(&self) -> String { "rock".to_string() }
+}
+
+fun show(x: &dyn Display) -> String { x.to_string() }
+
+fun main() {
+    assert(show(&Rock { }) == "rock");
+}

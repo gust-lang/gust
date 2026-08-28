@@ -1,0 +1,14 @@
+// RFC-0008 §6: reassigning an existing `var`-bound `dyn Aspect` binding
+// coerces the new value the same way its original `let`/`var` did. Real gap
+// found during a targeted edge-case audit: `Expr::Assign`'s construction
+// never called `maybe_dyn_coerce` (confirmed this isn't a general
+// assignment-checking gap -- an ordinary `x = "hello"` on an `i64` var is
+// already correctly rejected; the hole was specific to `Type::Dyn`). See
+// neg_39 for the corresponding rejection.
+
+fun main() {
+    var x: dyn Display = 42;
+    assert(x.to_string() == "42");
+    x = "hello".to_string();
+    assert(x.to_string() == "hello");
+}

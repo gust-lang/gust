@@ -1,0 +1,19 @@
+// RFC-0008 §6: a struct field declared `dyn Aspect` coerces at the
+// struct-literal site, the same as any other hinted position. Real gap
+// found during a targeted edge-case audit: `Expr::StructLiteral`'s field
+// construction never called `maybe_dyn_coerce`, so a field of a type that
+// did not implement the aspect silently compiled and only panicked at
+// first use (see neg_38 for the corresponding rejection).
+
+struct Rock { }
+
+extend Rock: Display {
+    fun to_string(&self) -> String { "rock".to_string() }
+}
+
+struct Holder { item: dyn Display }
+
+fun main() {
+    let h = Holder { item = Rock { } };
+    assert(h.item.to_string() == "rock");
+}
