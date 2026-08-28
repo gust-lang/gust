@@ -1,0 +1,24 @@
+// RFC-0008 slice 2 / §5: a `&var self` method dispatched through an owned,
+// mutably-bound `dyn Aspect` value. Mutation must reach the concrete value
+// behind the fat pointer, not the wrapper -- the same binding (`c`) observes
+// each mutation on the next call.
+
+aspect Counter {
+    fun increment(&var self);
+    fun value(&self) -> i64;
+}
+
+struct MyCounter { n: i64 }
+
+extend MyCounter: Counter {
+    fun increment(&var self) { self.n = self.n + 1; }
+    fun value(&self) -> i64 { self.n }
+}
+
+fun main() {
+    var c: dyn Counter = MyCounter { n = 0 };
+    c.increment();
+    c.increment();
+    c.increment();
+    assert(c.value() == 3);
+}

@@ -1,0 +1,18 @@
+// RFC-0008 slice 2: `dyn Callable<i64, i64>` -- the aspect's own generic
+// params (`A`, `B`) substituted with this `dyn Aspect`'s type args, both in
+// method-call typechecking (the param/return types) and dispatch.
+
+aspect Callable<A, B> {
+    fun call(&self, arg: A) -> B;
+}
+
+struct Doubler { }
+
+extend Doubler: Callable<i64, i64> {
+    fun call(&self, arg: i64) -> i64 { arg * 2 }
+}
+
+fun main() {
+    let d: dyn Callable<i64, i64> = Doubler { };
+    assert(d.call(21) == 42);
+}

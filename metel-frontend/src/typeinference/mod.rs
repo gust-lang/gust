@@ -669,6 +669,17 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             }
             Ok(subst)
         }
+        // RFC-0008 §6: a concrete type coercing to `dyn Aspect` (or the reverse
+        // pairing -- unify is symmetric here). Exactly one side is `Dyn` at this
+        // point, since a `Dyn`-vs-`Dyn` pair already matched the arm above.
+        // Whether the concrete side actually implements the aspect is deferred
+        // to `maybe_dyn_coerce` (Pass 2 construction), which has the
+        // module-visibility context this purely structural function doesn't --
+        // this only accepts the *shape*, wherever `unify` is reached, including
+        // recursively through `&`/`&var` (RFC-0008 §1's borrowed forms) and any
+        // other structural position, so it isn't reported as a hard unify
+        // failure before that real check gets a chance to run.
+        (InferType::Dyn { .. }, _) | (_, InferType::Dyn { .. }) => Ok(Substitution::new()),
         _ => Err(MetelError::internal(format!("cannot unify {a} with {b}"))),
     }
 }
@@ -993,8 +1004,19 @@ fn validate_literal_bindings(
 ) -> Result<(), MetelError> {
     for &var in integer_literal_vars {
         match subst.apply(&InferType::Var(var)) {
-            InferType::Var(_) | InferType::Never => {}
             InferType::Concrete(t) if is_integer_type(&t) => {}
+            // RFC-0008 §6's own flagship example: `let x: dyn Display = 42;`.
+            // A literal var never unifies down to a *concrete* numeric type
+            // through `Dyn` (the `Dyn` unify arm only matches another `Dyn`),
+            // so without this the literal stays an unconstrained `Var` and
+            // resolves to `Dyn` here directly. Accept it, same as `Var`/`Never`:
+            // `construct_literal_type` (Pass 2) already falls through to its
+            // ordinary untargeted default (`i64`/`f64`) for any non-numeric
+            // `expected_ty`, `Dyn` included, and `maybe_dyn_coerce` then checks
+            // that defaulted concrete type against the aspect for real, with a
+            // precise T0012 if it doesn't satisfy it — this only defers that
+            // check past Pass 1's literal-defaulting guard, it doesn't skip it.
+            InferType::Var(_) | InferType::Never | InferType::Dyn { .. } => {}
             other => {
                 return Err(literal_mismatch_error(
                     operator,
@@ -1008,8 +1030,9 @@ fn validate_literal_bindings(
     }
     for &var in float_literal_vars {
         match subst.apply(&InferType::Var(var)) {
-            InferType::Var(_) | InferType::Never => {}
             InferType::Concrete(t) if is_float_type(&t) => {}
+            // Same reasoning as the integer loop above.
+            InferType::Var(_) | InferType::Never | InferType::Dyn { .. } => {}
             other => {
                 return Err(literal_mismatch_error(
                     operator,
