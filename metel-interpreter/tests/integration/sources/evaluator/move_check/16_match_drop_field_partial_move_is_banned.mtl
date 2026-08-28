@@ -4,7 +4,7 @@ struct Handle {
 }
 
 extend Handle: Drop {
-    fun drop(self) { }
+    fun drop(&var self) { }
 }
 
 fun main() {

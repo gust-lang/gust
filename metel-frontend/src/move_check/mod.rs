@@ -3274,7 +3274,7 @@ struct Handle {
 }
 
 extend Handle: Drop {
-    fun drop(self) { }
+    fun drop(&var self) { }
 }
 
 fun main() {
@@ -3296,7 +3296,7 @@ struct Handle {
 }
 
 extend Handle: Drop {
-    fun drop(self) { }
+    fun drop(&var self) { }
 }
 
 fun main() {
@@ -3349,7 +3349,7 @@ struct Wrapper {
 }
 
 extend Wrapper: Drop {
-    fun drop(self) { }
+    fun drop(&var self) { }
 }
 
 fun main() {
@@ -3377,7 +3377,7 @@ struct Wrapper {
 }
 
 extend Wrapper: Drop {
-    fun drop(self) { }
+    fun drop(&var self) { }
 }
 
 fun main() {
@@ -3403,7 +3403,7 @@ struct Wrapper {
 }
 
 extend Wrapper: Drop {
-    fun drop(self) { }
+    fun drop(&var self) { }
 }
 
 fun main() {
@@ -3655,7 +3655,7 @@ struct Handle {
 }
 
 extend Handle: Drop {
-    fun drop(self) { }
+    fun drop(&var self) { }
 }
 
 fun main() {

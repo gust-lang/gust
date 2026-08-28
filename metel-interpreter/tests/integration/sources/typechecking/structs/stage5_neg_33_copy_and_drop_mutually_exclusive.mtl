@@ -5,5 +5,5 @@ struct Handle {
 extend Handle: Copy;
 
 extend Handle: Drop {
-    fun drop(self) {}
+    fun drop(&var self) {}
 }
