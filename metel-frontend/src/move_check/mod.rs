@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 use crate::ast::{GenericParam, Pattern, Polarity, ReceiverKind, Span};
 use crate::error::{MetelError, TypeErrorCode};
@@ -156,226 +156,7 @@ pub fn check_graph(graph: &TypedModuleGraph) -> Result<Vec<String>, MetelError> 
         .collect())
 }
 
-#[derive(Debug, Clone)]
-struct MoveRecord {
-    place: Place,
-    moved_span: Span,
-    cause: MoveCause,
-    moved_type: String,
-    /// Whether this move reached the current state around a loop's back edge.
-    /// A loop-carried move is usually its own use — the same expression, one
-    /// iteration later — so the diagnostic has to say which iteration it means.
-    from_previous_iteration: bool,
-}
-
-/// A move identified by where it happened, ignoring how it was reached.
-type FingerprintKey = (Place, String, u32, u32);
-
-fn fingerprint_key(record: &MoveRecord) -> FingerprintKey {
-    (
-        record.place.clone(),
-        record.moved_span.filename.clone(),
-        record.moved_span.line,
-        record.moved_span.col,
-    )
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum MoveCause {
-    Other,
-    ByValueReceiver,
-}
-
-/// What introducing a binding displaced, so that leaving its scope restores the
-/// binding it shadowed rather than deleting both.
-#[derive(Debug, Clone)]
-struct ShadowedBinding {
-    name: String,
-    moved: Option<Vec<MoveRecord>>,
-    binding_type: Option<Type>,
-    borrowed_array: bool,
-}
-
-#[derive(Debug, Clone, Default)]
-struct FlowState {
-    moved: HashMap<String, Vec<MoveRecord>>,
-    binding_types: HashMap<String, Type>,
-    /// Loop bindings sourced from a `T[]` borrowed view. They may be read or
-    /// borrowed, but a non-Copy value cannot be moved out through the binding.
-    borrowed_array_bindings: HashSet<String>,
-    scopes: Vec<Vec<ShadowedBinding>>,
-    /// Whether the path walked so far has left the enclosing loop iteration
-    /// through `break`, `continue`, or `return`. Only the loop driver reads it,
-    /// to decide whether this state reaches the back edge; it is not part of the
-    /// moved-state lattice and `union_from` deliberately leaves it alone.
-    diverged: bool,
-}
-
-impl FlowState {
-    fn push_scope(&mut self) {
-        self.scopes.push(Vec::new());
-    }
-
-    fn pop_scope(&mut self) {
-        let Some(bindings) = self.scopes.pop() else {
-            return;
-        };
-        // Reverse order: a name bound twice in one scope displaced the earlier
-        // binding, so unwinding forwards would leave the *later* shadow's empty
-        // state in place instead of what the scope was entered with.
-        for shadowed in bindings.into_iter().rev() {
-            let ShadowedBinding {
-                name,
-                moved,
-                binding_type,
-                borrowed_array,
-            } = shadowed;
-            match moved {
-                Some(records) => self.moved.insert(name.clone(), records),
-                None => self.moved.remove(&name),
-            };
-            match binding_type {
-                Some(ty) => self.binding_types.insert(name.clone(), ty),
-                None => self.binding_types.remove(&name),
-            };
-            if borrowed_array {
-                self.borrowed_array_bindings.insert(name);
-            } else {
-                self.borrowed_array_bindings.remove(&name);
-            }
-        }
-    }
-
-    /// Introduce `name`, remembering whatever it displaced so leaving the scope
-    /// can put it back.
-    ///
-    /// Clearing the moved state is right for the *new* binding — it is a fresh
-    /// value. What was wrong before #343 was that the clear also destroyed the
-    /// shadowed binding's state, which `pop_scope` then had nothing to restore:
-    /// a shadow inside a loop body laundered a carried move.
-    fn bind(&mut self, name: &str) {
-        let displaced = ShadowedBinding {
-            name: name.to_string(),
-            moved: self.moved.remove(name),
-            binding_type: self.binding_types.remove(name),
-            borrowed_array: self.borrowed_array_bindings.remove(name),
-        };
-        if let Some(scope) = self.scopes.last_mut() {
-            scope.push(displaced);
-        }
-    }
-
-    fn bind_typed(&mut self, name: &str, ty: &Type) {
-        self.bind(name);
-        self.binding_types.insert(name.to_string(), ty.clone());
-    }
-
-    fn bind_borrowed_array_element(&mut self, name: &str, ty: &Type) {
-        self.bind_typed(name, ty);
-        self.borrowed_array_bindings.insert(name.to_string());
-    }
-
-    fn is_borrowed_array_element(&self, place: &Place) -> bool {
-        self.borrowed_array_bindings.contains(place.root())
-    }
-
-    fn binding_type(&self, name: &str) -> Option<&Type> {
-        self.binding_types.get(name)
-    }
-
-    fn record_move(
-        &mut self,
-        place: Place,
-        moved_span: Span,
-        cause: MoveCause,
-        moved_type: String,
-    ) {
-        let root = place.root().to_string();
-        let records = self.moved.entry(root).or_default();
-        if place.projections().is_empty() {
-            // Moving the whole value subsumes every partial move of it.
-            records.clear();
-        } else {
-            records.retain(|existing| !place.is_prefix_of(&existing.place));
-        }
-        records.push(MoveRecord {
-            place,
-            moved_span,
-            cause,
-            moved_type,
-            from_previous_iteration: false,
-        });
-    }
-
-    /// Mark every move that was not already in `before` as loop-carried. Called
-    /// once a loop has folded its back edge into the state the body starts from:
-    /// anything new got there by completing an iteration.
-    fn mark_moves_as_carried_from(&mut self, before: &Self) {
-        let previous = before.moved_fingerprint();
-        for record in self.moved.values_mut().flatten() {
-            if !previous.contains(&fingerprint_key(record)) {
-                record.from_previous_iteration = true;
-            }
-        }
-    }
-
-    fn moved_record_for_descendant_use(&self, place: &Place) -> Option<&MoveRecord> {
-        self.moved
-            .get(place.root())?
-            .iter()
-            .find(|record| record.place.is_prefix_of(place))
-    }
-
-    fn moved_record_for_whole_use(&self, place: &Place) -> Option<&MoveRecord> {
-        self.moved
-            .get(place.root())?
-            .iter()
-            .find(|record| record.place.is_prefix_of(place) || place.is_prefix_of(&record.place))
-    }
-
-    fn union_from(&mut self, other: &Self) {
-        for (root, incoming) in &other.moved {
-            let records = self.moved.entry(root.clone()).or_default();
-            for record in incoming {
-                if records.iter().any(|existing| {
-                    existing.place == record.place && existing.moved_span == record.moved_span
-                }) {
-                    continue;
-                }
-                if record.place.projections().is_empty() {
-                    records.clear();
-                    records.push(record.clone());
-                    continue;
-                }
-                if records
-                    .iter()
-                    .any(|existing| existing.place.projections().is_empty())
-                {
-                    continue;
-                }
-                records.push(record.clone());
-            }
-        }
-    }
-
-    /// This state as it would be after leaving every scope opened since the
-    /// stack was `depth` deep — what a `break` or `continue` out of a loop body
-    /// actually hands to its destination.
-    fn unwound_to(&self, depth: usize) -> Self {
-        let mut unwound = self.clone();
-        while unwound.scopes.len() > depth {
-            unwound.pop_scope();
-        }
-        unwound
-    }
-
-    /// A stable, order-independent summary of the moved state, for deciding when
-    /// a loop's entry state has stopped growing. `moved` is a `HashMap` of
-    /// `Vec`s, so comparing it directly would compare iteration order too.
-    fn moved_fingerprint(&self) -> BTreeSet<FingerprintKey> {
-        self.moved.values().flatten().map(fingerprint_key).collect()
-    }
-}
+use crate::flow_state::{FlowState, MoveCause, MoveRecord};
 
 #[derive(Debug, Clone, Default)]
 struct GenericMoveEnv {
@@ -759,7 +540,7 @@ impl<'a> Checker<'a> {
             let mark = self.report.mark();
             let mut body_state = entry.clone();
             body_state.diverged = false;
-            let scope_depth = body_state.scopes.len();
+            let scope_depth = body_state.scope_depth();
             self.loop_frames.push(LoopFrame {
                 scope_depth,
                 ..LoopFrame::default()
@@ -957,7 +738,9 @@ impl<'a> Checker<'a> {
             TypedExpr::Assign { target, value, .. } => {
                 self.observe_assignment_target(target, current_module, state);
                 self.consume_expr(value, current_module, state);
-                Self::reinitialize_assigned_place(target, state);
+                if let Some(place) = from_typed_place(target) {
+                    state.reinitialize(&place);
+                }
             }
             TypedExpr::Call { callee, args, .. } => {
                 self.observe_call_expr(callee, args, current_module, state);
@@ -1105,7 +888,7 @@ impl<'a> Checker<'a> {
     ) {
         self.observe_expr(&m.scrutinee, current_module, state);
         let mut joined = state.clone();
-        joined.moved.clear();
+        joined.clear_moved();
         // Control reaches the code after a `match` only if some arm falls out of
         // it. An empty match has no arm to fall out of, but it also cannot be
         // entered, so treat it as not diverging rather than as diverging.
@@ -1837,25 +1620,6 @@ impl<'a> Checker<'a> {
             prefix_ty = self.project_type(&prefix_ty, projection, current_module)?;
         }
         None
-    }
-
-    /// A write makes its target valid again, along with everything under it:
-    /// assigning `p.f` replaces `p.f.g` too.
-    ///
-    /// A move of a strict *ancestor* survives — replacing one field does not
-    /// revive the whole value — but that case is already an error at the write
-    /// itself, which needs a reachable base.
-    fn reinitialize_assigned_place(typed_place: &TypedPlace, state: &mut FlowState) {
-        let Some(place) = from_typed_place(typed_place) else {
-            return;
-        };
-        let Some(records) = state.moved.get_mut(place.root()) else {
-            return;
-        };
-        records.retain(|record| !place.is_prefix_of(&record.place));
-        if records.is_empty() {
-            state.moved.remove(place.root());
-        }
     }
 
     fn type_of_place(
