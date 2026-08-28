@@ -15,7 +15,7 @@ untyped AST  ──►  check()  ──►  TypedProgram
                     │
                     ├─ Pre-pass: register builtins, enums, hoist names
                     ├─ Pass 1:   infer — emit constraints, solve
-                    └─ Pass 2:   construct — re-derive concrete types, build TypedAST
+                    └─ Pass 2:   construct — consume resolved facts, build TypedAST
 ```
 
 ### Multi-module (v0.6.0 `check_graph`)
@@ -53,8 +53,17 @@ Entry points:
 | `mod.rs` | `check()` / `check_graph()` entry points; `CorePrelude`, `GlobalExports`, `check_impl` |
 | `registry.rs` | `build_registry` (drives `populate_schemes_from_embedded_core` + `register_program_decls`), `build_concrete_*_env`; registers aspect declaring modules for elaboration |
 | `overload.rs` | `build_overload_table`, `core_overload_table()`, `select`, `no_match_error`; SymbolId allocation for overload sets |
-| `inference.rs` | Pass 1 — all `infer_*` functions |
-| `construction.rs` | Pass 2 — `ConstructCtx`, all `construct_*` functions, exhaustiveness checking; `ConstructCtx` carries `symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>` threaded from `check_graph` so `construct_impl_decl` can set `TypedImplBlock::aspect_id` |
+| `inference.rs` | Pass 1 orchestration, signature validation, block/statement traversal, and expression helpers |
+| `inference/declarations.rs` | Declaration, function, impl, and default-method inference and generalization |
+| `inference/expressions.rs` | The exhaustive expression constraint-emission dispatch |
+| `inference/patterns.rs` | Match and pattern constraint emission, record-row pattern access, and built-in pattern method typing |
+| `inference/lowering.rs` | Pre-inference lowering for `impl Aspect` parameters and associated-type projections |
+| `handoff.rs` | `ResolvedInferenceFacts`, the immutable concrete decisions passed from inference to construction |
+| `construction.rs` | Pass 2 context, block/statement construction, literals, coercions, and places |
+| `construction/declarations.rs` | Declaration, function, impl, and default-method typed-AST construction |
+| `construction/expressions.rs` | The exhaustive expression typed-AST dispatch |
+| `construction/patterns.rs` | Pattern binding, match construction, exhaustiveness, and control-flow result merging |
+| `construction/calls.rs` | Calls, generic instantiation, method dispatch, and bound validation |
 | `conversions.rs` | `type_expr_to_infer`, `infer_type_to_type`, `resolved_to_type`, `type_to_infer` |
 
 The inference engine lives in `src/typeinference/` (type vars, unification, substitution, constraints, schemes). The typechecker modules in `src/typechecker/` walk the AST and drive that engine.
@@ -255,14 +264,44 @@ The constraint propagates the annotation into the solver without changing contro
 
 ## Pass 2 — Construction
 
-**Module:** `typechecker/construction.rs`
+**Modules:** `typechecker/construction.rs` and its `construction/` submodules
 
 Pass 2 re-walks the untyped AST with:
 - `subst: &Substitution` — the final solved substitution from Pass 1
 - `scheme_env: &SchemeEnv` — generalized type schemes for user-defined functions
+- `ResolvedInferenceFacts` — immutable concrete decisions made by Pass 1
 - `ConstructCtx` — a stripped-down context with concrete `Type` values (no inference)
 
-Each `construct_expr` call re-derives the node's concrete type by applying `subst` to the inferred type and converting via `infer_type_to_type`. No constraints are emitted; no unification is performed.
+Construction uses the solved substitution to instantiate schemes and turn annotations
+into concrete types, but does not receive mutable inference state. Decisions that Pass 1
+must communicate are converted to `Type` while creating `ResolvedInferenceFacts`; for
+example, an inferred closure return type is resolved once at this boundary and then
+copied into the typed closure. Polymorphic closures intentionally have no single
+concrete return fact: they are omitted and reconstructed per call site by the existing
+generic-body path. This is the current interpreter compatibility path, not the intended
+compiler boundary: frontend monomorphization must eventually replace
+`FunBody::Generic` and `GenericClosure` bodies with concrete typed specializations
+before evaluation or code generation. No constraints are emitted and the final
+substitution is never mutated.
+
+### Responsibility and retained overlap
+
+Inference owns constraint generation, eager structural lookup needed to continue
+inference, and closure return-type decisions. Construction owns typed-AST shape,
+concrete call instantiation, coercion nodes, runtime method-dispatch metadata, pattern
+bindings, and exhaustiveness diagnostics. Lowering is a pre-pass and does not infer or
+construct typed nodes.
+
+Some traversal overlap remains deliberately. Method calls are inspected during
+inference to constrain receivers and arguments, then resolved against concrete types
+during construction so the typed AST can carry dispatch metadata and inserted
+coercions. Generic call schemes are likewise instantiated in both passes for different
+outputs: constraints in Pass 1 and a monomorphic typed call in Pass 2. Removing this
+overlap safely requires frontend monomorphization and a typed intermediate
+representation that records complete call resolution, not exposing mutable inference
+internals to construction. Bound
+satisfaction itself remains centralized in the registry/type-inference queries rather
+than being independently reimplemented by each traversal.
 
 ### Polymorphic Call Sites
 
