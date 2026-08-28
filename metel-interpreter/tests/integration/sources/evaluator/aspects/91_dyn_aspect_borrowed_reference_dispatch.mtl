@@ -1,0 +1,14 @@
+// RFC-0008 slice 2 / §1: `&dyn Aspect` -- a borrowed aspect object. No new
+// runtime representation needed for the reference itself (RFC-0008 §5): it's
+// an ordinary `Reference` to the concrete value, dispatched by its own
+// erased static type, not by any fat-pointer wrapping.
+
+fun main() {
+    let n: i64 = 42;
+    let x: &dyn Display = &n;
+    assert(x.to_string() == "42");
+
+    let s: String = "hi".to_string();
+    let y: &dyn Display = &s;
+    assert(y.to_string() == "hi");
+}

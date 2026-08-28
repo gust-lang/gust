@@ -19,8 +19,8 @@ use crate::typeinference::{
 use crate::types::Type;
 
 use super::conversions::{
-    infer_type_to_type, resolved_to_type, type_expr_to_infer_with_assoc_ctx, type_to_infer,
-    AssocResolveCtx,
+    infer_type_to_type, resolved_to_type, type_expr_to_infer_with_assoc_ctx,
+    type_expr_to_infer_with_generics, type_to_infer, AssocResolveCtx,
 };
 use super::SchemeEnv;
 
@@ -945,7 +945,8 @@ fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<TypedDecl, Mete
                 Some(t) => {
                     let value =
                         maybe_read_copy(t, value, &ld.span, ctx.registry, ctx.current_module)?;
-                    maybe_singleton_coerce(t, value, &ld.span, ctx.registry)?
+                    let value = maybe_singleton_coerce(t, value, &ld.span, ctx.registry)?;
+                    maybe_dyn_coerce(t, value, &ld.span, ctx)?
                 }
                 None => value,
             };
@@ -970,7 +971,8 @@ fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<TypedDecl, Mete
                 Some(t) => {
                     let value =
                         maybe_read_copy(t, value, &md.span, ctx.registry, ctx.current_module)?;
-                    maybe_singleton_coerce(t, value, &md.span, ctx.registry)?
+                    let value = maybe_singleton_coerce(t, value, &md.span, ctx.registry)?;
+                    maybe_dyn_coerce(t, value, &md.span, ctx)?
                 }
                 None => value,
             };
@@ -1573,7 +1575,9 @@ fn construct_block(
                         ctx.registry,
                         ctx.current_module,
                     )?;
-                    maybe_singleton_coerce(t, constructed, e.span(), ctx.registry)?
+                    let constructed =
+                        maybe_singleton_coerce(t, constructed, e.span(), ctx.registry)?;
+                    maybe_dyn_coerce(t, constructed, e.span(), ctx)?
                 }
                 None => constructed,
             };
@@ -1629,7 +1633,8 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
                                 ctx.registry,
                                 ctx.current_module,
                             )?;
-                            maybe_singleton_coerce(t, value, &ld.span, ctx.registry)?
+                            let value = maybe_singleton_coerce(t, value, &ld.span, ctx.registry)?;
+                            maybe_dyn_coerce(t, value, &ld.span, ctx)?
                         }
                         None => value,
                     };
@@ -1662,7 +1667,8 @@ fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<TypedStmt, Mete
                                 ctx.registry,
                                 ctx.current_module,
                             )?;
-                            maybe_singleton_coerce(t, value, &md.span, ctx.registry)?
+                            let value = maybe_singleton_coerce(t, value, &md.span, ctx.registry)?;
+                            maybe_dyn_coerce(t, value, &md.span, ctx)?
                         }
                         None => value,
                     };
@@ -2347,6 +2353,100 @@ fn construct_expr(
                     span: span.clone(),
                 });
             }
+            // `dyn Aspect` receiver (RFC-0008 slice 2): mirrors the bounded-TypeVar
+            // slow path Pass 1 already has (`inference.rs`'s own `InferType::Dyn`
+            // arm) but working in concrete `Type`s, the way Pass 2 construction
+            // does everywhere else. Object safety already guarantees no `Self`/
+            // associated type outside receiver position, so the only substitution
+            // needed is the aspect's own generic params against this `dyn
+            // Aspect`'s type args. `dispatch: MethodDispatch::Dynamic` here is
+            // deliberate, not a placeholder to fix later — elaboration (a later,
+            // separate pass) resolves it to `Aspect { aspect_id }` by inspecting
+            // the receiver's own `Type::Dyn`, the same way the concrete-struct
+            // fast path below defers to elaboration too.
+            if let Type::Dyn { aspect, type_args } = peel_type_references(typed_receiver.ty()) {
+                let aspect = aspect.clone();
+                let type_args = type_args.clone();
+                let method_def = ctx
+                    .registry
+                    .aspect_method_defs(&aspect)
+                    .and_then(|methods| methods.iter().find(|m| m.name == *method).cloned())
+                    .ok_or_else(|| {
+                        MetelError::type_error(
+                            TypeErrorCode::T0003,
+                            format!("no method `{method}` on `dyn {aspect}`"),
+                            span,
+                        )
+                    })?;
+
+                let aspect_generics = ctx
+                    .registry
+                    .aspect_generics(&aspect)
+                    .cloned()
+                    .unwrap_or_default();
+                let mut local_subst = Substitution::new();
+                let mut generics_map: HashMap<String, TypeVar> = HashMap::new();
+                for (name, arg_ty) in aspect_generics.iter().zip(type_args.iter()) {
+                    let tv = ctx.gen.fresh();
+                    generics_map.insert(name.clone(), tv);
+                    local_subst.bind(tv, type_to_infer(arg_ty));
+                }
+
+                let declared_params: Vec<&Param> = method_def
+                    .params
+                    .iter()
+                    .filter(|p| p.name != "self")
+                    .collect();
+                if args.len() != declared_params.len() {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0004,
+                        format!(
+                            "`{aspect}::{method}` expects {} argument(s), got {}",
+                            declared_params.len(),
+                            args.len()
+                        ),
+                        span,
+                    ));
+                }
+                let mut typed_args = Vec::with_capacity(args.len());
+                for (arg_expr, param) in args.iter().zip(declared_params.iter()) {
+                    let expected = param
+                        .type_ann
+                        .as_ref()
+                        .map(|ann| {
+                            let infer_ty = type_expr_to_infer_with_generics(ann, &generics_map);
+                            resolved_to_type(&infer_ty, &local_subst, span)
+                        })
+                        .transpose()?;
+                    typed_args.push(construct_expr(arg_expr, expected.as_ref(), ctx)?);
+                }
+
+                // No mutable-access guard here, unlike the array fast path
+                // below: Pass 1 (`inference.rs`'s own `InferType::Dyn` arm)
+                // already checked this, with the binding-mutability fallback
+                // (`lookup_for_write`) for a bare owned receiver that the
+                // array path's simpler `type_chain_provides_mut_access`-only
+                // check doesn't have -- mirroring the concrete-struct fast
+                // path just below, which likewise trusts Pass 1 and re-checks
+                // nothing here.
+                let ret_ty = match &method_def.return_type {
+                    Some(rt) => {
+                        let infer_ty = type_expr_to_infer_with_generics(rt, &generics_map);
+                        resolved_to_type(&infer_ty, &local_subst, span)?
+                    }
+                    None => Type::Unit,
+                };
+
+                return Ok(TypedExpr::MethodCall {
+                    receiver: Box::new(typed_receiver),
+                    method: method.clone(),
+                    args: typed_args,
+                    ty: ret_ty,
+                    dispatch: MethodDispatch::Dynamic,
+                    span: span.clone(),
+                });
+            }
+
             let (struct_name, receiver_type_args) = match peel_type_references(typed_receiver.ty())
             {
                 Type::Named(name, targs) => (name.clone(), targs.clone()),
@@ -2804,7 +2904,8 @@ fn construct_expr(
             let constructed = construct_expr(expr, Some(&ty), ctx)?;
             let constructed =
                 maybe_read_copy(&ty, constructed, span, ctx.registry, ctx.current_module)?;
-            maybe_singleton_coerce(&ty, constructed, span, ctx.registry)
+            let constructed = maybe_singleton_coerce(&ty, constructed, span, ctx.registry)?;
+            maybe_dyn_coerce(&ty, constructed, span, ctx)
         }
 
         Expr::Cast {
@@ -2884,7 +2985,9 @@ fn construct_expr(
                                 ctx.registry,
                                 ctx.current_module,
                             )?;
-                            maybe_singleton_coerce(t, constructed, e.span(), ctx.registry)?
+                            let constructed =
+                                maybe_singleton_coerce(t, constructed, e.span(), ctx.registry)?;
+                            maybe_dyn_coerce(t, constructed, e.span(), ctx)?
                         }
                         None => constructed,
                     }))
@@ -2917,7 +3020,9 @@ fn construct_expr(
                                 ctx.registry,
                                 ctx.current_module,
                             )?;
-                            maybe_singleton_coerce(t, constructed, e.span(), ctx.registry)?
+                            let constructed =
+                                maybe_singleton_coerce(t, constructed, e.span(), ctx.registry)?;
+                            maybe_dyn_coerce(t, constructed, e.span(), ctx)?
                         }
                         None => constructed,
                     }))
@@ -4110,6 +4215,26 @@ fn construct_call(
         typed_args
     };
 
+    // RFC-0008 §6: coerce each argument to `dyn Aspect` where its param
+    // declares one. Argument-passing doesn't go through `maybe_read_copy`/
+    // `maybe_singleton_coerce`/`maybe_dyn_coerce`'s usual let/return/tail call
+    // sites at all — it's enforced by the plain `Type` equality check just
+    // below instead, so this is the one place that needs its own explicit
+    // coercion pass. A no-op for every param that isn't `Type::Dyn` (or
+    // already matches).
+    let typed_args = if let Type::Fun(params, _) = fun_ty_for_hints {
+        typed_args
+            .into_iter()
+            .zip(params.iter())
+            .map(|(arg, p)| {
+                let arg_span = arg.span().clone();
+                maybe_dyn_coerce(p, arg, &arg_span, ctx)
+            })
+            .collect::<Result<Vec<_>, _>>()?
+    } else {
+        typed_args
+    };
+
     // #775: turbofish pins each quantified var directly from the explicit
     // `::<T>` types, bypassing the unification against actual argument types
     // that an inferred call gets for free inside instantiate_scheme_for_call.
@@ -5031,6 +5156,11 @@ fn instantiate_scheme_for_call(
     for (param, arg_ty) in params.iter().zip(arg_types.iter()) {
         let arg_infer = type_to_infer(arg_ty);
         let applied = subst.apply(param);
+        // `unify` itself accepts a `dyn Aspect` paired with a concrete type as a
+        // coercion (RFC-0008 §6) rather than failing -- whether `arg_ty` actually
+        // implements the aspect is deferred to `maybe_dyn_coerce`, which runs
+        // later against the constructed argument with full module-visibility
+        // context and raises T0012 if it doesn't.
         let s = unify(&applied, &arg_infer).map_err(|_| {
             MetelError::type_error(TypeErrorCode::T0001, "argument type mismatch", span)
         })?;
@@ -5158,6 +5288,8 @@ fn instantiate_scheme_with_expected_ret(
     let mut subst = Substitution::new();
     for (param, arg_ty) in params.iter().zip(arg_types.iter()) {
         let applied = subst.apply(param);
+        // `unify` accepts a `dyn Aspect`/concrete-type pairing as a coercion
+        // (RFC-0008 §6) -- see the comment in `instantiate_scheme_for_call`.
         let s = typeinference::unify(&applied, &type_to_infer(arg_ty)).map_err(|_| {
             MetelError::type_error(TypeErrorCode::T0001, "argument type mismatch", span)
         })?;
@@ -5766,6 +5898,66 @@ fn maybe_singleton_coerce(
         variant: variant.name.clone(),
         field: field.name.clone(),
         ty: field_ty,
+        span: span.clone(),
+    })
+}
+
+/// RFC-0008 §6: implicit coercion of a concrete value to an aspect object (`dyn
+/// Aspect`). Mirrors `maybe_read_copy`/`maybe_singleton_coerce`'s shape and
+/// call-site pattern — called from the same handful of sites that have a genuine
+/// expected type in hand, plus the monomorphic argument-construction site (which
+/// those two don't reach; argument-passing is checked by direct `Type` equality,
+/// not through these coercion hooks).
+///
+/// Object safety is not re-checked here: `expected` being `Type::Dyn` at all
+/// already passed `ty_at`'s `TypeExpr::DynAspect` arm (`projections.rs`), which
+/// runs in a separate, earlier whole-program pass before Pass 1 inference even
+/// starts — by construction, every `Type::Dyn` this function ever sees names an
+/// object-safe aspect.
+fn maybe_dyn_coerce(
+    expected: &Type,
+    actual: TypedExpr,
+    span: &Span,
+    ctx: &ConstructCtx,
+) -> Result<TypedExpr, MetelError> {
+    let Type::Dyn { aspect, .. } = expected else {
+        return Ok(actual);
+    };
+    let actual_ty = actual.ty().clone();
+    if &actual_ty == expected {
+        return Ok(actual);
+    }
+    // Already `dyn`-typed but under a different aspect (or the same aspect with
+    // different type args): a real mismatch Pass 1's `unify` already rejects
+    // (the `Dyn` unify arm only matches an identical `Dyn`) — nothing here to
+    // coerce, so don't mask that error by falling through to the aspect check
+    // below, which asks a different question (concrete-type membership) that a
+    // `dyn`-typed `actual` can't meaningfully answer the same way.
+    if matches!(actual_ty, Type::Dyn { .. }) {
+        return Ok(actual);
+    }
+    if !ctx
+        .registry
+        .type_satisfies_aspect(ctx.current_module, &actual_ty, aspect)
+    {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0012,
+            format!(
+                "`{actual_ty}` does not implement `{aspect}` (required to coerce to `dyn {aspect}`)"
+            ),
+            span,
+        ));
+    }
+    let aspect_id = resolve_aspect_id(ctx, aspect).ok_or_else(|| {
+        MetelError::internal(format!(
+            "dyn Aspect coercion: `{aspect}` passed object-safety and aspect-satisfaction \
+             checks but has no resolvable SymbolId"
+        ))
+    })?;
+    Ok(TypedExpr::DynCoerce {
+        inner: Box::new(actual),
+        aspect_id,
+        ty: expected.clone(),
         span: span.clone(),
     })
 }

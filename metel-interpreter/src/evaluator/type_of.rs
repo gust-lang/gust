@@ -111,6 +111,17 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
                 Type::MutReference(Box::new(cur_type))
             }
         }
+        // Erasure must round-trip through generic-body reconstruction (#286):
+        // a `dyn Aspect` value's type stays `dyn Aspect`, never the concrete
+        // type underneath `data` — that's the entire point of the fat pointer.
+        Value::DynAspect {
+            aspect_name,
+            type_args,
+            ..
+        } => Type::Dyn {
+            aspect: aspect_name.clone(),
+            type_args: type_args.clone(),
+        },
     }
 }
 

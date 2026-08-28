@@ -1,0 +1,5 @@
+struct Rock { }
+
+fun main() {
+    let x: dyn Display = Rock { };
+}

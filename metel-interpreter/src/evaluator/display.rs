@@ -135,6 +135,10 @@ pub(super) fn format_value(val: &Value) -> String {
         Value::MutReference(rc) => format!("&var {}", format_value(&rc.borrow())),
         Value::FieldReference { .. } => "<& field-path>".to_string(),
         Value::MutFieldReference { .. } => "<&var field-path>".to_string(),
+        // A `dyn Aspect` value displays as whatever it actually is underneath —
+        // the erasure is a typechecking-time fiction, not a runtime one; the
+        // wrapped concrete value is real and unambiguous.
+        Value::DynAspect { data, .. } => format_value(&data.borrow()),
     }
 }
 

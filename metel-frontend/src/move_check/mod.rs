@@ -985,7 +985,9 @@ impl<'a> Checker<'a> {
                 self.observe_projection_base_expr(object, current_module, state);
                 self.observe_expr(index, current_module, state);
             }
-            TypedExpr::Cast { expr, .. } | TypedExpr::SingletonCoerce { inner: expr, .. } => {
+            TypedExpr::Cast { expr, .. }
+            | TypedExpr::SingletonCoerce { inner: expr, .. }
+            | TypedExpr::DynCoerce { inner: expr, .. } => {
                 self.observe_expr(expr, current_module, state);
             }
             TypedExpr::Match(m) => self.observe_match_expr(m, current_module, state),
@@ -1278,6 +1280,16 @@ impl<'a> Checker<'a> {
             for item in items {
                 self.consume_expr_with_cause(item, current_module, state, cause);
             }
+            return;
+        }
+        // Same reasoning as the Tuple/Array case just above: coercing to `dyn
+        // Aspect` (RFC-0008 §6) takes ownership of the concrete value into the
+        // fat pointer's storage, so it must consume `inner`, not just observe
+        // it — `place_from_expr` doesn't see through `DynCoerce` (it isn't
+        // itself a place), so without this a non-`Copy` source would stay
+        // usable after being erased into a `dyn Aspect`.
+        if let TypedExpr::DynCoerce { inner, .. } = expr {
+            self.consume_expr_with_cause(inner, current_module, state, cause);
             return;
         }
         self.observe_expr(expr, current_module, state);
@@ -2687,6 +2699,7 @@ impl FreeRootCollector {
             | TypedExpr::UnaryOp(_, value, ..)
             | TypedExpr::Cast { expr: value, .. }
             | TypedExpr::SingletonCoerce { inner: value, .. }
+            | TypedExpr::DynCoerce { inner: value, .. }
             | TypedExpr::RefTemp { init: value, .. } => self.expr(value),
             TypedExpr::BinOp(left, _, right, ..) => {
                 self.expr(left);

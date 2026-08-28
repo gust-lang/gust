@@ -45,15 +45,44 @@ pub fn elaborate(
     mut graph: TypedModuleGraph,
     names: &ResolvedNames,
 ) -> Result<ElaboratedModuleGraph, MetelError> {
-    let aspect_method_map = build_aspect_method_map(&graph, names)?;
+    let methods = build_aspect_method_map(&graph, names)?;
+    let aspect_ids = build_aspect_id_map(&graph, names);
+    let dispatch_map = DispatchMap {
+        methods,
+        aspect_ids,
+    };
 
     for module in &mut graph.modules {
         for decl in &mut module.decls {
-            elaborate_decl(decl, &aspect_method_map);
+            elaborate_decl(decl, &dispatch_map);
         }
     }
 
     Ok(ElaboratedModuleGraph(graph))
+}
+
+/// Maps every declared aspect's name to its own `SymbolId` — used by `dyn Aspect`
+/// method-call dispatch (RFC-0008 slice 2), which is aspect-based by construction
+/// (the aspect name is already known statically from `Type::Dyn { aspect, .. }`)
+/// rather than resolved through `build_aspect_method_map`'s per-concrete-type table.
+fn build_aspect_id_map(
+    graph: &TypedModuleGraph,
+    names: &ResolvedNames,
+) -> HashMap<String, SymbolId> {
+    let mut map = HashMap::new();
+    for module in &graph.modules {
+        for decl in &module.decls {
+            if let TypedDecl::Aspect(a) = decl {
+                if let Some(&id) = names
+                    .symbols
+                    .get(&(module.module_path.clone(), a.name.clone()))
+                {
+                    map.insert(a.name.clone(), id);
+                }
+            }
+        }
+    }
+    map
 }
 
 // ── Dispatch map ─────────────────────────────────────────────────────────────
@@ -152,6 +181,17 @@ fn type_expr_outer_name(te: &TypeExpr) -> Option<String> {
     }
 }
 
+/// Peel every `&`/`&var` layer off `ty`. Used before checking for `Type::Dyn`
+/// specifically — `receiver_type_name` peels internally too, but that check
+/// runs *before* it, so it needs its own peel to see through `&dyn Aspect`/
+/// `&var dyn Aspect` (RFC-0008 §1).
+fn peel_reference(ty: &Type) -> &Type {
+    match ty {
+        Type::Reference(inner) | Type::MutReference(inner) => peel_reference(inner),
+        other => other,
+    }
+}
+
 /// Map a resolved `Type` to the string used in the runtime registry.
 /// Mirrors `runtime_type_name` in the evaluator.  Returns `None` for types
 /// (arrays, tuples, fn pointers) that don't have a named registry entry.
@@ -190,7 +230,14 @@ struct AspectDispatchOwner {
     is_generic: bool,
 }
 
-type DispatchMap = HashMap<(String, String), AspectDispatchOwner>;
+struct DispatchMap {
+    /// `(concrete_type_name, method_name) → owning aspect`, for ordinary
+    /// per-concrete-type dispatch.
+    methods: HashMap<(String, String), AspectDispatchOwner>,
+    /// `aspect_name → SymbolId`, for `dyn Aspect` dispatch (RFC-0008 slice 2) —
+    /// aspect-based by construction, so it never consults `methods`.
+    aspect_ids: HashMap<String, SymbolId>,
+}
 
 fn elaborate_decl(decl: &mut TypedDecl, map: &DispatchMap) {
     match decl {
@@ -280,8 +327,26 @@ fn elaborate_expr(expr: &mut TypedExpr, map: &DispatchMap) {
             ..
         } => {
             if *dispatch == MethodDispatch::Dynamic {
-                let recv_type = receiver_type_name(receiver.ty());
-                *dispatch = resolve_dispatch(recv_type.as_deref(), method, map);
+                *dispatch = match peel_reference(receiver.ty()) {
+                    // `dyn Aspect` dispatch is aspect-based by construction — the
+                    // aspect is already known statically from the receiver's own
+                    // type (peeled through `&`/`&var`, RFC-0008 §1's borrowed
+                    // forms), so this bypasses the per-concrete-type `methods`
+                    // map entirely (RFC-0008 slice 2; the concrete type behind
+                    // the fat pointer isn't known until the receiver value
+                    // exists at runtime, so there's nothing here to look up by
+                    // type name).
+                    Type::Dyn { aspect, .. } => map
+                        .aspect_ids
+                        .get(aspect)
+                        .map_or(MethodDispatch::Inherent, |&aspect_id| {
+                            MethodDispatch::Aspect { aspect_id }
+                        }),
+                    ty => {
+                        let recv_type = receiver_type_name(ty);
+                        resolve_dispatch(recv_type.as_deref(), method, &map.methods)
+                    }
+                };
             }
             elaborate_expr(receiver, map);
             for arg in args.iter_mut() {
@@ -317,7 +382,9 @@ fn elaborate_expr(expr: &mut TypedExpr, map: &DispatchMap) {
             elaborate_expr(object, map);
             elaborate_expr(index, map);
         }
-        TypedExpr::Cast { expr: inner, .. } | TypedExpr::SingletonCoerce { inner, .. } => {
+        TypedExpr::Cast { expr: inner, .. }
+        | TypedExpr::SingletonCoerce { inner, .. }
+        | TypedExpr::DynCoerce { inner, .. } => {
             elaborate_expr(inner, map);
         }
         TypedExpr::If {
@@ -376,7 +443,11 @@ fn elaborate_match_arm(arm: &mut TypedMatchArm, map: &DispatchMap) {
 /// Resolve dispatch for a single call site.
 /// `recv_type` is `None` when the receiver has no nameable type (array, tuple, fn);
 /// those calls are always `Inherent` since aspects only apply to named types.
-fn resolve_dispatch(recv_type: Option<&str>, method: &str, map: &DispatchMap) -> MethodDispatch {
+fn resolve_dispatch(
+    recv_type: Option<&str>,
+    method: &str,
+    map: &HashMap<(String, String), AspectDispatchOwner>,
+) -> MethodDispatch {
     let Some(type_name) = recv_type else {
         return MethodDispatch::Inherent;
     };

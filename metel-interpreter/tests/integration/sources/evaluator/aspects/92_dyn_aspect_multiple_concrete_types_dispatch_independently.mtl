@@ -1,0 +1,28 @@
+// RFC-0008 slice 2: two different concrete types coerced to the same `dyn
+// Aspect`, each dispatching to its own impl -- confirms dispatch is
+// genuinely per-value (keyed by the wrapped value's own concrete type),
+// not baked in at the coercion site.
+
+aspect Shape {
+    fun area(&self) -> f64;
+}
+
+struct Circle { radius: f64 }
+struct Rectangle { w: f64, h: f64 }
+
+extend Circle: Shape {
+    fun area(&self) -> f64 { 3.14159 * self.radius * self.radius }
+}
+
+extend Rectangle: Shape {
+    fun area(&self) -> f64 { self.w * self.h }
+}
+
+fun main() {
+    let a: dyn Shape = Circle { radius = 2.0 };
+    let b: dyn Shape = Rectangle { w = 3.0, h = 4.0 };
+
+    assert(b.area() == 12.0);
+    let a_area = a.area();
+    assert(a_area > 12.5 && a_area < 12.6);
+}

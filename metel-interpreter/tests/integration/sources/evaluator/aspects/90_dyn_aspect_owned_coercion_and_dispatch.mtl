@@ -1,0 +1,16 @@
+// RFC-0008 slice 2: owned `dyn Aspect` values -- implicit coercion at a `let`
+// binding, dispatched through the aspect's vtable at the call site (§1/§6).
+// Both the unsuffixed-literal case (defaults to i64, then coerces) and an
+// already-concrete-typed source exercise the coercion.
+
+fun main() {
+    let x: dyn Display = 42;
+    assert(x.to_string() == "42");
+
+    let s: String = "hello".to_string();
+    let y: dyn Display = s;
+    assert(y.to_string() == "hello");
+
+    let f: dyn Display = 3.5;
+    assert(f.to_string() == "3.5");
+}

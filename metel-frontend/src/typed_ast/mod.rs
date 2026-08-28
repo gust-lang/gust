@@ -449,6 +449,19 @@ pub enum TypedExpr {
         ty: Type,
         span: Span,
     },
+    /// RFC-0008 §6: implicit coercion of a concrete value to an aspect object
+    /// (`dyn Aspect`). `ty` is always `Type::Dyn { aspect, type_args }` — the
+    /// erasure target — and carries everything the evaluator needs to rebuild it
+    /// on the runtime `Value::DynAspect` (so erasure round-trips through
+    /// generic-body reconstruction, #286). `aspect_id` is `aspect`'s own
+    /// `SymbolId`, resolved once here rather than re-resolved by name at every
+    /// dispatch (mirrors `StructLiteral::type_id`).
+    DynCoerce {
+        inner: Box<TypedExpr>,
+        aspect_id: SymbolId,
+        ty: Type,
+        span: Span,
+    },
     /// Issue #229: `return`/`break`/`continue` as expressions, always of type
     /// `!` (RFC-0078) — reachable anywhere an expression is valid, not just as
     /// a braced statement. `ty()` returns `&Type::Never` directly rather than
@@ -485,7 +498,8 @@ impl TypedExpr {
             | TypedExpr::Closure { ty, .. }
             | TypedExpr::GenericClosure { ty, .. }
             | TypedExpr::StructLiteral { ty, .. }
-            | TypedExpr::SingletonCoerce { ty, .. } => ty,
+            | TypedExpr::SingletonCoerce { ty, .. }
+            | TypedExpr::DynCoerce { ty, .. } => ty,
             TypedExpr::Match(m) => &m.expr_type,
             TypedExpr::Return(_) | TypedExpr::Break(_) | TypedExpr::Continue(_) => &Type::Never,
         }
@@ -518,6 +532,7 @@ impl TypedExpr {
             | TypedExpr::GenericClosure { span: s, .. }
             | TypedExpr::StructLiteral { span: s, .. }
             | TypedExpr::SingletonCoerce { span: s, .. }
+            | TypedExpr::DynCoerce { span: s, .. }
             | TypedExpr::Continue(s) => s,
             TypedExpr::Match(m) => &m.span,
             TypedExpr::Return(r) => &r.span,

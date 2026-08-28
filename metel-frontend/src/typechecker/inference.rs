@@ -3479,6 +3479,107 @@ fn infer_expr(
                 return Ok(ret_var);
             }
 
+            // `dyn Aspect` receiver (RFC-0008 slice 2): the aspect is already known
+            // statically from the receiver's own type — no bound lookup needed the
+            // way a generic type param's `T: Aspect` bound requires below. Resolve
+            // the method straight off the aspect's own declaration. Object safety
+            // (already checked before Pass 1 even starts — `projections::check`
+            // runs first) guarantees no method signature mentions `Self` or an
+            // associated type outside receiver position, so unlike the TypeVar slow
+            // path below, no `Self`-substitution or associated-type-projection
+            // handling is needed — the only substitution is the aspect's own
+            // generic params against this `dyn Aspect`'s type args (`dyn
+            // Callable<A, B>`'s `A`/`B`).
+            let peeled_recv_for_dyn = peel_all_references(&recv_ty);
+            if let InferType::Dyn { aspect, type_args } = &peeled_recv_for_dyn {
+                let method_def = ctx
+                    .get_aspect_method_defs(aspect)
+                    .and_then(|methods| methods.iter().find(|m| m.name == *method).cloned())
+                    .ok_or_else(|| {
+                        MetelError::type_error(
+                            TypeErrorCode::T0003,
+                            format!("no method `{method}` on `dyn {aspect}`"),
+                            span,
+                        )
+                    })?;
+
+                let aspect_generics = ctx
+                    .registry()
+                    .aspect_generics(aspect)
+                    .cloned()
+                    .unwrap_or_default();
+                let alias_types: HashMap<String, InferType> = aspect_generics
+                    .iter()
+                    .cloned()
+                    .zip(type_args.iter().cloned())
+                    .collect();
+                let env = SignatureEnv {
+                    generic_vars: HashMap::new(),
+                    alias_types,
+                    // `Self` cannot appear outside receiver position in an
+                    // object-safe aspect's method (rule 1), so this is never
+                    // actually consulted — a harmless placeholder, not a bound.
+                    self_ty: InferType::unit(),
+                };
+
+                let declared_params: Vec<&Param> = method_def
+                    .params
+                    .iter()
+                    .filter(|p| p.name != "self")
+                    .collect();
+                if args.len() != declared_params.len() {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0004,
+                        format!(
+                            "`{aspect}::{method}` expects {} argument(s), got {}",
+                            declared_params.len(),
+                            args.len()
+                        ),
+                        span,
+                    ));
+                }
+                for (arg_ty, param) in arg_tys.iter().zip(declared_params.iter()) {
+                    if let Some(ann) = &param.type_ann {
+                        let param_ty = signature_type_expr_to_infer(ann, &env);
+                        ctx.add_constraint(arg_ty.clone(), param_ty, span.clone());
+                    }
+                }
+
+                // Mutable-access guard, mirroring the concrete-receiver and
+                // bounded-TypeVar paths.
+                let receiver_kind = method_def
+                    .params
+                    .iter()
+                    .find(|p| p.name == "self")
+                    .and_then(|p| p.receiver.clone());
+                if matches!(receiver_kind, Some(crate::ast::ReceiverKind::RefMut))
+                    && !chain_provides_mut_access(&recv_ty)
+                {
+                    if is_shared_reference_chain(&recv_ty) {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0006,
+                            format!(
+                                "cannot call `&var self` method `{method}` through a shared reference"
+                            ),
+                            span,
+                        ));
+                    }
+                    if let Expr::Ident(name, recv_span) = receiver.as_ref() {
+                        let _ = ctx.lookup_for_write(name, recv_span)?;
+                    }
+                }
+
+                let ret_ty = method_def
+                    .return_type
+                    .as_ref()
+                    .map_or(InferType::unit(), |rt| {
+                        signature_type_expr_to_infer(rt, &env)
+                    });
+                let ret_var = ctx.fresh_var();
+                ctx.add_constraint(ret_var.clone(), ret_ty, span.clone());
+                return Ok(ret_var);
+            }
+
             // Slow path: TypeVar receiver — may be a bounded generic type param.
             //
             // Peeled first, so `x: &T` under `T: Show` reaches the same bound

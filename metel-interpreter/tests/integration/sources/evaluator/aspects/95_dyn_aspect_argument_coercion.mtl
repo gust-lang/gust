@@ -1,0 +1,13 @@
+// RFC-0008 slice 2 / §6: implicit coercion at a function-argument position --
+// a distinct code path from the `let`/return coercion sites (argument
+// construction is enforced by direct `Type` equality, not the shared
+// `maybe_read_copy`/`maybe_singleton_coerce` hooks those sites use).
+
+fun show(x: dyn Display) -> String {
+    x.to_string()
+}
+
+fun main() {
+    assert(show(42) == "42");
+    assert(show("hi".to_string()) == "hi");
+}

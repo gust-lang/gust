@@ -123,6 +123,27 @@ pub enum Value {
         root: Rc<RefCell<Value>>,
         path: Vec<PathSegment>,
     },
+    /// An aspect object (RFC-0008 `dyn Aspect`) — a fat pointer: a data pointer to
+    /// the concrete value plus a `(type_id, aspect_id)` pair standing in for the
+    /// vtable pointer (RFC-0008 slice 2's own design call: reuse
+    /// `RuntimeRegistry::get_aspect_method_by_id`'s existing `(type_id, aspect_id)`
+    /// lookup instead of a separately-generated vtable). `type_id` is the wrapped
+    /// value's *concrete* type, resolved once at coercion time; `aspect_id` is the
+    /// principal aspect the value was coerced to (§9 UQ1: at most one
+    /// method-bearing aspect). `aspect_name`/`type_args` duplicate what `aspect_id`
+    /// already identifies (same redundancy `Struct`/`Enum` already keep between
+    /// `name` and `type_id`) — needed so `value_to_type` can reconstruct
+    /// `Type::Dyn { aspect, type_args }` *without* unwrapping `data`: the whole
+    /// point of erasure is that a `dyn Aspect` value's static type must stay `dyn
+    /// Aspect`, never leak back out as the wrapped concrete type, including when a
+    /// generic function's body is reconstructed from a runtime argument (#286).
+    DynAspect {
+        data: Rc<RefCell<Value>>,
+        type_id: SymbolId,
+        aspect_id: SymbolId,
+        aspect_name: String,
+        type_args: Vec<crate::types::Type>,
+    },
 }
 
 /// The body of a closure — either a fully type-checked block (monomorphic) or the
@@ -720,6 +741,10 @@ impl RuntimeRegistry {
             Value::Struct { type_id, name, .. } | Value::Enum { type_id, name, .. } => {
                 type_id.or_else(|| self.type_id_for_name(name))
             }
+            // A `dyn Aspect` fat pointer dispatches as its *wrapped* concrete type,
+            // not as some synthetic "DynAspect" type — `type_id` was resolved once,
+            // at coercion time, from the concrete value it wraps (RFC-0008 §2/§6).
+            Value::DynAspect { type_id, .. } => Some(*type_id),
             _ => runtime_type_name(value).and_then(|name| self.type_id_for_name(name)),
         }
     }
@@ -985,6 +1010,15 @@ fn deref_value(value: &Value, span: &Span) -> Result<Option<Value>, MetelError> 
         Value::FieldReference { root, path } | Value::MutFieldReference { root, path } => {
             read_path(&root.borrow(), path, span)?
         }
+        // A `dyn Aspect` fat pointer "is" the concrete value it erases, the same
+        // way a `Reference` "is" its referent (RFC-0008 §1) -- every caller of
+        // `deref_value` wants the concrete value to inspect/dispatch on, never
+        // the wrapper itself. `display.rs`/`type_of.rs` handle `Value::DynAspect`
+        // separately, without going through `deref_value`, because they need to
+        // choose deliberately whether to preserve the erasure (`type_of.rs`) or
+        // see through it (`display.rs`) -- this function's callers all want the
+        // latter.
+        Value::DynAspect { data, .. } => data.borrow().clone(),
         _ => return Ok(None),
     };
     loop {
@@ -993,6 +1027,7 @@ fn deref_value(value: &Value, span: &Span) -> Result<Option<Value>, MetelError> 
             Value::FieldReference { root, path } | Value::MutFieldReference { root, path } => {
                 read_path(&root.borrow(), path, span)?
             }
+            Value::DynAspect { data, .. } => data.borrow().clone(),
             _ => break,
         };
     }
@@ -1002,6 +1037,9 @@ fn deref_value(value: &Value, span: &Span) -> Result<Option<Value>, MetelError> 
 fn receiver_cell_from_value(value: &Value) -> Option<Rc<RefCell<Value>>> {
     match value {
         Value::Reference(rc) | Value::MutReference(rc) => Some(Rc::clone(rc)),
+        // Same reasoning as the `TypedExpr::Ident` receiver loop above -- an
+        // owned `dyn Aspect` value's own cell isn't the concrete receiver.
+        Value::DynAspect { data, .. } => Some(Rc::clone(data)),
         _ => None,
     }
 }
@@ -2526,6 +2564,12 @@ fn eval_method_call_expr(
                             Value::Reference(inner) | Value::MutReference(inner) => {
                                 Some(Rc::clone(inner))
                             }
+                            // An owned `dyn Aspect` binding's own cell holds the
+                            // fat pointer, not the concrete value -- `self`
+                            // inside the method body must bind to `data`
+                            // (RFC-0008 §2), or field access there would try to
+                            // read a field off the wrapper itself.
+                            Value::DynAspect { data, .. } => Some(Rc::clone(data)),
                             _ => None,
                         };
                         match inner {
@@ -3208,6 +3252,35 @@ pub fn eval_expr(
                 }
                 _ => Err(MetelError::internal("singleton coercion on non-enum value")),
             }
+        }
+
+        // RFC-0008 §6: implicit coercion to `dyn Aspect`. Everything that could
+        // reject this was already checked at construction time (object safety by
+        // `ty_at`'s `TypeExpr::DynAspect` arm; `inner`'s type satisfying the
+        // aspect by `maybe_dyn_coerce`) — nothing left to check here, just wrap.
+        TypedExpr::DynCoerce {
+            inner,
+            aspect_id,
+            ty,
+            ..
+        } => {
+            let value = match eval_to_value(inner, env, runtime)? {
+                ControlFlow::Continue(value) => value,
+                ControlFlow::Break(signal) => return Ok(signal),
+            };
+            let type_id = runtime.resolve_value_type_id(&value).ok_or_else(|| {
+                MetelError::internal("dyn Aspect coercion: value has no resolvable concrete type")
+            })?;
+            let crate::types::Type::Dyn { aspect, type_args } = ty else {
+                unreachable!("TypedExpr::DynCoerce::ty is always Type::Dyn")
+            };
+            Ok(Signal::Value(Value::DynAspect {
+                data: Rc::new(RefCell::new(value)),
+                type_id,
+                aspect_id: *aspect_id,
+                aspect_name: aspect.clone(),
+                type_args: type_args.clone(),
+            }))
         }
 
         // Issue #229: `return`/`break`/`continue` as expressions. Mechanical
