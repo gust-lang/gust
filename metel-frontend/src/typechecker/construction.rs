@@ -493,7 +493,13 @@ fn construct_method_args(
             .map(|(a, hint)| {
                 let typed = construct_expr(a, *hint, ctx)?;
                 reject_dynamic_array_where_sized_expected(*hint, &typed)?;
-                Ok(typed)
+                // RFC-0008 §6: same gap, same fix, as `try_generic_method_scheme`
+                // below — a concrete (non-generic) method whose param is itself
+                // `dyn Aspect` (e.g. `fun bar(&self, x: dyn Display)`).
+                match hint {
+                    Some(h) => maybe_dyn_coerce(h, typed, a.span(), ctx),
+                    None => Ok(typed),
+                }
             })
             .collect()
     } else {
@@ -4398,7 +4404,15 @@ fn try_generic_method_scheme(
                 .and_then(|it| infer_type_to_type(&subst.apply(it), span).ok());
             let typed = construct_expr(a, hint.as_ref(), ctx)?;
             reject_dynamic_array_where_sized_expected(hint.as_ref(), &typed)?;
-            Ok(typed)
+            // RFC-0008 §6: coerce to `dyn Aspect` where the (now-substituted,
+            // e.g. `List<dyn Shape>.push`'s `T` -> `dyn Shape`) param hint
+            // calls for one. Slice 2 wired this into every other
+            // expected-type site but missed generic method-call arguments —
+            // this is that gap, metel-core#864.
+            match &hint {
+                Some(h) => maybe_dyn_coerce(h, typed, span, ctx),
+                None => Ok(typed),
+            }
         })
         .collect::<Result<_, _>>()?;
     for (param_it, arg) in partial_params.iter().skip(1).zip(typed_args.iter()) {
