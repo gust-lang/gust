@@ -1,0 +1,39 @@
+// RFC-0008 slice 3 / §7: `List<dyn Aspect>` -- a heterogeneous collection,
+// each element a fat pointer to a different concrete type, dispatching
+// independently. `push`'s argument coerces to `dyn Shape` at the call site
+// the same way an ordinary `let`/argument coercion already does (slice 2) --
+// this fixture is what confirmed that coercion wasn't actually wired into
+// generic method-call arguments until this slice.
+//
+// Iterated via `.as_slice()`, not `for shape in shapes` directly: `List<T>`
+// doesn't implement `Iterable<T>` for any `T` today (a separate, pre-existing
+// gap, unrelated to `dyn Aspect` -- see metel-core#871), and this is the same
+// idiom `List<T>`'s own methods already use internally.
+
+aspect Shape {
+    fun area(&self) -> f64;
+}
+
+struct Circle { radius: f64 }
+struct Rectangle { w: f64, h: f64 }
+
+extend Circle: Shape {
+    fun area(&self) -> f64 { 3.14159 * self.radius * self.radius }
+}
+
+extend Rectangle: Shape {
+    fun area(&self) -> f64 { self.w * self.h }
+}
+
+fun main() {
+    var shapes: List<dyn Shape> = List::new();
+    shapes.push(Circle { radius = 5.0 });
+    shapes.push(Rectangle { w = 3.0, h = 4.0 });
+
+    var total = 0.0;
+    for (shape in shapes.as_slice()) {
+        total = total + shape.area();
+    }
+    // Circle: 3.14159 * 25 = 78.53975; Rectangle: 12.0; total = 90.53975
+    assert(total > 90.5 && total < 90.6);
+}

@@ -493,7 +493,13 @@ fn construct_method_args(
             .map(|(a, hint)| {
                 let typed = construct_expr(a, *hint, ctx)?;
                 reject_dynamic_array_where_sized_expected(*hint, &typed)?;
-                Ok(typed)
+                // RFC-0008 §6: same gap, same fix, as `try_generic_method_scheme`
+                // below — a concrete (non-generic) method whose param is itself
+                // `dyn Aspect` (e.g. `fun bar(&self, x: dyn Display)`).
+                match hint {
+                    Some(h) => maybe_dyn_coerce(h, typed, a.span(), ctx),
+                    None => Ok(typed),
+                }
             })
             .collect()
     } else {
@@ -2009,7 +2015,12 @@ fn construct_expr(
                 }
                 let typed: Vec<TypedExpr> = elems
                     .iter()
-                    .map(|e| construct_expr(e, Some(expected_elem.as_ref()), ctx))
+                    .map(|e| {
+                        let typed = construct_expr(e, Some(expected_elem.as_ref()), ctx)?;
+                        // RFC-0008 §6: an array element declared `dyn Aspect`
+                        // needs the same coercion any other hinted site gets.
+                        maybe_dyn_coerce(expected_elem.as_ref(), typed, e.span(), ctx)
+                    })
                     .collect::<Result<_, _>>()?;
                 let ty = Type::SizedArray(expected_elem.clone(), *n);
                 return Ok(TypedExpr::Array(typed, ty, span.clone()));
@@ -2018,7 +2029,10 @@ fn construct_expr(
             if let Some(Type::Array(expected_elem)) = expected_ty {
                 let typed: Vec<TypedExpr> = elems
                     .iter()
-                    .map(|e| construct_expr(e, Some(expected_elem.as_ref()), ctx))
+                    .map(|e| {
+                        let typed = construct_expr(e, Some(expected_elem.as_ref()), ctx)?;
+                        maybe_dyn_coerce(expected_elem.as_ref(), typed, e.span(), ctx)
+                    })
                     .collect::<Result<_, _>>()?;
                 let ty = Type::Array(expected_elem.clone());
                 return Ok(TypedExpr::Array(typed, ty, span.clone()));
@@ -2149,6 +2163,12 @@ fn construct_expr(
                 _ => None,
             };
             let typed_value = construct_expr(value, value_hint.as_ref(), ctx)?;
+            // RFC-0008 §6: reassigning an existing `dyn Aspect` binding needs
+            // the same coercion its original `let`/`var` got.
+            let typed_value = match &value_hint {
+                Some(h) => maybe_dyn_coerce(h, typed_value, span, ctx)?,
+                None => typed_value,
+            };
             let typed_place = assign_target_to_typed_place(target, ctx)?;
             let _ = typed_place_ty(&typed_place, ctx, span)?;
             Ok(TypedExpr::Assign {
@@ -2560,7 +2580,14 @@ fn construct_expr(
                 .iter()
                 .map(|(name, expr)| {
                     let hint = field_hints.get(name.as_str());
-                    Ok((name.clone(), construct_expr(expr, hint, ctx)?))
+                    let typed = construct_expr(expr, hint, ctx)?;
+                    // RFC-0008 §6: a struct field declared `dyn Aspect` needs
+                    // the same coercion any other hinted site gets.
+                    let typed = match hint {
+                        Some(h) => maybe_dyn_coerce(h, typed, expr.span(), ctx)?,
+                        None => typed,
+                    };
+                    Ok((name.clone(), typed))
                 })
                 .collect::<Result<_, _>>()?;
 
@@ -4398,7 +4425,15 @@ fn try_generic_method_scheme(
                 .and_then(|it| infer_type_to_type(&subst.apply(it), span).ok());
             let typed = construct_expr(a, hint.as_ref(), ctx)?;
             reject_dynamic_array_where_sized_expected(hint.as_ref(), &typed)?;
-            Ok(typed)
+            // RFC-0008 §6: coerce to `dyn Aspect` where the (now-substituted,
+            // e.g. `List<dyn Shape>.push`'s `T` -> `dyn Shape`) param hint
+            // calls for one. Slice 2 wired this into every other
+            // expected-type site but missed generic method-call arguments —
+            // this is that gap, metel-core#864.
+            match &hint {
+                Some(h) => maybe_dyn_coerce(h, typed, span, ctx),
+                None => Ok(typed),
+            }
         })
         .collect::<Result<_, _>>()?;
     for (param_it, arg) in partial_params.iter().skip(1).zip(typed_args.iter()) {
@@ -5920,6 +5955,38 @@ fn maybe_dyn_coerce(
     span: &Span,
     ctx: &ConstructCtx,
 ) -> Result<TypedExpr, MetelError> {
+    // `&dyn Aspect`/`&var dyn Aspect`: no runtime wrapping is needed here --
+    // an ordinary reference to the concrete value, dispatched by its own
+    // erased static type (RFC-0008 §1) -- a binding's/param's later uses
+    // always resolve through its own *declared* type, never the RHS
+    // expression's constructed type, so nothing downstream needs `actual`
+    // itself retyped. But the aspect-satisfaction check still has to run
+    // here: Pass 1's `unify` is deliberately permissive for *any* `Dyn`
+    // pairing, reference-wrapped or not, precisely because it defers this
+    // check to this function -- so without this branch, coercion behind a
+    // reference was never actually checked anywhere, at any site.
+    if let (
+        Type::Reference(exp_inner) | Type::MutReference(exp_inner),
+        Type::Reference(act_inner) | Type::MutReference(act_inner),
+    ) = (expected, actual.ty())
+    {
+        if let Type::Dyn { aspect, .. } = exp_inner.as_ref() {
+            if !matches!(act_inner.as_ref(), Type::Dyn { .. })
+                && !ctx
+                    .registry
+                    .type_satisfies_aspect(ctx.current_module, act_inner, aspect)
+            {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0012,
+                    format!(
+                        "`{act_inner}` does not implement `{aspect}` (required to coerce to `&dyn {aspect}`)"
+                    ),
+                    span,
+                ));
+            }
+            return Ok(actual);
+        }
+    }
     let Type::Dyn { aspect, .. } = expected else {
         return Ok(actual);
     };

@@ -1,0 +1,18 @@
+// RFC-0008 §6: a generic aspect's own type args coerce correctly outside
+// `let` too (94 only covers `let`) -- here, a return position.
+
+aspect Callable<A, B> {
+    fun call(&self, arg: A) -> B;
+}
+
+struct Doubler { }
+
+extend Doubler: Callable<i64, i64> {
+    fun call(&self, arg: i64) -> i64 { arg * 2 }
+}
+
+fun make() -> dyn Callable<i64, i64> { Doubler { } }
+
+fun main() {
+    assert(make().call(21) == 42);
+}

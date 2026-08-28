@@ -1,0 +1,16 @@
+// RFC-0008 §6: coercion at an explicit `(expr : Type)` ascription. Already
+// worked (the same `maybe_dyn_coerce` call site every other hinted
+// expression-construction site uses), confirmed directly and covered here
+// since no existing fixture exercised it (see neg_43 for the corresponding
+// rejection).
+
+struct Rock { }
+
+extend Rock: Display {
+    fun to_string(&self) -> String { "rock".to_string() }
+}
+
+fun main() {
+    let x = (Rock { } : dyn Display);
+    assert(x.to_string() == "rock");
+}

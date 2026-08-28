@@ -1,0 +1,20 @@
+// RFC-0008 §6: coercion at `break`, out of a `loop` expression whose value
+// binds to a `dyn Aspect`-typed `let`. Already worked (the same
+// `maybe_dyn_coerce` call site `let`/return use), confirmed directly and
+// covered here since no existing fixture exercised it (see neg_42 for the
+// corresponding rejection).
+
+struct Rock { }
+
+extend Rock: Display {
+    fun to_string(&self) -> String { "rock".to_string() }
+}
+
+fun main() {
+    var i = 0;
+    let x: dyn Display = loop {
+        i = i + 1;
+        if (i > 3) { break Rock { }; }
+    };
+    assert(x.to_string() == "rock");
+}

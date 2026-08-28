@@ -1,0 +1,26 @@
+// RFC-0008 §6: an array-literal element declared `dyn Aspect` coerces the
+// same way any other hinted position does -- both the dynamically-sized
+// (`T[]`) and fixed-size (`[T; N]`) forms. Real gap found during a targeted
+// edge-case audit: `Expr::Array`'s two hinted construction branches never
+// called `maybe_dyn_coerce` (see neg_40 for the corresponding rejection).
+//
+// A *heterogeneous* array literal (different concrete element types in one
+// `[...]` expression) is a separate, deeper gap -- Pass 1 unifies every
+// element against the first element's own type, with no access to any
+// outer expected type -- filed separately (metel-core#876), not fixed
+// here. `List<dyn Aspect>` (RFC-0008 §7, metel-core#864) remains the
+// idiomatic way to hold different concrete types together.
+
+struct Rock { }
+
+extend Rock: Display {
+    fun to_string(&self) -> String { "rock".to_string() }
+}
+
+fun main() {
+    let arr: dyn Display[] = [Rock { }];
+    assert(arr[0].to_string() == "rock");
+
+    let sized: [dyn Display; 1] = [Rock { }];
+    assert(sized[0].to_string() == "rock");
+}

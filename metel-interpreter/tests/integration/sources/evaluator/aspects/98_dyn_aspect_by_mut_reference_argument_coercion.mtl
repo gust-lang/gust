@@ -1,0 +1,26 @@
+// RFC-0008 §6: coercion behind an exclusive reference (`&var dyn Aspect`) --
+// the mutable counterpart of 97. Mutation through the parameter must reach
+// the original binding, confirming the reference stays an ordinary
+// `Reference`/`MutReference` to the concrete value (no fat-pointer wrapping
+// needed for the borrowed forms at all, per RFC-0008 §1/§5).
+
+struct MyCounter { n: i64 }
+
+aspect Counter {
+    fun increment(&var self);
+    fun value(&self) -> i64;
+}
+
+extend MyCounter: Counter {
+    fun increment(&var self) { self.n = self.n + 1; }
+    fun value(&self) -> i64 { self.n }
+}
+
+fun bump(c: &var dyn Counter) { c.increment(); }
+
+fun main() {
+    var m = MyCounter { n = 0 };
+    bump(&var m);
+    bump(&var m);
+    assert(m.n == 2);
+}

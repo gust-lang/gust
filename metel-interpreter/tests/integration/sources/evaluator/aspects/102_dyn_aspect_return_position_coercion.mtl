@@ -1,0 +1,20 @@
+// RFC-0008 §6: coercion at a function's return position -- both the
+// implicit tail-expression form and an explicit `return`. This already
+// worked (both go through the same `maybe_dyn_coerce` call sites `let`
+// bindings use — block-tail construction and `Expr::Return`), confirmed
+// directly and covered here since no existing fixture exercised it (see
+// neg_41 for the corresponding rejection).
+
+struct Rock { }
+
+extend Rock: Display {
+    fun to_string(&self) -> String { "rock".to_string() }
+}
+
+fun make_tail() -> dyn Display { Rock { } }
+fun make_explicit() -> dyn Display { return Rock { }; }
+
+fun main() {
+    assert(make_tail().to_string() == "rock");
+    assert(make_explicit().to_string() == "rock");
+}

@@ -1,0 +1,17 @@
+// RFC-0008 §6: `&x` where `x` is already `dyn`-typed is an ordinary
+// reference -- no coercion needed, and confirming this doesn't trip over
+// the reference-coercion check `maybe_dyn_coerce` gained for 97/98 (that
+// check already special-cases an already-`Dyn` inner type as a no-op).
+
+struct Rock { }
+
+extend Rock: Display {
+    fun to_string(&self) -> String { "rock".to_string() }
+}
+
+fun show(x: &dyn Display) -> String { x.to_string() }
+
+fun main() {
+    let x: dyn Display = Rock { };
+    assert(show(&x) == "rock");
+}

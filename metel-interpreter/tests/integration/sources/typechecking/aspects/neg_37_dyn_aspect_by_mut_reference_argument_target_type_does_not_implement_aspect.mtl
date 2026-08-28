@@ -1,0 +1,12 @@
+struct Rock { n: i64 }
+
+aspect Counter {
+    fun increment(&var self);
+}
+
+fun bump(c: &var dyn Counter) { }
+
+fun main() {
+    var r = Rock { n = 0 };
+    bump(&var r);
+}
