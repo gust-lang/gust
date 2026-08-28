@@ -103,7 +103,7 @@ full release gate.
 
 ```bash
 cargo test --release --workspace
-cargo clippy --release --workspace --lib -- -W clippy::pedantic
+cargo clippy --release --workspace --lib -- -D warnings -D clippy::pedantic
 cargo fmt --check --all
 ```
 

@@ -35,15 +35,6 @@ jobs:
 
       # --lib, not --all-targets: AGENTS.md holds measurement binaries and
       # test harnesses to a looser bar than the library code itself.
-      #
-      # AGENTS.md's own documented command uses `-W clippy::pedantic` (warn,
-      # not deny) — appropriate for local dev, where a human reads the output,
-      # but a `-W` flag never fails the exit code, so it can't gate a CI check
-      # on its own. Escalated to `-D` here for both groups, matching what this
-      # issue actually asks for ("fail the PR check, not just report") and
-      # what AGENTS.md's own prose already claims as the bar ("must end at 0
-      # warnings") — confirmed clean on current develop before adding this,
-      # after fixing the one pre-existing pedantic warning nothing had caught.
       - name: cargo clippy
         run: cargo clippy --release --workspace --lib -- -D warnings -D clippy::pedantic
 
