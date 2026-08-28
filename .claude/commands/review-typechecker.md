@@ -8,11 +8,16 @@ Work through every checklist item. Report pass/fail for each section. Do not ski
 ## 1. Test suite
 
 ```bash
-cd metel-interpreter && cargo test
+cargo test --test integration <exact-regression-filter> -- --exact
+cargo test --workspace
 ```
 
-- [ ] All tests pass — zero failures, zero ignored regressions
+- [ ] The focused regression passes before the full workspace suite is run
+- [ ] The workspace tests pass — zero failures, zero ignored regressions
 - [ ] If a previously-passing test now fails: **STOP**. A shared invariant is broken. Diagnose before proceeding.
+
+This is the handoff tier. Do not run release tests or release Clippy here; those run
+once in `/ship-issue` after the review checklist and diff are final.
 
 ---
 

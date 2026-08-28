@@ -1,7 +1,7 @@
 //! Type inference module for Metel.
 //!
 //! Implements Hindley-Milner type inference with let-polymorphism.
-//! See `docs/internal/typechecker.md` for theory background and implementation notes.
+//! See `metel-frontend/docs/typechecker.md` for theory and implementation notes.
 
 use crate::ast::{AspectMethod, AssocTypeDecl, ReceiverKind, RowBound, Span, TypeExpr, Visibility};
 use crate::error::MetelError;

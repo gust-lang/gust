@@ -5,12 +5,12 @@ RFC's content **and** its lifecycle state — there is no tracker mirroring it.
 
 **Arguments:** `$ARGUMENTS` — the RFC title, e.g. `Array literal syntax`
 
-`docs/internal/rfcs/PROCESS.md` is the sole authority on the RFC lifecycle. This command
+`docs/rfcs/PROCESS.md` is the sole authority on the RFC lifecycle. This command
 mechanises opening one; read PROCESS.md for anything beyond that.
 
 ## Steps
 
-1. **Check it doesn't already exist.** Read `docs/internal/rfcs/INDEX.md` — the thematic
+1. **Check it doesn't already exist.** Read `docs/rfcs/INDEX.md` — the thematic
    snapshot of every RFC by cluster and status. An RFC covering this ground, or a settled
    decision bundled inside a broader RFC, is common enough that this step earns its place.
 
@@ -22,11 +22,11 @@ mechanises opening one; read PROCESS.md for anything beyond that.
    the frontmatter, and runs its own overlap check against existing RFCs:
 
 ```bash
-python3 docs/internal/rfcs/tools/rfc.py new "$ARGUMENTS" \
+python3 docs/rfcs/tools/rfc.py new "$ARGUMENTS" \
   --description "<one-line summary for the overlap check>"
 ```
 
-   It lands at `docs/internal/rfcs/0-draft/rfc-NNNN-<slug>.md` with `status: draft`.
+   It lands at `docs/rfcs/0-draft/rfc-NNNN-<slug>.md` with `status: draft`.
    Do not hand-number or hand-place an RFC file — the directory and the frontmatter must
    agree, and `rfc.py check` enforces that.
 
@@ -41,7 +41,7 @@ python3 docs/internal/rfcs/tools/rfc.py new "$ARGUMENTS" \
 4. **Validate.**
 
 ```bash
-python3 docs/internal/rfcs/tools/rfc.py check
+python3 docs/rfcs/tools/rfc.py check
 ```
 
    Clean means frontmatter matches directory, no dangling references, no duplicate ids.
@@ -64,7 +64,7 @@ Seven stages, each one a directory. The **directory is the state**; frontmatter 
 must match it. Transition with the tool, never by hand:
 
 ```bash
-python3 docs/internal/rfcs/tools/rfc.py transition <id> --to <stage>
+python3 docs/rfcs/tools/rfc.py transition <id> --to <stage>
 ```
 
 | Directory | `status` | Meaning |

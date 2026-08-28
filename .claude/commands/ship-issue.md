@@ -24,20 +24,20 @@ report what remains. Deferred work becomes a **new open issue**, never an unchec
 
 Run in order. If any item fails, fix it on the branch and re-run.
 
-**1. Tests** — from `metel-interpreter/`:
+**1. Tests** — from the workspace root, once on the final tree:
 
 ```bash
-cargo test --release
+cargo test --release --workspace
 ```
 
 Zero failures. Confirm by reading the `test result:` lines, not by the command exiting.
 For typechecker or inference changes the full suite is required, not a filtered run —
 blast radius there is routinely wider than the diff looks.
 
-**2. Code quality** — from `metel-interpreter/`:
+**2. Code quality** — from the workspace root:
 
 ```bash
-cargo clippy --release --lib -- -W clippy::pedantic
+cargo clippy --release --workspace --lib -- -W clippy::pedantic
 ```
 
 Must end at **0 warnings**. `--lib` is deliberate: `--all-targets` also lints measurement

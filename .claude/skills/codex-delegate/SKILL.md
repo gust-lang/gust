@@ -65,20 +65,19 @@ Fix bug #NNN in this Rust codebase (a language interpreter for the Metel languag
 
 ## Constraints - important
 - Do NOT change <X>. It is a deliberately open design question (issue #NNN).
-- Do NOT modify anything under `docs/internal/rfcs/` — lifecycle-managed elsewhere.
+- Do NOT modify anything under `docs/rfcs/` — lifecycle-managed elsewhere.
 - You MAY update `docs/reference/spec/*.md` if behaviour changes.
 - Do not commit anything. Leave changes in the working tree.
 - There may be uncommitted changes from a previous task. Leave them alone.
 
-## Verification - all required
-Run from `metel-interpreter/`:
-  cargo build --release
-  cargo test --release                            # must be 100% green
-  cargo clippy --release --lib -- -D warnings     # must be clean
+## Verification - delegate tier
+Run from the workspace root:
+  cargo check -p <metel-frontend or metel>
+  cargo test --test integration <exact-new-test> -- --exact
 
-NOTE ON TIMING: a release rebuild after touching core files takes SEVERAL MINUTES, and
-the test suite another ~90 seconds. This is normal. Do not treat a quiet cargo
-invocation as a hang and do not kill it — wait for it to finish.
+Do not run the full release suite or release Clippy unless this brief explicitly asks
+for the final merge gate. The reviewing agent runs the workspace handoff gate once
+after reading the diff; `ship-issue` runs the release gate once on the final tree.
 
 Add regression fixtures. Conventions:
 - Positive: `.mtl` under `tests/integration/sources/<suite>/`, must exit 0, use `assert(...)`.
@@ -182,7 +181,9 @@ Read the actual diff. Then, specifically:
 - **Re-run the original repro yourself**, plus the *compositions* the fix newly makes
   possible. Those cannot have been in Codex's fixtures, because they did not exist until
   its change landed.
-- **Re-run the full suite and clippy yourself.** Do not take the report's word.
+- **Run the handoff tier yourself after review.** Do not take the report's word:
+  `cargo test --workspace` and `cargo fmt --check --all`. The full release suite and
+  release Clippy belong to `ship-issue`, once on the final tree.
 - **A workaround-looking construct in the diff is a question, not a detail.** Codex reaches
   for whatever makes the checker/compiler pass — an explicit deref before a method call, a
   rewritten algorithm, a hardcoded literal standing in for a computed read. Stop and ask why
