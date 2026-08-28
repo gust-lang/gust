@@ -1,0 +1,10 @@
+struct Rock { }
+struct Pebble { }
+
+extend Rock: Display {
+    fun to_string(&self) -> String { "rock".to_string() }
+}
+
+fun main() {
+    let arr: dyn Display[] = [Rock { }, Pebble { }];
+}

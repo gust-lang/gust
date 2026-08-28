@@ -5,16 +5,25 @@
 // called `maybe_dyn_coerce` (see neg_40 for the corresponding rejection).
 //
 // A *heterogeneous* array literal (different concrete element types in one
-// `[...]` expression) is a separate, deeper gap -- Pass 1 unifies every
-// element against the first element's own type, with no access to any
-// outer expected type -- filed separately (metel-core#876), not fixed
-// here. `List<dyn Aspect>` (RFC-0008 §7, metel-core#864) remains the
-// idiomatic way to hold different concrete types together.
+// `[...]` expression) is exactly the same rule: metel-core#876 found Pass 1
+// unified every element against the *first* element's own type, with no
+// access to the annotation, rejecting two different concrete types outright
+// before either got a chance to coerce -- fixed by inferring each element
+// against the declared `dyn Aspect` element type directly when the literal
+// is annotated (see neg_44 for the corresponding rejection). `List<dyn
+// Aspect>` (RFC-0008 §7, metel-core#864) remains the idiomatic way to build
+// a heterogeneous collection incrementally, one `push` at a time; this is
+// the array-*literal* form of the same thing.
 
 struct Rock { }
+struct Pebble { }
 
 extend Rock: Display {
     fun to_string(&self) -> String { "rock".to_string() }
+}
+
+extend Pebble: Display {
+    fun to_string(&self) -> String { "pebble".to_string() }
 }
 
 fun main() {
@@ -23,4 +32,18 @@ fun main() {
 
     let sized: [dyn Display; 1] = [Rock { }];
     assert(sized[0].to_string() == "rock");
+
+    let hetero: dyn Display[] = [Rock { }, Pebble { }];
+    assert(hetero[0].to_string() == "rock");
+    assert(hetero[1].to_string() == "pebble");
+
+    let hetero_sized: [dyn Display; 2] = [Rock { }, Pebble { }];
+    assert(hetero_sized[0].to_string() == "rock");
+    assert(hetero_sized[1].to_string() == "pebble");
+
+    var hetero_mut: dyn Display[] = [Rock { }, Pebble { }];
+    assert(hetero_mut[0].to_string() == "rock");
+
+    let empty: dyn Display[] = [];
+    assert(empty.len() == 0);
 }
