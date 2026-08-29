@@ -1,0 +1,15 @@
+// RFC-0129 legality-13 with §3 normalization: alpha-renaming the method generic
+// parameter (`T` -> `U`) and writing its bounds in a different order do not
+// change the admissible domain, so the impl still conforms.
+
+aspect Combine {
+    fun combine<T: Copy + Clone>(&self, a: T, b: T) -> T;
+}
+
+struct Merger {}
+
+extend Merger: Combine {
+    fun combine<U: Clone + Copy>(&self, a: U, b: U) -> U { return a; }
+}
+
+fun main() {}

@@ -1,0 +1,9 @@
+# Known limitation (RFC-0129 -> RFC-0149): dropping the record kind is a safe
+# widening that the minimal structural-equality rule still rejects.
+[options]
+spec = ["spec.declarations.aspects.implementing-an-aspect.legality-13"]
+
+[expect]
+status = "typecheck_error"
+code = "T0012"
+contains = "does not match the signature declared by aspect"

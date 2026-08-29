@@ -1,0 +1,7 @@
+[options]
+spec = ["spec.declarations.aspects.implementing-an-aspect.legality-13", "spec.declarations.aspects.implementing-an-aspect.legality-14"]
+
+[expect]
+status = "typecheck_error"
+code = "T0012"
+contains = "does not match the signature declared by aspect"

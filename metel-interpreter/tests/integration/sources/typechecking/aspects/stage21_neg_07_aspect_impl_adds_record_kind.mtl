@@ -1,0 +1,16 @@
+// RFC-0129 legality-13 (the metel-core#616 fix): record kind is part of the
+// generic-constraint comparison. `Store::keep` declares `<T>`; the impl requires
+// `<record T>`, so a caller with only a `Store` bound could call `keep(1)` while
+// the impl needs a record. Adding the record kind is strengthening -> rejected.
+
+aspect Store {
+    fun keep<T>(&self, value: T) -> T;
+}
+
+struct Box {}
+
+extend Box: Store {
+    fun keep<record T>(&self, value: T) -> T { return value; }
+}
+
+fun main() {}

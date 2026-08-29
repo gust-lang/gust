@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use crate::ast::{
-    AspectMethod, AssignOp, AssignTarget, BinOp, Block, Bound, Decl, Expr, ForInit, FunDecl,
-    GenericParam, ImplBlock, Literal, MatchExpr, Param, Pattern, Polarity, Program, Span, Stmt,
-    TypeExpr, UnaryOp, Visibility,
+    AspectMethod, AssignOp, AssignTarget, BinOp, Block, Bound, BoundHead, Decl, Expr, ForInit,
+    FunDecl, GenericParam, ImplBlock, Literal, MatchExpr, Param, Pattern, Polarity, Program, Span,
+    Stmt, TypeExpr, UnaryOp, Visibility,
 };
 use crate::error::{MetelError, TypeErrorCode};
 use crate::typeinference::{
@@ -1115,6 +1115,12 @@ fn aspect_impl_method_signature_matches(
         self_ty,
     };
 
+    // RFC-0129 legality-13: the impl method's generic constraints must be
+    // structurally equal to the aspect method's after normalization.
+    if !generic_constraints_match(method, declared, &actual_env, &expected_env) {
+        return false;
+    }
+
     method
         .params
         .iter()
@@ -1137,6 +1143,94 @@ fn aspect_impl_method_signature_matches(
                 .map_or_else(InferType::unit, |ty| {
                     signature_type_expr_to_infer(ty, &expected_env)
                 })
+}
+
+/// RFC-0129 legality-13: whether the impl method's generic constraints are
+/// structurally equal to the aspect method's after normalization. An aspect-method
+/// declaration carries every constraint inline on `declared.generics` -- it has no
+/// `where` clause (metel-core#896) -- while the impl method may split its own
+/// between the generic binder and a `where` clause, so fold the two together
+/// first. `actual_env`/`expected_env` map a generic parameter to a shared
+/// per-position type variable, so parameter names compare alpha-equivalently and
+/// `Self` / aspect arguments / associated types resolve to the same identity on
+/// both sides. Bound order and duplicates do not matter; neither weakening nor
+/// strengthening a constraint conforms.
+fn generic_constraints_match(
+    method: &FunDecl,
+    declared: &AspectMethod,
+    actual_env: &SignatureEnv,
+    expected_env: &SignatureEnv,
+) -> bool {
+    method
+        .generics
+        .iter()
+        .zip(&declared.generics)
+        .all(|(actual_gp, declared_gp)| {
+            let actual_where = method
+                .where_clause
+                .as_ref()
+                .and_then(|wc| wc.constraint_for(&actual_gp.name));
+            let actual_is_record =
+                actual_gp.is_record || actual_where.is_some_and(|constraint| constraint.is_record);
+            if actual_is_record != declared_gp.is_record {
+                return false;
+            }
+            let mut actual_bounds: Vec<String> = actual_gp
+                .bounds
+                .iter()
+                .chain(actual_where.into_iter().flat_map(|c| c.bounds.iter()))
+                .map(|bound| canonical_generic_bound(bound, actual_env))
+                .collect();
+            let mut declared_bounds: Vec<String> = declared_gp
+                .bounds
+                .iter()
+                .map(|bound| canonical_generic_bound(bound, expected_env))
+                .collect();
+            for bounds in [&mut actual_bounds, &mut declared_bounds] {
+                bounds.sort();
+                bounds.dedup();
+            }
+            actual_bounds == declared_bounds
+        })
+}
+
+/// A source-spelling-independent key for one generic-parameter [`Bound`], used by
+/// [`generic_constraints_match`] to compare an impl method's generic constraints
+/// against the aspect method's (RFC-0129 legality-13). Constituent type
+/// expressions are resolved through `env` so `Self`, aspect arguments, associated
+/// types, and generic parameters compare by identity rather than spelling; row
+/// fields and associated-type bindings are sorted so field/binding order does not
+/// matter.
+fn canonical_generic_bound(bound: &Bound, env: &SignatureEnv) -> String {
+    let polarity = match bound.polarity {
+        Polarity::Positive => "",
+        Polarity::Negative => "!",
+    };
+    let head = match &bound.head {
+        BoundHead::Aspect(te) => format!("{:?}", signature_type_expr_to_infer(te, env)),
+        BoundHead::Row(row) => {
+            let mut fields: Vec<String> = row
+                .fields
+                .iter()
+                .map(|field| {
+                    let ty = field.ty.as_ref().map_or_else(
+                        || "_".to_string(),
+                        |t| format!("{:?}", signature_type_expr_to_infer(t, env)),
+                    );
+                    format!("{}:{ty}", field.label)
+                })
+                .collect();
+            fields.sort();
+            format!("row(open={},{})", row.open, fields.join(","))
+        }
+    };
+    let mut assoc: Vec<String> = bound
+        .assoc_bindings
+        .iter()
+        .map(|(label, te)| format!("{label}={:?}", signature_type_expr_to_infer(te, env)))
+        .collect();
+    assoc.sort();
+    format!("{polarity}{head}[{}]", assoc.join(","))
 }
 
 mod declarations;
