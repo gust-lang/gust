@@ -1,7 +1,8 @@
 // RFC-0129 legality-13, conservative wrong-no. `<record T>` -> `<T>` is a safe
 // widening: a plain `<T>` impl accepts every record the aspect admits. The
-// minimal structural-equality rule still rejects it; RFC-0149's domain-inclusion
-// rule will accept it. Flip to a positive fixture when that lands.
+// minimal structural-equality rule still rejects it; RFC-0129's deferred
+// admissible-domain-inclusion extension will accept it. Flip to a positive
+// fixture when that lands.
 
 aspect Inspect {
     fun keep<record T>(&self, value: T) -> T;

@@ -1,6 +1,6 @@
-# Known limitation (RFC-0129 -> RFC-0149): a safe constraint *widening* is
-# rejected by the minimal structural-equality rule. Flip to a positive fixture
-# when domain-inclusion conformance lands.
+# Known limitation (RFC-0129 minimal interim): a safe constraint *widening* is
+# rejected by the structural-equality rule. Flip to a positive fixture when
+# admissible-domain-inclusion conformance lands.
 [options]
 spec = ["spec.declarations.aspects.implementing-an-aspect.legality-13"]
 

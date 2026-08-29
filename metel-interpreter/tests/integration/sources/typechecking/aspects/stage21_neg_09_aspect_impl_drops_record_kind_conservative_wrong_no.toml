@@ -1,5 +1,5 @@
-# Known limitation (RFC-0129 -> RFC-0149): dropping the record kind is a safe
-# widening that the minimal structural-equality rule still rejects.
+# Known limitation (RFC-0129 minimal interim): dropping the record kind is a safe
+# widening that the structural-equality rule still rejects.
 [options]
 spec = ["spec.declarations.aspects.implementing-an-aspect.legality-13"]
 
