@@ -1,4 +1,5 @@
 [options]
+rfc = ["rfc-0129§2", "rfc-0129§4"]
 spec = ["spec.declarations.aspects.implementing-an-aspect.legality-13", "spec.declarations.aspects.implementing-an-aspect.legality-14"]
 
 [expect]
