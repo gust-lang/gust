@@ -55,7 +55,7 @@ flowchart TD
     subgraph MC["metel-core"]
         direction TB
         MC_branch["issue branch"]
-        MC_ci["ci.yml\n(test/clippy/fmt, rfc-check,\ndoc-examples, inventory,\npublish-develop-binary)"]
+        MC_ci["ci.yml\n(test/clippy/fmt, rfc-check,\ndoc-examples, inventory,\nclippy-allow-ratchet,\npublish-develop-binary)"]
         MC_develop["develop"]
         MC_tag["tag vX.Y.Z on main"]
         MC_rel["release.yml\nvalidate-release -> release-chain\n+ github-release"]
@@ -110,12 +110,14 @@ all.
 | `.github/workflows/ci.yml` — `doc-examples` job | push/PR to `develop`/`main` | `README.md`, `docs` submodule | — | — |
 | `.github/workflows/ci.yml` — `publish-develop-binary` job | push to `develop` only (not PRs) | this repo, at the pushed commit | this repo's GitHub Releases — rolling pre-release `develop-latest`, deleted and recreated each run (metel-core#696) | built-in `GITHUB_TOKEN` (`contents: write`, this repo only) |
 | `.github/workflows/ci.yml` — `inventory` job | push/PR to `develop`/`main` | this repo's own workflows/tools/commands | — | — |
+| `.github/workflows/ci.yml` — `clippy-allow-ratchet` job | push/PR to `develop`/`main` | `metel-frontend/src`, `metel-interpreter/src`, `tools/clippy-allow-baseline.json` | — | — |
 | `.github/workflows/release.yml` — `validate-release` | tag `vX.Y.Z` pushed | `docs` submodule | — | — |
 | `.github/workflows/release.yml` — `release-chain` | after `validate-release` | `docs` submodule (reads this repo's own pinned commit, does not write to `metel-docs` — ADR-0051 removed the sync) | `metel-website` main + tag | `WEBSITE_TOKEN` |
 | `.github/workflows/release.yml` — `github-release` | after `validate-release` | `docs` submodule | this repo's GitHub Releases | built-in `GITHUB_TOKEN` |
 | `tools/check_doc_examples.py` | invoked by `doc-examples`, and fetched at runtime by both other repos' checkers | any path of `.md`/`.mdx`/`.mtl` files passed on the CLI | stdout only | — |
 | `tools/changelog-status.sh` | manual (`/ship-issue`, `/cut-release`) | `docs/release-notes/changelog.md`, git log | stdout only | — |
 | `tools/check_inventory.sh` | invoked by `ci.yml`'s `inventory` job | this file, this repo's own workflows/tools/commands | stdout only | — |
+| `tools/clippy_allow_ratchet.py` | invoked by `ci.yml`'s `clippy-allow-ratchet` job (`--check`); manual `--list` / `--write-baseline` | `metel-frontend/src`, `metel-interpreter/src` (scans `#[allow(clippy::...)]`), `tools/clippy-allow-baseline.json` | `tools/clippy-allow-baseline.json` (`--write-baseline` only); stdout otherwise | — |
 | `.claude/commands/start-issue.md` | manual slash command | issue body, `develop` | new issue branch | — |
 | `.claude/commands/ship-issue.md` | manual slash command | issue branch | PR to `develop`, fast-forward merge | — |
 | `.claude/commands/cut-release.md` | manual slash command | `develop` | tag on `main`, triggers `release.yml` | — |
