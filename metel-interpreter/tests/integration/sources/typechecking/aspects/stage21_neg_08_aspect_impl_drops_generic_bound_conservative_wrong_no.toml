@@ -1,0 +1,10 @@
+# Known limitation (RFC-0129 -> RFC-0149): a safe constraint *widening* is
+# rejected by the minimal structural-equality rule. Flip to a positive fixture
+# when domain-inclusion conformance lands.
+[options]
+spec = ["spec.declarations.aspects.implementing-an-aspect.legality-13"]
+
+[expect]
+status = "typecheck_error"
+code = "T0012"
+contains = "does not match the signature declared by aspect"

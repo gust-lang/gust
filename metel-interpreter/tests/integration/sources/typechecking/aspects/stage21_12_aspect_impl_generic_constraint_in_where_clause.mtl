@@ -1,0 +1,15 @@
+// RFC-0129 legality-13 with §3 normalization: an inline bound on the aspect side
+// and the same bound in the impl's `where` clause are the same constraint. The
+// comparator folds the impl's binder and `where` constraints together first.
+
+aspect Render {
+    fun render<T: Copy>(&self, value: T) -> T;
+}
+
+struct Widget {}
+
+extend Widget: Render {
+    fun render<T>(&self, value: T) -> T where T: Copy { return value; }
+}
+
+fun main() {}

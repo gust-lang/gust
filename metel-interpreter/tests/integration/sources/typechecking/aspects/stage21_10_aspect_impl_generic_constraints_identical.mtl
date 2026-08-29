@@ -1,0 +1,14 @@
+// RFC-0129 legality-13: identical method generic constraints conform, record
+// kind included. The impl repeats the aspect's `<record T>` verbatim.
+
+aspect Keep {
+    fun keep<record T>(&self, value: T) -> T;
+}
+
+struct Slot {}
+
+extend Slot: Keep {
+    fun keep<record T>(&self, value: T) -> T { return value; }
+}
+
+fun main() {}

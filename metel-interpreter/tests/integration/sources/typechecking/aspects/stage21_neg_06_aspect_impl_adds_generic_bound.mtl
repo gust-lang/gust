@@ -1,0 +1,15 @@
+// RFC-0129 legality-13: an aspect implementation may not *strengthen* a method
+// generic constraint. `Guess::pick` declares `<T>` with no bound; the impl
+// requires `T: Copy`, which rejects instantiations the aspect admits.
+
+aspect Guess {
+    fun pick<T>(&self, a: T, b: T) -> T;
+}
+
+struct Chooser {}
+
+extend Chooser: Guess {
+    fun pick<T: Copy>(&self, a: T, b: T) -> T { return a; }
+}
+
+fun main() {}

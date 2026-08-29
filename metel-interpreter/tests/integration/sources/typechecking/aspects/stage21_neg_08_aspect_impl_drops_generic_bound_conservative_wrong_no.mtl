@@ -1,0 +1,18 @@
+// RFC-0129 legality-13, conservative wrong-no. Dropping a bound (`<T: Copy>` ->
+// `<T>`) is a *safe widening* -- the impl accepts every instantiation the aspect
+// admits -- but RFC-0129's minimal interim rule compares constraint conjunctions
+// for structural equality, so it rejects this too. Admissible-domain inclusion,
+// which accepts the widening, is RFC-0149. Update this expectation to a positive
+// fixture when RFC-0129 legality-13 is superseded.
+
+aspect Relaxed {
+    fun pass<T: Copy>(&self, value: T) -> T;
+}
+
+struct Passthrough {}
+
+extend Passthrough: Relaxed {
+    fun pass<T>(&self, value: T) -> T { return value; }
+}
+
+fun main() {}
