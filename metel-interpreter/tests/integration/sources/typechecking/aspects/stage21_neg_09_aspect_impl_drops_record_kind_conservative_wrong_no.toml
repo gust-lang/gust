@@ -1,6 +1,7 @@
 # Known limitation (RFC-0129 minimal interim): dropping the record kind is a safe
 # widening that the structural-equality rule still rejects.
 [options]
+rfc = ["rfc-0129§2"]
 spec = ["spec.declarations.aspects.implementing-an-aspect.legality-13"]
 
 [expect]
