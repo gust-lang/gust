@@ -1,0 +1,91 @@
+{
+  "note": "Grandfathered BARE #[allow(clippy::...)] counts per (file, lint), plus files carrying a module-level #![allow(clippy::...)]. A `// clippy-allow: <reason>` comment (trailing the attribute or on the line above) marks a suppression justified; justified suppressions are never counted here and never fail the check. New bare allows beyond these counts, and any new module-level #![allow(clippy::...)], fail tools/clippy_allow_ratchet.py --check in CI. Regenerate with tools/clippy_allow_ratchet.py --write-baseline after fixing a warning (to tighten the ratchet) or after deliberately grandfathering more.",
+  "buckets": {
+    "metel-frontend/src/coherence.rs": {
+      "too_many_lines": 1
+    },
+    "metel-frontend/src/move_check/mod.rs": {
+      "too_many_lines": 1
+    },
+    "metel-frontend/src/name_resolver.rs": {
+      "too_many_arguments": 2
+    },
+    "metel-frontend/src/parser/mod.rs": {
+      "only_used_in_recursion": 1,
+      "too_many_lines": 6
+    },
+    "metel-frontend/src/path_normalizer.rs": {
+      "too_many_lines": 1
+    },
+    "metel-frontend/src/typechecker/construction.rs": {
+      "too_many_arguments": 2
+    },
+    "metel-frontend/src/typechecker/construction/calls.rs": {
+      "too_many_arguments": 4,
+      "too_many_lines": 2
+    },
+    "metel-frontend/src/typechecker/construction/declarations.rs": {
+      "too_many_lines": 2
+    },
+    "metel-frontend/src/typechecker/construction/expressions.rs": {
+      "too_many_lines": 2
+    },
+    "metel-frontend/src/typechecker/construction/patterns.rs": {
+      "too_many_lines": 1
+    },
+    "metel-frontend/src/typechecker/conversions.rs": {
+      "too_many_lines": 1
+    },
+    "metel-frontend/src/typechecker/inference.rs": {
+      "too_many_lines": 1
+    },
+    "metel-frontend/src/typechecker/inference/declarations.rs": {
+      "match_same_arms": 1,
+      "too_many_lines": 3
+    },
+    "metel-frontend/src/typechecker/inference/expressions.rs": {
+      "too_many_lines": 2
+    },
+    "metel-frontend/src/typechecker/inference/lowering.rs": {
+      "too_many_lines": 1
+    },
+    "metel-frontend/src/typechecker/inference/patterns.rs": {
+      "too_many_lines": 1
+    },
+    "metel-frontend/src/typechecker/mod.rs": {
+      "implicit_hasher": 1,
+      "large_enum_variant": 1,
+      "too_many_arguments": 2
+    },
+    "metel-frontend/src/typechecker/projections.rs": {
+      "too_many_arguments": 2,
+      "too_many_lines": 2
+    },
+    "metel-frontend/src/typechecker/registry.rs": {
+      "too_many_lines": 2
+    },
+    "metel-frontend/src/typeinference/mod.rs": {
+      "implicit_hasher": 3,
+      "too_many_lines": 4
+    },
+    "metel-interpreter/src/evaluator/call.rs": {
+      "too_many_arguments": 1
+    },
+    "metel-interpreter/src/evaluator/display.rs": {
+      "too_many_lines": 1
+    },
+    "metel-interpreter/src/evaluator/lvalue.rs": {
+      "float_cmp": 1,
+      "too_many_lines": 2
+    },
+    "metel-interpreter/src/evaluator/mod.rs": {
+      "too_many_arguments": 2,
+      "too_many_lines": 4
+    },
+    "metel-interpreter/src/evaluator/pattern.rs": {
+      "float_cmp": 1,
+      "too_many_lines": 1
+    }
+  },
+  "module_level": {}
+}

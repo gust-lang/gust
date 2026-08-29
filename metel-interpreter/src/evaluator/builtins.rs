@@ -1,8 +1,9 @@
-// A handful of `native_*` functions here (native_clock, native_list_new,
-// native_env_vars, native_process_args, ...) never actually fail, but all
-// native functions share the fixed `NativeFn` signature (`-> Result<Value,
-// MetelError>`) required for uniform dispatch through `NativeKey`, so their
-// `Result` wrapping cannot be dropped on a per-function basis.
+// clippy-allow: a handful of `native_*` functions here (native_clock,
+// native_list_new, native_env_vars, native_process_args, ...) never actually
+// fail, but all native functions share the fixed `NativeFn` signature
+// (`-> Result<Value, MetelError>`) required for uniform dispatch through
+// `NativeKey`, so their `Result` wrapping cannot be dropped per function.
+// Narrowing or removing this module-level allow is tracked by metel-core#889.
 #![allow(clippy::unnecessary_wraps)]
 
 use crate::error::{MetelError, RuntimeErrorCode};

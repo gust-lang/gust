@@ -111,6 +111,21 @@ Read the `test result:` and Clippy tails. If Tier 3 exposes a defect, fix it, re
 focused regression first, then rerun only the failed gate and finally one complete Tier
 3 pass. CI runs the same release-level gate.
 
+### Clippy suppressions
+
+Fix the warning by default. A `#[allow(clippy::...)]` is acceptable only when the lint
+is a false positive, or the fix would be worse than the warning — and then it carries a
+`// clippy-allow: <one-line reason>` comment, either trailing the attribute or in the
+comment block directly above it. Module-level `#![allow(clippy::...)]` is not accepted
+for new code — scope the allow to the item.
+
+`tools/clippy_allow_ratchet.py --check` runs in CI and fails a PR that adds a *bare*
+(unjustified) allow beyond the grandfathered counts in `tools/clippy-allow-baseline.json`,
+or any new module-level `#![allow]`. A justified `// clippy-allow:` suppression is never
+counted and needs no baseline change. When you fix a warning and remove an allow, run
+`tools/clippy_allow_ratchet.py --write-baseline` to lock in the improvement;
+`--list` (no args) prints the current inventory for gradual burndown (metel-core#882).
+
 Cargo's workspace cache is `/target/` and is intentionally ignored. Do not delete it to
 obtain a clean worktree. Disposable worktrees should use `sccache` when available rather
 than sharing one writable target directory concurrently.

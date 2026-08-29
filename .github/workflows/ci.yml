@@ -204,3 +204,16 @@ jobs:
       # workflows aren't checkable from here.
       - name: check PROCESSES.md lists every workflow/script/command
         run: tools/check_inventory.sh
+
+  clippy-allow-ratchet:
+    name: clippy-allow ratchet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pure file scan, no Rust toolchain: fails the PR if it adds a bare
+      # #[allow(clippy::...)] beyond tools/clippy-allow-baseline.json, or any
+      # new module-level #![allow(clippy::...)]. See AGENTS.md 'Clippy
+      # suppressions' and metel-core#882.
+      - name: clippy suppressions not accumulating
+        run: tools/clippy_allow_ratchet.py --check
