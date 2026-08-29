@@ -2,7 +2,6 @@
 # rejected by the structural-equality rule. Flip to a positive fixture when
 # admissible-domain-inclusion conformance lands.
 [options]
-rfc = ["rfc-0129§2"]
 spec = ["spec.declarations.aspects.implementing-an-aspect.legality-13"]
 
 [expect]
