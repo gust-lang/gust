@@ -38,7 +38,7 @@ fn main() {
             continue;
         }
 
-        let fixtures = discover_suite_fixtures(suite, &root);
+        let fixtures = discover_suite_fixtures(&root);
         for fixture in fixtures {
             let test_name = build_test_name(suite, &root, &fixture);
             let relative = fixture
@@ -57,14 +57,14 @@ fn main() {
         .expect("failed to write generated integration tests");
 }
 
-fn discover_suite_fixtures(suite: &str, root: &Path) -> Vec<PathBuf> {
+fn discover_suite_fixtures(root: &Path) -> Vec<PathBuf> {
     let mut fixtures = Vec::new();
-    discover_dir(suite, root, &mut fixtures);
+    discover_dir(root, &mut fixtures);
     fixtures.sort();
     fixtures
 }
 
-fn discover_dir(suite: &str, dir: &Path, fixtures: &mut Vec<PathBuf>) {
+fn discover_dir(dir: &Path, fixtures: &mut Vec<PathBuf>) {
     if is_multi_module_fixture(dir) {
         fixtures.push(dir.to_path_buf());
         return;
@@ -81,20 +81,11 @@ fn discover_dir(suite: &str, dir: &Path, fixtures: &mut Vec<PathBuf>) {
     for entry in entries {
         let path = entry.path();
         if path.is_dir() {
-            discover_dir(suite, &path, fixtures);
+            discover_dir(&path, fixtures);
             continue;
         }
 
         if path.extension().and_then(|ext| ext.to_str()) != Some("mtl") {
-            continue;
-        }
-
-        if suite == "parsing"
-            && path
-                .file_stem()
-                .and_then(|stem| stem.to_str())
-                .is_some_and(|stem| stem.starts_with("neg_"))
-        {
             continue;
         }
 
