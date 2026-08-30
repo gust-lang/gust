@@ -1,0 +1,10 @@
+// Regression: metel-core#906. A string literal with many `${}` segments desugars
+// to a chain of `+`. When that chain was left-nested, ~8 segments were enough to
+// overflow the ~2 MiB test-thread stack in a debug build (`infer_binop` recurses
+// once per node and calls `solve()` at each). The parser now folds the parts into
+// a balanced tree, so depth is O(log n). This fixture has 24 segments.
+fun main() {
+	let n: i32 = 7i32;
+	let s = "${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n}";
+	println(s);
+}
