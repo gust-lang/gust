@@ -453,7 +453,8 @@ impl Cx<'_> {
                 if !impl_aspect_allowed {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0022,
-                        "`impl Aspect` is only allowed in parameter or return position".to_owned(),
+                        "`extends Aspect` is only allowed in parameter or return position"
+                            .to_owned(),
                         span,
                     ));
                 }

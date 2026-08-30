@@ -945,7 +945,7 @@ fn apply_constraint_with_coercion(
             return Err(MetelError::type_error(
                 crate::error::TypeErrorCode::T0018,
                 format!(
-                    "cannot name the concrete type of an opaque `impl Aspect` return value; use `impl Aspect` or a generic bound instead (resolved to `{resolved}`)"
+                    "cannot name the concrete type of an opaque `extends Aspect` return value; use `extends Aspect` or a generic bound instead (resolved to `{resolved}`)"
                 ),
                 &constraint.span,
             ));

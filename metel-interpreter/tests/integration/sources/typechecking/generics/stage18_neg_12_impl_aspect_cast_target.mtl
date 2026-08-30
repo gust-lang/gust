@@ -1,4 +1,4 @@
-// Negative: `impl Aspect` is not permitted as a cast target.
+// Negative: `extends Aspect` is not permitted as a cast target.
 aspect P { fun p(&self); }
 
 struct L { t: String }
@@ -6,5 +6,5 @@ struct L { t: String }
 extend L: P { fun p(&self) {} }
 
 fun main() {
-    let value = L { t = "x" } as impl P; // ERROR[T0022]
+    let value = L { t = "x" } as extends P; // ERROR[T0022]
 }

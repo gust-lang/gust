@@ -22,8 +22,8 @@ extend MyInt: Display {
 	}
 }
 
-// Function returning impl Display
-fun make_int() -> impl Display {
+// Function returning extends Display
+fun make_int() -> extends Display {
 	MyInt { value = 42 }
 }
 

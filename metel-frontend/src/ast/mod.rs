@@ -759,11 +759,12 @@ pub enum TypeExpr {
     Reference(Box<TypeExpr>),
     MutReference(Box<TypeExpr>),
     Fun(Vec<TypeExpr>, Option<Box<TypeExpr>>),
-    /// `impl Aspect` in parameter position. Lowered to a fresh anonymous type param before
-    /// inference. Retained in the AST only until the lowering pass runs.
+    /// `extends Aspect` in parameter position (spelled `impl Aspect` before RFC-0130;
+    /// the AST node keeps the internal name). Lowered to a fresh anonymous type param
+    /// before inference. Retained in the AST only until the lowering pass runs.
     ImplAspect {
         bound: Box<TypeExpr>,
-        // Reserved for aspect-related error messages (e.g. "expected `impl Display`") — not yet surfaced.
+        // Reserved for aspect-related error messages (e.g. "expected `extends Display`") — not yet surfaced.
         #[allow(dead_code)]
         source_spell: String,
         #[allow(dead_code)]

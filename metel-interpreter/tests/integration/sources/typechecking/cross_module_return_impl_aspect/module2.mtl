@@ -1,4 +1,4 @@
-// Cross-module test: module2 provides its own public fun returning impl Aspect
+// Cross-module test: module2 provides its own public fun returning extends Aspect
 
 aspect Display {
 	fun display(&self) -> String;
@@ -14,6 +14,6 @@ extend MyString: Display {
 	}
 }
 
-public fun make_string() -> impl Display {
+public fun make_string() -> extends Display {
 	MyString { value = "hello".to_string() }
 }

@@ -1,4 +1,4 @@
-// Cross-module test: module1 with public function returning impl Aspect
+// Cross-module test: module1 with public function returning extends Aspect
 
 aspect Display {
 	fun display(&self) -> String;
@@ -14,6 +14,6 @@ extend MyInt: Display {
 	}
 }
 
-public fun make_public_int() -> impl Display {
+public fun make_public_int() -> extends Display {
 	MyInt { value = 42 }
 }

@@ -15,12 +15,12 @@ extend MyInt: Display {
 	}
 }
 
-// Function returning impl Display
-fun make_int() -> impl Display {
+// Function returning extends Display
+fun make_int() -> extends Display {
 	MyInt { value = 42 }
 }
 
-fun take_display(d: impl Display) -> String {
+fun take_display(d: extends Display) -> String {
 	d.display()
 }
 
@@ -29,7 +29,7 @@ fun main() {
 	let int1 = make_int();
 	let int2 = make_int();
 	
-	// Pass each to functions that take impl Display - this should prove
+	// Pass each to functions that take extends Display - this should prove
 	// independent instantiation
 	let s1 = take_display(int1);
 	let s2 = take_display(int2);

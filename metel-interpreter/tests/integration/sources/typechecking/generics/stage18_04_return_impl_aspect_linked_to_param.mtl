@@ -16,7 +16,7 @@ extend MyInt: Display {
 }
 
 // RFC §2 transform example - return position linked to parameter
-fun transform(x: impl Display) -> impl Display {
+fun transform(x: extends Display) -> extends Display {
 	x // returns the same value passed in
 }
 

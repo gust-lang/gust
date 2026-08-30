@@ -1,0 +1,8 @@
+// RFC-0130: the anonymous type-position keyword is `extends Aspect`. The old
+// `impl Aspect` spelling is a hard parse error (`impl` stays reserved, like
+// `mut`/`pub` after RFC-0098) -- no compatibility alias.
+fun print_it(x: impl Display) -> String {
+    "${x}"
+}
+
+fun main() {}

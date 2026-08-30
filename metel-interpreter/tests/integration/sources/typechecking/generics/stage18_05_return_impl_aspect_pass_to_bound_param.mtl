@@ -15,18 +15,18 @@ extend MyInt: Display {
 	}
 }
 
-// Function returning impl Display
-fun make_int() -> impl Display {
+// Function returning extends Display
+fun make_int() -> extends Display {
 	MyInt { value = 42 }
 }
 
-// Function that takes impl Display parameter
-fun take_display(d: impl Display) -> String {
+// Function that takes extends Display parameter
+fun take_display(d: extends Display) -> String {
 	d.display()
 }
 
 fun main() {
 	let int_val = make_int();
-	// Pass the opaque return to a function with impl Display parameter
+	// Pass the opaque return to a function with extends Display parameter
 	let result = take_display(int_val);
 }
