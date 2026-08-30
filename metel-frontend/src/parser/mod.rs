@@ -1256,14 +1256,41 @@ fn parse_string_literal_expr(text: &str, span: Span, filename: &str) -> Result<E
         parts.push(Expr::Literal(Literal::Str(text_buf), seg_span));
     }
 
-    let mut iter = parts.into_iter();
-    let Some(mut expr) = iter.next() else {
+    if parts.is_empty() {
         return Ok(Expr::Literal(Literal::Str(String::new()), span));
-    };
-    for rhs in iter {
-        expr = Expr::BinOp(Box::new(expr), BinOp::Add, Box::new(rhs), span.clone());
     }
-    Ok(expr)
+    Ok(fold_balanced_concat(parts, &span))
+}
+
+// Combine the interpolation parts into a **balanced** tree of `+` rather than a
+// left-nested chain. `+` on strings is associative, so the produced string is
+// unchanged, but downstream passes that recurse over the concat spine (type
+// inference — `infer_binop` even calls `solve()` per node — evaluation, move
+// checking) now see depth O(log n) instead of O(n). A left-nested chain of ~15
+// `+` nodes (8 `${}` segments) was enough to overflow the ~2 MiB test-thread
+// stack in a debug build. See metel-core#906.
+fn fold_balanced_concat(mut level: Vec<Expr>, span: &Span) -> Expr {
+    debug_assert!(!level.is_empty());
+    while level.len() > 1 {
+        let mut next = Vec::with_capacity(level.len().div_ceil(2));
+        let mut iter = level.into_iter();
+        while let Some(lhs) = iter.next() {
+            match iter.next() {
+                Some(rhs) => next.push(Expr::BinOp(
+                    Box::new(lhs),
+                    BinOp::Add,
+                    Box::new(rhs),
+                    span.clone(),
+                )),
+                None => next.push(lhs),
+            }
+        }
+        level = next;
+    }
+    level
+        .into_iter()
+        .next()
+        .expect("fold_balanced_concat: non-empty by precondition")
 }
 
 fn parse_interpolation_expr(source: &str, span: &Span, filename: &str) -> Result<Expr, MetelError> {
