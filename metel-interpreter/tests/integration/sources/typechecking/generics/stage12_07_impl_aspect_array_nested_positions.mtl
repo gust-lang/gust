@@ -1,4 +1,4 @@
-// Positive: `impl Aspect` is lowered in nested type positions, not only as a
+// Positive: `extends Aspect` is lowered in nested type positions, not only as a
 // parameter's outermost type. Each function below reaches the bound's method through a
 // different `TypeExpr` constructor, so each exercises a distinct arm of the recursive
 // lowering walk.
@@ -25,19 +25,19 @@ extend Label: Printable {
     fun print(&self) {}
 }
 
-fun in_tuple(p: (impl Printable[], i64)) {
+fun in_tuple(p: (extends Printable[], i64)) {
     for (item in p.0) {
         item.print()
     }
 }
 
-fun in_reference(xs: &impl Printable[]) {
+fun in_reference(xs: &extends Printable[]) {
     for (item in *xs) {
         item.print()
     }
 }
 
-fun in_generic_arg(xs: List<impl Printable>) {}
+fun in_generic_arg(xs: List<extends Printable>) {}
 
 fun run(labels: Label[], list: List<Label>) {
     in_tuple((labels, 1));

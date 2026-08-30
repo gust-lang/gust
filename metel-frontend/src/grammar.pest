@@ -301,7 +301,7 @@ type_expr = {
   | tuple_type
   | record_projection_type
   | record_type
-  | impl_type
+  | extends_type
   | dyn_type
   | never_type
   | named_type
@@ -313,11 +313,14 @@ type_expr = {
 // the pre-existing `Never` identifier spelling already produces.
 never_type = { "!" }
 
-impl_type = { "impl" ~ named_type }
+// RFC-0130: renamed from `impl_type` (`impl Aspect`). `impl` stays a reserved
+// keyword (like `mut`/`pub` post-RFC-0098) so the old spelling gets a clear
+// error rather than parsing as an identifier.
+extends_type = { "extends" ~ named_type }
 
 // RFC-0008: `dyn Aspect`, an unsized existential type -- the concrete type is
-// erased and dispatch happens through a vtable. Mirrors `impl_type`'s shape
-// exactly (a keyword applied to a named aspect type); unlike `impl_type`,
+// erased and dispatch happens through a vtable. Mirrors `extends_type`'s shape
+// exactly (a keyword applied to a named aspect type); unlike `extends_type`,
 // `dyn_type` is a real type, not per-call-site generic sugar, so it is not
 // positionally restricted to parameter/return position.
 dyn_type = { "dyn" ~ named_type }
@@ -334,7 +337,7 @@ sized_array_type = { "[" ~ type_expr ~ ";" ~ decimal_int ~ "]" }
 array_type = { array_atom ~ "[]" }
 // The element of a postfix `[]` array: a unit, tuple, or named type. Silent so
 // the matched inner rule flattens into `array_type` and the parser is unchanged.
-array_atom = _{ unit_type | tuple_type | record_projection_type | record_type | impl_type | dyn_type | named_type }
+array_atom = _{ unit_type | tuple_type | record_projection_type | record_type | extends_type | dyn_type | named_type }
 named_type = { type_path ~ ("<" ~ type_args ~ ">")? }
 type_args  = { type_expr ~ ("," ~ type_expr)* }
 type_list  = { type_expr ~ ("," ~ type_expr)* }
@@ -385,7 +388,7 @@ ident = @{
 
 keyword = @{
     ("and" | "as" | "aspect" | "break" | "continue" | "dyn" | "else" | "enum" |
-     "export" | "extend" | "false" | "for" | "fun" | "if" | "impl" |
+     "export" | "extend" | "extends" | "false" | "for" | "fun" | "if" | "impl" |
      "import" | "let" | "loop" | "match" | "mut" | "or" | "pub" |
      "public" | "return" | "root" | "self" | "std" | "struct" | "super" |
      "true" | "var" | "record" |

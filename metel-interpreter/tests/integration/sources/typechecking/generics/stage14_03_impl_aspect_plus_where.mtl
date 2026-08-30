@@ -1,4 +1,4 @@
-// Positive: impl Aspect param coexists with a where clause on a named type param.
+// Positive: extends Aspect param coexists with a where clause on a named type param.
 // Both are enforced independently.
 
 aspect Printable {
@@ -17,7 +17,7 @@ extend B: Serializable {
     fun serialize(self) -> String { self.name }
 }
 
-fun process<U>(x: impl Printable, y: U) -> String where U: Serializable {
+fun process<U>(x: extends Printable, y: U) -> String where U: Serializable {
     x.print();
     y.serialize()
 }

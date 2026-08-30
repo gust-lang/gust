@@ -33,11 +33,11 @@ extend MyString: Display {
 	}
 }
 
-fun make_int() -> impl Display {
+fun make_int() -> extends Display {
 	MyInt { value = 1 }
 }
 
-fun make_string() -> impl Display {
+fun make_string() -> extends Display {
 	MyString { value = "x".to_string() }
 }
 

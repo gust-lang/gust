@@ -1,4 +1,4 @@
-// Positive: two `impl Aspect[]` parameters are independent type variables, so they may
+// Positive: two `extends Aspect[]` parameters are independent type variables, so they may
 // be called with arrays of two different element types. The array counterpart of
 // stage12_04.
 //
@@ -28,7 +28,7 @@ extend Tag: Printable {
     fun print(&self) {}
 }
 
-fun print_both(a: impl Printable[], b: impl Printable[]) {
+fun print_both(a: extends Printable[], b: extends Printable[]) {
     for (x in a) {
         x.print()
     }

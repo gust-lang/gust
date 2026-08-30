@@ -1,0 +1,6 @@
+[options]
+spec = ["spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-1"]
+
+[expect]
+status = "parse_error"
+code = "P0001"

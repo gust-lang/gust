@@ -1,4 +1,4 @@
-// Positive: basic return-position impl Aspect without method calls
+// Positive: basic return-position extends Aspect without method calls
 // Should typecheck without any method calls
 
 aspect Display {
@@ -15,13 +15,13 @@ extend MyInt: Display {
 	}
 }
 
-// Basic function returning impl Display - no method calls yet
-fun make_pair() -> impl Display {
+// Basic function returning extends Display - no method calls yet
+fun make_pair() -> extends Display {
 	MyInt { value = 42 }
 }
 
 fun main() {
 	let pair = make_pair();
-	// Don't call any methods - just use the value as impl Display
+	// Don't call any methods - just use the value as extends Display
 	// This should typecheck without errors
 }

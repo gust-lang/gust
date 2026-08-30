@@ -2740,13 +2740,15 @@ fn parse_type_expr(
             sort_record_labels(&mut fields, filename, &span, "record projection")?;
             Ok(TypeExpr::RecordProjection { path, fields, span })
         }
-        Rule::impl_type => {
+        // RFC-0130: `extends Aspect` (renamed from `impl Aspect`). The AST node
+        // keeps the internal name `ImplAspect`.
+        Rule::extends_type => {
             let span = Span::of(&pair, filename);
             let source_spell = pair.as_str().to_string();
             let bound_pair = pair
                 .into_inner()
                 .next()
-                .ok_or_else(|| MetelError::internal("impl_type: expected bound"))?;
+                .ok_or_else(|| MetelError::internal("extends_type: expected bound"))?;
             let bound = parse_type_expr(bound_pair, filename)?;
             Ok(TypeExpr::ImplAspect {
                 bound: Box::new(bound),

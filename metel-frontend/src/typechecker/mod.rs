@@ -760,7 +760,7 @@ pub(crate) fn reject_unregisterable_impl_target(
         TypeExpr::Reference(_) | TypeExpr::MutReference(_) => "a reference type",
         TypeExpr::Unit => "the unit type",
         TypeExpr::Projection { .. } => "an associated-type projection",
-        TypeExpr::ImplAspect { .. } => "an `impl Aspect` type",
+        TypeExpr::ImplAspect { .. } => "an `extends Aspect` type",
         // RFC-0116's row projection (`Handle.{ fd }`) — a residual, not a fresh
         // nominal type, so it has no registry key of its own either.
         TypeExpr::RecordProjection { .. } => "a record projection",

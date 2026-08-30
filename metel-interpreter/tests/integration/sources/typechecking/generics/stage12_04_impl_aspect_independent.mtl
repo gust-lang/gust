@@ -1,4 +1,4 @@
-// Positive: two `impl Aspect` params in one signature are independent type variables.
+// Positive: two `extends Aspect` params in one signature are independent type variables.
 // The function can be called with two different types that both satisfy the bound.
 
 aspect Printable {
@@ -11,7 +11,7 @@ struct B { value: String }
 extend A: Printable { fun print(self) {} }
 extend B: Printable { fun print(self) {} }
 
-fun print_both(x: impl Printable, y: impl Printable) {
+fun print_both(x: extends Printable, y: extends Printable) {
     x.print();
     y.print()
 }

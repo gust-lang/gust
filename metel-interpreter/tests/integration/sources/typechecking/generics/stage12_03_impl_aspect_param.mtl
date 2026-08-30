@@ -1,4 +1,4 @@
-// Positive: `impl Aspect` in parameter position desugars to a fresh type param.
+// Positive: `extends Aspect` in parameter position desugars to a fresh type param.
 
 aspect Printable {
     fun print(self);
@@ -12,7 +12,7 @@ extend Label: Printable {
     fun print(self) {}
 }
 
-fun print_it(x: impl Printable) {
+fun print_it(x: extends Printable) {
     x.print()
 }
 

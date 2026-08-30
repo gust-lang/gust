@@ -1,4 +1,4 @@
-// Negative: `impl Aspect[]` nested in a tuple still enforces the bound on the array's
+// Negative: `extends Aspect[]` nested in a tuple still enforces the bound on the array's
 // element type. Expect T0012.
 
 aspect Printable {
@@ -9,7 +9,7 @@ struct Plain { x: i64 }
 
 // Plain does not implement Printable.
 
-fun in_tuple(p: (impl Printable[], i64)) {
+fun in_tuple(p: (extends Printable[], i64)) {
     for (item in p.0) {
         item.print()
     }

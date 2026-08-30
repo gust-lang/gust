@@ -1,4 +1,4 @@
-// Positive: method dispatch on return-position impl Aspect
+// Positive: method dispatch on return-position extends Aspect
 // Should typecheck and allow calling aspect methods
 
 aspect Display {
@@ -15,8 +15,8 @@ extend MyInt: Display {
 	}
 }
 
-// Function returning impl Display
-fun make_int() -> impl Display {
+// Function returning extends Display
+fun make_int() -> extends Display {
 	MyInt { value = 42 }
 }
 

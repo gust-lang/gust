@@ -1,5 +1,5 @@
 // Negative: cannot cast opaque return should fail with T0007
-// Attempting to cast impl Display to unrelated type
+// Attempting to cast extends Display to unrelated type
 
 aspect Display {
 	fun display(&self) -> String;
@@ -15,8 +15,8 @@ extend MyInt: Display {
 	}
 }
 
-// Function returning impl Display
-fun make_int() -> impl Display {
+// Function returning extends Display
+fun make_int() -> extends Display {
 	MyInt { value = 42 }
 }
 
@@ -27,6 +27,6 @@ struct MyString {
 
 fun main() {
 	let int_val = make_int();
-	// This should fail - cannot cast impl Display to unrelated type
+	// This should fail - cannot cast extends Display to unrelated type
 	let string_val: MyString = int_val as MyString; // ERROR[T0007]
 }

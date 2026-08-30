@@ -10,8 +10,8 @@ struct MyInt {
 	value: i64,
 }
 
-// Function claims to return impl Display but returns MyInt
-fun bad_int() -> impl Display { // ERROR[T0012]
+// Function claims to return extends Display but returns MyInt
+fun bad_int() -> extends Display { // ERROR[T0012]
 	MyInt { value = 42 }
 }
 

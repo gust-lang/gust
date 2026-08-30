@@ -1,10 +1,10 @@
-// `impl Aspect` must parse in every type position, including with a postfix `[]`.
+// `extends Aspect` must parse in every type position, including with a postfix `[]`.
 //
 // This is a grammar guard, not a semantics test. `impl_type` is `"impl" ~ named_type`,
 // so `impl_type` alone cannot consume a trailing `[]` — the `[]` is owned by
 // `array_type` via `array_atom`, which lists `impl_type` as an element. If those two
 // rules ever fall out of step, or if the `type_expr` alternation order changes so that
-// `impl_type` is committed to before `array_type` is tried, `impl Foo[]` starts leaving
+// `impl_type` is committed to before `array_type` is tried, `extends Foo[]` starts leaving
 // `[]` unconsumed and every line below becomes a parse error.
 //
 // PEG ordered choice has bitten this grammar before: see
@@ -20,28 +20,28 @@ struct Label {
 }
 
 // Bare, the form that always worked.
-fun bare(x: impl Printable) {}
+fun bare(x: extends Printable) {}
 
 // Postfix `[]` — the form the grammar change is about.
-fun array(xs: impl Printable[]) {}
+fun array(xs: extends Printable[]) {}
 
 // Return position.
-fun ret_bare() -> impl Printable {}
-fun ret_array() -> impl Printable[] {}
+fun ret_bare() -> extends Printable {}
+fun ret_array() -> extends Printable[] {}
 
 // Nested inside the other type constructors the lowering walks.
-fun in_tuple(p: (impl Printable[], i64)) {}
-fun in_reference(xs: &impl Printable[]) {}
-fun in_mut_reference(xs: &var impl Printable[]) {}
-fun in_generic_arg(xs: List<impl Printable>) {}
-fun in_generic_arg_array(xs: List<impl Printable[]>) {}
-fun in_sized_array(xs: [impl Printable; 3]) {}
-fun in_fun_type(f: (impl Printable[]) -> impl Printable) {}
+fun in_tuple(p: (extends Printable[], i64)) {}
+fun in_reference(xs: &extends Printable[]) {}
+fun in_mut_reference(xs: &var extends Printable[]) {}
+fun in_generic_arg(xs: List<extends Printable>) {}
+fun in_generic_arg_array(xs: List<extends Printable[]>) {}
+fun in_sized_array(xs: [extends Printable; 3]) {}
+fun in_fun_type(f: (extends Printable[]) -> extends Printable) {}
 
 // Several occurrences in one signature.
-fun several(a: impl Printable[], b: impl Printable, c: (impl Printable[], impl Printable)) {}
+fun several(a: extends Printable[], b: extends Printable, c: (extends Printable[], extends Printable)) {}
 
 // Let annotation.
 fun in_let_annotation(xs: Label[]) {
-    let ys: impl Printable[] = xs;
+    let ys: extends Printable[] = xs;
 }
