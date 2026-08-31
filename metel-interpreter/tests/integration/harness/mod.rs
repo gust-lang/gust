@@ -2,4 +2,4 @@ mod discover;
 mod fixture;
 mod runners;
 
-pub use discover::run_discovered_fixture;
+pub use discover::{manifest_path, manifest_text, run_discovered_fixture};
