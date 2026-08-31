@@ -1,5 +1,5 @@
 fun find(arr: i64[], target: i64) -> Perhaps<i64> {
-    var i = 0;
+    var i := 0;
     while (i < arr.len()) {
         if (arr[i as u64] == target) {
             return Perhaps::Some { value = i };
@@ -11,24 +11,24 @@ fun find(arr: i64[], target: i64) -> Perhaps<i64> {
 
 fun main() {
     // None literal matches the None pattern.
-    let n: Perhaps<i64> = None;
-    let r1 = match n { None => -1, Perhaps::Some { value } => value, };
+    let n: Perhaps<i64> := None;
+    let r1 := match n { None => -1, Perhaps::Some { value } => value, };
     assert(r1 == -1);
     // Perhaps::Some construction and field extraction via match.
-    let s = Perhaps::Some { value = 42 };
-    let r2 = match s { None => -1, Perhaps::Some { value } => value, };
+    let s := Perhaps::Some { value = 42 };
+    let r2 := match s { None => -1, Perhaps::Some { value } => value, };
     assert(r2 == 42);
     // Perhaps as function return type — found case.
-    let arr = [10, 20, 30, 40];
-    let idx = find(arr, 30);
-    let r3 = match idx { None => -1, Perhaps::Some { value } => value, };
+    let arr := [10, 20, 30, 40];
+    let idx := find(arr, 30);
+    let r3 := match idx { None => -1, Perhaps::Some { value } => value, };
     assert(r3 == 2);
     // Perhaps as function return type — not-found case.
-    let idx2 = find(arr, 99);
-    let r4 = match idx2 { None => -1, Perhaps::Some { value } => value, };
+    let idx2 := find(arr, 99);
+    let r4 := match idx2 { None => -1, Perhaps::Some { value } => value, };
     assert(r4 == -1);
     // Perhaps in expression position — the match result is usable directly.
-    let doubled = match (find(arr, 20)) {
+    let doubled := match (find(arr, 20)) {
         Perhaps::Some { value } => value * 2,
         None => 0,
     };

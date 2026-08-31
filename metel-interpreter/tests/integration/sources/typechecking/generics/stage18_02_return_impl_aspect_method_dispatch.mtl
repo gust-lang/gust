@@ -21,9 +21,9 @@ fun make_int() -> extends Display {
 }
 
 fun main() {
-	let int_val = make_int();
+	let int_val := make_int();
 	// Call the aspect method - this should work now with Step 4
-	let s = int_val.display();
+	let s := int_val.display();
 	// We can't assert the result here since this is just typechecking,
 	// but the typecheck should pass
 }

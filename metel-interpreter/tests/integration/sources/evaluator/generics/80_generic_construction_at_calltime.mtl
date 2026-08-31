@@ -23,13 +23,13 @@ fun main() {
     assert(first("a", 99) == "a");
 
     // higher-order generic with i64
-    let doubled = swap_apply(5, (x: i64) -> i64 { x * 2 });
+    let doubled := swap_apply(5, (x: i64) -> i64 { x * 2 });
     assert(doubled == 10);
 
-    let negated = swap_apply(7, (x: i64) -> i64 { x * -1 });
+    let negated := swap_apply(7, (x: i64) -> i64 { x * -1 });
     assert(negated == -7);
 
     // multi-arg generic
-    let sum = add_all(1, 2, 3, (a: i64, b: i64) -> i64 { a + b });
+    let sum := add_all(1, 2, 3, (a: i64, b: i64) -> i64 { a + b });
     assert(sum == 6);
 }

@@ -1,25 +1,25 @@
 fun main() {
     // Break inside an if with no else evaluates to the break value.
-    let r1 = loop { if (true) { break 42; } };
+    let r1 := loop { if (true) { break 42; } };
     assert(r1 == 42);
     // Break inside if-else: the taken branch determines the value.
-    let r2 = loop { if (true) { break 42; } else { break 0; } };
+    let r2 := loop { if (true) { break 42; } else { break 0; } };
     assert(r2 == 42);
-    let r3 = loop { if (false) { break 42; } else { break 0; } };
+    let r3 := loop { if (false) { break 42; } else { break 0; } };
     assert(r3 == 0);
     // Result is typed i64, not Never — arithmetic on it must work.
-    let x = loop { if (true) { break 42; } };
-    let r4 = x + 1;
+    let x := loop { if (true) { break 42; } };
+    let r4 := x + 1;
     assert(r4 == 43);
     // Break inside the inner loop does not escape the outer loop.
-    let r5 = loop {
+    let r5 := loop {
         loop { break; }
         break 99;
     };
     assert(r5 == 99);
     // Condition evaluated at runtime (not constant-folded).
-    var flag = false;
-    flag = true;
-    let r6 = loop { if (flag) { break 7; } };
+    var flag := false;
+    flag := true;
+    let r6 := loop { if (flag) { break 7; } };
     assert(r6 == 7);
 }

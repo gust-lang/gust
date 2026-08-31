@@ -15,13 +15,13 @@ fun parse_positive(s: String) -> Result<i64, String> {
 }
 
 fun double_parsed(s: String) -> Result<i64, String> {
-    let n = parse_positive(s)?;   // propagates Err early
+    let n := parse_positive(s)?;   // propagates Err early
     return Result::Ok { value = n * 2 };
 }
 
 fun sum_parsed(a: String, b: String) -> Result<i64, String> {
-    let x = parse_positive(a)?;
-    let y = parse_positive(b)?;
+    let x := parse_positive(a)?;
+    let y := parse_positive(b)?;
     return Result::Ok { value = x + y };
 }
 
@@ -64,7 +64,7 @@ fun main() {
     }
 
     // --- Perhaps and lookup ---
-    let items: String[] = ["apple", "banana", "cherry"];
+    let items: String[] := ["apple", "banana", "cherry"];
 
     match lookup(items, 1) {
         Perhaps::Some { value } => println(value),                        // banana
@@ -76,11 +76,11 @@ fun main() {
     }
 
     // --- .yolo() on a present value ---
-    let fruit = lookup(items, 0).yolo();
+    let fruit := lookup(items, 0).yolo();
     println(fruit);   // apple
 
     // --- match used as expression on Result ---
-    let verdict = match sum_parsed("1", "5") {
+    let verdict := match sum_parsed("1", "5") {
         Result::Ok { value } => "sum=" + int_to_string(value),
         Result::Err { error } => "failed",
     };

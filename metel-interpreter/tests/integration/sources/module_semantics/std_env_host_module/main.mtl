@@ -8,8 +8,8 @@ fun main() {
 
     // vars() yields an EnvVar[]; List ergonomics apply after List::from, and
     // mapping preserves the element count.
-    let all = vars();
-    let names = List::from(all).map((e: EnvVar) -> String { e.name });
+    let all := vars();
+    let names := List::from(all).map((e: EnvVar) -> String { e.name });
     assert(names.len() == all.len());
 
     println("ok");

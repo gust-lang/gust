@@ -21,7 +21,7 @@ fun main() {
     assert("hello".index_of("z").is_none());
 
     // ── Split, join, replace ─────────────────────────────────────────────────
-    let parts = "a,b,c".split(",");
+    let parts := "a,b,c".split(",");
     assert(parts.len() == 3);
     assert(parts[0] == "a");
     assert(parts[2] == "c");
@@ -33,7 +33,7 @@ fun main() {
 
     // ── Chars & slicing ──────────────────────────────────────────────────────
     // 'é' is one Unicode scalar, so chars()/len() count it once.
-    let cs = "héllo".chars();
+    let cs := "héllo".chars();
     assert(cs.len() == 5);
     assert(cs[0] == 'h');
     assert("abc".char_at(1).unwrap_or('z') == 'b');

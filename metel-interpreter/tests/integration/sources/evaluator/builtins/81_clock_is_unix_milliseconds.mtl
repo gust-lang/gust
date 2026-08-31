@@ -1,6 +1,6 @@
 fun main() {
-    let before = clock();
-    let after = clock();
+    let before := clock();
+    let after := clock();
     assert(before > 1_600_000_000_000i64);
     assert(after >= before);
 }

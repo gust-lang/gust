@@ -14,7 +14,10 @@ use crate::error::{MetelError, ParseErrorCode};
 
 #[derive(Parser)]
 #[grammar = "grammar.pest"]
-struct MetelParser;
+/// The pest grammar entry point. `pub` so migration/lint tooling can walk the
+/// concrete parse tree (with token spans) that the AST throws away — e.g. the
+/// RFC-0136 `=` → `:=` rewriter in `examples/`.
+pub struct MetelParser;
 
 /// Parse a Metel source string into an untyped AST.
 ///

@@ -1,7 +1,7 @@
 // &var requires a var binding — taking &var of a plain let is a type error.
 // TYPECHECK_ERROR[immutable binding]
 fun main() {
-    let x = 10;
-    let p: &var i64 = &var x;
-    p = 42;
+    let x := 10;
+    let p: &var i64 := &var x;
+    p := 42;
 }

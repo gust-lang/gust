@@ -1,5 +1,5 @@
 fun main() {
-    let s = "hello";
-    let moved = s;
-    let again = s;
+    let s := "hello";
+    let moved := s;
+    let again := s;
 }

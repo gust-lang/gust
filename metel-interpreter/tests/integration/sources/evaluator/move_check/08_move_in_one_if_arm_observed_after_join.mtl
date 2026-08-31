@@ -1,9 +1,9 @@
 fun main() {
-    let s = "hello";
+    let s := "hello";
     if (true) {
-        let moved = s;
+        let moved := s;
     } else {
-        let keep = 0;
+        let keep := 0;
     }
-    let again = s;
+    let again := s;
 }

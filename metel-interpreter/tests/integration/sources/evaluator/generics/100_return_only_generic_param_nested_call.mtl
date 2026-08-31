@@ -8,12 +8,12 @@
 fun make<V>() -> V[] { [] }
 
 fun wrapper<U>() -> U[] {
-    let out: U[] = make();
+    let out: U[] := make();
     out
 }
 
 fun main() {
-    let r: i64[] = wrapper();
+    let r: i64[] := wrapper();
     assert(r.len() == 0);
     println("ok");
 }

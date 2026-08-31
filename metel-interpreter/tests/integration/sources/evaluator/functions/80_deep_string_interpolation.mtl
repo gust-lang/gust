@@ -4,7 +4,7 @@
 // once per node and calls `solve()` at each). The parser now folds the parts into
 // a balanced tree, so depth is O(log n). This fixture has 24 segments.
 fun main() {
-	let n: i32 = 7i32;
-	let s = "${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n}";
+	let n: i32 := 7i32;
+	let s := "${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n} ${n}";
 	println(s);
 }

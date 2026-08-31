@@ -6,11 +6,11 @@ fun take(p: { y: i64, x: i64 }) -> { y: i64, x: i64 } {
 }
 
 fun main() {
-    let point = { y = 2, x = 1 };
-    let swapped = take(point);
+    let point := { y = 2, x = 1 };
+    let swapped := take(point);
     assert(swapped.x == 1);
     assert(swapped.y == 2);
 
-    let sum = match point { { y, x } => x + y, };
+    let sum := match point { { y, x } => x + y, };
     assert(sum == 3);
 }

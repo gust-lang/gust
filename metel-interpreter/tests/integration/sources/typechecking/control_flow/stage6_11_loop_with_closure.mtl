@@ -1,7 +1,7 @@
 // The surrounding loop is still valid when its closure does not use loop control.
 fun main() {
-    let x = loop {
-        let f = () -> i64 { 3 };
+    let x := loop {
+        let f := () -> i64 { 3 };
         break 1;
     };
 }

@@ -1,5 +1,5 @@
 // PARSE_ERROR[mismatched if arm styles]
 // then branch uses braces, else branch does not.
 fun main() {
-    let x = if (true) { 1 } else 2;
+    let x := if (true) { 1 } else 2;
 }

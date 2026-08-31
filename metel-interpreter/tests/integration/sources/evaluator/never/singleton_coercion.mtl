@@ -15,8 +15,8 @@ fun infallible_result() -> Result<i64, !> {
 }
 
 fun main() {
-    let x: i64 = infallible();
-    let y: i64 = infallible_result();
+    let x: i64 := infallible();
+    let y: i64 := infallible_result();
     assert(x == 42);
     assert(y == 7);
     assert(x + y == 49);

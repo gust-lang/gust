@@ -5,5 +5,5 @@ spec = ["spec.types.generics.row-bounds.legality-2"]
 status = "typecheck_error"
 code = "T0012"
 line = 12
-col = 19
+col = 20
 contains = "negative row bound `!{ z }`"

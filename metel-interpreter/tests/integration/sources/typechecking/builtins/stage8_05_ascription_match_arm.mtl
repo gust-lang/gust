@@ -19,7 +19,7 @@ fun make_row(use_default: boolean, fallback: i64[]) -> i64[] {
 // Alternative: block arm with a local binding — equivalent, but noisier.
 fun make_row_alt(use_default: boolean, fallback: i64[]) -> i64[] {
     match use_default {
-        true  => { let xs: i64[] = []; xs },
+        true  => { let xs: i64[] := []; xs },
         false => fallback,
     }
 }

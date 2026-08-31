@@ -2,40 +2,40 @@
 
 fun main() {
     // Braceless if in statement position (no else).
-    var x = 0;
-    if (true) x = 1;
+    var x := 0;
+    if (true) x := 1;
     assert(x == 1);
 
     // Braceless if — condition false, body not executed.
-    if (false) x = 99;
+    if (false) x := 99;
     assert(x == 1);
 
     // Braceless if–else in expression position.
-    let a = if (true) 10 else 20;
+    let a := if (true) 10 else 20;
     assert(a == 10);
 
-    let b = if (false) 10 else 20;
+    let b := if (false) 10 else 20;
     assert(b == 20);
 
     // Nested braceless: inner if has no else — ok.
-    var flag = false;
-    if (true) if (true) flag = true;
+    var flag := false;
+    if (true) if (true) flag := true;
     assert(flag);
 
     // Braceless if–else used as a function argument.
     assert((if (true) 7 else 8) == 7);
 
     // Braceless if in a loop.
-    var sum = 0;
-    var i = 0;
+    var sum := 0;
+    var i := 0;
     while (i < 5) {
-        if (i % 2 == 0) sum = sum + i;
-        i = i + 1;
+        if (i % 2 == 0) sum := sum + i;
+        i := i + 1;
     }
     assert(sum == 6);  // 0 + 2 + 4
 
     // Braceless else-if chain.
-    let v = 2;
-    let label = if (v == 1) 100 else if (v == 2) 200 else 300;
+    let v := 2;
+    let label := if (v == 1) 100 else if (v == 2) 200 else 300;
     assert(label == 200);
 }

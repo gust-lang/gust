@@ -11,7 +11,7 @@ fun pong<U>(n: i64, value: U) -> U {
 }
 
 fun use_generics() -> i64 {
-    let a: i64 = ping(4, 42);
-    let b: boolean = pong(3, true);
+    let a: i64 := ping(4, 42);
+    let b: boolean := pong(3, true);
     if (b) { a } else { 0 }
 }

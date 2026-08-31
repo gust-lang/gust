@@ -57,8 +57,8 @@ extend Rectangle: Scalable {
 }
 
 fun main() {
-    let c = Circle::new(5);
-    let r = Rectangle::new(3, 4);
+    let c := Circle::new(5);
+    let r := Rectangle::new(3, 4);
 
     // Aspect method dispatch on Circle
     assert(c.describe() == "Circle(r=5)");
@@ -72,7 +72,7 @@ fun main() {
     assert(c.area() == 25);
 
     // Default method via aspect (aspect method on a second instance)
-    let c2 = Circle::new(10);
+    let c2 := Circle::new(10);
     assert(c2.describe() == "Circle(r=10)");
     assert(c2.scale(5) == 50);
 }

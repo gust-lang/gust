@@ -40,24 +40,24 @@ fun payload(v: &Perhaps<i64>) -> i64 {
 }
 
 fun main() {
-    let c = Colour::Green;
+    let c := Colour::Green;
     assert(name_qualified(&c) == "green");
     assert(name_bare(&c) == "green");
 
-    var d = Colour::Blue;
+    var d := Colour::Blue;
     assert(name_mut(&var d) == "blue");
 
-    let some: Perhaps<i64> = Perhaps::Some { value = 7 };
-    let none: Perhaps<i64> = Perhaps::None;
+    let some: Perhaps<i64> := Perhaps::Some { value = 7 };
+    let none: Perhaps<i64> := Perhaps::None;
     assert(payload(&some) == 7);
     assert(payload(&none) == -1);
 
     // A non-reference scrutinee is unaffected by the peel.
-    let red = Colour::Red;
+    let red := Colour::Red;
     assert(name_qualified(&red) == "red");
 
     // Matching a reference to a struct still binds by value through the peel.
-    let p = Point { x = 1, y = 2 };
-    let r: &Point = &p;
+    let p := Point { x = 1, y = 2 };
+    let r: &Point := &p;
     assert(r.x == 1);
 }

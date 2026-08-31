@@ -1,16 +1,16 @@
 fun main() {
     // Widening: i64 as f64.
-    let fi = 3 as f64;
+    let fi := 3 as f64;
     assert(fi == 3.0);
     // Identity casts.
-    let ii = 5 as i64;
+    let ii := 5 as i64;
     assert(ii == 5);
-    let ff = 2.5 as f64;
+    let ff := 2.5 as f64;
     assert(ff == 2.5);
     // Large integer to float.
-    let big = 1000000 as f64;
+    let big := 1000000 as f64;
     assert(big == 1000000.0);
     // Negative integer to float.
-    let neg = -7 as f64;
+    let neg := -7 as f64;
     assert(neg == -7.0);
 }

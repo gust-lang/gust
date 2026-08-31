@@ -9,7 +9,7 @@ where record T: !{ z } {
 }
 
 fun main() {
-    let ok = { x = "hi", y = 5 };
-    let result = f(ok);
+    let ok := { x = "hi", y = 5 };
+    let result := f(ok);
     assert(result == 5);
 }

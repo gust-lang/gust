@@ -17,15 +17,15 @@ extend Point {
     }
 
     fun translate(&var self, dx: f64, dy: f64) {
-        self.x = self.x + dx;
-        self.y = self.y + dy;
+        self.x := self.x + dx;
+        self.y := self.y + dy;
     }
 
     fun distance_to(self, other: Point) -> f64 {
-        let dx = self.x - other.x;
-        let dy = self.y - other.y;
+        let dx := self.x - other.x;
+        let dy := self.y - other.y;
         // manual sqrt approximation via Newton's method for test purposes
-        let sq = dx * dx + dy * dy;
+        let sq := dx * dx + dy * dy;
         return sq;   // returning squared distance to avoid needing stdlib sqrt
     }
 }
@@ -59,7 +59,7 @@ extend Counter {
     }
 
     fun reset(&var self) {
-        self.value = 0;
+        self.value := 0;
     }
 
     fun get(self) -> i64 {
@@ -69,25 +69,25 @@ extend Counter {
 
 fun main() {
     // --- basic construction and field access ---
-    let p = Point::new(3.0, 4.0);
+    let p := Point::new(3.0, 4.0);
     println(p.to_string());              // (3.0, 4.0)
     println(float_to_string(p.x));      // 3.0
 
     // --- &var self method ---
-    var q = Point::new(0.0, 0.0);
+    var q := Point::new(0.0, 0.0);
     q.translate(5.0, 7.0);
     println(q.to_string());             // (5.0, 7.0)
 
     // --- method returning a value ---
-    let sq_dist = p.distance_to(Point::new(0.0, 0.0));
+    let sq_dist := p.distance_to(Point::new(0.0, 0.0));
     println(float_to_string(sq_dist));  // 25.0  (3²+4²)
 
     // --- generic struct ---
-    let pair = Pair::new(42, "hello");
+    let pair := Pair::new(42, "hello");
     println(pair.describe());           // 42 -> hello
 
     // --- counter with &var self ---
-    var ctr = Counter::new();
+    var ctr := Counter::new();
     ctr.increment();
     ctr.increment();
     ctr.increment();

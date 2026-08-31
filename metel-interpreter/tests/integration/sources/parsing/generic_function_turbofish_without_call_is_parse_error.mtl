@@ -6,5 +6,5 @@
 fun identity<T>(x: T) -> T { return x; }
 
 fun main() {
-    let alias = identity::<i64>;
+    let alias := identity::<i64>;
 }

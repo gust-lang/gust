@@ -7,7 +7,7 @@
 fun identity<T>(x: T) -> T { return x; }
 
 fun main() {
-    let alias = identity;
+    let alias := identity;
     assert(alias(3) == 3);
     assert(alias("hi") == "hi");
 }

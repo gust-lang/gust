@@ -1,8 +1,8 @@
 // Stage 5: method calls on built-in types.
 
 // String.len() returns i64
-let s = "hello";
-let n: i64 = s.len();
+let s := "hello";
+let n: i64 := s.len();
 
 // Works on string expressions, not just variables
-let m: i64 = "world!".len();
+let m: i64 := "world!".len();

@@ -2,7 +2,7 @@
 // tail/statement position -- an `if` used as the value of a `let`, where one
 // branch is `return`.
 fun f(c: boolean) -> i64 {
-    let x = if (c) return 99 else 0;
+    let x := if (c) return 99 else 0;
     x
 }
 

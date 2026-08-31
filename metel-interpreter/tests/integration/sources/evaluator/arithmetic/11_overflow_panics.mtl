@@ -1,5 +1,5 @@
 // RUNTIME_ERROR[overflow]
 fun main() {
-    let a: i8 = 127i8 + 1i8;
-    let _ = a;
+    let a: i8 := 127i8 + 1i8;
+    let _ := a;
 }

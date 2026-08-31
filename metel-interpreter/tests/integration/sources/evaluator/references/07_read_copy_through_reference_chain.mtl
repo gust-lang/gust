@@ -3,22 +3,22 @@
 // auto-deref — reading a plain value out of a chain of references must peel
 // every layer, not just one.
 fun main() {
-    let n = 7;
-    let r: &i64 = &n;
-    let rr: &&i64 = &r;
-    let rrr: &&&i64 = &rr;
+    let n := 7;
+    let r: &i64 := &n;
+    let rr: &&i64 := &r;
+    let rrr: &&&i64 := &rr;
 
-    let x: i64 = rr;
+    let x: i64 := rr;
     assert(x == 7);
 
-    let y: i64 = rrr;
+    let y: i64 := rrr;
     assert(y == 7);
 
     // Mixed shared/mut chain.
-    var m = 9;
-    let mr: &var i64 = &var m;
-    let rmr: &&var i64 = &mr;
-    let z: i64 = rmr;
+    var m := 9;
+    let mr: &var i64 := &var m;
+    let rmr: &&var i64 := &mr;
+    let z: i64 := rmr;
     assert(z == 9);
 
     // Read-copy through a chain at `return`, not just `let`.

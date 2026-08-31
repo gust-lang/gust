@@ -2,10 +2,10 @@
 // the closure's deep-cloned copy of the env, not the original. The outer binding
 // must remain unchanged after the call.
 fun main() {
-    var x = 10;
+    var x := 10;
 
-    let f = () -> () {
-        x = 42;
+    let f := () -> () {
+        x := 42;
     };
 
     f();

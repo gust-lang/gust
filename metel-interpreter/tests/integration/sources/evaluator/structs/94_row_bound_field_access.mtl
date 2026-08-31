@@ -24,7 +24,7 @@ fun main() {
     assert(squared_magnitude({ x = 3.0, y = 4.0, extra = "ignored" }) == 25.0);
     assert(get_name({ name = 42, other = "hi" }) == 42);
 
-    var r = { count = 1 };
+    var r := { count = 1 };
     bump(&var r);
     assert(r.count == 2);
 }

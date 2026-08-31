@@ -8,20 +8,20 @@ fun is_even(x: i64) -> boolean { x % 2 == 0 }
 fun sum(acc: i64, x: i64) -> i64 { acc + x }
 
 fun main() {
-    let xs: List<i64> = List::from([1, 2, 3, 4]);
+    let xs: List<i64> := List::from([1, 2, 3, 4]);
 
-    let mapped = xs.map(add_one);
+    let mapped := xs.map(add_one);
     assert(mapped.len() == 4);
     assert(mapped.get(0).yolo() == 2);
     assert(mapped.get(3).yolo() == 5);
 
-    let filtered = xs.filter(is_even);
+    let filtered := xs.filter(is_even);
     assert(filtered.len() == 2);
 
-    let total = xs.fold(0, sum);
+    let total := xs.fold(0, sum);
     assert(total == 10);
 
-    let found = xs.find(is_even);
+    let found := xs.find(is_even);
     assert(found.unwrap_or(0) == 2);
 
     println("ok");

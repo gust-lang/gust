@@ -3,8 +3,8 @@
 // anywhere a Unit-typed expression is, including a `let` binding's
 // initializer.
 fun main() {
-    var calls = 0;
-    let calls_ref: &var i64 = &var calls;
-    let value = if (true) *calls_ref += 1;
+    var calls := 0;
+    let calls_ref: &var i64 := &var calls;
+    let value := if (true) *calls_ref += 1;
     assert(calls == 1);
 }

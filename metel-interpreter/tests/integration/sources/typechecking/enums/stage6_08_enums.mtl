@@ -8,7 +8,7 @@ enum Direction {
     West,
 }
 
-let d: Direction = Direction::North;
+let d: Direction := Direction::North;
 
 // User-defined enum with field variants
 enum Shape {
@@ -16,31 +16,31 @@ enum Shape {
     Rectangle { width: f64, height: f64 },
 }
 
-let s1: Shape = Shape::Circle { radius = 5.0 };
-let s2: Shape = Shape::Rectangle { width = 3.0, height = 4.0 };
+let s1: Shape := Shape::Circle { radius = 5.0 };
+let s2: Shape := Shape::Rectangle { width = 3.0, height = 4.0 };
 
 // Match on user enum
-let area: f64 = match s1 {
+let area: f64 := match s1 {
     Shape::Circle { radius } => radius * radius,
     Shape::Rectangle { width, height } => width * height,
 };
 
 // Built-in Perhaps<T>
-let some_val: Perhaps<i64> = Perhaps::Some { value = 42 };
-let no_val: Perhaps<i64> = Perhaps::None;
+let some_val: Perhaps<i64> := Perhaps::Some { value = 42 };
+let no_val: Perhaps<i64> := Perhaps::None;
 
 // Match on Perhaps
-let result_int: i64 = match some_val {
+let result_int: i64 := match some_val {
     Perhaps::Some { value } => value,
     None => 0,
 };
 
 // Built-in Result<T, E>
-let ok_val: Result<i64, String> = Result::Ok { value = 10 };
-let err_val: Result<i64, String> = Result::Err { error = "oops" };
+let ok_val: Result<i64, String> := Result::Ok { value = 10 };
+let err_val: Result<i64, String> := Result::Err { error = "oops" };
 
 // Match on Result
-let extracted: i64 = match ok_val {
+let extracted: i64 := match ok_val {
     Result::Ok { value } => value,
     Result::Err { error } => 0,
 };

@@ -9,6 +9,6 @@
 //   flag    : boolean   (inferred from literal false)
 //   name    : String (annotated String, value infers String — unification succeeds)
 
-var counter = 0;
-var flag = false;
-var name: String  = "metel";
+var counter := 0;
+var flag := false;
+var name: String  := "metel";

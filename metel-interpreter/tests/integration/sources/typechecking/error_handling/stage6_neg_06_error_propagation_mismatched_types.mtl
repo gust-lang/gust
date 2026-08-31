@@ -8,7 +8,7 @@ fun inner() -> Result<i64, String> {
 }
 
 fun outer() -> Result<i64, i64> {
-    let x = inner()?; // ERROR[T0007]
+    let x := inner()?; // ERROR[T0007]
     Result::Ok { value = x }
 }
 

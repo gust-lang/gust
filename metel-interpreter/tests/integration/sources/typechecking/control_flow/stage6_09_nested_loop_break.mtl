@@ -1,12 +1,12 @@
 // Stage 6: break nested inside if branches is visible to find_loop_break_type.
 
 // break inside if-then branch only
-let _a: i64 = loop {
+let _a: i64 := loop {
     if (true) { break 42; }
 };
 
 // break in both then and else branches
-let _b: i64 = loop {
+let _b: i64 := loop {
     if (true) { break 42; } else { break 0; }
 };
 

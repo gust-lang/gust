@@ -4,8 +4,8 @@ aspect Marker {
 
 extend<T> T: Marker {
     fun mark(self) -> String {
-        let moved = self;
-        let moved_again = self;
+        let moved := self;
+        let moved_again := self;
         "ok"
     }
 }

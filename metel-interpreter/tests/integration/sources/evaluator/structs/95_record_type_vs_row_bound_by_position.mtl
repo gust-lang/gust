@@ -11,9 +11,9 @@ fun takes_row_bound<record T: { x: i64, .. }>(v: T) -> i64 {
 }
 
 fun main() {
-    let r = { x = 1, y = 2 };
+    let r := { x = 1, y = 2 };
     assert(takes_record(r) == 3);
 
-    let wider = { x = 5, y = 6, z = 7 };
+    let wider := { x = 5, y = 6, z = 7 };
     assert(takes_row_bound(wider) == 5);
 }

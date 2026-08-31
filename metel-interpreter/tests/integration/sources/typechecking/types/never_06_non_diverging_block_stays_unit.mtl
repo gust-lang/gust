@@ -4,7 +4,7 @@
 // `continue`, not any block with no tail expression at all.
 
 fun choose(cond: boolean) {
-    let result: () = if (cond) {
+    let result: () := if (cond) {
         assert(true);
     } else {
         assert(false || true);

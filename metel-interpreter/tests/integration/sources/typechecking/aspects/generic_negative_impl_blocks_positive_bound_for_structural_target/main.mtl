@@ -18,6 +18,6 @@ extend<T> T[]: !Marker;
 fun needs_marker<U: Marker>(x: U) {}
 
 fun main() {
-    let xs = [1, 2, 3];
+    let xs := [1, 2, 3];
     needs_marker(xs); // ERROR[T0012]
 }

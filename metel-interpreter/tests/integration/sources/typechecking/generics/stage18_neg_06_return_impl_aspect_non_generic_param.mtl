@@ -26,7 +26,7 @@ fun take_concrete_int(x: MyInt) -> i64 {
 }
 
 fun main() {
-	let int_val = make_int();
+	let int_val := make_int();
 	// This should fail - cannot pass opaque return to concrete parameter
-	let result = take_concrete_int(int_val); // ERROR[T0018]
+	let result := take_concrete_int(int_val); // ERROR[T0018]
 }

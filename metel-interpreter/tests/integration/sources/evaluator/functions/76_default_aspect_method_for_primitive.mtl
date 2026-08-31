@@ -11,7 +11,7 @@ aspect Tripler {
 extend i64: Tripler {}
 
 fun main() {
-	let x = 14i64;
-	let y = x.tripled();
+	let x := 14i64;
+	let y := x.tripled();
 	println("${y}");
 }

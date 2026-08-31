@@ -11,12 +11,12 @@ aspect Convert {
 struct Number { value: i64 }
 
 extend Number: Deref {
-    type Target = i64;
+    type Target := i64;
     fun deref(&self) -> i64 { self.value }
 }
 
 extend Number: Convert {
-    type Target = String;
+    type Target := String;
     fun convert(&self) -> String { "number" }
 }
 
@@ -25,6 +25,6 @@ fun deref_value<T: Deref<Target = U> + Convert, U>(x: &T) -> U {
 }
 
 fun main() -> i64 {
-    let n = Number { value = 7 };
+    let n := Number { value = 7 };
     deref_value(&n)
 }

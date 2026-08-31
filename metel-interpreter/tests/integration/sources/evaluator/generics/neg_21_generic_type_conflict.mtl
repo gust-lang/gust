@@ -6,5 +6,5 @@
 fun first<T>(a: T, b: T) -> T { a }
 
 fun main() {
-    let _x = first(1, true);
+    let _x := first(1, true);
 }

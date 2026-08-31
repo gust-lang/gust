@@ -1,5 +1,5 @@
 fun main() {
-    let xs = [1, 2, 3];
+    let xs := [1, 2, 3];
     assert(xs.to_string() == "[1, 2, 3]");
     assert([4, 5].to_string() == "[4, 5]");
 }

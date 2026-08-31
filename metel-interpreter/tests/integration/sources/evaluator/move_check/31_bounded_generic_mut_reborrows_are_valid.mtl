@@ -3,8 +3,8 @@ aspect Blend {
 }
 
 fun blend_twice<T: Blend>(value: T, other: T) {
-    var value = value;
-    var other = other;
+    var value := value;
+    var other := other;
     value.blend(&var other);
     value.blend(&var other);
 }

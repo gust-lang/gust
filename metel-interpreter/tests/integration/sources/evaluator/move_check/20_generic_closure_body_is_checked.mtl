@@ -1,6 +1,6 @@
 fun main() {
-    let duplicate = (value) -> {
-        let moved = value;
+    let duplicate := (value) -> {
+        let moved := value;
         value
     };
 }

@@ -1,7 +1,7 @@
 fun main() {
     // Inner binding shadows outer; outer is unchanged after the if.
-    let x = 1;
-    let inner_x = if (true) { let x = 99; x } else { 0 };
+    let x := 1;
+    let inner_x := if (true) { let x := 99; x } else { 0 };
     assert(inner_x == 99);
     assert(x == 1);
 }

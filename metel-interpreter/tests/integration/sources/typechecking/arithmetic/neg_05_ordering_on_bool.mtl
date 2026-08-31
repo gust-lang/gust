@@ -1,4 +1,4 @@
 // Negative test: ordering comparison on non-comparable type (T0005)
 // boolean does not support ordering comparisons.
 
-let x = true < false; // ERROR[T0005]
+let x := true < false; // ERROR[T0005]

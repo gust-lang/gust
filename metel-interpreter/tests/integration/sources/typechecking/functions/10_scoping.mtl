@@ -27,5 +27,5 @@ fun bar(x: boolean) -> boolean {
     !x
 }
 
-let a = foo(10);
-let b = bar(true);
+let a := foo(10);
+let b := bar(true);

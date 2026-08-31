@@ -10,38 +10,38 @@ fun scale_then_add(factor: i64) -> (i64) -> (i64) -> i64 {
 
 fun main() {
     // Basic closure returned from function.
-    let add3 = add_n(3);
-    let add7 = add_n(7);
+    let add3 := add_n(3);
+    let add7 := add_n(7);
     assert(add3(10) == 13);
     assert(add7(10) == 17);
     // Two independently-created closures do not share captured state.
     assert(add3(0) == 3);
     assert(add7(0) == 7);
     // Two-level currying: scale_then_add(2)(5)(3) = 2*5+3 = 13
-    let m2    = scale_then_add(2);
-    let m2b5  = m2(5);
+    let m2    := scale_then_add(2);
+    let m2b5  := m2(5);
     assert(m2b5(3)  == 13);
     assert(m2b5(7)  == 17);
     // Different base produces a different inner closure.
-    let m2b10 = m2(10);
+    let m2b10 := m2(10);
     assert(m2b10(0) == 20);
     // Array of closures — each captures a different value.
-    let fns = [add_n(1), add_n(2), add_n(3)];
+    let fns := [add_n(1), add_n(2), add_n(3)];
     assert(fns[0](10) == 11);
     assert(fns[1](10) == 12);
     assert(fns[2](10) == 13);
     // Closure created per loop iteration — each iteration captures a snapshot of i.
     // Use the closure immediately inside the loop instead of storing in an array.
-    var sum = 0;
-    var i = 0;
+    var sum := 0;
+    var i := 0;
     while (i < 5) {
-        let adder = add_n(i);
+        let adder := add_n(i);
         sum += adder(0);   // adder(0) == i, so sum accumulates 0+1+2+3+4 = 10
         i += 1;
     }
     assert(sum == 10);
     // Closures stored in array via literal (type inferred from elements).
-    let adders = [add_n(10), add_n(20), add_n(30)];
+    let adders := [add_n(10), add_n(20), add_n(30)];
     assert(adders[0](1) == 11);
     assert(adders[2](1) == 31);
 }

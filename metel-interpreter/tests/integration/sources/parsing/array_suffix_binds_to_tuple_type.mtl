@@ -14,13 +14,13 @@ fun takes(pairs: (String, String)[]) -> i64 {
 }
 
 fun annotates() {
-    let xs: (i64, boolean)[] = [];
+    let xs: (i64, boolean)[] := [];
 }
 
 fun main() {
-    let env = Env { vars = [("a", "b")] };
+    let env := Env { vars = [("a", "b")] };
     assert(env.vars[0].0 == "a");
-    let empty: (String, String)[] = vars();
+    let empty: (String, String)[] := vars();
     assert(empty.len() == 0);
     assert(takes(env.vars) == 0);
     annotates();

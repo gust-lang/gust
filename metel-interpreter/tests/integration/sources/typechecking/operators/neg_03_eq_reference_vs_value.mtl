@@ -3,7 +3,7 @@
 // `cannot unify X with Y` (T0001) that said the two types disagreed but never said a
 // comparison or arithmetic operator was what required them to agree.
 fun main() {
-    let a = 1;
-    let r: &i64 = &a;
-    let b = r == 1; // ERROR[T0005]
+    let a := 1;
+    let r: &i64 := &a;
+    let b := r == 1; // ERROR[T0005]
 }

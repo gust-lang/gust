@@ -1,4 +1,4 @@
-let global = 42;
+let global := 42;
 
 fun main() {
     // Top-level let binding is in scope inside main.

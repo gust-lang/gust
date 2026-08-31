@@ -46,7 +46,7 @@ extend Person: Greet {
 }
 
 extend Person {
-    fun rename(&var self, new_name: String) { self.name = new_name; }
+    fun rename(&var self, new_name: String) { self.name := new_name; }
 }
 
 fun greet_all<T: Greet>(people: T[]) {
@@ -54,8 +54,8 @@ fun greet_all<T: Greet>(people: T[]) {
 }
 
 fun main() -> i64 {
-    var ada = Person { name = "Ada" };
-    let ada_ref: &var Person = &var ada;
+    var ada := Person { name = "Ada" };
+    let ada_ref: &var Person := &var ada;
     ada_ref.rename("Ada Lovelace");   // auto-deref through &var — writes back to ada
 
     greet_all([ada, Person { name = "Grace" }]);
@@ -112,7 +112,7 @@ fun load() -> Result<String, IoError> {
 }
 
 fun load_config() -> Result<String, AppError> {
-    let data = load()?;   // IoError coerced to AppError via From
+    let data := load()?;   // IoError coerced to AppError via From
     return Result::Ok { value = data };
 }
 ```

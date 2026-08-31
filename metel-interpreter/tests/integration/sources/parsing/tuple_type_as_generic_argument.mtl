@@ -4,5 +4,5 @@ fun pairs() -> List<(String, String)> {
 }
 
 fun main() {
-    let p = pairs();
+    let p := pairs();
 }

@@ -3,6 +3,6 @@
 // for `*` is what makes `UnaryOp::Deref`'s existing type rule reachable from surface
 // syntax for the first time.
 fun main() {
-    let a: i64 = 1;
-    let b = *a;
+    let a: i64 := 1;
+    let b := *a;
 }

@@ -23,8 +23,8 @@ extend Counter {
 extend Counter: Iterable<i64> {
     fun next(&var self) -> Perhaps<i64> {
         if (self.current < self.limit) {
-            let v = self.current;
-            self.current = self.current + 1;
+            let v := self.current;
+            self.current := self.current + 1;
             Perhaps::Some { value = v }
         } else {
             None
@@ -42,8 +42,8 @@ extend Countdown {
 extend Countdown: Iterable<i64> {
     fun next(&var self) -> Perhaps<i64> {
         if (self.current > 0) {
-            let v = self.current;
-            self.current = self.current - 1;
+            let v := self.current;
+            self.current := self.current - 1;
             Perhaps::Some { value = v }
         } else {
             None
@@ -53,12 +53,12 @@ extend Countdown: Iterable<i64> {
 
 fun main() {
     // Empty iterator: body never runs
-    var ran = false;
-    for (_x in Counter::new(0)) { ran = true; }
+    var ran := false;
+    for (_x in Counter::new(0)) { ran := true; }
     assert(!ran);
 
     // Single-element iterator: body runs exactly once
-    var count = 0;
+    var count := 0;
     for (x in Counter::new(1)) {
         count += 1;
         assert(x == 0);
@@ -66,12 +66,12 @@ fun main() {
     assert(count == 1);
 
     // Normal sum: 0+1+2+3+4 = 10
-    var sum = 0;
+    var sum := 0;
     for (x in Counter::new(5)) { sum += x; }
     assert(sum == 10);
 
     // break: stop after first item ≥ 3
-    var break_sum = 0;
+    var break_sum := 0;
     for (x in Counter::new(10)) {
         if (x >= 3) { break; }
         break_sum += x;
@@ -79,24 +79,24 @@ fun main() {
     assert(break_sum == 3); // 0+1+2
 
     // break on first iteration: body runs 0 times after break
-    var first_val = -1;
+    var first_val := -1;
     for (x in Counter::new(5)) {
-        first_val = x;
+        first_val := x;
         break;
     }
     assert(first_val == 0);
 
     // continue: sum only even numbers in [0,6)
-    var even_sum = 0;
+    var even_sum := 0;
     for (x in Counter::new(6)) {
-        let rem = x - (x / 2 * 2);
+        let rem := x - (x / 2 * 2);
         if (rem != 0) { continue; }
         even_sum += x;
     }
     assert(even_sum == 6); // 0+2+4
 
     // nested: outer 3 × inner 3 = 9 pairs, sum of products
-    var prod_sum = 0;
+    var prod_sum := 0;
     for (i in Counter::new(3)) {
         for (j in Counter::new(3)) {
             prod_sum += i * j;
@@ -106,37 +106,37 @@ fun main() {
     assert(prod_sum == 9);
 
     // nested break: outer breaks when inner total hits limit
-    var outer_iters = 0;
+    var outer_iters := 0;
     for (_i in Counter::new(10)) {
         outer_iters += 1;
-        var inner_sum = 0;
+        var inner_sum := 0;
         for (j in Counter::new(5)) { inner_sum += j; }
         if (outer_iters >= 3) { break; }
     }
     assert(outer_iters == 3);
 
     // countdown: 5,4,3,2,1 → sum = 15
-    var cd_sum = 0;
+    var cd_sum := 0;
     for (v in Countdown::new(5)) { cd_sum += v; }
     assert(cd_sum == 15);
 
     // countdown break: first value ≤ 3
-    var first_leq3 = -1;
+    var first_leq3 := -1;
     for (v in Countdown::new(10)) {
         if (v <= 3) {
-            first_leq3 = v;
+            first_leq3 := v;
             break;
         }
     }
     assert(first_leq3 == 3);
 
     // large count: sum 0..99 = 4950
-    var large_sum = 0;
+    var large_sum := 0;
     for (x in Counter::new(100)) { large_sum += x; }
     assert(large_sum == 4950);
 
     // outer variable mutated inside loop: accumulate squares
-    var sq_sum = 0;
+    var sq_sum := 0;
     for (x in Counter::new(5)) { sq_sum += x * x; }
     assert(sq_sum == 30); // 0+1+4+9+16
 }

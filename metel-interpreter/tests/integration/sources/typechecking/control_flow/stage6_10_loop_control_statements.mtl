@@ -1,7 +1,7 @@
 // `break` and `continue` remain valid in every loop form.
 
 fun while_controls() {
-    var i = 0;
+    var i := 0;
     while (i < 3) {
         i += 1;
         if (i < 2) {
@@ -12,7 +12,7 @@ fun while_controls() {
 }
 
 fun for_controls() {
-    for (var i = 0; i < 3; i += 1) {
+    for (var i := 0; i < 3; i += 1) {
         if (i < 2) {
             continue;
         }

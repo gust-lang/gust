@@ -82,14 +82,14 @@ fun safe_div(a: i64, b: i64) -> Result<i64, String> {
 
 fun main() {
     // --- unit enum and method ---
-    let dir = Direction::North;
+    let dir := Direction::North;
     println(dir.to_string());                       // North
     println(dir.opposite().to_string());            // South
 
     // --- data-carrying enum + area ---
-    let c = Shape::Circle { radius = 5.0 };
-    let r = Shape::Rectangle { width = 4.0, height = 6.0 };
-    let t = Shape::Triangle { base = 3.0, height = 8.0 };
+    let c := Shape::Circle { radius = 5.0 };
+    let r := Shape::Rectangle { width = 4.0, height = 6.0 };
+    let t := Shape::Triangle { base = 3.0, height = 8.0 };
     println(float_to_string(c.area()));             // ~78.53975
     println(float_to_string(r.area()));             // 24.0
     println(float_to_string(t.area()));             // 12.0
@@ -102,8 +102,8 @@ fun main() {
     println(classify(99));    // large
 
     // --- Perhaps<T> ---
-    let full: i64[] = [10, 20, 30];
-    let empty: i64[] = [];
+    let full: i64[] := [10, 20, 30];
+    let empty: i64[] := [];
 
     match safe_head(full) {
         Perhaps::Some { value } => println(int_to_string(value)),  // 10
@@ -115,7 +115,7 @@ fun main() {
     }
 
     // --- .yolo() unwrap ---
-    let head = safe_head(full).yolo();
+    let head := safe_head(full).yolo();
     println(int_to_string(head));   // 10
 
     // --- Result<T, E> ---
@@ -129,7 +129,7 @@ fun main() {
     }
 
     // --- nested match is an expression ---
-    let verdict = match safe_div(6, 3) {
+    let verdict := match safe_div(6, 3) {
         Result::Ok { value } => "got " + int_to_string(value),
         Result::Err { error } => "failed",
     };

@@ -2,7 +2,7 @@
 aspect Deref { type Target: Display; fun deref(self) -> Target; }
 struct Wrapper<T> { value: T }
 extend<T: Display> Wrapper<T>: Deref {
-    type Target = T;
+    type Target := T;
     fun deref(self) -> T { self.value }
 }
 fun main() {}

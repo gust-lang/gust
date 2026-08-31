@@ -37,8 +37,8 @@ aspect From<T> {
 fun pi() -> f64 { 3.14159 }
 
 fun approx(a: f64, b: f64) -> boolean {
-    let d = a - b;
-    let abs_d = if (d < 0.0) { 0.0 - d } else { d };
+    let d := a - b;
+    let abs_d := if (d < 0.0) { 0.0 - d } else { d };
     abs_d < 0.01
 }
 
@@ -49,7 +49,7 @@ struct Rectangle { width: i64, height: i64 }
 
 extend Circle: Measurable {
     fun area(&self) -> f64 {
-        let r = self.radius as f64;
+        let r := self.radius as f64;
         pi() * r * r
     }
     fun perimeter(&self) -> f64 {
@@ -90,8 +90,8 @@ extend AreaList {
 extend AreaList: Iterable<f64> {
     fun next(&var self) -> Perhaps<f64> {
         if (self.pos < self.data.len()) {
-            let v = self.data[self.pos as u64];
-            self.pos = self.pos + 1;
+            let v := self.data[self.pos as u64];
+            self.pos := self.pos + 1;
             Perhaps::Some { value = v }
         } else {
             None
@@ -139,20 +139,20 @@ fun parse_radius(s: String) -> Result<i64, ParseError> {
 
 // cross-type match + as-cast (? cross-type deferred to #13).
 fun circle_area_from_str(s: String) -> Result<f64, ShapeError> {
-    let r = match parse_radius(s) {
+    let r := match parse_radius(s) {
         Result::Ok { value } => value,
         Result::Err { error } => { return Result::Err { error = error as ShapeError }; },
     };
-    let c = Circle { radius = r };
+    let c := Circle { radius = r };
     Result::Ok { value = c.area() }
 }
 
 // ── main ───────────────────────────────────────────────────────────────────────
 
 fun main() {
-    let c5  = Circle { radius = 5 };
-    let r34 = Rectangle { width = 3, height = 4 };
-    let c10 = Circle { radius = 10 };
+    let c5  := Circle { radius = 5 };
+    let r34 := Rectangle { width = 3, height = 4 };
+    let c10 := Circle { radius = 10 };
 
     // Measurable on Circle: area ≈ 78.54, perimeter ≈ 31.42
     assert(approx(c5.area(), 78.54));
@@ -175,16 +175,16 @@ fun main() {
     assert(c5.area() > 0.0);
 
     // to_string on i64: positive, zero, multi-digit
-    let n42: i64 = 42;
-    let nz: i64 = 0;
-    let big: i64 = 1000;
+    let n42: i64 := 42;
+    let nz: i64 := 0;
+    let big: i64 := 1000;
     assert(n42.to_string() == "42");
     assert(nz.to_string() == "0");
     assert(big.to_string() == "1000");
 
     // to_string on f64: whole number → no decimal, fractional → keeps decimal
-    let f5: f64 = 5.0;
-    let frac: f64 = 3.14;
+    let f5: f64 := 5.0;
+    let frac: f64 := 3.14;
     assert(f5.to_string() == "5");
     assert(frac.to_string() == "3.14");
 
@@ -193,7 +193,7 @@ fun main() {
     assert(false.to_string() == "false");
 
     // to_string on String (identity)
-    let greeting: String = "hello";
+    let greeting: String := "hello";
     assert(greeting.to_string() == "hello");
 
     // polymorphic print / println accept any Display type
@@ -203,63 +203,63 @@ fun main() {
     println("done");
 
     // User-defined Iterable: collect all areas into a total
-    let areas: f64[] = [c5.area(), r34.area(), c10.area()];
-    let seq = AreaList::new(areas);
+    let areas: f64[] := [c5.area(), r34.area(), c10.area()];
+    let seq := AreaList::new(areas);
     assert(seq.len() == 3);
-    var total_area = 0.0;
+    var total_area := 0.0;
     for (a in seq) { total_area += a; }
     // ≈ 78.54 + 12.0 + 314.16 = 404.70
     assert(approx(total_area, 404.70));
 
     // Empty Iterable: loop body never runs
-    var body_ran: boolean  = false;
-    let empty_areas: f64[] = [];
-    for (_a in AreaList::new(empty_areas)) { body_ran = true; }
+    var body_ran: boolean  := false;
+    let empty_areas: f64[] := [];
+    for (_a in AreaList::new(empty_areas)) { body_ran := true; }
     assert(!body_ran);
 
     // From<Celsius> for Fahrenheit: boiling point
-    let boiling = Celsius { degrees = 100.0 };
-    let boiling_f = boiling as Fahrenheit;
+    let boiling := Celsius { degrees = 100.0 };
+    let boiling_f := boiling as Fahrenheit;
     assert(boiling_f.degrees == 212.0);
 
     // From<Fahrenheit> for Celsius: freezing point
-    let freezing_f = Fahrenheit { degrees = 32.0 };
-    let freezing_c = freezing_f as Celsius;
+    let freezing_f := Fahrenheit { degrees = 32.0 };
+    let freezing_c := freezing_f as Celsius;
     assert(approx(freezing_c.degrees, 0.0));
 
     // Round-trip: Celsius → Fahrenheit → Celsius
-    let body = Celsius { degrees = 37.0 };
-    let body_f = body as Fahrenheit;
+    let body := Celsius { degrees = 37.0 };
+    let body_f := body as Fahrenheit;
     assert(approx(body_f.degrees, 98.60));
-    let body_back = body_f as Celsius;
+    let body_back := body_f as Celsius;
     assert(approx(body_back.degrees, 37.0));
 
     // Built-in From: i64 as f64 (exact)
-    let seven: i64 = 7;
-    let seven_f = seven as f64;
+    let seven: i64 := 7;
+    let seven_f := seven as f64;
     assert(seven_f == 7.0);
 
     // Built-in From: f64 as i64 (truncation toward zero)
-    let pi_approx: f64 = 3.9;
-    let pi_int = pi_approx as i64;
+    let pi_approx: f64 := 3.9;
+    let pi_int := pi_approx as i64;
     assert(pi_int == 3);
 
     // ? success path: parse "5", build Circle, return area
-    let area_ok = circle_area_from_str("5");
+    let area_ok := circle_area_from_str("5");
     match area_ok {
         Result::Ok  { value } => assert(approx(value, 78.54)),
         Result::Err { error } => assert(false),
     };
 
     // ? success path: parse "10"
-    let area_ok2 = circle_area_from_str("10");
+    let area_ok2 := circle_area_from_str("10");
     match area_ok2 {
         Result::Ok  { value } => assert(approx(value, 314.16)),
         Result::Err { error } => assert(false),
     };
 
     // ? failure path: ParseError wrapped into ShapeError via From
-    let area_err = circle_area_from_str("bad");
+    let area_err := circle_area_from_str("bad");
     match area_err {
         Result::Ok  { value } => assert(false),
         Result::Err { error } => assert(error.msg == "parse error: bad radius: bad"),

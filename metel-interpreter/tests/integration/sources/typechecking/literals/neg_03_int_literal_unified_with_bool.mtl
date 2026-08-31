@@ -1,5 +1,5 @@
 fun take_bool(v: boolean) -> boolean { v }
 
 fun main() {
-    let _bad = take_bool(1); // ERROR[T0001]
+    let _bad := take_bool(1); // ERROR[T0001]
 }

@@ -19,14 +19,14 @@
 //   neg_int  : i64   (-i64 -> i64)
 //   neg_bool : boolean  (!boolean -> boolean)
 
-let sum      = 1 + 2;
-let product  = 3 * 4;
-let diff     = 10 - 3;
-let quotient = 8 / 2;
-let fsum     = 1.5 + 2.5;
-let eq_check = 1 == 1;
-let lt_check = 3 < 5;
-let and_expr = true && false;
-let or_expr  = true || false;
-let neg_int  = -42;
-let neg_bool = !true;
+let sum      := 1 + 2;
+let product  := 3 * 4;
+let diff     := 10 - 3;
+let quotient := 8 / 2;
+let fsum     := 1.5 + 2.5;
+let eq_check := 1 == 1;
+let lt_check := 3 < 5;
+let and_expr := true && false;
+let or_expr  := true || false;
+let neg_int  := -42;
+let neg_bool := !true;

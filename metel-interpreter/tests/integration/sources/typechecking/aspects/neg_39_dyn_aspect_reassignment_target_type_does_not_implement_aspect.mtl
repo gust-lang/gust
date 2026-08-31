@@ -1,6 +1,6 @@
 struct Rock { }
 
 fun main() {
-    var x: dyn Display = 42;
-    x = Rock { };
+    var x: dyn Display := 42;
+    x := Rock { };
 }

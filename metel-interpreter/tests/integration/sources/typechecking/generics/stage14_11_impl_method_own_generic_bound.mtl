@@ -32,7 +32,7 @@ extend SortedList<T> {
     // `T: Comparable` comes from the struct; `U: Display2` is this
     // method's own additional bound.
     fun describe<U: Display2>(self, item: T, other: T, label: U) -> String {
-        let cmp = item.compare(other);
+        let cmp := item.compare(other);
         label.show()
     }
 }
@@ -48,10 +48,10 @@ extend Foo {
 }
 
 fun main() {
-    let list = SortedList { items = [Num { value = 1 }] };
-    let n = Num { value = 42 };
+    let list := SortedList { items = [Num { value = 1 }] };
+    let n := Num { value = 42 };
     assert(list.describe(Num { value = 1 }, Num { value = 2 }, n) == "num");
 
-    let f = Foo { x = 1 };
+    let f := Foo { x = 1 };
     assert(f.describe(n) == "num");
 }

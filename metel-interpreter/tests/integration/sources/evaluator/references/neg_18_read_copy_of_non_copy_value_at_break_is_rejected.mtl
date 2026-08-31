@@ -3,9 +3,9 @@
 struct NotCopy { v: String }
 
 fun main() {
-    let owned = NotCopy { v = "x" };
-    let r: &NotCopy = &owned;
-    let result: NotCopy = loop {
+    let owned := NotCopy { v = "x" };
+    let r: &NotCopy := &owned;
+    let result: NotCopy := loop {
         break (r: NotCopy);
     };
 }

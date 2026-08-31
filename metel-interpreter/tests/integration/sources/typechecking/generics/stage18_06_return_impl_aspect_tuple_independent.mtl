@@ -31,9 +31,9 @@ fun pair() -> (extends Display, extends Display) {
 }
 
 fun main() {
-	let both = pair();
+	let both := pair();
 
 	// Both positions should work independently
-	let int_display = both.0.display();
-	let str_display = both.1.display();
+	let int_display := both.0.display();
+	let str_display := both.1.display();
 }

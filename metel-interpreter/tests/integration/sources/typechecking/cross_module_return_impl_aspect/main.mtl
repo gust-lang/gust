@@ -23,12 +23,12 @@ public fun make_float() -> extends Display {
 
 fun main() {
 	// Call functions from different modules
-	let int_val = make_public_int();
-	let string_val = make_string();
-	let float_val = make_float();
+	let int_val := make_public_int();
+	let string_val := make_string();
+	let float_val := make_float();
 	
 	// Call aspect methods - this exercises the cross-module boundary
-	let int_str = int_val.display();
-	let str_str = string_val.display();
-	let float_str = float_val.display();
+	let int_str := int_val.display();
+	let str_str := string_val.display();
+	let float_str := float_val.display();
 }

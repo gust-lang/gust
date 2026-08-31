@@ -5,5 +5,5 @@ fun groups() -> List<(String, String)[]> {
 }
 
 fun main() {
-    let g = groups();
+    let g := groups();
 }

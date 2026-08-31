@@ -5,4 +5,4 @@ fun zip_lengths(a: i64[], b: String[]) -> i64 {
     a.len() + b.len()
 }
 
-let _: i64 = zip_lengths([], []);
+let _: i64 := zip_lengths([], []);

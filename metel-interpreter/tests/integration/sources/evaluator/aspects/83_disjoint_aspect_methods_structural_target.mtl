@@ -29,6 +29,6 @@ extend<T: !Display> T[]: Bar {
 }
 
 fun main() {
-    let a: i64[] = [1, 2, 3];
+    let a: i64[] := [1, 2, 3];
     assert(a.describe() == "foo-array");
 }

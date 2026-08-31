@@ -7,9 +7,9 @@ struct Rect { top_left: Point, bottom_right: Point }
 
 fun main() {
     // &var struct.field — write through fat pointer.
-    var p = Point { x = 1, y = 2 };
-    let px: &var i64 = &var p.x;
-    *px = 10;
+    var p := Point { x = 1, y = 2 };
+    let px: &var i64 := &var p.x;
+    *px := 10;
     assert(p.x == 10);
     assert(p.y == 2);
 
@@ -18,20 +18,20 @@ fun main() {
     assert(p.x == 15);
 
     // Read through fat pointer — type-directed copy yields current field value.
-    let read_x: i64 = px;
+    let read_x: i64 := px;
     assert(read_x == 15);
 
     // &var tuple element.
-    var t = (100, 200);
-    let t1: &var i64 = &var t.1;
-    *t1 = 999;
+    var t := (100, 200);
+    let t1: &var i64 := &var t.1;
+    *t1 := 999;
     assert(t.1 == 999);
     assert(t.0 == 100);
 
     // &var array element.
-    var arr: [i64; 3] = [1, 2, 3];
-    let a1: &var i64 = &var arr[1];
-    *a1 = 42;
+    var arr: [i64; 3] := [1, 2, 3];
+    let a1: &var i64 := &var arr[1];
+    *a1 := 42;
     assert(arr[0] == 1);
     assert(arr[1] == 42);
     assert(arr[2] == 3);
@@ -41,19 +41,19 @@ fun main() {
     assert(arr[1] == 50);
 
     // Chained path: &var outer.inner.field (nested struct).
-    var r = Rect {
+    var r := Rect {
         top_left =     Point { x = 0, y = 0 },
         bottom_right = Point { x = 10, y = 10 },
     };
-    let brx: &var i64 = &var r.bottom_right.x;
-    *brx = 20;
+    let brx: &var i64 := &var r.bottom_right.x;
+    *brx := 20;
     assert(r.bottom_right.x == 20);
     assert(r.top_left.x == 0);
 
     // Auto-deref field access through MutFieldReference — FieldAccess auto-deref.
-    var q = Point { x = 5, y = 7 };
-    let qptr: &var Point = &var q;
+    var q := Point { x = 5, y = 7 };
+    let qptr: &var Point := &var q;
     assert(qptr.x == 5);
-    qptr.y = 99;
+    qptr.y := 99;
     assert(q.y == 99);
 }

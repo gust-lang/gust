@@ -26,13 +26,13 @@ extend Rectangle: Shape {
 }
 
 fun main() {
-    var shapes: List<dyn Shape> = List::new();
+    var shapes: List<dyn Shape> := List::new();
     shapes.push(Circle { radius = 5.0 });
     shapes.push(Rectangle { w = 3.0, h = 4.0 });
 
-    var total = 0.0;
+    var total := 0.0;
     for (shape in shapes.as_slice()) {
-        total = total + shape.area();
+        total := total + shape.area();
     }
     // Circle: 3.14159 * 25 = 78.53975; Rectangle: 12.0; total = 90.53975
     assert(total > 90.5 && total < 90.6);

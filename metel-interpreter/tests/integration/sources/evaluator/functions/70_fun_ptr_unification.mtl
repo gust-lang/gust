@@ -1,12 +1,12 @@
 // Test A: for-in over inferred Array<() -> ()> — should typecheck
 fun test_inferred_array() {
-    var result = 0;
-    let ptr = &var result;
-    let ptr1: &&var i64 = &ptr;
-    let ptr2: &&var i64 = &ptr;
-    let a = () -> { **ptr1 += 1; };
-    let b = () -> { **ptr2 += 2; };
-    let funs = [a, b];
+    var result := 0;
+    let ptr := &var result;
+    let ptr1: &&var i64 := &ptr;
+    let ptr2: &&var i64 := &ptr;
+    let a := () -> { **ptr1 += 1; };
+    let b := () -> { **ptr2 += 2; };
+    let funs := [a, b];
     for (f in funs) {
         f();
     }
@@ -21,29 +21,29 @@ fun apply(funs: Array<() -> ()>) {
 }
 
 fun test_explicit_annotated_param() {
-    var result = 0;
-    let ptr = &var result;
-    let ptr1: &&var i64 = &ptr;
-    let ptr2: &&var i64 = &ptr;
-    let a = () -> { **ptr1 += 10; };
-    let b = () -> { **ptr2 += 20; };
+    var result := 0;
+    let ptr := &var result;
+    let ptr1: &&var i64 := &ptr;
+    let ptr2: &&var i64 := &ptr;
+    let a := () -> { **ptr1 += 10; };
+    let b := () -> { **ptr2 += 20; };
     apply([a, b]);
     assert(result == 30);
 }
 
 // Test C: closures from tuple access — verify they are () -> (), not &() -> ()
 fun get_pair() {
-    var x = 0;
-    let ptr = &var x;
-    let ptr1: &&var i64 = &ptr;
-    let ptr2: &&var i64 = &ptr;
-    let inc = () -> { **ptr1 += 1; };
-    let add2 = () -> { **ptr2 += 2; };
+    var x := 0;
+    let ptr := &var x;
+    let ptr1: &&var i64 := &ptr;
+    let ptr2: &&var i64 := &ptr;
+    let inc := () -> { **ptr1 += 1; };
+    let add2 := () -> { **ptr2 += 2; };
     (inc, add2, x)
 }
 
 fun test_tuple_closure_type() {
-    let pair = get_pair();
+    let pair := get_pair();
     pair.0();
     pair.1();
     // If closures from tuples are () -> () they call fine;
@@ -52,10 +52,10 @@ fun test_tuple_closure_type() {
 
 // Test D: nested tuple — mirrors get_closure_sets pattern
 fun get_closures(ptr: &var i64) {
-    let ptr1: &&var i64 = &ptr;
-    let ptr2: &&var i64 = &ptr;
-    let a = () -> { **ptr1 += 1; };
-    let b = () -> { **ptr2 += 2; };
+    let ptr1: &&var i64 := &ptr;
+    let ptr2: &&var i64 := &ptr;
+    let a := () -> { **ptr1 += 1; };
+    let b := () -> { **ptr2 += 2; };
     (a, b)
 }
 
@@ -66,8 +66,8 @@ fun apply2(funs: Array<() -> ()>) {
 }
 
 fun test_nested_tuple_into_array() {
-    var val = 0;
-    let sets = get_closures(&var val);
+    var val := 0;
+    let sets := get_closures(&var val);
     // Putting tuple-accessed closures into an array and passing to annotated fn
     apply2([sets.0, sets.1]);
     assert(val == 3);
@@ -75,18 +75,18 @@ fun test_nested_tuple_into_array() {
 
 // Test E: double-nested tuple access (mirrors 69_nice_closure_abuse pattern)
 fun get_closures2(ptr: &var i64) {
-    let ptr1: &&var i64 = &ptr;
-    let ptr2: &&var i64 = &ptr;
-    let ptr3: &&var i64 = &ptr;
-    let a = () -> { **ptr1 += 1; };
-    let b = () -> { **ptr2 += 2; };
-    let read = () -> i64 { return ptr3; };
+    let ptr1: &&var i64 := &ptr;
+    let ptr2: &&var i64 := &ptr;
+    let ptr3: &&var i64 := &ptr;
+    let a := () -> { **ptr1 += 1; };
+    let b := () -> { **ptr2 += 2; };
+    let read := () -> i64 { return ptr3; };
     (a, b, read)
 }
 
 fun get_closure_sets2(ptr: &var i64) {
-    let first = get_closures2(ptr);
-    let second = get_closures2(ptr);
+    let first := get_closures2(ptr);
+    let second := get_closures2(ptr);
     (first, second)
 }
 
@@ -97,8 +97,8 @@ fun apply3(funs: Array<() -> ()>) {
 }
 
 fun test_double_nested_tuple() {
-    var val = 1;
-    let sets = get_closure_sets2(&var val);
+    var val := 1;
+    let sets := get_closure_sets2(&var val);
     // sets.1.0 is second-set's first closure (adds 1)
     // sets.0.1 is first-set's second closure (adds 2)
     apply3([sets.1.0, sets.0.1]);
@@ -107,19 +107,19 @@ fun test_double_nested_tuple() {
 
 // Test F: exact mirror of test 69 (using `return` syntax and extra unused binding)
 fun get_closures_f(ptr: &var i64) {
-    let first_ptr: &&var i64 = &ptr;
-    let second_ptr: &&var i64 = &ptr;
-    let third_ptr: &&var i64 = &ptr;
-    let first_closure = () -> { **first_ptr += 1; };
-    let second_closure = () -> { **second_ptr += 2; };
-    let third_closure = () -> i64 { return third_ptr; };
+    let first_ptr: &&var i64 := &ptr;
+    let second_ptr: &&var i64 := &ptr;
+    let third_ptr: &&var i64 := &ptr;
+    let first_closure := () -> { **first_ptr += 1; };
+    let second_closure := () -> { **second_ptr += 2; };
+    let third_closure := () -> i64 { return third_ptr; };
     return (first_closure, second_closure, third_closure);
 }
 
 fun get_closure_sets_f(ptr: &var i64) {
-    var shared_value = 0;
-    let first_closure_set = get_closures_f(ptr);
-    let second_closure_set = get_closures_f(ptr);
+    var shared_value := 0;
+    let first_closure_set := get_closures_f(ptr);
+    let second_closure_set := get_closures_f(ptr);
     (first_closure_set, second_closure_set)
 }
 
@@ -130,8 +130,8 @@ fun apply_functions_f(funs: Array<() -> ()>) {
 }
 
 fun test_exact_69_structure() {
-    var shared_value = 1;
-    let closure_sets = get_closure_sets_f(&var shared_value);
+    var shared_value := 1;
+    let closure_sets := get_closure_sets_f(&var shared_value);
     apply_functions_f([closure_sets.1.0, closure_sets.0.1]);
     assert(closure_sets.0.2() == shared_value && closure_sets.1.2() == shared_value);
 }

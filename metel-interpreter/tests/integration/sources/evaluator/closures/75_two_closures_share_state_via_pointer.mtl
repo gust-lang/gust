@@ -3,13 +3,13 @@
 // one is visible through the other -- not because the closures share an
 // implicit environment, but because they share the pointer value itself.
 fun main() {
-    var x = 10;
-    let p: &var i64 = &var x;
+    var x := 10;
+    let p: &var i64 := &var x;
 
-    let inc = () -> () {
+    let inc := () -> () {
         *p += 1;
     };
-    let read = () -> i64 {
+    let read := () -> i64 {
         *p
     };
 

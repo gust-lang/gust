@@ -5,68 +5,68 @@
 
 fun main() {
     // --- integer literals ---
-    let a = 42;
-    let b = 1_000_000;
+    let a := 42;
+    let b := 1_000_000;
     println(int_to_string(a));          // 42
     println(int_to_string(b));          // 1000000
 
     // --- float literals ---
-    let x: f64 = 3.14;
-    let y = 2.0;
+    let x: f64 := 3.14;
+    let y := 2.0;
     println(float_to_string(x));        // 3.14
     println(float_to_string(y));        // 2.0
 
     // --- bool literals ---
-    let flag = true;
+    let flag := true;
     println(bool_to_string(flag));      // true
     println(bool_to_string(false));     // false
 
     // --- string literals with escapes ---
-    let greeting = "hello\tworld";
+    let greeting := "hello\tworld";
     println(greeting);                  // hello	world
-    let quoted = "she said \"hi\"";
+    let quoted := "she said \"hi\"";
     println(quoted);                    // she said "hi"
-    let subject = "world";
-    let interpolated = "hello, ${subject}! n=${42}";
+    let subject := "world";
+    let interpolated := "hello, ${subject}! n=${42}";
     println(interpolated);              // hello, world! n=42
-    let nested_interpolated = "value=${\"x\"}";
+    let nested_interpolated := "value=${\"x\"}";
     println(nested_interpolated);       // value=x
-    let escaped_dollar = "\${not interpolation}";
+    let escaped_dollar := "\${not interpolation}";
     println(escaped_dollar);            // ${not interpolation}
-    let plain_dollar = "$5";
+    let plain_dollar := "$5";
     println(plain_dollar);              // $5
 
     // --- None literal ---
-    let maybe: Perhaps<i64> = None;
+    let maybe: Perhaps<i64> := None;
     match maybe {
         Perhaps::Some { value } => println(int_to_string(value)),
         Perhaps::None => println("nope"),   // nope
     }
 
     // --- mutable bindings ---
-    var counter = 0;
-    counter = counter + 1;
+    var counter := 0;
+    counter := counter + 1;
     counter += 10;
     counter -= 3;
     counter *= 2;
     println(int_to_string(counter));    // 16  ( (0+1+10-3)*2 )
 
     // --- type inference vs explicit annotation ---
-    let inferred = "Vlad";
-    let explicit: String = "Vlad";
+    let inferred := "Vlad";
+    let explicit: String := "Vlad";
     println(bool_to_string(inferred == explicit));  // true
 
     // --- shadowing ---
-    let shadow = 1;
-    let shadow = "now I am a string";
+    let shadow := 1;
+    let shadow := "now I am a string";
     println(shadow);                    // now I am a string
 
     // --- string concatenation with + ---
-    let full = "hello" + ", " + "world";
+    let full := "hello" + ", " + "world";
     println(full);                      // hello, world
 
     // --- mod and use are plain identifiers, not reserved keywords (METEL-75) ---
-    let mod = 1;
-    let use = 2;
+    let mod := 1;
+    let use := 2;
     println(int_to_string(mod + use));  // 3
 }

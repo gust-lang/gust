@@ -28,27 +28,27 @@ fun through_bound<T: Eq>(xs: T[]) -> boolean {
 
 fun main() {
     // Both operands empty -- the failing case.
-    let a: B[] = [];
-    let b: B[] = [];
+    let a: B[] := [];
+    let b: B[] := [];
     assert(a.eq(&b));
 
     // Same value on both sides, still empty.
     assert(a.eq(&a));
 
     // Empty arriving via a call rather than a literal.
-    let m = mk_empty();
-    let n = mk_empty();
+    let m := mk_empty();
+    let n := mk_empty();
     assert(m.eq(&n));
 
     // Reached through a further generic bound.
     assert(through_bound(a));
 
     // The cases that already worked must keep working.
-    let x = [B { v = 1 }, B { v = 2 }];
-    let y = [B { v = 1 }, B { v = 2 }];
+    let x := [B { v = 1 }, B { v = 2 }];
+    let y := [B { v = 1 }, B { v = 2 }];
     assert(x.eq(&y));
-    let differing = [B { v = 1 }, B { v = 9 }];
-    let shorter = [B { v = 1 }];
+    let differing := [B { v = 1 }, B { v = 9 }];
+    let shorter := [B { v = 1 }];
     assert(!x.eq(&differing));
     assert(!x.eq(&shorter));
     assert(!a.eq(&x));
@@ -90,18 +90,18 @@ fun render<T: Show>(x: &T) -> String {
 
 extend<T: Show> T[]: Show {
     fun show(&self) -> String {
-        var out = "";
+        var out := "";
         for (e in self) {
-            out = out + render(&e);
+            out := out + render(&e);
         }
         return out;
     }
 }
 
 fun no_argument_generic_method_on_empty_receiver() {
-    let empty: B[] = [];
+    let empty: B[] := [];
     assert(empty.show() == "");
 
-    let filled = [B { v = 1 }, B { v = 2 }];
+    let filled := [B { v = 1 }, B { v = 2 }];
     assert(filled.show() == "bb");
 }

@@ -3,5 +3,5 @@ fun get_z<record T: { x: f64 }>(p: T) -> f64 {
 }
 
 fun main() {
-    let _ = get_z({ x = 3.0 });
+    let _ := get_z({ x = 3.0 });
 }

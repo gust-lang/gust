@@ -16,7 +16,7 @@ struct Wrapper<T> {
 }
 
 extend<T: Display> Wrapper<T>: Container {
-    type Item = T;
+    type Item := T;
     fun get(&self) -> T {
         return self.value;
     }
@@ -27,6 +27,6 @@ fun show_item<C: Container>(c: C) -> String {
 }
 
 fun main() {
-    let w = Wrapper { value = 42 };
+    let w := Wrapper { value = 42 };
     assert(show_item(w) == "42");
 }

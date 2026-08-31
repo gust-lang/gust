@@ -1,38 +1,38 @@
 fun main() {
     // Repeat construction: [expr; N].
-    let zeros = [0; 3];
+    let zeros := [0; 3];
     assert(zeros[0] == 0);
     assert(zeros[1] == 0);
     assert(zeros[2] == 0);
 
     // Literal construction typed as [T; N].
-    let ones: [i64; 3] = [1, 2, 3];
+    let ones: [i64; 3] := [1, 2, 3];
     assert(ones[0] == 1);
     assert(ones[1] == 2);
     assert(ones[2] == 3);
 
     // Indexing.
-    let arr: [i64; 4] = [10, 20, 30, 40];
+    let arr: [i64; 4] := [10, 20, 30, 40];
     assert(arr[0] == 10);
     assert(arr[3] == 40);
 
     // For-in iteration.
-    var sum = 0;
+    var sum := 0;
     for (x in [1; 4]) {
         sum += x;
     }
     assert(sum == 4);
 
     // Array pattern — exact match (sized array scrutinee).
-    let sized: [i64; 3] = [1, 2, 3];
-    let got = match sized {
+    let sized: [i64; 3] := [1, 2, 3];
+    let got := match sized {
         [a, b, c] => a + b + c,
     };
     assert(got == 6);
 
     // Array pattern — rest binding (works on any array).
-    let arr2: [i64; 4] = [10, 20, 30, 40];
-    let tail_sum = match arr2 {
+    let arr2: [i64; 4] := [10, 20, 30, 40];
+    let tail_sum := match arr2 {
         [_head, ..rest] => rest[0] + rest[1] + rest[2],
     };
     assert(tail_sum == 90);

@@ -14,19 +14,19 @@ fun returns_i16() -> i16 { 1000 }
 
 fun main() {
     // ── Default: unconstrained literals become i64 / f64 ─────────────────────
-    let a = 42;
-    let b = 3.14;
+    let a := 42;
+    let b := 3.14;
     assert(a == 42);
     assert(b == 3.14);
 
     // ── Type annotation coerces the literal ───────────────────────────────────
-    let c: i8  = 100;
-    let d: i16 = 1000;
-    let e: i32 = 50000;
-    let f: u8  = 200;
-    let g: u16 = 60000;
-    let h: u32 = 100000;
-    let i: u64 = 999999;
+    let c: i8  := 100;
+    let d: i16 := 1000;
+    let e: i32 := 50000;
+    let f: u8  := 200;
+    let g: u16 := 60000;
+    let h: u32 := 100000;
+    let i: u64 := 999999;
     assert(c == 100i8);
     assert(d == 1000i16);
     assert(e == 50000i32);
@@ -35,72 +35,72 @@ fun main() {
     assert(h == 100000u32);
     assert(i == 999999u64);
 
-    let p: f32 = 1.5;
+    let p: f32 := 1.5;
     assert(p == 1.5f32);
 
     // ── Arithmetic propagates the constrained type ────────────────────────────
-    let x: i32 = 10;
-    let y = x + 5;          // 5 picks up i32 from x
+    let x: i32 := 10;
+    let y := x + 5;          // 5 picks up i32 from x
     assert(y == 15i32);
 
-    let fx: f32 = 2.0f32;
-    let fy = fx + 1.0;      // 1.0 picks up f32 from fx
+    let fx: f32 := 2.0f32;
+    let fy := fx + 1.0;      // 1.0 picks up f32 from fx
     assert(fy == 3.0f32);
 
     // ── Function argument coercion ────────────────────────────────────────────
-    let r1 = add_i32(3, 4);
+    let r1 := add_i32(3, 4);
     assert(r1 == 7i32);
 
-    let r2 = scale_f32(2.0, 3.0);
+    let r2 := scale_f32(2.0, 3.0);
     assert(r2 == 6.0f32);
 
-    let r3 = identity_u8(255);
+    let r3 := identity_u8(255);
     assert(r3 == 255u8);
 
     // ── Return type coercion ──────────────────────────────────────────────────
-    let r4: i16 = returns_i16();
+    let r4: i16 := returns_i16();
     assert(r4 == 1000i16);
 
     // ── Struct field coercion ─────────────────────────────────────────────────
-    let px = Pixel { r = 255, g = 128, b = 0 };
+    let px := Pixel { r = 255, g = 128, b = 0 };
     assert(px.r == 255u8);
     assert(px.g == 128u8);
     assert(px.b == 0u8);
 
     // ── Array element type propagation ───────────────────────────────────────
-    let arr: i32[] = [1, 2, 3];
+    let arr: i32[] := [1, 2, 3];
     assert(arr[0] == 1i32);
     assert(arr[1] == 2i32);
     assert(arr[2] == 3i32);
 
     // ── Cast coercion ─────────────────────────────────────────────────────────
-    let cast_u8: u8 = 42 as u8;
+    let cast_u8: u8 := 42 as u8;
     assert(cast_u8 == 42u8);
 
-    let cast_f32: f32 = 7 as f32;
+    let cast_f32: f32 := 7 as f32;
     assert(cast_f32 == 7.0f32);
 
     // ── Method dispatch defaults literal to i64 ───────────────────────────────
-    let s1 = 42.to_string();
+    let s1 := 42.to_string();
     assert(s1 == "42");
 
-    let s2 = 0.to_string();
+    let s2 := 0.to_string();
     assert(s2 == "0");
 
-    let s3 = 3.14.to_string();
+    let s3 := 3.14.to_string();
     assert(s3 == "3.14");
 
     // ── Comparison between literal and sized variable ─────────────────────────
-    let vi32: i32 = 5i32;
+    let vi32: i32 := 5i32;
     assert(vi32 == 5);      // 5 coerces to i32
 
-    let vf32: f32 = 1.0f32;
+    let vf32: f32 := 1.0f32;
     assert(vf32 == 1.0);    // 1.0 coerces to f32
 
     // ── Negative literals coerce correctly ────────────────────────────────────
-    let neg_i8:  i8  = -100;
-    let neg_i32: i32 = -50000;
-    let neg_f32: f32 = -2.5;
+    let neg_i8:  i8  := -100;
+    let neg_i32: i32 := -50000;
+    let neg_f32: f32 := -2.5;
     assert(neg_i8  == -100i8);
     assert(neg_i32 == -50000i32);
     assert(neg_f32 == -2.5f32);

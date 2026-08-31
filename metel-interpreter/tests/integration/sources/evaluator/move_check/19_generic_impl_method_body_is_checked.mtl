@@ -4,7 +4,7 @@ struct Box<T> {
 
 extend<T> Box<T> {
     fun take_twice(self) -> T {
-        let first = self.value;
+        let first := self.value;
         self.value
     }
 }

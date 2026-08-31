@@ -1,6 +1,6 @@
 // Every literal index is out of bounds for an empty fixed-size array.
 fun main() {
-    let empty: [i64; 0] = [];
-    let x = empty[0];  // ERROR[T0001]
+    let empty: [i64; 0] := [];
+    let x := empty[0];  // ERROR[T0001]
     println(x.to_string());
 }

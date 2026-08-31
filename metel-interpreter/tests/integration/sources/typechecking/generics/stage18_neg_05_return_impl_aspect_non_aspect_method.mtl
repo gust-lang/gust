@@ -28,7 +28,7 @@ fun make_int() -> extends Display {
 }
 
 fun main() {
-	let int_val = make_int();
+	let int_val := make_int();
 	// This should fail - cannot call non-aspect method on opaque value
-	let doubled = int_val.double(); // ERROR[T0003]
+	let doubled := int_val.double(); // ERROR[T0003]
 }

@@ -8,18 +8,18 @@ fun diverge() -> i64 {
 }
 
 // Loop with break value
-let x: i64 = loop {
+let x: i64 := loop {
     break 42;
 };
 
 // Loop with break that produces a string
-let s: String = loop {
+let s: String := loop {
     break "done";
 };
 
 // Loop with conditional break
-var i: i64  = 0;
-let result: i64 = loop {
+var i: i64  := 0;
+let result: i64 := loop {
     i += 1;
     if (i == 5) {
         break i;
@@ -27,7 +27,7 @@ let result: i64 = loop {
 };
 
 // while loop still works
-var n: i64  = 0;
+var n: i64  := 0;
 while (n < 10) {
     n += 1;
     if (n == 5) {

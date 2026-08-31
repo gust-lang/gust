@@ -17,7 +17,7 @@ struct IntBox {
 }
 
 extend IntBox: Container {
-    type Item = i64;
+    type Item := i64;
     fun get(self) -> i64 {
         return self.value;
     }
@@ -28,7 +28,7 @@ fun peek<T: Container>(x: T) -> T::Item {
 }
 
 fun main() {
-    let b = IntBox { value = 42 };
-    let v: i64 = peek(b);
+    let b := IntBox { value = 42 };
+    let v: i64 := peek(b);
     assert(v == 42);
 }

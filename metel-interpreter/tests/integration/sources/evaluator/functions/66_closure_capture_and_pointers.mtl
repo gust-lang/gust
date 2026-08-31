@@ -1,19 +1,19 @@
 fun main() {
-    var value = 1;
-    let captured = () -> i64 {
+    var value := 1;
+    let captured := () -> i64 {
         value
     };
-    value = 9;
+    value := 9;
 
-    var shared = 0;
-    let ptr = &var shared;
-    let bump = () -> i64 {
+    var shared := 0;
+    let ptr := &var shared;
+    let bump := () -> i64 {
         *ptr += 1;
         ptr
     };
 
-    let first = bump();
-    let second = bump();
+    let first := bump();
+    let second := bump();
 
     assert(captured() == 1);
     assert(first == 1);

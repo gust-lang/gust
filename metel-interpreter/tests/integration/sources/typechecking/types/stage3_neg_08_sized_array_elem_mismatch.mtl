@@ -1,2 +1,2 @@
 // Element type mismatch in repeat construction: [boolean; 3] cannot satisfy [i64; 3].
-let x: [i64; 3] = [true; 3];  // ERROR[T0001]
+let x: [i64; 3] := [true; 3];  // ERROR[T0001]

@@ -90,9 +90,9 @@ fun max_of<T: Comparable>(a: T, b: T) -> T {
 }
 
 fun main() {
-    let freezing = Temperature::new(0.0);
-    let boiling  = Temperature::new(100.0);
-    let body     = Temperature::new(37.0);
+    let freezing := Temperature::new(0.0);
+    let boiling  := Temperature::new(100.0);
+    let body     := Temperature::new(37.0);
 
     // --- aspectmethod ---
     print_description(freezing);          // 0.0°C
@@ -104,18 +104,18 @@ fun main() {
     println(bool_to_string(freezing.is_equal_to(freezing)));   // true
 
     // --- generic max ---
-    let hotter = max_of(freezing, boiling);
+    let hotter := max_of(freezing, boiling);
     println(hotter.describe());           // 100.0°C
 
     // --- same generic function with a different type ---
-    let s1 = Score::new(42, "Alice");
-    let s2 = Score::new(99, "Bob");
-    let s3 = Score::new(42, "Carol");
+    let s1 := Score::new(42, "Alice");
+    let s2 := Score::new(99, "Bob");
+    let s3 := Score::new(42, "Carol");
 
     print_description(s1);               // Alice: 42
     print_description(s2);              // Bob: 99
 
-    let winner = max_of(s1, s2);
+    let winner := max_of(s1, s2);
     println(winner.describe());          // Bob: 99
 
     // --- default methods on Score ---

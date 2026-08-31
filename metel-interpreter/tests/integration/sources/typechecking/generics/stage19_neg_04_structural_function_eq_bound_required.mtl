@@ -16,5 +16,5 @@ fun minus_one(x: i64) -> i64 {
 }
 
 fun main() {
-    let _ = show_eq(plus_one, minus_one); // ERROR[T0012]
+    let _ := show_eq(plus_one, minus_one); // ERROR[T0012]
 }

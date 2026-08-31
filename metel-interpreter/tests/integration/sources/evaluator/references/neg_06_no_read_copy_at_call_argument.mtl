@@ -12,7 +12,7 @@
 fun takes_i64(x: i64) {}
 
 fun main() {
-    let n = 5;
-    let r: &i64 = &n;
+    let n := 5;
+    let r: &i64 := &n;
     takes_i64(r);
 }

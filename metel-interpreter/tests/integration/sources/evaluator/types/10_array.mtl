@@ -1,10 +1,10 @@
 fun main() {
     // Construction and indexing.
-    let arr = [1, 2, 3];
+    let arr := [1, 2, 3];
     assert(arr[0] == 1);
     assert(arr[1] == 2);
     assert(arr[2] == 3);
     // Last valid index.
-    let last = [10, 20, 30];
+    let last := [10, 20, 30];
     assert(last[2] == 30);
 }

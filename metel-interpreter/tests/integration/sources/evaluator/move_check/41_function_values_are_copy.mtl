@@ -3,7 +3,7 @@ fun increment(value: i64) -> i64 { value + 1 }
 fun apply(f: (i64) -> i64) -> i64 { f(1) }
 
 fun main() {
-    let f = increment;
+    let f := increment;
     assert(apply(f) == 2);
     assert(apply(f) == 2);
 }

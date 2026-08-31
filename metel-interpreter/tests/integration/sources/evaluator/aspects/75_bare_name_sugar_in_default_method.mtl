@@ -16,14 +16,14 @@ struct IntBox {
 }
 
 extend IntBox: Container {
-    type Item = i64;
+    type Item := i64;
     fun get(self) -> i64 {
         return self.value;
     }
 }
 
 fun main() {
-    let b = IntBox { value = 42 };
-    let v: i64 = b.get_twice();
+    let b := IntBox { value = 42 };
+    let v: i64 := b.get_twice();
     assert(v == 42);
 }

@@ -1,8 +1,8 @@
 fun look(s: &String) -> i64 { 1 }
 
 fun main() {
-    var s = "hello";
-    let p = &var s;
+    var s := "hello";
+    let p := &var s;
     assert(look(&*p) == 1);
     assert(look(&*p) == 1);
 }

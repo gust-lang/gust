@@ -3,5 +3,5 @@ fun need_copy<T: Copy>(x: T) -> T {
 }
 
 fun main() {
-    let bad = need_copy((1, "nope"));
+    let bad := need_copy((1, "nope"));
 }

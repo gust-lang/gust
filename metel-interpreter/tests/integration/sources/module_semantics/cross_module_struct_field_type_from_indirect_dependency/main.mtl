@@ -1,6 +1,6 @@
 import shape::Shape;
 import shape::make_shape;
 fun main() -> i64 {
-    let s = make_shape(1, 2, 10);
+    let s := make_shape(1, 2, 10);
     return s.size;
 }

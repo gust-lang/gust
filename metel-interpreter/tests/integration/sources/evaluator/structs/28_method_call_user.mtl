@@ -11,11 +11,11 @@ extend Point {
 
 fun main() {
     // Zero-arg (besides self) method.
-    let p = Point { x = 3, y = 4 };
-    let ms = p.magnitude_sq();
+    let p := Point { x = 3, y = 4 };
+    let ms := p.magnitude_sq();
     assert(ms == 25);
     // Method with additional arguments that returns a new struct.
-    let q = p.translate(1, 2);
+    let q := p.translate(1, 2);
     assert(q.x == 4);
     assert(q.y == 6);
 }

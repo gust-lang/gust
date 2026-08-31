@@ -1,5 +1,5 @@
 fun main() {
-    let arr = [10, 20, 30];
+    let arr := [10, 20, 30];
 
     // Plain integer literal infers as u64 at index site
     assert(arr[0] == 10);
@@ -7,6 +7,6 @@ fun main() {
     assert(arr[2] == 30);
 
     // u64 variable as index
-    let i: u64 = 1u64;
+    let i: u64 := 1u64;
     assert(arr[i] == 20);
 }

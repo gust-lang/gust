@@ -13,6 +13,6 @@ struct Program {
 }
 
 fun main() {
-    let _x = math::sin(1.0);
-    let _ast = root::parser::Ast;
+    let _x := math::sin(1.0);
+    let _ast := root::parser::Ast;
 }

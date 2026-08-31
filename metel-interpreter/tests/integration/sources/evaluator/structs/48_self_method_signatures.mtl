@@ -21,13 +21,13 @@ extend Token {
 }
 
 fun main() {
-    let p = Point { x = 3 };
-    let q = p.clone();
+    let p := Point { x = 3 };
+    let q := p.clone();
     assert(q.x == 3);
     assert(p.same_as(q));
 
-    let token = Token::i64 { value = 9 };
-    let token_copy = token.identity();
+    let token := Token::i64 { value = 9 };
+    let token_copy := token.identity();
     match token_copy {
         Token::i64 { value } => assert(value == 9),
     }

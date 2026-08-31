@@ -9,79 +9,79 @@ fun add_u32(a: u32, b: u32) -> u32 { a + b }
 
 fun main() {
     // ── mut variable reassignment preserves the declared type ─────────────────
-    var m: i32 = 0;
-    m = 99;
+    var m: i32 := 0;
+    m := 99;
     assert(m == 99i32);
 
-    var n: f32 = 1.0f32;
-    n = 2.5;
+    var n: f32 := 1.0f32;
+    n := 2.5;
     assert(n == 2.5f32);
 
-    var u: u8 = 0;
-    u = 255;
+    var u: u8 := 0;
+    u := 255;
     assert(u == 255u8);
 
     // ── return statement coercion ─────────────────────────────────────────────
-    let v1 = returns_u8();
+    let v1 := returns_u8();
     assert(v1 == 200u8);
 
-    let v2 = returns_i32();
+    let v2 := returns_i32();
     assert(v2 == -12345i32);
 
-    let v3 = returns_f32();
+    let v3 := returns_f32();
     assert(v3 == 0.5f32);
 
     // ── comparison operators with a sized variable on one side ────────────────
-    let a: i32 = 10i32;
+    let a: i32 := 10i32;
     assert(a <  20);    // 20 coerces to i32
     assert(a <= 10);    // 10 coerces to i32
     assert(a >  5);     //  5 coerces to i32
     assert(a >= 10);    // 10 coerces to i32
 
-    let b: u16 = 1000u16;
+    let b: u16 := 1000u16;
     assert(b < 2000);
     assert(b > 500);
 
-    let c: f64 = 3.14;
+    let c: f64 := 3.14;
     assert(c > 3.0);
     assert(c < 4.0);
 
     // ── if / else branch — literal in comparison against typed variable ────────
-    let flag: i32 = 1i32;
+    let flag: i32 := 1i32;
     assert(flag == 1);   // 1 coerces to i32
     assert(flag != 0);   // 0 coerces to i32
 
     // ── Arithmetic result passed directly to typed function ───────────────────
-    let sum = add_u32(100, 200);    // both literals coerce to u32
+    let sum := add_u32(100, 200);    // both literals coerce to u32
     assert(sum == 300u32);
 
     // ── All unsigned types get literal coercion ───────────────────────────────
-    let u8v:  u8  = 10;
-    let u16v: u16 = 10;
-    let u32v: u32 = 10;
-    let u64v: u64 = 10;
+    let u8v:  u8  := 10;
+    let u16v: u16 := 10;
+    let u32v: u32 := 10;
+    let u64v: u64 := 10;
     assert(u8v  + 5 == 15u8);
     assert(u16v + 5 == 15u16);
     assert(u32v + 5 == 15u32);
     assert(u64v + 5 == 15u64);
 
     // ── All signed integer types get literal coercion ─────────────────────────
-    let i8v:  i8  = -10;
-    let i16v: i16 = -10;
-    let i32v: i32 = -10;
+    let i8v:  i8  := -10;
+    let i16v: i16 := -10;
+    let i32v: i32 := -10;
     assert(i8v  + 5 == -5i8);
     assert(i16v + 5 == -5i16);
     assert(i32v + 5 == -5i32);
 
     // ── f32 arithmetic ────────────────────────────────────────────────────────
-    let f: f32 = 1.0f32;
+    let f: f32 := 1.0f32;
     assert(f * 2.0 == 2.0f32);
     assert(f + 0.5 == 1.5f32);
 
     // ── while loop with literal comparison ───────────────────────────────────
-    var counter: i32 = 0;
+    var counter: i32 := 0;
     while (counter < 3) {
-        counter = counter + 1;
+        counter := counter + 1;
     }
     assert(counter == 3i32);
 }

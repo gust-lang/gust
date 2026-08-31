@@ -1,20 +1,20 @@
 // Stage 6: tuple access.
 
-let pair: (i64, String) = (42, "hello");
-let n: i64    = pair.0;
-let s: String = pair.1;
+let pair: (i64, String) := (42, "hello");
+let n: i64    := pair.0;
+let s: String := pair.1;
 
 // Nested tuples
-let triple: (i64, f64, boolean) = (1, 2.0, true);
-let a: i64   = triple.0;
-let b: f64 = triple.1;
-let c: boolean  = triple.2;
+let triple: (i64, f64, boolean) := (1, 2.0, true);
+let a: i64   := triple.0;
+let b: f64 := triple.1;
+let c: boolean  := triple.2;
 
 // Tuple returned from a function
 fun make_pair() -> (i64, String) {
     (10, "world")
 }
 
-let p = make_pair();
-let x: i64    = p.0;
-let y: String = p.1;
+let p := make_pair();
+let x: i64    := p.0;
+let y: String := p.1;

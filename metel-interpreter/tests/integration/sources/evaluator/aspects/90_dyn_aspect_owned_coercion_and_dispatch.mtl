@@ -4,13 +4,13 @@
 // already-concrete-typed source exercise the coercion.
 
 fun main() {
-    let x: dyn Display = 42;
+    let x: dyn Display := 42;
     assert(x.to_string() == "42");
 
-    let s: String = "hello".to_string();
-    let y: dyn Display = s;
+    let s: String := "hello".to_string();
+    let y: dyn Display := s;
     assert(y.to_string() == "hello");
 
-    let f: dyn Display = 3.5;
+    let f: dyn Display := 3.5;
     assert(f.to_string() == "3.5");
 }

@@ -8,17 +8,17 @@ fun identity(x: i64) -> i64 {
     x
 }
 fun main() {
-    let r1 = add(3, 4);
+    let r1 := add(3, 4);
     assert(r1 == 7);
-    let r2 = square(5);
+    let r2 := square(5);
     assert(r2 == 25);
     // Nested calls.
-    let r3 = add(square(3), square(4));
+    let r3 := add(square(3), square(4));
     assert(r3 == 25);
     // Identity.
-    let r4 = identity(42);
+    let r4 := identity(42);
     assert(r4 == 42);
     // Calling a builtin from another function.
-    let r5 = add(0, 0);
+    let r5 := add(0, 0);
     assert(r5 == 0);
 }

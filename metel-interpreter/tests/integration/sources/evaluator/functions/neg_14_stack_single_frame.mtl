@@ -2,7 +2,7 @@
 // stack trace.
 
 fun panicking_fn() {
-    let _ = 1 / 0;
+    let _ := 1 / 0;
 }
 
 fun main() {

@@ -9,9 +9,9 @@ struct Point {
 }
 
 fun test_field_address_of() {
-    let p = Point { x = 3, y = 7 };
-    let px: &i64 = &p.x;
-    let py: &i64 = &p.y;
+    let p := Point { x = 3, y = 7 };
+    let px: &i64 := &p.x;
+    let py: &i64 := &p.y;
     assert((px: i64) == 3);
     assert((py: i64) == 7);
 }
@@ -19,10 +19,10 @@ fun test_field_address_of() {
 // ── Tuple element access ──────────────────────────────────────────────────────
 
 fun test_tuple_address_of() {
-    let t = (10, 20, 30);
-    let p0: &i64 = &t.0;
-    let p1: &i64 = &t.1;
-    let p2: &i64 = &t.2;
+    let t := (10, 20, 30);
+    let p0: &i64 := &t.0;
+    let p1: &i64 := &t.1;
+    let p2: &i64 := &t.2;
     assert((p0: i64) == 10);
     assert((p1: i64) == 20);
     assert((p2: i64) == 30);
@@ -31,8 +31,8 @@ fun test_tuple_address_of() {
 // ── Array index ───────────────────────────────────────────────────────────────
 
 fun test_array_index_address_of() {
-    let arr = [1, 2, 3, 4, 5];
-    let p: &i64 = &arr[2];
+    let arr := [1, 2, 3, 4, 5];
+    let p: &i64 := &arr[2];
     assert((p: i64) == 3);
 }
 
@@ -44,12 +44,12 @@ struct Pair {
 }
 
 fun test_chained_field_address_of() {
-    let pair = Pair {
+    let pair := Pair {
         a = Point { x = 1, y = 2 },
         b = Point { x = 10, y = 20 },
     };
-    let pax: &i64 = &pair.a.x;
-    let pby: &i64 = &pair.b.y;
+    let pax: &i64 := &pair.a.x;
+    let pby: &i64 := &pair.b.y;
     assert((pax: i64) == 1);
     assert((pby: i64) == 20);
 }
@@ -57,8 +57,8 @@ fun test_chained_field_address_of() {
 // ── Tuple of tuples ───────────────────────────────────────────────────────────
 
 fun test_nested_tuple_address_of() {
-    let t = ((1, 2), (3, 4));
-    let p: &i64 = &t.1.0;
+    let t := ((1, 2), (3, 4));
+    let p: &i64 := &t.1.0;
     assert((p: i64) == 3);
 }
 
@@ -71,12 +71,12 @@ fun apply_fns(fns: Array<&() -> ()>) {
 }
 
 fun test_fn_ptr_from_tuple() {
-    var counter = 0;
-    let ptr = &var counter;
-    let inc = () -> () { *ptr += 1; };
-    let get = () -> () { };
+    var counter := 0;
+    let ptr := &var counter;
+    let inc := () -> () { *ptr += 1; };
+    let get := () -> () { };
 
-    let ops = (inc, get);
+    let ops := (inc, get);
     apply_fns([&ops.0, &ops.1]);
     assert(counter == 1);
 }
@@ -88,8 +88,8 @@ fun sum_pair(a: &i64, b: &i64) -> i64 {
 }
 
 fun test_field_ptr_as_arg() {
-    let p = Point { x = 5, y = 8 };
-    let result = sum_pair(&p.x, &p.y);
+    let p := Point { x = 5, y = 8 };
+    let result := sum_pair(&p.x, &p.y);
     assert(result == 13);
 }
 

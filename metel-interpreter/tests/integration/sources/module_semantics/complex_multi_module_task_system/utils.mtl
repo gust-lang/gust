@@ -1,14 +1,14 @@
 
 public fun fold_left<T, A>(arr: T[], init: A, f: (A, &T) -> A) -> A {
-    var acc = init;
+    var acc := init;
     for (x in arr) {
-        acc = f(acc, &x);
+        acc := f(acc, &x);
     }
     acc
 }
 
 public fun find_first<T>(arr: T[], pred: (&T) -> boolean, clone: (&T) -> T) -> Perhaps<T> {
-    var i = 0;
+    var i := 0;
     while (i < arr.len()) {
         if (pred(&arr[i as u64])) {
             return Perhaps::Some { value = clone(&arr[i as u64]) };
@@ -19,14 +19,14 @@ public fun find_first<T>(arr: T[], pred: (&T) -> boolean, clone: (&T) -> T) -> P
 }
 
 public fun sum_ints(arr: i64[]) -> i64 {
-    var total = 0;
+    var total := 0;
     for (x in arr) { total += x; }
     total
 }
 
 public fun filter_array<T>(arr: T[], pred: (&T) -> boolean, clone: (&T) -> T) -> T[] {
-    var out: List<T> = List::new();
-    var i = 0;
+    var out: List<T> := List::new();
+    var i := 0;
     while (i < arr.len()) {
         if (pred(&arr[i as u64])) {
             out.push(clone(&arr[i as u64]));
@@ -37,7 +37,7 @@ public fun filter_array<T>(arr: T[], pred: (&T) -> boolean, clone: (&T) -> T) ->
 }
 
 public fun map_array<T, U>(arr: T[], f: (&T) -> U) -> U[] {
-    var out: List<U> = List::new();
+    var out: List<U> := List::new();
     for (x in arr) { out.push(f(&x)); }
     out.as_slice()
 }

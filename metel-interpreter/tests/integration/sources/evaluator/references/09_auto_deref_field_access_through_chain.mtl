@@ -13,9 +13,9 @@ extend Counter {
 }
 
 fun main() {
-    var c = Counter { value = 1 };
-    let r: &var Counter = &var c;
-    let rr: &&var Counter = &r;
+    var c := Counter { value = 1 };
+    let r: &var Counter := &var c;
+    let rr: &&var Counter := &r;
 
     assert(rr.value == 1);
     assert(rr.get() == 1);

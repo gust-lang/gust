@@ -1,2 +1,2 @@
 import token::make;
-fun main() -> i64 { let t = make(); return t.kind; }
+fun main() -> i64 { let t := make(); return t.kind; }

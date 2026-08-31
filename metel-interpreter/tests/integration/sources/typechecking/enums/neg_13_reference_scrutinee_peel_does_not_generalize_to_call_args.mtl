@@ -13,7 +13,7 @@ fun takes_by_value(c: Colour) -> String {
 }
 
 fun main() {
-    let c = Colour::Green;
-    let r: &Colour = &c;
+    let c := Colour::Green;
+    let r: &Colour := &c;
     println(takes_by_value(r));
 }

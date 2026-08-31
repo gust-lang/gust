@@ -5,16 +5,16 @@ struct Point { x: i64, y: i64 }
 struct Pair { a: Point }
 
 fun main() {
-    let n = 1;
-    let arr = [1, 2, 3];
-    let t = (10, 20);
-    let pair = Pair { a = Point { x = 1, y = 2 } };
+    let n := 1;
+    let arr := [1, 2, 3];
+    let t := (10, 20);
+    let pair := Pair { a = Point { x = 1, y = 2 } };
 
-    let p1 = &n;              // binding
-    let p2 = &pair.a;         // field
-    let p3 = &pair.a.x;       // chained field
-    let p4 = &t.0;            // tuple element
-    let p5 = &arr[1];         // array element
+    let p1 := &n;              // binding
+    let p2 := &pair.a;         // field
+    let p3 := &pair.a.x;       // chained field
+    let p4 := &t.0;            // tuple element
+    let p5 := &arr[1];         // array element
     assert(*p1 == 1);
     assert(*p3 == 1);
     assert(*p4 == 10);
@@ -22,12 +22,12 @@ fun main() {
     assert(p2.y == 2);
 
     // Reborrow: `&*p` shares the referent's storage rather than snapshotting it.
-    var m = 5;
-    let mp: &var i64 = &var m;
-    let rb = &*mp;
+    var m := 5;
+    let mp: &var i64 := &var m;
+    let rb := &*mp;
     assert(*rb == 5);
 
-    let rbm = &var *mp;
-    *rbm = 9;
+    let rbm := &var *mp;
+    *rbm := 9;
     assert(m == 9);
 }

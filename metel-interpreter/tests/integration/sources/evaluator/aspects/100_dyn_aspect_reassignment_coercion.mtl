@@ -7,8 +7,8 @@
 // neg_39 for the corresponding rejection.
 
 fun main() {
-    var x: dyn Display = 42;
+    var x: dyn Display := 42;
     assert(x.to_string() == "42");
-    x = "hello".to_string();
+    x := "hello".to_string();
     assert(x.to_string() == "hello");
 }

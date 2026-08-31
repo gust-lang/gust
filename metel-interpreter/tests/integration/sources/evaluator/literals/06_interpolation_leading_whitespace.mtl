@@ -2,23 +2,23 @@
 // interpolated expression. Covers a bare value, `if`, `match`, and `loop`.
 
 fun main() {
-    let a = "${1 + 1}";
-    let b = "${ 1 + 1 }";
+    let a := "${1 + 1}";
+    let b := "${ 1 + 1 }";
     assert(a == "2");
     assert(b == "2");
 
-    let c = "${if (true) { 1 } else { 0 }}";
-    let d = "${ if (true) { 1 } else { 0 } }";
+    let c := "${if (true) { 1 } else { 0 }}";
+    let d := "${ if (true) { 1 } else { 0 } }";
     assert(c == "1");
     assert(d == "1");
 
-    let e = "${match (true) { true => 1, false => 0 }}";
-    let f = "${ match (true) { true => 1, false => 0 } }";
+    let e := "${match (true) { true => 1, false => 0 }}";
+    let f := "${ match (true) { true => 1, false => 0 } }";
     assert(e == "1");
     assert(f == "1");
 
-    let g = "${loop { break 3; }}";
-    let h = "${ loop { break 3; } }";
+    let g := "${loop { break 3; }}";
+    let h := "${ loop { break 3; } }";
     assert(g == "3");
     assert(h == "3");
 }

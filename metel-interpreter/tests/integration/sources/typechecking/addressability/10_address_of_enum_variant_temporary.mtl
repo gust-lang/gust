@@ -4,7 +4,7 @@
 enum Colour { Red, Green }
 
 fun main() {
-    let p: &Colour = &Colour::Red;
+    let p: &Colour := &Colour::Red;
     match p {
         Colour::Red => (),
         Colour::Green => assert(false, "expected Red"),

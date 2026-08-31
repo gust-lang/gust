@@ -4,11 +4,11 @@
 struct Item { count: i64, name: String }
 
 fun peek(item: &Item) -> i64 {
-    let v = item.count;
+    let v := item.count;
     v
 }
 
 fun main() {
-    let item = Item { count = 5, name = "n" };
+    let item := Item { count = 5, name = "n" };
     assert(peek(&item) == 5);
 }

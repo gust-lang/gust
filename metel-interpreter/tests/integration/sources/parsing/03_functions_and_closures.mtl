@@ -24,7 +24,7 @@ fun identity<T>(value: T) -> T {
 }
 
 fun map_array(arr: i64[], f: (i64) -> i64) -> i64[] {
-    var result: i64[]  = [];
+    var result: i64[]  := [];
     for (item in arr) {
         array_push(result, f(item));
     }
@@ -36,28 +36,28 @@ fun main() {
     println(int_to_string(add(3, 4)));    // 7
 
     // --- function assigned to variable ---
-    let f = add;
+    let f := add;
     println(int_to_string(f(10, 20)));    // 30
 
     // --- closure passed to function (params inferred from apply's signature) ---
-    let doubled = apply((x) -> { return x * 2; }, 5);
+    let doubled := apply((x) -> { return x * 2; }, 5);
     println(int_to_string(doubled));      // 10
 
     // --- closure capturing an outer variable ---
-    let factor = 3;
-    let tripled = apply((x) -> { return x * factor; }, 7);
+    let factor := 3;
+    let tripled := apply((x) -> { return x * factor; }, 7);
     println(int_to_string(tripled));      // 21
 
     // --- closure mutating a captured mut variable ---
-    var count = 0;
-    let increment = () -> { count += 1; };
+    var count := 0;
+    let increment := () -> { count += 1; };
     increment();
     increment();
     increment();
     println(int_to_string(count));        // 3
 
     // --- higher-order: make_adder returns a closure ---
-    let add5 = make_adder(5);
+    let add5 := make_adder(5);
     println(int_to_string(add5(10)));     // 15
     println(int_to_string(add5(100)));    // 105
 
@@ -69,8 +69,8 @@ fun main() {
     println(int_to_string(apply2(add, 8, 9)));  // 17
 
     // --- map_array (closure params inferred from map_array's signature) ---
-    let nums: i64[] = [1, 2, 3, 4, 5];
-    let squares = map_array(nums, (x) -> { return x * x; });
+    let nums: i64[] := [1, 2, 3, 4, 5];
+    let squares := map_array(nums, (x) -> { return x * x; });
     for (n in squares) {
         print(int_to_string(n) + " ");    // 1 4 9 16 25
     }

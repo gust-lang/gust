@@ -2,10 +2,10 @@
 // The captured binding inherits its mutability from the outer let declaration.
 // TYPECHECK_ERROR[immutable binding]
 fun main() {
-    let x = 10;
-    let f = () -> {
-        let p: &var i64 = &var x;
-        p = 42;
+    let x := 10;
+    let f := () -> {
+        let p: &var i64 := &var x;
+        p := 42;
     };
     f();
 }

@@ -2,9 +2,9 @@
 // fat MutFieldReference — every existing fixture's write-through case is a
 // field/tuple/array-element reference; this covers a plain scalar binding directly).
 fun main() {
-    var n = 1;
-    let p: &var i64 = &var n;
-    *p = 4;
+    var n := 1;
+    let p: &var i64 := &var n;
+    *p := 4;
     assert(n == 4);
 
     *p += 6;

@@ -4,10 +4,10 @@
 // Tuple(t1, t2, ...) where each ti is independently inferred.
 
 fun pair(a: i64, b: boolean) -> (i64, boolean) {
-    let t: (i64, boolean) = (a, b);
+    let t: (i64, boolean) := (a, b);
     t
 }
 
-let p: (i64, boolean) = (42, true);
-let q: (i64, i64) = (1, 2);
-let nested: ((i64, boolean), i64) = ((0, false), 99);
+let p: (i64, boolean) := (42, true);
+let q: (i64, i64) := (1, 2);
+let nested: ((i64, boolean), i64) := ((0, false), 99);

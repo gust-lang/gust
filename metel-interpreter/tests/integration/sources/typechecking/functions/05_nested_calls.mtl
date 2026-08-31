@@ -24,6 +24,6 @@ fun is_positive(x: i64) -> boolean {
     x > 0
 }
 
-let a = double(3);
-let b = square(double(2));
-let c = is_positive(square(3));
+let a := double(3);
+let b := square(double(2));
+let c := is_positive(square(3));

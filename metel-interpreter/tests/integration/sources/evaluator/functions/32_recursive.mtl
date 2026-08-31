@@ -5,12 +5,12 @@ fun fib(n: i64) -> i64 {
     if (n <= 1) { n } else { fib(n - 1) + fib(n - 2) }
 }
 fun main() {
-    let r1 = factorial(0);
+    let r1 := factorial(0);
     assert(r1 == 1);
-    let r2 = factorial(5);
+    let r2 := factorial(5);
     assert(r2 == 120);
-    let r3 = fib(0);
+    let r3 := fib(0);
     assert(r3 == 0);
-    let r4 = fib(10);
+    let r4 := fib(10);
     assert(r4 == 55);
 }

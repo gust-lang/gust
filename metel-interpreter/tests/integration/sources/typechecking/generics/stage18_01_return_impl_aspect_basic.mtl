@@ -21,7 +21,7 @@ fun make_pair() -> extends Display {
 }
 
 fun main() {
-	let pair = make_pair();
+	let pair := make_pair();
 	// Don't call any methods - just use the value as extends Display
 	// This should typecheck without errors
 }

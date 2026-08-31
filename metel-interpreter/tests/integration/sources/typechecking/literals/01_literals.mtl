@@ -10,8 +10,8 @@
 //   d : String
 //   e : ()
 
-let a = 42;
-let b = 3.14;
-let c = true;
-let d = "hello";
-let e = ();
+let a := 42;
+let b := 3.14;
+let c := true;
+let d := "hello";
+let e := ();

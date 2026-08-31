@@ -1,7 +1,7 @@
 struct Rock { }
 
 fun main() {
-    let x: dyn Display = loop {
+    let x: dyn Display := loop {
         break Rock { };
     };
 }

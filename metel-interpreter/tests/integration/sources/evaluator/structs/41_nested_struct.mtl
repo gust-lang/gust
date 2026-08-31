@@ -2,8 +2,8 @@ struct Point { x: i64, y: i64 }
 struct Rect  { top_left: Point, bottom_right: Point }
 
 fun area(r: &Rect) -> i64 {
-    let w = r.bottom_right.x - r.top_left.x;
-    let h = r.bottom_right.y - r.top_left.y;
+    let w := r.bottom_right.x - r.top_left.x;
+    let h := r.bottom_right.y - r.top_left.y;
     w * h
 }
 
@@ -15,29 +15,29 @@ fun translate_rect(r: &Rect, dx: i64, dy: i64) -> Rect {
 }
 
 fun main() {
-    let tl = Point { x = 1, y = 2 };
-    let br = Point { x = 5, y = 6 };
-    let r = Rect { top_left = tl, bottom_right = br };
+    let tl := Point { x = 1, y = 2 };
+    let br := Point { x = 5, y = 6 };
+    let r := Rect { top_left = tl, bottom_right = br };
     // Nested field access: two levels deep.
     assert(r.top_left.x     == 1);
     assert(r.top_left.y     == 2);
     assert(r.bottom_right.x == 5);
     assert(r.bottom_right.y == 6);
     // Intermediate binding of a nested struct.
-    let corner: &Point = &r.top_left;
+    let corner: &Point := &r.top_left;
     assert(corner.x == 1);
     // Struct as function argument.
-    let a = area(&r);
+    let a := area(&r);
     assert(a == 16);  // (5-1)*(6-2)=4*4=16
     // Struct returned from function.
-    let r2 = translate_rect(&r, 10, 20);
+    let r2 := translate_rect(&r, 10, 20);
     assert(r2.top_left.x     == 11);
     assert(r2.top_left.y     == 22);
     assert(r2.bottom_right.x == 15);
     // Original rect is unchanged (value semantics).
     assert(r.top_left.x == 1);
     // Inline nested struct construction.
-    let r3 = Rect {
+    let r3 := Rect {
         top_left =     Point { x = 0, y = 0 },
         bottom_right = Point { x = 3, y = 4 },
     };

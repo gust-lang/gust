@@ -30,6 +30,6 @@ fun main() {
     assert(clamp(11, 0, 10,) == 10);
 
     // Trailing comma in closure definition and call argument list.
-    let result = apply((x: i64, y: i64,) -> i64 { x * y }, 3, 4,);
+    let result := apply((x: i64, y: i64,) -> i64 { x * y }, 3, 4,);
     assert(result == 12);
 }

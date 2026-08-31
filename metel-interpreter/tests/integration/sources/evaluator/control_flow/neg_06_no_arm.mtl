@@ -1,6 +1,6 @@
 // TYPECHECK_ERROR[exhaustive]
 enum Coin { Heads, Tails }
 fun main() {
-    let c = Coin::Tails;
-    let _x = match c { Coin::Heads => 1, };
+    let c := Coin::Tails;
+    let _x := match c { Coin::Heads => 1, };
 }

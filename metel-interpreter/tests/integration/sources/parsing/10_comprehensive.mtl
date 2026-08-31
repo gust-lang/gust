@@ -20,24 +20,24 @@ extend Stack<i64> {
     }
 
     fun pop(&var self) -> Perhaps<i64> {
-        let len = array_len(self.items);
+        let len := array_len(self.items);
         if (len == 0) {
             return nope;
         }
-        let top = self.items[len - 1];
+        let top := self.items[len - 1];
         // rebuild without last element
-        var new_items: i64[]  = [];
-        var i = 0;
+        var new_items: i64[]  := [];
+        var i := 0;
         while (i < len - 1) {
             array_push(new_items, self.items[i]);
             i += 1;
         }
-        self.items = new_items;
+        self.items := new_items;
         return top;
     }
 
     fun peek(self) -> Perhaps<i64> {
-        let len = array_len(self.items);
+        let len := array_len(self.items);
         if (len == 0) {
             return nope;
         }
@@ -95,7 +95,7 @@ extend Task {
     }
 
     fun complete(&var self) {
-        self.done = true;
+        self.done := true;
     }
 
     fun priority_label(self) -> String {
@@ -107,13 +107,13 @@ extend Task {
     }
 
     fun to_string(self) -> String {
-        let status = if (self.done) { "✓" } else { "○" };
+        let status := if (self.done) { "✓" } else { "○" };
         return status + " " + self.priority_label() + " " + self.title;
     }
 }
 
 fun count_done(tasks: Task[]) -> i64 {
-    var n = 0;
+    var n := 0;
     for (t in tasks) {
         if (t.done) { n += 1; }
     }
@@ -126,7 +126,7 @@ fun count_done(tasks: Task[]) -> i64 {
 
 fun main() {
     // --- Stack ---
-    var s = Stack::new();
+    var s := Stack::new();
     println(bool_to_string(s.is_empty()));   // true
 
     s.push(10);
@@ -159,7 +159,7 @@ fun main() {
     }
 
     // --- Tokens ---
-    let tokens: Token[] = [
+    let tokens: Token[] := [
         Token::Number { value = 3 },
         Token::Times,
         Token::Number { value = 4 },
@@ -167,17 +167,17 @@ fun main() {
         Token::Number { value = 5 },
     ];
 
-    var token_str = "";
-    var first = true;
+    var token_str := "";
+    var first := true;
     for (tok in tokens) {
-        if (!first) { token_str = token_str + " "; }
-        token_str = token_str + token_to_string(tok);
-        first = false;
+        if (!first) { token_str := token_str + " "; }
+        token_str := token_str + token_to_string(tok);
+        first := false;
     }
     println(token_str);   // 3 * 4 + 5
 
     // --- Tasks ---
-    var tasks: Task[]  = [
+    var tasks: Task[]  := [
         Task::new("Write interpreter", Priority::High),
         Task::new("Write tests", Priority::High),
         Task::new("Update docs", Priority::Medium),
@@ -196,14 +196,14 @@ fun main() {
     // ○ [MED]   Update docs
     // ○ [LOW]   Pick a logo
 
-    let done = count_done(tasks);
-    let total = array_len(tasks);
+    let done := count_done(tasks);
+    let total := array_len(tasks);
     println(int_to_string(done) + "/" + int_to_string(total) + " done");  // 2/4 done
 
     // --- closures + arrays together ---
-    let multipliers: i64[] = [1, 2, 3, 4, 5];
-    let base = 7;
-    var products: i64[]  = [];
+    let multipliers: i64[] := [1, 2, 3, 4, 5];
+    let base := 7;
+    var products: i64[]  := [];
     for (m in multipliers) {
         array_push(products, m * base);
     }
@@ -213,8 +213,8 @@ fun main() {
     println("");
 
     // --- as casting in a calculation ---
-    let items_count = 3;
-    let total_score: f64 = 10.0 + 20.0 + 30.0;
-    let average = total_score / (items_count as f64);
+    let items_count := 3;
+    let total_score: f64 := 10.0 + 20.0 + 30.0;
+    let average := total_score / (items_count as f64);
     println(float_to_string(average));   // 20.0
 }

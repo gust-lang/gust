@@ -1,0 +1,5 @@
+// RFC-0136: plain reassignment uses `:=`. Old `x = e` is a parse error.
+fun main() {
+    var x := 0;
+    x = 1;
+}
