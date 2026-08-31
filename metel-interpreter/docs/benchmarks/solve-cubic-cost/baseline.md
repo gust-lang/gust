@@ -172,13 +172,13 @@ Default fixtures (typecheck ms / solve ms, baseline → v1 → v2):
 now scales ~quadratically. `solve_ns` is near-linear (reverse index) with an
 O(n²) residual from `apply_constraint`'s per-constraint `subst.apply(rhs)`.
 
-The remaining `apply_constraint` O(n²) and the Pass 2 construction super-linear
-term (`construct_generic_body` re-instantiating nested generic bodies with no
-memoization — `../v0.8.2-evaluator-integration/optimization-shortlist.md`
-candidate #2) are the next targets. Separately, `deep_type`'s **wall** time is
-now **evaluator-bound** (eval ≈ O(n³): the interpreter deep-clones the O(depth)
-nested runtime value at each of `depth` levels) — a distinct concern from
-type-checking.
+The remaining `apply_constraint` O(n²) is the next in-solver target (§2 below).
+Pass 2 construction was the other suspect — instrumentation flagged
+`construct_generic_body` as the top `apply` caller — but memoising it was
+prototyped and did **not** pay off on realistic code (§1 below). Separately,
+`deep_type`'s **wall** time is now **evaluator-bound** (eval ≈ O(n³): the
+interpreter deep-clones the O(depth) nested runtime value at each of `depth`
+levels) — a distinct concern from type-checking.
 
 ## Remaining optimization opportunities (ranked)
 
@@ -186,24 +186,39 @@ Measure every change against `metel-bench --fixtures-dir
 metel-interpreter/benches/stress` + the depth sweep, comparing `typecheck_ns`
 / `inference_ns` / `solve_ns` and wall-time-vs-depth against the tables above.
 
-### 1. Pass 2 generic-body construction memoization — *highest*
+### 1. Pass 2 generic-body construction memoization — *prototyped, rejected*
 
-`construct_generic_body` (`typechecker/construction.rs`, `construction/calls.rs`)
-re-instantiates a generic `fun`/method body on every call site with no cache.
-For nested generics this is O(n²) instantiations, each re-resolving an O(n) type
-through `infer_type_args_for_construction`
-(`typechecker/mod.rs:923`) / `type_to_infer` / `unify` — the super-linear
-`inference`/`construction` term that v1+v2 leave in place, and the dominant
-`apply` caller in the instrumentation (~40k of 57k calls on `deep_type` d200).
+`construct_generic_body` is called by the **evaluator** (`evaluator/call.rs`, the
+`ClosureBody::Untyped` arms) on every invocation of a generic `fun`/method — it
+re-runs the whole typechecker construction pass on the body each call. It is the
+dominant `apply` *caller* in the instrumentation (~40k of 57k calls on
+`deep_type` d200) — but that is call *count*, not wall-time: post-#913 those
+`apply`s are on shallow types and cheap.
 
-This is `../v0.8.2-evaluator-integration/optimization-shortlist.md` candidate #2,
-flagged and never done. Memoize the typed body by a stable key: `(callee
-SymbolId, receiver-type identity for methods, concrete argument-type vector)`.
-Scope strictly to *exact* repeated instantiations — the key must capture the
-full type context, not speculatively share.
+Prototyped: a thread-local cache of `Rc<TypedBlock>` keyed by
+`(TypeCtx pointer, name, {arg types, expected return})`, cleared per program run
+in `reset_runtime_state`. Correct and effective at its job — `solve_storm`
+248/251 calls, `id_chain` 399/400, `generic_body_reuse` 799/800 served from
+cache; all 945 + 139 + 2 tests green.
 
-Risk: medium-high. Touches Pass 2, needs tight regression coverage; a wrong key
-silently reuses the wrong monomorphisation.
+**But not worth landing.** Measured (median of 9 `metel` runs, `MEMO_OFF` toggle):
+
+| fixture | off | on | speedup |
+|---|---:|---:|---:|
+| `generic_body_reuse` (synthetic worst case) | 474 ms | 378 ms | 1.25× |
+| `int_04_generic_algorithms` | 986 | 1052 | **0.94×** |
+| `int_05_generic_data_pipeline` | 624 | 634 | 0.98× |
+| `int_03_generic_option_chain` | 684 | 693 | 0.99× |
+| `int_01_statistics` | 647 | 618 | 1.05× |
+| `solve_storm` | 959 | 928 | 1.03× |
+
+On the realistic generic-heavy fixtures the per-call `format!` key + `HashMap`
+lookup **costs as much as the construction it saves** (METEL-177 already made
+construction cheap for these). Only a large body called many times at one
+monomorphisation wins, and even then modestly. `optimization-shortlist.md`
+candidate #2 gated itself on "candidate 1 confirms runtime construction is
+material inside hot programs" — it isn't. `generic_body_reuse.mtl` is kept as
+the witness fixture.
 
 ### 2. Path compression / lazy resolution in constraint solving — *medium*
 
