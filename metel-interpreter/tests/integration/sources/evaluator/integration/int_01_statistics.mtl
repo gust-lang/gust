@@ -239,23 +239,23 @@ fun main() {
 
     // 2. Binary search in the sorted array.
     let fnd := binary_search(srt_view, 4.0);
-    match fnd {
+    match (fnd) {
         Perhaps::Some { value } => assert(value == 4),
         None => assert(false, "expected Some"),
     };
     let srt_for_miss := sort_floats([3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0, 6.0]);
     let srt_for_miss_ref := &srt_for_miss;
     let miss := binary_search(srt_for_miss_ref.as_slice(), 7.0);
-    match miss { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
+    match (miss) { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
     // Searching an empty array returns None.
     let empty_f: f64[] := [];
     let empty_srch := binary_search(empty_f, 1.0);
-    match empty_srch { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
+    match (empty_srch) { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
 
     // 3. Descriptive statistics — match with blocks (RFC-0018).
     let d5: f64[] := [1.0, 2.0, 3.0, 4.0, 5.0];
     let r5 := compute_stats(d5);
-    match r5 {
+    match (r5) {
         Result::Ok { value } => {
             assert(value.count == 5);
             assert(value.sum == 15.0);
@@ -275,7 +275,7 @@ fun main() {
     //    the Stats type param inferred from the return annotation).
     let empty: f64[] := [];
     let rerr := compute_stats(empty);
-    match rerr {
+    match (rerr) {
         Result::Ok  { value } => assert(false, "expected Err"),
         Result::Err { error } => assert(error.len() > 0),
     };
@@ -283,25 +283,25 @@ fun main() {
     // 5. Median — odd and even lengths, and empty.
     let d5_for_median: f64[] := [1.0, 2.0, 3.0, 4.0, 5.0];
     let med5 := median(d5_for_median);
-    match med5 {
+    match (med5) {
         Perhaps::Some { value } => assert(value == 3.0),
         None => assert(false, "expected Some"),
     };
     let d4: f64[] := [4.0, 1.0, 3.0, 2.0];
     let med4 := median(d4);
-    match med4 {
+    match (med4) {
         Perhaps::Some { value } => assert(value == 2.5),
         None => assert(false, "expected Some"),
     };
     let empty_for_median: f64[] := [];
     let med_e := median(empty_for_median);
-    match med_e { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
+    match (med_e) { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
 
     // 6. Error propagation with ?
     let d5_for_z: f64[] := [1.0, 2.0, 3.0, 4.0, 5.0];
     let zr := z_score(d5_for_z, 5.0);
     // z = (5.0 - 3.0) / sqrt(2.0) ≈ 1.414
-    match zr {
+    match (zr) {
         Result::Ok { value } => {
             assert(value > 1.4 && value < 1.5);
         },
@@ -310,7 +310,7 @@ fun main() {
     // ? on empty array propagates Err.
     let empty_for_z: f64[] := [];
     let zerr := z_score(empty_for_z, 0.0);
-    match zerr {
+    match (zerr) {
         Result::Ok  { value } => assert(false, "expected Err"),
         Result::Err { error } => (),
     };
@@ -351,7 +351,7 @@ fun main() {
 
     // 9. Stats on a derived dataset (squares of 1..8).
     let sq_stats := compute_stats(squares);
-    match sq_stats {
+    match (sq_stats) {
         Result::Ok { value } => {
             // [1, 4, 9, 16, 25, 36, 49, 64], sum = 204, mean = 25.5
             assert(value.count == 8);
@@ -390,7 +390,7 @@ fun main() {
 
     // 14. Stats description as string (exercises to_str method).
     let d5_desc: f64[] := [1.0, 2.0, 3.0, 4.0, 5.0];
-    let desc := match compute_stats(d5_desc) {
+    let desc := match (compute_stats(d5_desc)) {
         Result::Ok  { value } => value.to_str(),
         Result::Err { error } => "error",
     };
@@ -399,7 +399,7 @@ fun main() {
     // 15. Single-element dataset: mean == value, variance == 0, range == 0.
     let single: f64[] := [42.0];
     let single_stats := compute_stats(single);
-    match single_stats {
+    match (single_stats) {
         Result::Ok { value } => {
             assert(value.count == 1);
             assert(value.mean == 42.0);

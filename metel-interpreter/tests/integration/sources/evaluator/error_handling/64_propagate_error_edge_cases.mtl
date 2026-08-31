@@ -113,70 +113,70 @@ extend Counter: Iterable<i64> {
 fun main() {
     // same-type ?: success
     let r1 := parse_checked("42");
-    match r1 {
+    match (r1) {
         Result::Ok  { value } => assert(value == 42),
         Result::Err { error } => assert(false),
     };
 
     // same-type ?: failure (no wrapping)
     let r2 := parse_checked("xyz");
-    match r2 {
+    match (r2) {
         Result::Ok  { value } => assert(false),
         Result::Err { error } => assert(error.msg == "bad int: xyz"),
     };
 
     // multi-step success
     let r3 := load_and_parse("data.txt");
-    match r3 {
+    match (r3) {
         Result::Ok  { value } => assert(value == 42),
         Result::Err { error } => assert(false),
     };
 
     // multi-step: IoError on first ?
     let r4 := load_and_parse("missing.txt");
-    match r4 {
+    match (r4) {
         Result::Ok  { value } => assert(false),
         Result::Err { error } => assert(error.msg == "io: no file: missing.txt"),
     };
 
     // ? on first statement: short-circuits immediately on Err
     let r5 := first_stmt("missing.txt");
-    match r5 {
+    match (r5) {
         Result::Ok  { value } => assert(false),
         Result::Err { error } => assert(error.msg == "io: no file: missing.txt"),
     };
 
     // ? on first statement: success reaches the next line
     let r6 := first_stmt("data.txt");
-    match r6 {
+    match (r6) {
         Result::Ok  { value } => assert(value == 1),
         Result::Err { error } => assert(false),
     };
 
     // ? on last statement: success
     let r7 := last_stmt("42");
-    match r7 {
+    match (r7) {
         Result::Ok  { value } => assert(value == 84),
         Result::Err { error } => assert(false),
     };
 
     // ? on last statement: failure
     let r8 := last_stmt("bad");
-    match r8 {
+    match (r8) {
         Result::Ok  { value } => assert(false),
         Result::Err { error } => assert(error.msg == "parse: bad int: bad"),
     };
 
     // multiple ? in one function: both succeed
     let r9 := multi_q("data.txt");
-    match r9 {
+    match (r9) {
         Result::Ok  { value } => assert(value == 84), // 42+42
         Result::Err { error } => assert(false),
     };
 
     // multiple ? in one function: first ? fails
     let r10 := multi_q("missing.txt");
-    match r10 {
+    match (r10) {
         Result::Ok  { value } => assert(false),
         Result::Err { error } => assert(error.msg == "io: no file: missing.txt"),
     };

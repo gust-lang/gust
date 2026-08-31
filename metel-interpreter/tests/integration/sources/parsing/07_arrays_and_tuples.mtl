@@ -97,7 +97,7 @@ fun main() {
 
     // --- tuple destructuring in match ---
     let pair := (true, 99);
-    match pair {
+    match (pair) {
         (true, n)  => println("flag set, value=" + int_to_string(n)),  // flag set, value=99
         (false, _) => println("flag not set"),
     }

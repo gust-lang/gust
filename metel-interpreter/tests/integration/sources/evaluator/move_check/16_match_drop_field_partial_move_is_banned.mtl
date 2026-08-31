@@ -9,7 +9,7 @@ extend Handle: Drop {
 
 fun main() {
     let handle := Handle { name = "x", fd = 1 };
-    let n := match handle.name {
+    let n := match (handle.name) {
         name => name.len(),
     };
 }

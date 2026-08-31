@@ -3,7 +3,7 @@
 // not error.
 
 fun use_result(r: Result<i64, !>) -> i64 {
-    match r {
+    match (r) {
         Result::Ok { value } => value,
         Result::Err { error } => panic("unreachable"),
     }

@@ -15,28 +15,28 @@ enum Maybe<T> {
 }
 
 fun maybe_map<T, U>(m: Maybe<T>, f: (T) -> U) -> Maybe<U> {
-    match m {
+    match (m) {
         Maybe::Just { val } => Maybe::Just { val = f(val) },
         _                   => Maybe::Nothing,
     }
 }
 
 fun maybe_flat_map<T, U>(m: Maybe<T>, f: (T) -> Maybe<U>) -> Maybe<U> {
-    match m {
+    match (m) {
         Maybe::Just { val } => f(val),
         _                   => Maybe::Nothing,
     }
 }
 
 fun maybe_get_or<T>(m: Maybe<T>, fallback: T) -> T {
-    match m {
+    match (m) {
         Maybe::Just { val } => val,
         _                   => fallback,
     }
 }
 
 fun maybe_is_just<T>(m: Maybe<T>) -> boolean {
-    match m {
+    match (m) {
         Maybe::Just { val } => true,
         _                   => false,
     }

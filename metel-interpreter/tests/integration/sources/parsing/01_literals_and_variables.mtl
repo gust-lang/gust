@@ -38,7 +38,7 @@ fun main() {
 
     // --- None literal ---
     let maybe: Perhaps<i64> := None;
-    match maybe {
+    match (maybe) {
         Perhaps::Some { value } => println(int_to_string(value)),
         Perhaps::None => println("nope"),   // nope
     }

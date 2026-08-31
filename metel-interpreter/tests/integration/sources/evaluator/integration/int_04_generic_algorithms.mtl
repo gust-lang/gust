@@ -14,28 +14,28 @@ enum MyResult<T, E> {
 }
 
 fun result_map<T, U, E>(r: MyResult<T, E>, f: (T) -> U) -> MyResult<U, E> {
-    match r {
+    match (r) {
         MyResult::Ok  { value } => MyResult::Ok  { value = f(value) },
         MyResult::Err { error } => MyResult::Err { error = error },
     }
 }
 
 fun result_and_then<T, U, E>(r: MyResult<T, E>, f: (T) -> MyResult<U, E>) -> MyResult<U, E> {
-    match r {
+    match (r) {
         MyResult::Ok  { value } => f(value),
         MyResult::Err { error } => MyResult::Err { error = error },
     }
 }
 
 fun result_is_ok<T, E>(r: MyResult<T, E>) -> boolean {
-    match r {
+    match (r) {
         MyResult::Ok  { value } => true,
         MyResult::Err { error } => false,
     }
 }
 
 fun result_unwrap_or<T, E>(r: MyResult<T, E>, default: T) -> T {
-    match r {
+    match (r) {
         MyResult::Ok  { value } => value,
         MyResult::Err { error } => default,
     }
@@ -221,14 +221,14 @@ fun find_first<T>(arr: T[], pred: (&T) -> boolean, clone: (&T) -> T) -> Perhaps<
 }
 
 fun perhaps_or<T>(p: Perhaps<T>, default: T) -> T {
-    match p {
+    match (p) {
         Perhaps::Some { value } => value,
         _                       => default,
     }
 }
 
 fun perhaps_is_some<T>(p: Perhaps<T>) -> boolean {
-    match p {
+    match (p) {
         Perhaps::Some { value } => true,
         _                       => false,
     }

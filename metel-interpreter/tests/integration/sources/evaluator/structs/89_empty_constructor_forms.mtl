@@ -9,7 +9,7 @@ fun use_empty(x: Empty) -> i64 {
 }
 
 fun use_flag(f: Flag) -> i64 {
-    match f {
+    match (f) {
         Flag::On => 7,
     }
 }

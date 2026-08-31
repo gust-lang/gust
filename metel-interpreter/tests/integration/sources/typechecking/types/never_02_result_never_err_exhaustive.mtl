@@ -3,7 +3,7 @@
 // exhaustive.
 
 fun use_result(r: Result<i64, !>) -> i64 {
-    match r {
+    match (r) {
         Result::Ok { value } => value,
         // Result::Err omitted -- exhaustive; Err is uninhabited when E = !.
     }

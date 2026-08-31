@@ -95,7 +95,7 @@ fun require_config(key: String) -> Result<String, ConfigError> {
 
 // cross-type match + as-cast (? cross-type deferred to #13)
 fun run_with_config(key: String) -> Result<String, RunError> {
-    let v := match load_config(key) {
+    let v := match (load_config(key)) {
         Result::Ok { value } => value,
         Result::Err { error } => { return Result::Err { error = error as RunError }; },
     };
@@ -155,28 +155,28 @@ fun main() {
 
     // same-type ?: success
     let r1 := require_config("timeout");
-    match r1 {
+    match (r1) {
         Result::Ok  { value } => assert(value == "30"),
         Result::Err { error } => assert(false),
     };
 
     // same-type ?: failure (ConfigError pass-through)
     let r2 := require_config("bad");
-    match r2 {
+    match (r2) {
         Result::Ok  { value } => assert(false),
         Result::Err { error } => assert(error.msg == "unknown key: bad"),
     };
 
     // ? with From: success
     let r3 := run_with_config("mode");
-    match r3 {
+    match (r3) {
         Result::Ok  { value } => assert(value == "ran:fast"),
         Result::Err { error } => assert(false),
     };
 
     // ? with From: ConfigError coerced to RunError
     let r4 := run_with_config("missing");
-    match r4 {
+    match (r4) {
         Result::Ok  { value } => assert(false),
         Result::Err { error } => assert(error.msg == "config: unknown key: missing"),
     };

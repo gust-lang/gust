@@ -8,7 +8,7 @@
 enum Colour { Red, Green, Blue }
 
 fun name(c: Colour) -> String {
-    match c {
+    match (c) {
         Red   => "red",
         Green => "green",
         Blue  => "blue",
@@ -16,14 +16,14 @@ fun name(c: Colour) -> String {
 }
 
 fun unwrap_or(v: Perhaps<i64>, d: i64) -> i64 {
-    match v {
+    match (v) {
         Some { value } => value,
         None           => d,
     }
 }
 
 fun qualified_still_works(v: Perhaps<i64>) -> i64 {
-    match v {
+    match (v) {
         Perhaps::Some { value } => value,
         Perhaps::None => -1,
     }
@@ -32,7 +32,7 @@ fun qualified_still_works(v: Perhaps<i64>) -> i64 {
 // A bare identifier that names no variant of the scrutinee's enum stays an ordinary
 // binding, exactly as before.
 fun binding_fallback(c: Colour) -> String {
-    match c {
+    match (c) {
         Red => "red",
         other => name(other),
     }

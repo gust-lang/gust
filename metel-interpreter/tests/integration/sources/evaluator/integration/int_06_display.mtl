@@ -91,7 +91,7 @@ fun parse_score(s: String) -> Result<Score, FormatError> {
 
 fun render_score(s: String) -> Result<String, RenderError> {
     // cross-type match + as-cast (? cross-type deferred to #13)
-    let sc := match parse_score(s) {
+    let sc := match (parse_score(s)) {
         Result::Ok { value } => value,
         Result::Err { error } => { return Result::Err { error = error as RenderError }; },
     };
@@ -178,21 +178,21 @@ fun main() {
 
     // ? success path: "100" → Score(100)
     let r1 := render_score("100");
-    match r1 {
+    match (r1) {
         Result::Ok  { value } => assert(value == "Score(100)"),
         Result::Err { error } => assert(false),
     };
 
     // ? success path: "0" → Score(0)
     let r2 := render_score("0");
-    match r2 {
+    match (r2) {
         Result::Ok  { value } => assert(value == "Score(0)"),
         Result::Err { error } => assert(false),
     };
 
     // ? failure: FormatError coerced to RenderError via From
     let r3 := render_score("bad");
-    match r3 {
+    match (r3) {
         Result::Ok  { value } => assert(false),
         Result::Err { error } => assert(error.msg == "fmt: bad score: bad"),
     };

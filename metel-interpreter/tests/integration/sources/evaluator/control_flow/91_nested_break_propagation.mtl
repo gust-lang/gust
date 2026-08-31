@@ -11,7 +11,7 @@ fun via_if(c: boolean) -> i64 {
 
 fun via_match(c: boolean) -> i64 {
     loop {
-        match c {
+        match (c) {
             true => break 8,
             false => break 8,
         }

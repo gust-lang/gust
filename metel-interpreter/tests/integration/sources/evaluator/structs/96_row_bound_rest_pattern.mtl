@@ -4,19 +4,19 @@
 // listed by the bound itself).
 
 fun describe<record T: { x: f64, .. }>(p: T) -> f64 {
-    match p {
+    match (p) {
         { x, .. } => x,
     }
 }
 
 fun get_x_closed<record T: { x: f64 }>(p: T) -> f64 {
-    match p {
+    match (p) {
         { x, .. } => x,
     }
 }
 
 fun get_x_closed_no_rest<record T: { x: f64, y: f64 }>(p: T) -> f64 {
-    match p {
+    match (p) {
         { x, y } => x + y,
     }
 }

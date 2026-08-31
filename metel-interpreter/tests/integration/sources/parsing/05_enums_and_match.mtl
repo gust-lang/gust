@@ -12,7 +12,7 @@ enum Direction {
 
 extend Direction {
     fun opposite(self) -> Direction {
-        match self {
+        match (self) {
             Direction::North => Direction::South,
             Direction::South => Direction::North,
             Direction::East  => Direction::West,
@@ -21,7 +21,7 @@ extend Direction {
     }
 
     fun to_string(self) -> String {
-        match self {
+        match (self) {
             Direction::North => "North",
             Direction::South => "South",
             Direction::East  => "East",
@@ -38,7 +38,7 @@ enum Shape {
 
 extend Shape {
     fun area(self) -> f64 {
-        match self {
+        match (self) {
             Shape::Circle { radius } => 3.14159 * radius * radius,
             Shape::Rectangle { width, height } => width * height,
             Shape::Triangle { base, height } => 0.5 * base * height,
@@ -46,7 +46,7 @@ extend Shape {
     }
 
     fun describe(self) -> String {
-        match self {
+        match (self) {
             Shape::Circle { radius } =>
                 "circle with radius " + float_to_string(radius),
             Shape::Rectangle { width, height } =>
@@ -58,7 +58,7 @@ extend Shape {
 }
 
 fun classify(n: i64) -> String {
-    match n {
+    match (n) {
         0       => "zero",
         1       => "one",
         n if n < 0 => "negative",
@@ -105,11 +105,11 @@ fun main() {
     let full: i64[] := [10, 20, 30];
     let empty: i64[] := [];
 
-    match safe_head(full) {
+    match (safe_head(full)) {
         Perhaps::Some { value } => println(int_to_string(value)),  // 10
         Perhaps::None => println("empty"),
     }
-    match safe_head(empty) {
+    match (safe_head(empty)) {
         Perhaps::Some { value } => println(int_to_string(value)),
         Perhaps::None => println("empty"),                          // empty
     }
@@ -119,17 +119,17 @@ fun main() {
     println(int_to_string(head));   // 10
 
     // --- Result<T, E> ---
-    match safe_div(10, 2) {
+    match (safe_div(10, 2)) {
         Result::Ok { value } => println(int_to_string(value)),     // 5
         Result::Err { error } => println("error: " + error),
     }
-    match safe_div(10, 0) {
+    match (safe_div(10, 0)) {
         Result::Ok { value } => println(int_to_string(value)),
         Result::Err { error } => println("error: " + error),       // error: division by zero
     }
 
     // --- nested match is an expression ---
-    let verdict := match safe_div(6, 3) {
+    let verdict := match (safe_div(6, 3)) {
         Result::Ok { value } => "got " + int_to_string(value),
         Result::Err { error } => "failed",
     };

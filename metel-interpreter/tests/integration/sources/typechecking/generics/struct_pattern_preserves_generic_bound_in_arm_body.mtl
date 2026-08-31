@@ -9,7 +9,7 @@ extend i64: Show {
 }
 
 fun describe<T: Show>(w: Wrapper<T>) -> String {
-    match w {
+    match (w) {
         Wrapper { value } => value.show(),
     }
 }

@@ -32,16 +32,16 @@ fun main() {
     lst.push(30);
     assert((&lst).len() == 3);
     // get returns Perhaps<T> (bounds-checked)
-    match (&lst).get(1) {
+    match ((&lst).get(1)) {
         Perhaps::Some { value } => assert(value == 20),
         None => assert(false),
     };
-    match (&lst).get(99) {
+    match ((&lst).get(99)) {
         Perhaps::Some { value } => assert(false),
         None => assert(true),
     };
     // pop removes and returns the last element
-    match lst.pop() {
+    match (lst.pop()) {
         Perhaps::Some { value } => assert(value == 30),
         None => assert(false),
     };
@@ -71,17 +71,17 @@ fun main() {
     boundary.push(100);
     boundary.push(200);
     boundary.push(300);
-    match (&boundary).get(0) {
+    match ((&boundary).get(0)) {
         Perhaps::Some { value } => assert(value == 100),
         None => assert(false),
     };
-    match (&boundary).get(2) {
+    match ((&boundary).get(2)) {
         Perhaps::Some { value } => assert(value == 300),
         None => assert(false),
     };
     // pop on empty list returns None
     var empty_lst: List<i64> := List::new();
-    match empty_lst.pop() {
+    match (empty_lst.pop()) {
         Perhaps::Some { value } => assert(false),
         None => assert(true),
     };
@@ -90,19 +90,19 @@ fun main() {
     drain.push(7);
     drain.push(8);
     drain.push(9);
-    match drain.pop() {
+    match (drain.pop()) {
         Perhaps::Some { value } => assert(value == 9),
         None => assert(false),
     };
-    match drain.pop() {
+    match (drain.pop()) {
         Perhaps::Some { value } => assert(value == 8),
         None => assert(false),
     };
-    match drain.pop() {
+    match (drain.pop()) {
         Perhaps::Some { value } => assert(value == 7),
         None => assert(false),
     };
-    match drain.pop() {
+    match (drain.pop()) {
         Perhaps::Some { value } => assert(false),
         None => assert(true),
     };
@@ -114,7 +114,7 @@ fun main() {
     reuse.pop();
     reuse.push(99);
     assert((&reuse).len() == 2);
-    match (&reuse).get(1) {
+    match ((&reuse).get(1)) {
         Perhaps::Some { value } => assert(value == 99),
         None => assert(false),
     };
@@ -130,11 +130,11 @@ fun main() {
     words.push("hello");
     words.push("world");
     assert((&words).len() == 2);
-    match (&words).get(0) {
+    match ((&words).get(0)) {
         Perhaps::Some { value } => assert(value == "hello"),
         None => assert(false),
     };
-    match words.pop() {
+    match (words.pop()) {
         Perhaps::Some { value } => assert(value == "world"),
         None => assert(false),
     };
@@ -145,7 +145,7 @@ fun main() {
     floats.push(2.5);
     floats.push(3.5);
     assert((&floats).len() == 3);
-    match (&floats).get(1) {
+    match ((&floats).get(1)) {
         Perhaps::Some { value } => assert(value == 2.5),
         None => assert(false),
     };
@@ -155,7 +155,7 @@ fun main() {
     flags.push(false);
     flags.push(true);
     assert((&flags).len() == 3);
-    match (&flags).get(2) {
+    match ((&flags).get(2)) {
         Perhaps::Some { value } => assert(value == true),
         None => assert(false),
     };

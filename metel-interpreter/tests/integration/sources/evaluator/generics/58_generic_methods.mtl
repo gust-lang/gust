@@ -31,19 +31,19 @@ enum Maybe<T> {
 extend Maybe<T> {
     // `match self` on a generic enum — the variant field type is the generic T.
     fun is_just(self) -> boolean {
-        match self {
+        match (self) {
             Maybe::Just { value } => true,
             _ => false,
         }
     }
     fun or_else(self, fallback: T) -> T {
-        match self {
+        match (self) {
             Maybe::Just { value } => value,
             _ => fallback,
         }
     }
     fun map<U>(self, f: (T) -> U) -> Maybe<U> {
-        match self {
+        match (self) {
             Maybe::Just { value } => Maybe::Just { value = f(value) },
             _ => Maybe::Nothing,
         }

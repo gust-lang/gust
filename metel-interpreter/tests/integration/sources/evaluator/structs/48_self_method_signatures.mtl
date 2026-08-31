@@ -28,7 +28,7 @@ fun main() {
 
     let token := Token::i64 { value = 9 };
     let token_copy := token.identity();
-    match token_copy {
+    match (token_copy) {
         Token::i64 { value } => assert(value == 9),
     }
 }

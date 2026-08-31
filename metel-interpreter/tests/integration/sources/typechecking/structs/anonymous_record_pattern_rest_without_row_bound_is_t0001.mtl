@@ -3,7 +3,7 @@
 // support, since `unify`'s InferType::Record arm is exact-match only.
 fun main() {
     let p := { x = 1.0, y = 2.0 };
-    match p {
+    match (p) {
         { x, .. } => println("x is ${x}"),
     }
 }

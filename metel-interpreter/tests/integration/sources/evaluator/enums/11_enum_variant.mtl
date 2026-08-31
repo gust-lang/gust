@@ -3,13 +3,13 @@ enum Direction { North, South, East, West }
 fun main() {
     // Unit variant construction and match dispatch.
     let x := Direction::North;
-    let r0 := match x { Direction::North => 0, Direction::South => 1, Direction::East => 2, Direction::West => 3, };
+    let r0 := match (x) { Direction::North => 0, Direction::South => 1, Direction::East => 2, Direction::West => 3, };
     assert(r0 == 0);
     // All variants round-trip correctly.
-    let rn := match Direction::North { Direction::North => 0, Direction::South => 1, Direction::East => 2, Direction::West => 3, };
-    let rs := match Direction::South { Direction::North => 0, Direction::South => 1, Direction::East => 2, Direction::West => 3, };
-    let re := match Direction::East  { Direction::North => 0, Direction::South => 1, Direction::East => 2, Direction::West => 3, };
-    let rw := match Direction::West  { Direction::North => 0, Direction::South => 1, Direction::East => 2, Direction::West => 3, };
+    let rn := match (Direction::North) { Direction::North => 0, Direction::South => 1, Direction::East => 2, Direction::West => 3, };
+    let rs := match (Direction::South) { Direction::North => 0, Direction::South => 1, Direction::East => 2, Direction::West => 3, };
+    let re := match (Direction::East)  { Direction::North => 0, Direction::South => 1, Direction::East => 2, Direction::West => 3, };
+    let rw := match (Direction::West)  { Direction::North => 0, Direction::South => 1, Direction::East => 2, Direction::West => 3, };
     assert(rn == 0);
     assert(rs == 1);
     assert(re == 2);

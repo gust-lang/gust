@@ -25,14 +25,14 @@ fun main() {
 
     // Array pattern — exact match (sized array scrutinee).
     let sized: [i64; 3] := [1, 2, 3];
-    let got := match sized {
+    let got := match (sized) {
         [a, b, c] => a + b + c,
     };
     assert(got == 6);
 
     // Array pattern — rest binding (works on any array).
     let arr2: [i64; 4] := [10, 20, 30, 40];
-    let tail_sum := match arr2 {
+    let tail_sum := match (arr2) {
         [_head, ..rest] => rest[0] + rest[1] + rest[2],
     };
     assert(tail_sum == 90);

@@ -99,11 +99,11 @@ fun main() {
         code_i += 1u32;
     }
     assert((&alphabet_slice).len() == 5);
-    match (&alphabet_slice).get(0) {
+    match ((&alphabet_slice).get(0)) {
         Perhaps::Some { value } => assert(value == 'a'),
         None => assert(false),
     };
-    match (&alphabet_slice).get(4) {
+    match ((&alphabet_slice).get(4)) {
         Perhaps::Some { value } => assert(value == 'e'),
         None => assert(false),
     };

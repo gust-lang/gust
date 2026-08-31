@@ -1,0 +1,25 @@
+// RFC-0156: the parenthesized `match` scrutinee forms — a plain parenthesized
+// expression, a tuple (its own parens satisfy the requirement), and the unit
+// literal.
+fun classify(n: i64) -> i64 {
+    match (n) {
+        0 => 0,
+        _ => 1,
+    }
+}
+
+fun main() -> i64 {
+    let pair: (i64, i64) := (1, 2);
+    let a := match (pair) {
+        (1, 2) => 10,
+        _ => 0,
+    };
+    let b := match (1, 2) {
+        (1, 2) => 20,
+        _ => 0,
+    };
+    let c := match () {
+        _ => 30,
+    };
+    return classify(0) + a + b + c;
+}

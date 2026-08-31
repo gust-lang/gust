@@ -9,7 +9,7 @@ struct Holder {
 }
 
 fun paint(c: Colour) -> i64 {
-    match c {
+    match (c) {
         Red => 1,
         Green => 2,
         Blue => 3,
@@ -25,7 +25,7 @@ fun shadow(Red: i64) -> i64 {
 }
 
 fun unwrap_result(r: Result<i64, String>) -> i64 {
-    match r {
+    match (r) {
         Ok { value } => value,
         Err { error } => -1,
     }
@@ -50,12 +50,12 @@ fun main() {
     assert(paint(holder.colour) == 3);
     assert(shadow(7) == 7);
 
-    match holder.maybe {
+    match (holder.maybe) {
         Some { value } => assert(value == 5),
         None => assert(false),
     }
 
-    match holder.nothing {
+    match (holder.nothing) {
         Some { value } => assert(false),
         None => assert(true),
     }

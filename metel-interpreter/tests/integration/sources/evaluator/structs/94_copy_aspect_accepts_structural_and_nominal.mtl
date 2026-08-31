@@ -42,7 +42,7 @@ fun main() {
     assert(!pair.right);
 
     let maybe := id_copy(MaybeInt::Some { value = 8 });
-    match maybe {
+    match (maybe) {
         MaybeInt::Some { value } => assert(value == 8),
         MaybeInt::None => assert(false),
     }

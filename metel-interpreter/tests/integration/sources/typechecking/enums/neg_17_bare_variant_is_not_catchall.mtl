@@ -3,7 +3,7 @@
 enum Colour { Red, Blue }
 
 fun name(c: Colour) -> String {
-    match c {
+    match (c) {
         Red => "red",
     }
 }

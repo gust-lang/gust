@@ -4,7 +4,7 @@
 
 fun parse_positive(s: String) -> Result<i64, String> {
     // pretend parsing: accept only "1" through "5" for simplicity
-    match s {
+    match (s) {
         "1" => Result::Ok { value = 1 },
         "2" => Result::Ok { value = 2 },
         "3" => Result::Ok { value = 3 },
@@ -34,31 +34,31 @@ fun lookup(arr: String[], index: i64) -> Perhaps<String> {
 
 fun main() {
     // --- basic Result match ---
-    match parse_positive("3") {
+    match (parse_positive("3")) {
         Result::Ok { value } => println("ok: " + int_to_string(value)),   // ok: 3
         Result::Err { error } => println("err: " + error),
     }
-    match parse_positive("x") {
+    match (parse_positive("x")) {
         Result::Ok { value } => println("ok: " + int_to_string(value)),
         Result::Err { error } => println("err: " + error),               // err: not a recognised digit: x
     }
 
     // --- ? propagation ---
-    match double_parsed("4") {
+    match (double_parsed("4")) {
         Result::Ok { value } => println(int_to_string(value)),            // 8
         Result::Err { error } => println("err: " + error),
     }
-    match double_parsed("z") {
+    match (double_parsed("z")) {
         Result::Ok { value } => println(int_to_string(value)),
         Result::Err { error } => println("err: " + error),               // err: not a recognised digit: z
     }
 
     // --- chained ? ---
-    match sum_parsed("2", "3") {
+    match (sum_parsed("2", "3")) {
         Result::Ok { value } => println(int_to_string(value)),            // 5
         Result::Err { error } => println("err: " + error),
     }
-    match sum_parsed("2", "bad") {
+    match (sum_parsed("2", "bad")) {
         Result::Ok { value } => println(int_to_string(value)),
         Result::Err { error } => println("err: " + error),               // err: not a recognised digit: bad
     }
@@ -66,11 +66,11 @@ fun main() {
     // --- Perhaps and lookup ---
     let items: String[] := ["apple", "banana", "cherry"];
 
-    match lookup(items, 1) {
+    match (lookup(items, 1)) {
         Perhaps::Some { value } => println(value),                        // banana
         Perhaps::None => println("not found"),
     }
-    match lookup(items, 10) {
+    match (lookup(items, 10)) {
         Perhaps::Some { value } => println(value),
         Perhaps::None => println("not found"),                            // not found
     }
@@ -80,7 +80,7 @@ fun main() {
     println(fruit);   // apple
 
     // --- match used as expression on Result ---
-    let verdict := match sum_parsed("1", "5") {
+    let verdict := match (sum_parsed("1", "5")) {
         Result::Ok { value } => "sum=" + int_to_string(value),
         Result::Err { error } => "failed",
     };

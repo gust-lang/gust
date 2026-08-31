@@ -9,7 +9,7 @@ fun fib(n: i64) -> i64 {
 }
 
 fun unwrap_task(r: Result<Task, ValidationError>) -> Task {
-    match r {
+    match (r) {
         Result::Ok  { value } => value,
         Result::Err { error } => Task { title = "error", priority = Priority::Low, status = Status::Done, effort = 0 },
     }
@@ -33,12 +33,12 @@ fun main() {
 
     // 2. Validation errors from tasks module
     let bad_empty := validate_task("", Priority::High, Status::Open, 5);
-    match bad_empty {
+    match (bad_empty) {
         Result::Err { error } => assert(error.message.len() > 0),
         Result::Ok  { value } => assert(false),
     };
     let bad_effort := validate_task("T", Priority::Low, Status::Open, -1);
-    match bad_effort {
+    match (bad_effort) {
         Result::Err { error } => assert(error.message == "effort cannot be negative"),
         Result::Ok  { value } => assert(false),
     };
@@ -91,7 +91,7 @@ fun main() {
     // 9. find_by_title: found
     let tasks_for_found := make_tasks();
     let found := find_by_title(tasks_for_found, "Write tests");
-    match found {
+    match (found) {
         Perhaps::Some { value } => assert(value.effort == 3),
         None                    => assert(false),
     };
@@ -99,7 +99,7 @@ fun main() {
     // 10. find_by_title: not found
     let tasks_for_not_found := make_tasks();
     let not_found := find_by_title(tasks_for_not_found, "nonexistent");
-    match not_found {
+    match (not_found) {
         Perhaps::Some { value } => assert(false),
         None                    => (),
     };
@@ -122,7 +122,7 @@ fun main() {
         (t: &Task) -> boolean { is_done_2(&*t) },
         clone_task,
     );
-    match first_done {
+    match (first_done) {
         Perhaps::Some { value } => assert(value.title == "Deploy"),
         None                    => assert(false),
     };

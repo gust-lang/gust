@@ -2,7 +2,7 @@
 // must still name every one of them -- the same completeness rule an anonymous record or
 // named struct pattern already enforces.
 fun get_x<record T: { x: f64, y: f64 }>(p: T) -> f64 {
-    match p {
+    match (p) {
         { x } => x,
     }
 }

@@ -8,7 +8,7 @@ enum Colour { Red, Green, Blue }
 struct Point { x: i64, y: i64 }
 
 fun name_qualified(c: &Colour) -> String {
-    match c {
+    match (c) {
         Colour::Red   => "red",
         Colour::Green => "green",
         Colour::Blue  => "blue",
@@ -16,7 +16,7 @@ fun name_qualified(c: &Colour) -> String {
 }
 
 fun name_bare(c: &Colour) -> String {
-    match c {
+    match (c) {
         Red   => "red",
         Green => "green",
         Blue  => "blue",
@@ -24,7 +24,7 @@ fun name_bare(c: &Colour) -> String {
 }
 
 fun name_mut(c: &var Colour) -> String {
-    match c {
+    match (c) {
         Red   => "red",
         Green => "green",
         Blue  => "blue",
@@ -33,7 +33,7 @@ fun name_mut(c: &var Colour) -> String {
 
 // Bindings introduced through a reference-matched pattern copy the referent.
 fun payload(v: &Perhaps<i64>) -> i64 {
-    match v {
+    match (v) {
         Some { value } => value,
         None           => -1,
     }

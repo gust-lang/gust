@@ -49,7 +49,7 @@ fun main() {
 
     let h := Held::One { value = Inner { value = 3 } };
     let h_copied := id(h);
-    match h_copied {
+    match (h_copied) {
         Held::One { value } => assert(value.value == 3),
         Held::None => assert(false),
     }

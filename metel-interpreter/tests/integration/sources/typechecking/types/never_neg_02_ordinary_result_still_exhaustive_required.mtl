@@ -3,7 +3,7 @@
 // variants.
 
 fun use_result(r: Result<i64, String>) -> i64 {
-    match r { // ERROR[T0008]
+    match (r) { // ERROR[T0008]
         Result::Ok { value } => value,
     }
 }

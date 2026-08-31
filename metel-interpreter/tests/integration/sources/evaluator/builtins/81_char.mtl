@@ -47,14 +47,14 @@ fun main() {
     assert(round == orig);
 
     // Pattern matching
-    let greeting: String := match a {
+    let greeting: String := match (a) {
         'A' => "alpha",
         'B' => "beta",
         _   => "other",
     };
     assert(greeting == "alpha");
 
-    let category: String := match zero {
+    let category: String := match (zero) {
         '0' => "digit",
         'a' => "lower",
         'A' => "upper",

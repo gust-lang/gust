@@ -19,7 +19,7 @@ public fun total_effort(tasks: Task[]) -> i64 {
 public fun open_task_count(tasks: Task[]) -> i64 {
     var count := 0;
     for (t in tasks) {
-        match t.status {
+        match (t.status) {
             Status::Open       => { count += 1; },
             Status::InProgress => { count += 1; },
             Status::Done       => (),
@@ -29,7 +29,7 @@ public fun open_task_count(tasks: Task[]) -> i64 {
 }
 
 public fun is_high_priority(t: &Task) -> boolean {
-    match t.priority {
+    match (t.priority) {
         Priority::High   => true,
         Priority::Medium => false,
         Priority::Low    => false,
@@ -37,7 +37,7 @@ public fun is_high_priority(t: &Task) -> boolean {
 }
 
 public fun is_high_priority_ref(t: &Task) -> boolean {
-    match t.priority {
+    match (t.priority) {
         Priority::High   => true,
         Priority::Medium => false,
         Priority::Low    => false,
@@ -45,7 +45,7 @@ public fun is_high_priority_ref(t: &Task) -> boolean {
 }
 
 public fun is_done(t: &Task) -> boolean {
-    match t.status {
+    match (t.status) {
         Status::Done       => true,
         Status::Open       => false,
         Status::InProgress => false,
@@ -53,7 +53,7 @@ public fun is_done(t: &Task) -> boolean {
 }
 
 public fun is_done_2(t: &Task) -> boolean {
-    match t.status {
+    match (t.status) {
         Status::Done       => true,
         Status::Open       => false,
         Status::InProgress => false,
@@ -61,7 +61,7 @@ public fun is_done_2(t: &Task) -> boolean {
 }
 
 public fun is_done_ref(t: &Task) -> boolean {
-    match t.status {
+    match (t.status) {
         Status::Done       => true,
         Status::Open       => false,
         Status::InProgress => false,

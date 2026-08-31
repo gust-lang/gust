@@ -3,7 +3,7 @@
 import std::process::{args, run, ProcessOutput};
 
 fun status_of(r: Result<ProcessOutput, OsError>) -> i64 {
-    match r {
+    match (r) {
         Result::Ok { value } => value.status,
         Result::Err { error } => -999,
     }
@@ -19,7 +19,7 @@ fun main() {
     assert(status_of(run("false", [])) != 0);
 
     // A command that cannot be launched is an Err carrying an OsError message.
-    match run("metel_no_such_command_z9", []) {
+    match (run("metel_no_such_command_z9", [])) {
         Result::Ok { value } => assert(false),
         Result::Err { error } => assert(error.message().len() > 0),
     }

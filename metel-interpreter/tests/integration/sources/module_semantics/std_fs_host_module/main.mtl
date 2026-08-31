@@ -22,7 +22,7 @@ fun main() {
     assert(entries[0] == "note.txt");
 
     // error path: a missing file yields Err with a non-empty OsError message
-    match read_to_string("/tmp/metel_fs_fixture_x7q2/missing.txt") {
+    match (read_to_string("/tmp/metel_fs_fixture_x7q2/missing.txt")) {
         Result::Ok { value } => assert(false),
         Result::Err { error } => assert(error.message().len() > 0),
     }
