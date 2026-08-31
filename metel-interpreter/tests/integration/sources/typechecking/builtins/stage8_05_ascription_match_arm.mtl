@@ -10,7 +10,7 @@
 // Ascription is the only way to type the literal without restructuring the arm.
 
 fun make_row(use_default: boolean, fallback: i64[]) -> i64[] {
-    match use_default {
+    match (use_default) {
         true  => [] : i64[],
         false => fallback,
     }
@@ -18,7 +18,7 @@ fun make_row(use_default: boolean, fallback: i64[]) -> i64[] {
 
 // Alternative: block arm with a local binding — equivalent, but noisier.
 fun make_row_alt(use_default: boolean, fallback: i64[]) -> i64[] {
-    match use_default {
+    match (use_default) {
         true  => { let xs: i64[] := []; xs },
         false => fallback,
     }

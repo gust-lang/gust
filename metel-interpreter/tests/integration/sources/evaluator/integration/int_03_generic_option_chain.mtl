@@ -18,42 +18,42 @@ enum Option<T> {
 // ── Generic Option combinators ────────────────────────────────────────────────
 
 fun option_map<T, U>(opt: Option<T>, f: (T) -> U) -> Option<U> {
-    match opt {
+    match (opt) {
         Option::Some { value } => Option::Some { value = f(value) },
         _                      => Option::None,
     }
 }
 
 fun option_map_2<T, U>(opt: Option<T>, f: (T) -> U) -> Option<U> {
-    match opt {
+    match (opt) {
         Option::Some { value } => Option::Some { value = f(value) },
         _                      => Option::None,
     }
 }
 
 fun option_and_then<T, U>(opt: Option<T>, f: (T) -> Option<U>) -> Option<U> {
-    match opt {
+    match (opt) {
         Option::Some { value } => f(value),
         _                      => Option::None,
     }
 }
 
 fun option_or<T>(opt: Option<T>, fallback: T) -> T {
-    match opt {
+    match (opt) {
         Option::Some { value } => value,
         _                      => fallback,
     }
 }
 
 fun option_filter<T>(opt: Option<T>, pred: (&T) -> boolean) -> Option<T> {
-    match opt {
+    match (opt) {
         Option::Some { value } => if (pred(&value)) Option::Some { value = value } else Option::None,
         _                      => Option::None,
     }
 }
 
 fun option_is_some<T>(opt: Option<T>) -> boolean {
-    match opt {
+    match (opt) {
         Option::Some { value } => true,
         _                      => false,
     }

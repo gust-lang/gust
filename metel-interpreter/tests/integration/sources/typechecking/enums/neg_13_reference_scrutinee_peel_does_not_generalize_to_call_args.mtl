@@ -5,7 +5,7 @@
 enum Colour { Red, Green, Blue }
 
 fun takes_by_value(c: Colour) -> String {
-    match c {
+    match (c) {
         Colour::Red   => "red",
         Colour::Green => "green",
         Colour::Blue  => "blue",

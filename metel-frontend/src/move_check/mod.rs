@@ -3078,7 +3078,7 @@ extend Handle: Drop {
 
 fun main() {
     let handle := Handle { name = "x", fd = 1 };
-    let n := match handle.name {
+    let n := match (handle.name) {
         name => name.len(),
     };
 }
@@ -3107,7 +3107,7 @@ fun take(r: { n: i64, name: String }) -> i64 {
 
 fun main() {
     let r := { name = "x", n = 1 };
-    let moved := match r {
+    let moved := match (r) {
         { name, n } => name,
     };
     let again := take(r);
@@ -3131,7 +3131,7 @@ extend Wrapper: Drop {
 
 fun main() {
     let wrapper := Wrapper { pair = ("x", 1) };
-    let n := match wrapper.pair {
+    let n := match (wrapper.pair) {
         (name, _) => name.len(),
     };
 }
@@ -3161,7 +3161,7 @@ fun main() {
     let wrapper := Wrapper {
         payload = MaybeText::Full { text = "x" },
     };
-    let n := match wrapper.payload {
+    let n := match (wrapper.payload) {
         MaybeText::Full { text } => text.len(),
         MaybeText::Empty => 0,
     };
@@ -3217,7 +3217,7 @@ enum MaybeText {
 
 fun main() {
     let value := MaybeText::Full { text = "x" };
-    let n := match value {
+    let n := match (value) {
         MaybeText::Full { text } => text.len(),
         MaybeText::Empty => 0,
     };
@@ -3247,7 +3247,7 @@ fun main() {
             r#"
 fun main() {
     let xs := ["x"];
-    let n := match xs[0] {
+    let n := match (xs[0]) {
         s => s.len(),
     };
 }
@@ -3262,7 +3262,7 @@ fun main() {
             r#"
 fun main() {
     let xs: [String; 1] := ["x"];
-    let n := match xs {
+    let n := match (xs) {
         [s] => s.len(),
     };
 }

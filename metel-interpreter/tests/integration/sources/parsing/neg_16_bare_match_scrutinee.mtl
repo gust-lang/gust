@@ -1,0 +1,8 @@
+// RFC-0156: a `match` scrutinee must be parenthesized, like `if`/`while`/`for`.
+// The bare `match x { ... }` form is a hard parse error — no alias.
+fun main() -> i64 {
+    match 1 {
+        1 => 10,
+        _ => 0,
+    }
+}

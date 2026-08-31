@@ -2,7 +2,7 @@
 // so bare `None` resolves without requiring ascription.
 
 fun first_or_default(items: i64[], fallback: Perhaps<i64>) -> i64 {
-    match fallback {
+    match (fallback) {
         Perhaps::Some { value } => value,
         None => if (items.len() > 0) { items[0] } else { 0 },
     }

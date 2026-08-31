@@ -2,7 +2,7 @@
 // variant would require a value of type !, which cannot be constructed, so
 // a match omitting Some is exhaustive.
 fun use_perhaps(p: Perhaps<!>) -> i64 {
-    match p {
+    match (p) {
         Perhaps::None => 0,
         // Some omitted -- exhaustive; Some is uninhabited when T = !.
     }

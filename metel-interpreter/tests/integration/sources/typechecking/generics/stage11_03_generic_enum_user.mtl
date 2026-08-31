@@ -14,7 +14,7 @@ fun wrap_bool(b: boolean) -> Maybe<boolean> {
 }
 
 fun unwrap_or(m: Maybe<i64>, default: i64) -> i64 {
-    match m {
+    match (m) {
         Maybe::Some { value } => value,
         _                     => default,
     }

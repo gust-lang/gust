@@ -1,0 +1,6 @@
+[options]
+spec = ["spec.expressions.pattern-matching.legality-3"]
+
+[expect]
+status = "parse_error"
+code = "P0001"

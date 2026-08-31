@@ -101,11 +101,11 @@ fun parse_number(t: Token) -> Result<Number, ParseError> {
 
 // cross-type match + as-cast (? cross-type deferred to #13)
 fun pipeline_step(s: String) -> Result<Number, AppError> {
-    let tok := match lex_token(s) {
+    let tok := match (lex_token(s)) {
         Result::Ok { value } => value,
         Result::Err { error } => { return Result::Err { error = error as AppError }; },
     };
-    let num := match parse_number(tok) {
+    let num := match (parse_number(tok)) {
         Result::Ok { value } => value,
         Result::Err { error } => { return Result::Err { error = error as AppError }; },
     };
@@ -144,14 +144,14 @@ fun main() {
 
     // ? success: "1" → Token → Number(1)
     let r1 := pipeline_step("1");
-    match r1 {
+    match (r1) {
         Result::Ok  { value } => assert(value.raw == 1),
         Result::Err { error } => assert(false),
     };
 
     // ? success: "3" → Number(3); aspect methods work on result
     let r3 := pipeline_step("3");
-    match r3 {
+    match (r3) {
         Result::Ok  { value } => {
             assert(value.raw == 3);
             assert(value.double() == 6);
@@ -162,7 +162,7 @@ fun main() {
 
     // ? failure: LexError coerced to AppError
     let bad := pipeline_step("X");
-    match bad {
+    match (bad) {
         Result::Ok  { value } => assert(false),
         Result::Err { error } => assert(error.msg == "lex: unknown token: X"),
     };

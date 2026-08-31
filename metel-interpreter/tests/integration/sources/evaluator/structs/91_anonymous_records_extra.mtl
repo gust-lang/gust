@@ -56,6 +56,6 @@ fun main() {
     assert(picked.mode == 5);
 
     // Pattern binding, both fields used.
-    let total := match p { { x, y } => x + y, };
+    let total := match (p) { { x, y } => x + y, };
     assert(total == 14);
 }

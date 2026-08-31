@@ -31,12 +31,12 @@ fun load(s: String) -> Result<i64, AppError> {
 }
 
 fun main() {
-    match load("42") {
+    match (load("42")) {
         Result::Ok { value } => assert(value == 84),
         Result::Err { error } => assert(false),
     };
 
-    match load("bad") {
+    match (load("bad")) {
         Result::Ok { value } => assert(false),
         Result::Err { error } => assert(error.msg == "parse error: invalid integer"),
     };

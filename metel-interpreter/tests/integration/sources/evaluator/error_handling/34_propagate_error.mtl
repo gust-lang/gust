@@ -15,13 +15,13 @@ fun try_div(a: i64, b: i64) -> Result<i64, i64> {
 fun main() {
     // ? on Ok: unwraps, continues, returns Ok(6).
     let r1 := try_div(10, 2);
-    match r1 {
+    match (r1) {
         Result::Ok  { value } => assert(value == 6),
         Result::Err { error } => assert(false, "expected Ok"),
     };
     // ? on Err: propagates, try_div returns Err(-1).
     let r2 := try_div(10, 0);
-    match r2 {
+    match (r2) {
         Result::Ok  { value } => assert(false, "expected Err"),
         Result::Err { error } => assert(error == -1),
     };

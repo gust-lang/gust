@@ -139,7 +139,7 @@ fun parse_radius(s: String) -> Result<i64, ParseError> {
 
 // cross-type match + as-cast (? cross-type deferred to #13).
 fun circle_area_from_str(s: String) -> Result<f64, ShapeError> {
-    let r := match parse_radius(s) {
+    let r := match (parse_radius(s)) {
         Result::Ok { value } => value,
         Result::Err { error } => { return Result::Err { error = error as ShapeError }; },
     };
@@ -246,21 +246,21 @@ fun main() {
 
     // ? success path: parse "5", build Circle, return area
     let area_ok := circle_area_from_str("5");
-    match area_ok {
+    match (area_ok) {
         Result::Ok  { value } => assert(approx(value, 78.54)),
         Result::Err { error } => assert(false),
     };
 
     // ? success path: parse "10"
     let area_ok2 := circle_area_from_str("10");
-    match area_ok2 {
+    match (area_ok2) {
         Result::Ok  { value } => assert(approx(value, 314.16)),
         Result::Err { error } => assert(false),
     };
 
     // ? failure path: ParseError wrapped into ShapeError via From
     let area_err := circle_area_from_str("bad");
-    match area_err {
+    match (area_err) {
         Result::Ok  { value } => assert(false),
         Result::Err { error } => assert(error.msg == "parse error: bad radius: bad"),
     };

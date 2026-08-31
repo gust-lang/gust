@@ -18,7 +18,7 @@ fun main() {
     let projected := handle.{ fd };
     assert(projected.fd == 7);
 
-    let matched := match point { { y, x } => x + y, };
+    let matched := match (point) { { y, x } => x + y, };
     assert(matched == 3);
 
     let from_block: { x: i64, y: i64 } := ({ y, x });

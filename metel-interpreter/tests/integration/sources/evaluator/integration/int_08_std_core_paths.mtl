@@ -33,11 +33,11 @@ fun double_parsed(s: String) -> Result<i64, ParseError> {
 
 fun add_parsed(a: String, b: String) -> Result<i64, MathError> {
     // cross-type match + as-cast (? cross-type deferred to #13)
-    let x := match parse_positive(a) {
+    let x := match (parse_positive(a)) {
         Result::Ok { value } => value,
         Result::Err { error } => { return Result::Err { error = error as MathError }; },
     };
-    let y := match parse_positive(b) {
+    let y := match (parse_positive(b)) {
         Result::Ok { value } => value,
         Result::Err { error } => { return Result::Err { error = error as MathError }; },
     };
@@ -56,14 +56,14 @@ fun find_in(arr: i64[], target: i64) -> Perhaps<i64> {
 }
 
 fun map_some(p: Perhaps<i64>, factor: i64) -> Perhaps<i64> {
-    match p {
+    match (p) {
         Perhaps::Some { value } => Perhaps::Some { value = value * factor },
         None => None,
     }
 }
 
 fun perhaps_to_result(p: Perhaps<i64>, error: String) -> Result<i64, String> {
-    match p {
+    match (p) {
         Perhaps::Some { value } => Result::Ok { value = value },
         None => Result::Err { error = error },
     }
@@ -73,13 +73,13 @@ fun main() {
     // ── Basic Result matching ─────────────────────────────────────────────────
 
     let r1 := parse_positive("42");
-    match r1 {
+    match (r1) {
         Result::Ok  { value } => assert(value == 42),
         Result::Err { error } => assert(false),
     };
 
     let r2 := parse_positive("bad");
-    match r2 {
+    match (r2) {
         Result::Ok  { value } => assert(false),
         Result::Err { error } => assert(error.msg == "bad input: bad"),
     };
@@ -87,13 +87,13 @@ fun main() {
     // ── ? propagation (same-type) ─────────────────────────────────────────────
 
     let d1 := double_parsed("10");
-    match d1 {
+    match (d1) {
         Result::Ok  { value } => assert(value == 20),
         Result::Err { error } => assert(false),
     };
 
     let d2 := double_parsed("nope");
-    match d2 {
+    match (d2) {
         Result::Ok  { value } => assert(false),
         Result::Err { error } => assert(error.msg == "bad input: nope"),
     };
@@ -101,19 +101,19 @@ fun main() {
     // ── ? propagation with From coercion (ParseError → MathError) ─────────────
 
     let a1 := add_parsed("1", "2");
-    match a1 {
+    match (a1) {
         Result::Ok  { value } => assert(value == 3),
         Result::Err { error } => assert(false),
     };
 
     let a2 := add_parsed("1", "bad");
-    match a2 {
+    match (a2) {
         Result::Ok  { value } => assert(false),
         Result::Err { error } => assert(error.msg == "parse: bad input: bad"),
     };
 
     let a3 := add_parsed("x", "2");
-    match a3 {
+    match (a3) {
         Result::Ok  { value } => assert(false),
         Result::Err { error } => assert(error.msg == "parse: bad input: x"),
     };
@@ -123,13 +123,13 @@ fun main() {
     let arr := [10, 20, 30, 40, 50];
 
     let f1 := find_in(arr, 30);
-    match f1 {
+    match (f1) {
         Perhaps::Some { value } => assert(value == 2),
         None => assert(false),
     };
 
     let f2 := find_in(arr, 99);
-    match f2 {
+    match (f2) {
         Perhaps::Some { value } => assert(false),
         None => assert(true),
     };
@@ -137,20 +137,20 @@ fun main() {
     // ── Perhaps chaining via map_some ─────────────────────────────────────────
 
     let m1 := map_some(Perhaps::Some { value = 5 }, 3);
-    match m1 {
+    match (m1) {
         Perhaps::Some { value } => assert(value == 15),
         None => assert(false),
     };
 
     let m2 := map_some(None, 3);
-    match m2 {
+    match (m2) {
         Perhaps::Some { value } => assert(false),
         None => assert(true),
     };
 
     // map_some of a find_in result
     let mapped := map_some(find_in(arr, 20), 10);
-    match mapped {
+    match (mapped) {
         Perhaps::Some { value } => assert(value == 10), // index 1, multiplied by 10
         None => assert(false),
     };
@@ -158,26 +158,26 @@ fun main() {
     // ── perhaps_to_result bridge ──────────────────────────────────────────────
 
     let p2r_ok := perhaps_to_result(Perhaps::Some { value = 7 }, "not found");
-    match p2r_ok {
+    match (p2r_ok) {
         Result::Ok  { value } => assert(value == 7),
         Result::Err { error } => assert(false),
     };
 
     let p2r_err := perhaps_to_result(None, "not found");
-    match p2r_err {
+    match (p2r_err) {
         Result::Ok  { value } => assert(false),
         Result::Err { error } => assert(error == "not found"),
     };
 
     // Combine find_in (returns Perhaps) with perhaps_to_result (converts to Result)
     let bridge := perhaps_to_result(find_in(arr, 40), "missing");
-    match bridge {
+    match (bridge) {
         Result::Ok  { value } => assert(value == 3), // index 3
         Result::Err { error } => assert(false),
     };
 
     let bridge_miss := perhaps_to_result(find_in(arr, 0), "missing");
-    match bridge_miss {
+    match (bridge_miss) {
         Result::Ok  { value } => assert(false),
         Result::Err { error } => assert(error == "missing"),
     };

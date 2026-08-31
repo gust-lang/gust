@@ -251,8 +251,13 @@ repeat_array   = { "[" ~ expr ~ ";" ~ decimal_int ~ "]" }
 array_lit      = { "[" ~ (expr ~ ("," ~ expr)* ~ ","?)? ~ "]" }
 
 // RFC-0078 §3.1: a match on a `!`-typed scrutinee is vacuously exhaustive with
-// zero arms — the arm list is optional to allow `match x { }`.
-match_expr  = { "match" ~ expr ~ "{" ~ (match_arm ~ ("," ~ match_arm)* ~ ","?)? ~ "}" }
+// zero arms — the arm list is optional to allow `match (x) { }`.
+// RFC-0156: the scrutinee must be parenthesized, matching if/while/for. The bare
+// `match x { }` form is a parse error. `tuple_or_paren` keeps a tuple scrutinee
+// (`match (a, b) { }`) working; `unit_lit` keeps `match () { }` — `()` is not a
+// `tuple_or_paren`. Both alternatives feed `parse_expr` unchanged.
+match_scrutinee = _{ unit_lit | tuple_or_paren }
+match_expr  = { "match" ~ match_scrutinee ~ "{" ~ (match_arm ~ ("," ~ match_arm)* ~ ","?)? ~ "}" }
 // return_expr/break_expr/continue_expr are reachable through plain `expr` now
 // (issue #229) — no more return_arm/break_arm special-case needed here.
 match_arm   = { pattern ~ ("if" ~ expr)? ~ "=>" ~ (block | expr) }

@@ -7,7 +7,7 @@ enum Foo {
 }
 
 fun handle(f: Foo) -> i64 {
-    match f {
+    match (f) {
         Foo::A { x } => x,
         // Foo::B omitted -- exhaustive; B is uninhabited.
     }

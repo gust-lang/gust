@@ -24,42 +24,42 @@ public enum Perhaps<T> {
 extend Perhaps<T> {
     // True when this is `Some`.
     public fun is_some(&self) -> boolean {
-        match self {
+        match (self) {
             Perhaps::Some { value } => true,
             _ => false,
         }
     }
     // True when this is `None`.
     public fun is_none(&self) -> boolean {
-        match self {
+        match (self) {
             Perhaps::Some { value } => false,
             _ => true,
         }
     }
     // Transform the contained value, leaving `None` untouched.
     public fun map<U>(self, f: (T) -> U) -> Perhaps<U> {
-        match self {
+        match (self) {
             Perhaps::Some { value } => Perhaps::Some { value = f(value) },
             _ => Perhaps::None,
         }
     }
     // Chain a computation that itself returns a `Perhaps`.
     public fun and_then<U>(self, f: (T) -> Perhaps<U>) -> Perhaps<U> {
-        match self {
+        match (self) {
             Perhaps::Some { value } => f(value),
             _ => Perhaps::None,
         }
     }
     // The contained value, or `fallback` when `None`.
     public fun unwrap_or(self, fallback: T) -> T {
-        match self {
+        match (self) {
             Perhaps::Some { value } => value,
             _ => fallback,
         }
     }
     // The contained value, or the result of `f()` when `None`.
     public fun unwrap_or_else(self, f: () -> T) -> T {
-        match self {
+        match (self) {
             Perhaps::Some { value } => value,
             _ => f(),
         }
@@ -68,7 +68,7 @@ extend Perhaps<T> {
     // logic error that should never occur in correct code — prefer `match` or
     // `.unwrap_or`/`.unwrap_or_else` for expected absence.
     public fun yolo(self) -> T {
-        match self {
+        match (self) {
             Perhaps::Some { value } => value,
             _ => yolo_none(),
         }
@@ -76,7 +76,7 @@ extend Perhaps<T> {
     // Converts to `Result<T, E>`: `Some { value }` becomes `Ok { value }`; `None`
     // becomes `Err { error }`.
     public fun ok_or<E>(self, error: E) -> Result<T, E> {
-        match self {
+        match (self) {
             Perhaps::Some { value } => Result::Ok { value = value },
             _ => Result::Err { error = error },
         }
@@ -91,42 +91,42 @@ public enum Result<T, E> {
 extend Result<T, E> {
     // True when this is `Ok`.
     public fun is_ok(&self) -> boolean {
-        match self {
+        match (self) {
             Result::Ok { value } => true,
             _ => false,
         }
     }
     // True when this is `Err`.
     public fun is_err(&self) -> boolean {
-        match self {
+        match (self) {
             Result::Ok { value } => false,
             _ => true,
         }
     }
     // Transform the success value, leaving `Err` untouched.
     public fun map<U>(self, f: (T) -> U) -> Result<U, E> {
-        match self {
+        match (self) {
             Result::Ok { value } => Result::Ok { value = f(value) },
             Result::Err { error } => Result::Err { error = error },
         }
     }
     // Chain a computation that itself returns a `Result`.
     public fun and_then<U>(self, f: (T) -> Result<U, E>) -> Result<U, E> {
-        match self {
+        match (self) {
             Result::Ok { value } => f(value),
             Result::Err { error } => Result::Err { error = error },
         }
     }
     // The success value, or `fallback` when `Err`.
     public fun unwrap_or(self, fallback: T) -> T {
-        match self {
+        match (self) {
             Result::Ok { value } => value,
             _ => fallback,
         }
     }
     // The success value, or the result of `f()` when `Err`.
     public fun unwrap_or_else(self, f: () -> T) -> T {
-        match self {
+        match (self) {
             Result::Ok { value } => value,
             _ => f(),
         }
@@ -135,7 +135,7 @@ extend Result<T, E> {
     // representation in the panic message. Use only when `Err` represents a
     // logic error — propagate expected errors with `?` or handle with `match`.
     public fun yolo(self) -> T {
-        match self {
+        match (self) {
             Result::Ok { value } => value,
             Result::Err { error } => yolo_err(error),
         }
@@ -143,7 +143,7 @@ extend Result<T, E> {
     // Applies `f` to the `Err` value, leaving `Ok` unchanged. Useful for
     // converting between error types.
     public fun map_err<F>(self, f: (E) -> F) -> Result<T, F> {
-        match self {
+        match (self) {
             Result::Ok { value } => Result::Ok { value = value },
             Result::Err { error } => Result::Err { error = f(error) },
         }
@@ -151,7 +151,7 @@ extend Result<T, E> {
     // Converts to `Perhaps<T>`: `Ok { value }` becomes `Some { value }`; `Err`
     // becomes `None`. The error value is discarded.
     public fun ok(self) -> Perhaps<T> {
-        match self {
+        match (self) {
             Result::Ok { value } => Perhaps::Some { value = value },
             _ => Perhaps::None,
         }

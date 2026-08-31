@@ -2,5 +2,5 @@
 enum Color { Red, Green, Blue }
 fun main() {
     let c := Color::Red;
-    let _x := match c { Color::Red => 1, Color::Green => 2, };
+    let _x := match (c) { Color::Red => 1, Color::Green => 2, };
 }

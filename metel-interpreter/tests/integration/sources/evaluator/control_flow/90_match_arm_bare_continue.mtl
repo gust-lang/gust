@@ -7,7 +7,7 @@ fun sum_evens(n: i64) -> i64 {
     loop {
         if (i == n) { break; }
         i := i + 1;
-        match i % 2 {
+        match (i % 2) {
             0 => total := total + i,
             _ => continue,
         }

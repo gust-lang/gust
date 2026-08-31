@@ -67,8 +67,8 @@ enum Choice { Left, Right }
 fun explicit_and_transparent_match_are_equivalent() {
     let choice := Choice::Right;
     let reference: &Choice := &choice;
-    let transparent := match reference { Choice::Left => 1, Choice::Right => 2 };
-    let explicit := match *reference { Choice::Left => 1, Choice::Right => 2 };
+    let transparent := match (reference) { Choice::Left => 1, Choice::Right => 2 };
+    let explicit := match (*reference) { Choice::Left => 1, Choice::Right => 2 };
     assert(transparent == explicit);
 }
 

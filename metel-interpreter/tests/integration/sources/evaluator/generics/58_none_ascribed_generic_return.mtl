@@ -9,12 +9,12 @@ fun main() {
     let present := maybe_head([1, 2, 3]);
     let empty := maybe_head([] : i64[]);
 
-    match present {
+    match (present) {
         Perhaps::Some { value } => assert(value == 1),
         Perhaps::None => assert(false),
     }
 
-    match empty {
+    match (empty) {
         Perhaps::Some { value } => assert(false),
         Perhaps::None => assert(true),
     }

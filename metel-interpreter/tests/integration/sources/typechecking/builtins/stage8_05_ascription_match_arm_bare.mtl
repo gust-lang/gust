@@ -2,7 +2,7 @@
 // so bare [] and None resolve without requiring explicit ascription.
 
 fun make_row(use_default: boolean, fallback: i64[]) -> i64[] {
-    match use_default {
+    match (use_default) {
         true  => [],
         false => fallback,
     }

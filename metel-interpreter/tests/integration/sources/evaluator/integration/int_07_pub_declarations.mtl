@@ -6,7 +6,7 @@ public enum Direction { North, South, East, West }
 public fun distance(p: Point) -> i64 { return p.x + p.y; }
 
 fun classify(d: Direction) -> i64 {
-    match d {
+    match (d) {
         Direction::North => { return 1; },
         Direction::South => { return 2; },
         Direction::East  => { return 3; },

@@ -2,7 +2,7 @@
 import color::*;
 fun main() -> i64 {
     let c := Color::Red;
-    match c {
+    match (c) {
         Color::Red   => { return 1; },
         Color::Green => { return 2; },
         Color::Blue  => { return 3; }

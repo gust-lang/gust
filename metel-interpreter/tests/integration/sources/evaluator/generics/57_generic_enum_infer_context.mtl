@@ -9,28 +9,28 @@ enum Either<L, R> {
 }
 
 fun either_map_left<L, R, M>(e: Either<L, R>, f: (L) -> M) -> Either<M, R> {
-    match e {
+    match (e) {
         Either::Left  { val } => Either::Left  { val = f(val) },
         Either::Right { val } => Either::Right { val = val },
     }
 }
 
 fun either_is_left<L, R>(e: Either<L, R>) -> boolean {
-    match e {
+    match (e) {
         Either::Left  { val } => true,
         Either::Right { val } => false,
     }
 }
 
 fun either_left_or<L, R>(e: Either<L, R>, default: L) -> L {
-    match e {
+    match (e) {
         Either::Left  { val } => val,
         Either::Right { val } => default,
     }
 }
 
 fun either_right_or<L, R>(e: Either<L, R>, default: R) -> R {
-    match e {
+    match (e) {
         Either::Left  { val } => default,
         Either::Right { val } => val,
     }
@@ -56,7 +56,7 @@ fun main() {
     // map_left: Left(42) → Left(84)
     let doubled_input: Either<i64, String> := Either::Left { val = 42 };
     let doubled := either_map_left(doubled_input, (x: i64) -> i64 { x * 2 });
-    match doubled {
+    match (doubled) {
         Either::Left { val } => assert(val == 84),
         Either::Right { val } => assert(false),
     };

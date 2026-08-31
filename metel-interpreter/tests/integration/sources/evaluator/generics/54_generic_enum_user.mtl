@@ -4,14 +4,14 @@ enum Maybe<T> {
 }
 
 fun unwrap_or_int(m: Maybe<i64>, default: i64) -> i64 {
-    match m {
+    match (m) {
         Maybe::Some { value } => value,
         _                     => default,
     }
 }
 
 fun unwrap_or_bool(m: Maybe<boolean>, default: boolean) -> boolean {
-    match m {
+    match (m) {
         Maybe::Some { value } => value,
         _                     => default,
     }

@@ -11,7 +11,7 @@ public struct ValidationError { public message: String }
 public fun clone_i64(value: &i64) -> i64 { *value }
 
 public fun clone_priority(value: &Priority) -> Priority {
-    match value {
+    match (value) {
         Priority::High => Priority::High,
         Priority::Medium => Priority::Medium,
         Priority::Low => Priority::Low,
@@ -19,7 +19,7 @@ public fun clone_priority(value: &Priority) -> Priority {
 }
 
 public fun clone_status(value: &Status) -> Status {
-    match value {
+    match (value) {
         Status::Open => Status::Open,
         Status::InProgress => Status::InProgress,
         Status::Done => Status::Done,

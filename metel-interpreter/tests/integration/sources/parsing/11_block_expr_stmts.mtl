@@ -10,7 +10,7 @@ enum Color { Red, Green, Blue }
 
 // match as a block tail — the function body returns the match result directly
 fun color_name(c: Color) -> String {
-    match c {
+    match (c) {
         Color::Red   => "red",
         Color::Green => "green",
         Color::Blue  => "blue",
@@ -30,7 +30,7 @@ fun first_positive(arr: i64[]) -> i64 {
 
 // match in statement position (not the tail) — followed by more code
 fun print_color(c: Color) {
-    match c {
+    match (c) {
         Color::Red   => println("red"),
         Color::Green => println("green"),
         Color::Blue  => println("blue"),
@@ -52,11 +52,11 @@ fun count_to(n: i64) -> i64 {
 
 // multiple match statements in a block, none as the tail
 fun report(c: Color) {
-    match c {
+    match (c) {
         Color::Red => println("warm"),
         _          => println("cool"),
     }
-    match c {
+    match (c) {
         Color::Blue => println("very cool"),
         _           => println("not blue"),
     }

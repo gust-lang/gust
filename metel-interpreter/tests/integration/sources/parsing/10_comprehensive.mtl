@@ -65,7 +65,7 @@ enum Token {
 }
 
 fun token_to_string(t: Token) -> String {
-    match t {
+    match (t) {
         Token::Number { value } => int_to_string(value),
         Token::Plus  => "+",
         Token::Minus => "-",
@@ -99,7 +99,7 @@ extend Task {
     }
 
     fun priority_label(self) -> String {
-        match self.priority {
+        match (self.priority) {
             Priority::High   => "[HIGH]",
             Priority::Medium => "[MED] ",
             Priority::Low    => "[LOW] ",
@@ -134,26 +134,26 @@ fun main() {
     s.push(30);
     println(int_to_string(s.size()));        // 3
 
-    match s.peek() {
+    match (s.peek()) {
         Perhaps::Some { value } => println(int_to_string(value)),   // 30
         Perhaps::None => println("empty"),
     }
 
-    match s.pop() {
+    match (s.pop()) {
         Perhaps::Some { value } => println(int_to_string(value)),   // 30
         Perhaps::None => println("empty"),
     }
     println(int_to_string(s.size()));        // 2
 
-    match s.pop() {
+    match (s.pop()) {
         Perhaps::Some { value } => println(int_to_string(value)),   // 20
         Perhaps::None => println("empty"),
     }
-    match s.pop() {
+    match (s.pop()) {
         Perhaps::Some { value } => println(int_to_string(value)),   // 10
         Perhaps::None => println("empty"),
     }
-    match s.pop() {
+    match (s.pop()) {
         Perhaps::Some { value } => println(int_to_string(value)),
         Perhaps::None => println("stack empty"),                     // stack empty
     }

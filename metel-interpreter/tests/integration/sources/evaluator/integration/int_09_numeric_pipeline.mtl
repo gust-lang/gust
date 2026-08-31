@@ -56,7 +56,7 @@ fun main() {
     assert((&samples).len() == 5);
 
     // Verify individual samples.
-    match (&samples).get(0) {
+    match ((&samples).get(0)) {
         Perhaps::Some { value } => {
             assert(value.raw   == 10i16);
             assert(value.scaled == 5.0f32);
@@ -64,7 +64,7 @@ fun main() {
         },
         None => assert(false),
     };
-    match (&samples).get(2) {
+    match ((&samples).get(2)) {
         Perhaps::Some { value } => {
             assert(value.raw    == 100i16);
             assert(value.scaled == 50.0f32);
@@ -72,7 +72,7 @@ fun main() {
         },
         None => assert(false),
     };
-    match (&samples).get(4) {
+    match ((&samples).get(4)) {
         Perhaps::Some { value } => {
             assert(value.raw    == 255i16);
             assert(value.scaled == 127.5f32);

@@ -11,6 +11,6 @@ fun main() {
     assert(swapped.x == 1);
     assert(swapped.y == 2);
 
-    let sum := match point { { y, x } => x + y, };
+    let sum := match (point) { { y, x } => x + y, };
     assert(sum == 3);
 }
