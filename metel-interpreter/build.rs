@@ -52,9 +52,19 @@ fn main() {
         }
     }
 
+    // Write only when the generated test list actually changed. Editing a
+    // fixture's *contents* bumps its directory's mtime (atomic-rename saves) and
+    // re-runs this script, but as long as the fixture set and test names are
+    // unchanged the output is byte-identical — rewriting it would touch the
+    // file `integration.rs` `include!`s and force a full recompile of the
+    // integration-test crate for nothing (metel-core#873). Adding, removing, or
+    // renaming a fixture *does* change `generated`, so discovery still updates.
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
-    fs::write(out_dir.join("integration_generated.rs"), generated)
-        .expect("failed to write generated integration tests");
+    let out_path = out_dir.join("integration_generated.rs");
+    let unchanged = fs::read_to_string(&out_path).is_ok_and(|existing| existing == generated);
+    if !unchanged {
+        fs::write(&out_path, generated).expect("failed to write generated integration tests");
+    }
 }
 
 fn discover_suite_fixtures(root: &Path) -> Vec<PathBuf> {
