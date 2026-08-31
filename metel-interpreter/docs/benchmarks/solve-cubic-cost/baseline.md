@@ -179,3 +179,72 @@ candidate #2) are the next targets. Separately, `deep_type`'s **wall** time is
 now **evaluator-bound** (eval ≈ O(n³): the interpreter deep-clones the O(depth)
 nested runtime value at each of `depth` levels) — a distinct concern from
 type-checking.
+
+## Remaining optimization opportunities (ranked)
+
+Measure every change against `metel-bench --fixtures-dir
+metel-interpreter/benches/stress` + the depth sweep, comparing `typecheck_ns`
+/ `inference_ns` / `solve_ns` and wall-time-vs-depth against the tables above.
+
+### 1. Pass 2 generic-body construction memoization — *highest*
+
+`construct_generic_body` (`typechecker/construction.rs`, `construction/calls.rs`)
+re-instantiates a generic `fun`/method body on every call site with no cache.
+For nested generics this is O(n²) instantiations, each re-resolving an O(n) type
+through `infer_type_args_for_construction`
+(`typechecker/mod.rs:923`) / `type_to_infer` / `unify` — the super-linear
+`inference`/`construction` term that v1+v2 leave in place, and the dominant
+`apply` caller in the instrumentation (~40k of 57k calls on `deep_type` d200).
+
+This is `../v0.8.2-evaluator-integration/optimization-shortlist.md` candidate #2,
+flagged and never done. Memoize the typed body by a stable key: `(callee
+SymbolId, receiver-type identity for methods, concrete argument-type vector)`.
+Scope strictly to *exact* repeated instantiations — the key must capture the
+full type context, not speculatively share.
+
+Risk: medium-high. Touches Pass 2, needs tight regression coverage; a wrong key
+silently reuses the wrong monomorphisation.
+
+### 2. Path compression / lazy resolution in constraint solving — *medium*
+
+`apply_constraint_with_coercion` does `subst.apply(&constraint.lhs/rhs)` per
+constraint against the accumulated `cached_subst`; on a chained-var-deep type
+that is O(depth) per constraint → O(n²) total (the residual after v2). Two ways
+to collapse it:
+
+- **Path compression**: a `find(var)` that chases `Var` links and rewrites each
+  to point at the representative, so the second resolution of a chain is
+  O(1) amortized. Needs `&mut`/`RefCell` on the lookup path (`apply` is `&self`
+  in many call contexts).
+- **Lazy unification**: stop pre-`apply`ing the constraint sides; give `unify`
+  access to the substitution so it resolves vars shallowly on demand. Cleaner
+  asymptotically but architectural — `unify` currently takes bare `&InferType`
+  and returns a delta, and has 8 external callers in `construction*`.
+
+### 3. Iterative `apply` / `occurs_in` / `unify` — *medium, safety*
+
+Still structurally recursive over `InferType`. A genuinely deep type (or a long
+var chain, pre-#2) can overflow the stack — the original report behind this
+work. Convert the three to an explicit heap worklist. No asymptotic time change;
+removes the crash vector. Contained to `typeinference/mod.rs`.
+
+### 4. `Rc<InferType>` subterms — *large, broad payoff*
+
+`InferType::{Fun,Array,…}` hold `Box<InferType>` / `Vec<InferType>`; every
+`apply` / `compose` / `type_to_infer` deep-clones. `Rc`-sharing subterms turns
+those into refcount bumps across the whole typechecker *and* evaluator. Do only
+if 1–3 don't close the gap; it is a module-wide type change.
+
+### 5. Evaluator value sharing — *separate area*
+
+`deep_type`'s wall time is now eval-bound: the interpreter deep-clones the
+O(depth) nested runtime `List` value at each of `depth` construction levels
+(eval ≈ O(n³)). `Rc`/COW value subterms in the evaluator, or not cloning on
+pass-by-value where a borrow suffices. Distinct from type-checking; own
+investigation.
+
+### 6. Parser on long expressions — *separate area, unmeasured*
+
+`id_chain`'s parse phase (350 ms+) dominates its total — long `+` chains / large
+flat block bodies are slow in the pest grammar path. Not profiled here; noted
+because it surfaced while building the fixtures.
