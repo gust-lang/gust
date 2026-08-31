@@ -1,6 +1,6 @@
 // Returns a closure that closes over a counter, incrementing on each call.
 fun make_counter(start: i64) -> () -> i64 {
-    var n = start;
+    var n := start;
     () -> i64 { n += 1; n }
 }
 // Closure that captures two variables from different outer scopes.
@@ -10,26 +10,26 @@ fun make_between(lo: i64, hi: i64) -> (i64) -> boolean {
 
 fun main() {
     // Each call to the closure advances the same captured counter.
-    let next = make_counter(0);
-    let r1 = next();
+    let next := make_counter(0);
+    let r1 := next();
     assert(r1 == 1);
-    let r2 = next();
+    let r2 := next();
     assert(r2 == 2);
     // Two independent counters do not share state.
-    let a = make_counter(10);
-    let b = make_counter(10);
+    let a := make_counter(10);
+    let b := make_counter(10);
     assert(a() == 11);
     assert(a() == 12);
     assert(b() == 11);
     // Closure capturing two variables.
-    let in_range = make_between(1, 10);
+    let in_range := make_between(1, 10);
     assert(in_range(5));
     assert(in_range(1));
     assert(in_range(10));
-    let out = in_range(11);
+    let out := in_range(11);
     assert(out == false);
     // Inline closure passed directly without binding.
-    let results = [1, 2, 3];
-    let sum_fn = (a: i64, b: i64) -> i64 { a + b };
+    let results := [1, 2, 3];
+    let sum_fn := (a: i64, b: i64) -> i64 { a + b };
     assert(sum_fn(results[0], results[2]) == 4);
 }

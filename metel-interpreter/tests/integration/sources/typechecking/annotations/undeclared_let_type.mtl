@@ -1,4 +1,4 @@
 // This used to blame the literal during unification rather than the missing name.
 fun main() {
-    let value: Missing = 1;
+    let value: Missing := 1;
 }

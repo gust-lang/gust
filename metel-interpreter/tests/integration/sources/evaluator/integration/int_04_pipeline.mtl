@@ -73,8 +73,8 @@ extend NumberList {
 extend NumberList: Iterable<i64> {
     fun next(&var self) -> Perhaps<i64> {
         if (self.pos < self.data.len()) {
-            let v = self.data[self.pos as u64];
-            self.pos = self.pos + 1;
+            let v := self.data[self.pos as u64];
+            self.pos := self.pos + 1;
             Perhaps::Some { value = v }
         } else {
             None
@@ -101,11 +101,11 @@ fun parse_number(t: Token) -> Result<Number, ParseError> {
 
 // cross-type match + as-cast (? cross-type deferred to #13)
 fun pipeline_step(s: String) -> Result<Number, AppError> {
-    let tok = match lex_token(s) {
+    let tok := match lex_token(s) {
         Result::Ok { value } => value,
         Result::Err { error } => { return Result::Err { error = error as AppError }; },
     };
-    let num = match parse_number(tok) {
+    let num := match parse_number(tok) {
         Result::Ok { value } => value,
         Result::Err { error } => { return Result::Err { error = error as AppError }; },
     };
@@ -116,13 +116,13 @@ fun pipeline_step(s: String) -> Result<Number, AppError> {
 
 fun main() {
     // Aspect methods: Transformable
-    let n5 = Number { raw = 5 };
+    let n5 := Number { raw = 5 };
     assert(n5.double() == 10);
     assert(n5.negate() == -5);
 
     // Aspect methods: Summarizable
     assert(n5.summary() == "Number(5)");
-    let n0 = Number { raw = 0 };
+    let n0 := Number { raw = 0 };
     assert(n0.summary() == "Number(0)");
 
     // to_string on i64
@@ -130,27 +130,27 @@ fun main() {
     assert(0.to_string() == "0");
 
     // Iterable<i64>: sum of [1,2,3,4,5]
-    let list = NumberList::new([1, 2, 3, 4, 5]);
+    let list := NumberList::new([1, 2, 3, 4, 5]);
     assert(list.len() == 5);
-    var total = 0;
+    var total := 0;
     for (x in list) { total += x; }
     assert(total == 15);
 
     // Empty NumberList: loop body never runs
-    var ran = false;
-    let empty_ints: i64[] = [];
-    for (_x in NumberList::new(empty_ints)) { ran = true; }
+    var ran := false;
+    let empty_ints: i64[] := [];
+    for (_x in NumberList::new(empty_ints)) { ran := true; }
     assert(!ran);
 
     // ? success: "1" → Token → Number(1)
-    let r1 = pipeline_step("1");
+    let r1 := pipeline_step("1");
     match r1 {
         Result::Ok  { value } => assert(value.raw == 1),
         Result::Err { error } => assert(false),
     };
 
     // ? success: "3" → Number(3); aspect methods work on result
-    let r3 = pipeline_step("3");
+    let r3 := pipeline_step("3");
     match r3 {
         Result::Ok  { value } => {
             assert(value.raw == 3);
@@ -161,35 +161,35 @@ fun main() {
     };
 
     // ? failure: LexError coerced to AppError
-    let bad = pipeline_step("X");
+    let bad := pipeline_step("X");
     match bad {
         Result::Ok  { value } => assert(false),
         Result::Err { error } => assert(error.msg == "lex: unknown token: X"),
     };
 
     // From<LexError> for AppError: direct conversion
-    let le = LexError { msg = "oops" };
-    let ae = le as AppError;
+    let le := LexError { msg = "oops" };
+    let ae := le as AppError;
     assert(ae.msg == "lex: oops");
 
     // From<ParseError> for AppError: direct conversion
-    let pe = ParseError { msg = "bad" };
-    let ae2 = pe as AppError;
+    let pe := ParseError { msg = "bad" };
+    let ae2 := pe as AppError;
     assert(ae2.msg == "parse: bad");
 
     // Iterable with doubles accumulated
-    let list2 = NumberList::new([10, 20, 30]);
-    var doubled_sum = 0;
+    let list2 := NumberList::new([10, 20, 30]);
+    var doubled_sum := 0;
     for (x in list2) { doubled_sum += x * 2; }
     assert(doubled_sum == 120);
 
     // built-in i64 as f64
-    let i: i64 = 9;
-    let f = i as f64;
+    let i: i64 := 9;
+    let f := i as f64;
     assert(f == 9.0);
 
     // built-in f64 as i64 (truncation)
-    let fl: f64 = 7.8;
-    let ii = fl as i64;
+    let fl: f64 := 7.8;
+    let ii := fl as i64;
     assert(ii == 7);
 }

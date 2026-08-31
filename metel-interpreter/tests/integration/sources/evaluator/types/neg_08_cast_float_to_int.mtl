@@ -1,5 +1,5 @@
 // f64 as i64 is valid via impl From<f64> for i64 (added in v0.4).
 fun main() {
-    let x = 3.9 as i64;
+    let x := 3.9 as i64;
     assert(x == 3);
 }

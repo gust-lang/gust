@@ -19,16 +19,16 @@ extend Fahrenheit: From<Celsius> {
 }
 
 fun main() {
-    let c = Celsius { degrees = 100.0 };
-    let f = c as Fahrenheit;
+    let c := Celsius { degrees = 100.0 };
+    let f := c as Fahrenheit;
     assert(f.degrees == 212.0);
 
     // Built-in From impls: i64 <-> f64
-    let n: i64 = 3;
-    let x = n as f64;
+    let n: i64 := 3;
+    let x := n as f64;
     assert(x == 3.0);
 
-    let y: f64 = 7.9;
-    let z = y as i64;
+    let y: f64 := 7.9;
+    let z := y as i64;
     assert(z == 7);
 }

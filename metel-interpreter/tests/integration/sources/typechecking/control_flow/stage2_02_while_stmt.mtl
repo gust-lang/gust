@@ -8,7 +8,7 @@ fun loop_while(b: boolean) {
 }
 
 fun while_with_computation(x: i64) {
-    let keep_going: boolean = x > 0;
+    let keep_going: boolean := x > 0;
     while (keep_going) {
         return;
     }

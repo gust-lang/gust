@@ -1,9 +1,9 @@
 fun main() {
-    let s = "original";
+    let s := "original";
     loop {
-        let moved = s;
-        let s = "replacement";
+        let moved := s;
+        let s := "replacement";
         break;
     }
-    let again = s;
+    let again := s;
 }

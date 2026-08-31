@@ -24,25 +24,25 @@ fun main() {
     assert(second("x", "y") == "y");
 
     // dup_pair at different types.
-    let p1 = dup_pair(42);
+    let p1 := dup_pair(42);
     assert(p1.0 == 42);
     assert(p1.1 == 42);
 
-    let p2 = dup_pair(true);
+    let p2 := dup_pair(true);
     assert(p2.0);
     assert(p2.1);
 
     // wrap at i64.
-    let w1 = wrap(3, 7);
+    let w1 := wrap(3, 7);
     assert(w1.0 == 3);
     assert(w1.1 == 7);
 
     // wrap at boolean.
-    let w2 = wrap(true, false);
+    let w2 := wrap(true, false);
     assert(w2.0);
     assert(!w2.1);
 
     // Chained: first(second(a,b), c).
-    let chained = first(second(1, 2), 99);
+    let chained := first(second(1, 2), 99);
     assert(chained == 2);
 }

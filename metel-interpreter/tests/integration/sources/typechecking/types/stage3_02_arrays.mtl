@@ -8,8 +8,8 @@ fun first(xs: i64[]) -> i64 {
     xs[0]
 }
 
-let nums: i64[] = [1, 2, 3];
-let bools: boolean[] = [true, false, true];
-let empty: i64[] = [];
-let elem: i64 = nums[0];
-let also: i64 = first(nums);
+let nums: i64[] := [1, 2, 3];
+let bools: boolean[] := [true, false, true];
+let empty: i64[] := [];
+let elem: i64 := nums[0];
+let also: i64 := first(nums);

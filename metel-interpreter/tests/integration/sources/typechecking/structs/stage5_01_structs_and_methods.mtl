@@ -15,23 +15,23 @@ extend Point {
     }
 
     fun scale(&var self, factor: f64) {
-        self.x = self.x * factor;
-        self.y = self.y * factor;
+        self.x := self.x * factor;
+        self.y := self.y * factor;
     }
 }
 
 // Struct instantiation
-let p = Point { x = 1.0, y = 2.0 };
+let p := Point { x = 1.0, y = 2.0 };
 
 // Field access
-let x: f64 = p.x;
+let x: f64 := p.x;
 
 // Method call with no extra args
-let s: f64 = p.sum();
+let s: f64 := p.sum();
 
 // Method call with args, result is a struct
-let q = p.translate(3.0, 4.0);
-let qs: f64 = q.sum();
+let q := p.translate(3.0, 4.0);
+let qs: f64 := q.sum();
 
 // Two-struct method
 struct Counter {
@@ -48,10 +48,10 @@ extend Counter {
     }
 
     fun reset(&var self) {
-        self.value = 0;
+        self.value := 0;
     }
 }
 
-let c = Counter { value = 5 };
-let v: i64 = c.get();
-let total: i64 = c.add(Counter { value = 10 });
+let c := Counter { value = 5 };
+let v: i64 := c.get();
+let total: i64 := c.add(Counter { value = 10 });

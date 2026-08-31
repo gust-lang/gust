@@ -26,5 +26,5 @@ fun negate(b: boolean) -> boolean {
     !b
 }
 
-let a = add(10, 32);
-let b = negate(false);
+let a := add(10, 32);
+let b := negate(false);

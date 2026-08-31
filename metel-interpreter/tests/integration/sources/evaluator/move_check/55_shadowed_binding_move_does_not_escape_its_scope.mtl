@@ -1,12 +1,12 @@
 fun main() {
-    let s = "original";
-    var i = 0;
+    let s := "original";
+    var i := 0;
     loop {
         i += 1;
-        let s = "shadow";
-        let moved = s;
+        let s := "shadow";
+        let moved := s;
         if (i == 2) { break; }
     }
-    let outer = s;
+    let outer := s;
     assert(outer == "original");
 }

@@ -7,16 +7,16 @@
 // Both branches must unify to the same type; that type is the result.
 
 fun max_int(a: i64, b: i64) -> i64 {
-    let result: i64 = if (a > b) { a } else { b };
+    let result: i64 := if (a > b) { a } else { b };
     result
 }
 
 fun to_int(b: boolean) -> i64 {
-    let result: i64 = if (b) { 1 } else { 0 };
+    let result: i64 := if (b) { 1 } else { 0 };
     result
 }
 
 fun if_expr_in_arithmetic(x: i64) -> i64 {
-    let sign: i64 = if (x >= 0) { 1 } else { 0 - 1 };
+    let sign: i64 := if (x >= 0) { 1 } else { 0 - 1 };
     sign
 }

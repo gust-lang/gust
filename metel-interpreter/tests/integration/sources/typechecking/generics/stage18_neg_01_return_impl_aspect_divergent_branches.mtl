@@ -35,5 +35,5 @@ fun bad(flag: boolean) -> extends Display {
 }
 
 fun main() {
-	let result = bad(true);
+	let result := bad(true);
 }

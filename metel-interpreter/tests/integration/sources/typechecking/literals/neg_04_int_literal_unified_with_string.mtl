@@ -1,5 +1,5 @@
 fun take_string(v: String) -> String { v }
 
 fun main() {
-    let _bad = take_string(42); // ERROR[T0001]
+    let _bad := take_string(42); // ERROR[T0001]
 }

@@ -1,2 +1,2 @@
-let x: i64 = 42;
-let bad = x[0];  // ERROR[T0001]
+let x: i64 := 42;
+let bad := x[0];  // ERROR[T0001]

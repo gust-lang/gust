@@ -254,7 +254,7 @@ extend List<T> {
 
     // Apply `f` to each element, collecting the results into a new list.
     public fun map<U>(&self, f: (T) -> U) -> List<U> {
-        var out: List<U> = List::new();
+        var out: List<U> := List::new();
         for (x in self.as_slice()) {
             out.push(f(x));
         }
@@ -262,7 +262,7 @@ extend List<T> {
     }
     // Keep only the elements for which `pred` holds.
     public fun filter(&self, pred: (T) -> boolean) -> List<T> {
-        var out: List<T> = List::new();
+        var out: List<T> := List::new();
         for (x in self.as_slice()) {
             if (pred(x)) {
                 out.push(x);
@@ -272,9 +272,9 @@ extend List<T> {
     }
     // Reduce the list to a single value, left to right.
     public fun fold<A>(&self, init: A, f: (A, T) -> A) -> A {
-        var acc = init;
+        var acc := init;
         for (x in self.as_slice()) {
-            acc = f(acc, x);
+            acc := f(acc, x);
         }
         acc
     }
@@ -289,7 +289,7 @@ extend List<T> {
     }
     // A new list with this list's elements followed by `other`'s.
     public fun concat(&self, other: &List<T>) -> List<T> {
-        var out: List<T> = List::new();
+        var out: List<T> := List::new();
         for (x in self.as_slice()) {
             out.push(x);
         }
@@ -439,14 +439,14 @@ extend String: Clone {
 
 extend<T: Display> T[]: Display {
     fun to_string(&self) -> String {
-        var out = "[";
-        var first = true;
+        var out := "[";
+        var first := true;
         for (item in self) {
             if (!first) {
-                out = out + ", ";
+                out := out + ", ";
             }
-            out = out + item.to_string();
-            first = false;
+            out := out + item.to_string();
+            first := false;
         }
         return out + "]";
     }
@@ -460,14 +460,14 @@ extend<T: Clone> T[]: Clone {
 
 extend<T: Eq> T[]: Eq {
     fun eq(&self, other: &Self) -> boolean {
-        var other_len = 0;
+        var other_len := 0;
         for (_ in other) {
             other_len += 1;
         }
         if (self.len() != other_len) {
             return false;
         }
-        var i = 0;
+        var i := 0;
         while (i < self.len()) {
             if (!__eq_array_item(self[i as u64], other[i as u64])) {
                 return false;

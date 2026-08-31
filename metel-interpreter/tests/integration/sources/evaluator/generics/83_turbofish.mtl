@@ -1,43 +1,43 @@
 fun identity<T>(x: T) -> T { x }
 fun first<A, B>(a: A, b: B) -> A { a }
 fun wrap<T>(x: T) -> List<T> {
-    var arr: List<T> = List::new();
+    var arr: List<T> := List::new();
     arr.push(x);
     arr
 }
 
 fun main() {
     // Basic turbofish — explicit type matches inferred type
-    let x = identity::<i64>(42);
+    let x := identity::<i64>(42);
     assert(x == 42);
 
-    let s = identity::<String>("hello");
+    let s := identity::<String>("hello");
     assert(s == "hello");
 
-    let b = identity::<boolean>(true);
+    let b := identity::<boolean>(true);
     assert(b);
 
     // Turbofish with two type parameters
-    let a = first::<i64, String>(10, "unused");
+    let a := first::<i64, String>(10, "unused");
     assert(a == 10);
 
-    let s2 = first::<String, i64>("kept", 99);
+    let s2 := first::<String, i64>("kept", 99);
     assert(s2 == "kept");
 
     // Turbofish with compound types
-    let t = identity::<(i64, boolean)>((7, false));
+    let t := identity::<(i64, boolean)>((7, false));
     assert(t.0 == 7);
     assert(t.1 == false);
 
     // Inference still works without turbofish
-    let y = identity(3.14);
+    let y := identity(3.14);
     assert(y == 3.14);
 
     // Nested turbofish calls
-    let inner = identity::<i64>(identity::<i64>(5));
+    let inner := identity::<i64>(identity::<i64>(5));
     assert(inner == 5);
 
     // Turbofish with List return type
-    let v = wrap::<i64>(99);
+    let v := wrap::<i64>(99);
     assert(v.len() == 1);
 }

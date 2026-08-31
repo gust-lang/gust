@@ -4,4 +4,4 @@ enum Choice {
     Value { value: i64 },
 }
 
-let choice: Choice = Choice::Value;
+let choice: Choice := Choice::Value;

@@ -3,7 +3,7 @@ aspect Merge {
 }
 
 fun merge_then_reuse_argument<T: Merge>(left: T, right: T) -> T {
-    let merged = left.merge(right);
+    let merged := left.merge(right);
     right
 }
 

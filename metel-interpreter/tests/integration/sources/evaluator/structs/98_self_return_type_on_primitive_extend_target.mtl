@@ -16,9 +16,9 @@ extend String {
 }
 
 fun main() {
-    let x: i64 = 5;
+    let x: i64 := 5;
     assert(x.identity() == 5);
 
-    let s = "hi";
+    let s := "hi";
     assert(s.identity() == "hi");
 }

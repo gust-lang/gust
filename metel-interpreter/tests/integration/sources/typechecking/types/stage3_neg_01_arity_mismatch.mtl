@@ -2,4 +2,4 @@ fun add(x: i64, y: i64) -> i64 {
     x + y
 }
 
-let bad = add(1, 2, 3);  // ERROR[T0004]
+let bad := add(1, 2, 3);  // ERROR[T0004]

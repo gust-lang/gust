@@ -1,5 +1,5 @@
 // loop breaks with mismatched types should fail.
-let x = loop {
+let x := loop {
     break 42;
     break "done"; // ERROR[T0001]
 };

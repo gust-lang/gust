@@ -1,25 +1,25 @@
 // Stage 6: closures.
 
 // Closure with explicit param and return type annotations
-let add = (x: i64, y: i64) -> i64 { x + y };
-let sum: i64 = add(3, 4);
+let add := (x: i64, y: i64) -> i64 { x + y };
+let sum: i64 := add(3, 4);
 
 // Closure with annotated params, inferred return type
-let double = (x: i64) -> { x * 2 };
-let d: i64 = double(5);
+let double := (x: i64) -> { x * 2 };
+let d: i64 := double(5);
 
 // Closure capturing an outer variable
-let factor: i64 = 3;
-let multiply = (x: i64) -> i64 { x * factor };
-let m: i64 = multiply(7);
+let factor: i64 := 3;
+let multiply := (x: i64) -> i64 { x * factor };
+let m: i64 := multiply(7);
 
 // Closure passed to a higher-order function
 fun apply(f: (i64) -> i64, x: i64) -> i64 {
     f(x)
 }
 
-let result: i64 = apply((n: i64) -> i64 { n + 1 }, 10);
+let result: i64 := apply((n: i64) -> i64 { n + 1 }, 10);
 
 // Closure returning a negated value
-let negate = (x: i64) -> i64 { -x };
-let neg: i64 = negate(5);
+let negate := (x: i64) -> i64 { -x };
+let neg: i64 := negate(5);

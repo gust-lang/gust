@@ -1,22 +1,22 @@
 // Creates a tuple of three closures that all operate on the same mutable reference
 // Returns: (increment_by_1, increment_by_2, get_current_value)
 fun get_closures(ptr: &var i64) {
-    let first_ptr: &&var i64 = &ptr;
-    let second_ptr: &&var i64 = &ptr;
-    let third_ptr: &&var i64 = &ptr;
+    let first_ptr: &&var i64 := &ptr;
+    let second_ptr: &&var i64 := &ptr;
+    let third_ptr: &&var i64 := &ptr;
 
     // First closure: increments the value at ptr by 1
-    let first_closure = () -> {
+    let first_closure := () -> {
         **first_ptr += 1;  // Write through ptr, adding 1 to the value it points to
     };
 
     // Second closure: increments the value at ptr by 2
-    let second_closure = () -> {
+    let second_closure := () -> {
         **second_ptr += 2;  // Write through ptr, adding 2 to the value it points to
     };
 
     // Third closure: reads and returns the current value at ptr
-    let third_closure = () -> i64 {
+    let third_closure := () -> i64 {
         return third_ptr;  // Type-directed copy: read the current value out of ptr
     };
 
@@ -31,14 +31,14 @@ fun get_closures(ptr: &var i64) {
 fun get_closure_sets(ptr: &var i64) {
 
     // Note: shared_value is declared but not used (leftover from refactoring?)
-    var shared_value = 0;
+    var shared_value := 0;
 
     // Create the first set of three closures, all capturing ptr
-    let first_closure_set = get_closures(ptr);
+    let first_closure_set := get_closures(ptr);
 
     // Create the second set of three closures, also capturing the same ptr
     // Both sets will operate on the same underlying value
-    let second_closure_set = get_closures(ptr);
+    let second_closure_set := get_closures(ptr);
 
     // Return both closure sets as a nested tuple
     (first_closure_set, second_closure_set)
@@ -48,11 +48,11 @@ fun get_closure_sets(ptr: &var i64) {
 fun main() {
 
     // Initialize a mutable integer that will be shared across all closures
-    var shared_value = 1;
+    var shared_value := 1;
 
     // Get two closure sets; both sets operate on the same shared_value
     // Structure: closure_sets.0 = first_closure_set, closure_sets.1 = second_closure_set
-    let closure_sets = get_closure_sets(&var shared_value);
+    let closure_sets := get_closure_sets(&var shared_value);
 
     // Execute the first closure from the second set: increments shared_value by 1
     // shared_value: 1 → 2

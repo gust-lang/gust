@@ -1,4 +1,4 @@
 fun main() {
-    let xs = ["x"];
-    let first = xs[0];
+    let xs := ["x"];
+    let first := xs[0];
 }

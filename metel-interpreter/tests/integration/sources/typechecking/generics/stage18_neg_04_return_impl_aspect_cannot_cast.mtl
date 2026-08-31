@@ -26,7 +26,7 @@ struct MyString {
 }
 
 fun main() {
-	let int_val = make_int();
+	let int_val := make_int();
 	// This should fail - cannot cast extends Display to unrelated type
-	let string_val: MyString = int_val as MyString; // ERROR[T0007]
+	let string_val: MyString := int_val as MyString; // ERROR[T0007]
 }

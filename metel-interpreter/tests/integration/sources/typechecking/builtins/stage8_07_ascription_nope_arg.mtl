@@ -14,8 +14,8 @@ fun first_or_default(items: i64[], fallback: Perhaps<i64>) -> i64 {
 }
 
 // Ascription form — type resolved inline, no extra name introduced.
-let _: i64 = first_or_default([1, 2, 3], None : Perhaps<i64>);
+let _: i64 := first_or_default([1, 2, 3], None : Perhaps<i64>);
 
 // Alternative: introduce a binding to carry the type annotation.
-let no_fallback: Perhaps<i64> = None;
-let _: i64 = first_or_default([1, 2, 3], no_fallback);
+let no_fallback: Perhaps<i64> := None;
+let _: i64 := first_or_default([1, 2, 3], no_fallback);

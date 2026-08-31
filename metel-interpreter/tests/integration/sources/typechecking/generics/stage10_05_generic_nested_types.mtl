@@ -11,16 +11,16 @@ fun snd<A, B>(pair: (A, B)) -> B { pair.1 }
 fun wrap_in_pair<T: Copy>(arr: T[]) -> (T, T) { (arr[0], arr[1]) }
 
 fun use_nested() -> boolean {
-    let arr = [10, 20, 30];
-    let n: i64 = array_first(arr);
+    let arr := [10, 20, 30];
+    let n: i64 := array_first(arr);
 
-    let p = (true, 42);
-    let b: boolean = fst(p);
-    let _i: i64 = snd(p);
+    let p := (true, 42);
+    let b: boolean := fst(p);
+    let _i: i64 := snd(p);
 
-    let nums = [1, 2];
-    let pair: (i64, i64) = wrap_in_pair(nums);
-    let _n2: i64 = pair.1;
+    let nums := [1, 2];
+    let pair: (i64, i64) := wrap_in_pair(nums);
+    let _n2: i64 := pair.1;
 
     b && (n == 10)
 }

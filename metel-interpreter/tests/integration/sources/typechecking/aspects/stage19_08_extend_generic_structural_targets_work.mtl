@@ -8,6 +8,6 @@ extend<T> T[]: Area {
 }
 
 fun main() {
-    let a: i64[] = [1, 2];
+    let a: i64[] := [1, 2];
     assert(a.area() == 7);
 }

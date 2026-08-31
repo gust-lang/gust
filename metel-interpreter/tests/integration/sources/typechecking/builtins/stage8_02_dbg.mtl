@@ -1,4 +1,4 @@
 // Stage 8: dbg builtin (generic print-and-return).
 
-let x: i64 = dbg(42);
-let b: boolean = dbg(true);
+let x: i64 := dbg(42);
+let b: boolean := dbg(true);

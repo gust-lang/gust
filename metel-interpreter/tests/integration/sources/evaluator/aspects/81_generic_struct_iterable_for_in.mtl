@@ -30,13 +30,13 @@ extend<T> Wrapper<T>: Iterable<T> {
         if (self.used) {
             return None;
         }
-        self.used = true;
+        self.used := true;
         return Perhaps::Some { value = self.value };
     }
 }
 
 fun main() {
-    let var w = Wrapper { value = 42, used = false };
+    let var w := Wrapper { value = 42, used = false };
     for (x in w) {
         assert(x + 1 == 43);
     }

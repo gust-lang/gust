@@ -3,12 +3,12 @@
 // reference value rather than copying it. Mutations through the captured reference
 // must be visible in the outer scope.
 fun main() {
-    var x = 10;
-    let p: &var i64 = &var x;
-    let p_ref: &&var i64 = &p;
+    var x := 10;
+    let p: &var i64 := &var x;
+    let p_ref: &&var i64 := &p;
 
-    let f = () -> () {
-        **p_ref = 42;
+    let f := () -> () {
+        **p_ref := 42;
     };
 
     f();

@@ -6,14 +6,14 @@ fun show_i32(x: i32) -> String {
 }
 
 fun main() {
-	let a: i8 = 1i8;
-	let b: i16 = 2i16;
-	let c: i32 = 3i32;
-	let d: u8 = 4u8;
-	let e: u16 = 5u16;
-	let f: u32 = 6u32;
-	let g: u64 = 7u64;
-	let h: f32 = 8.5f32;
+	let a: i8 := 1i8;
+	let b: i16 := 2i16;
+	let c: i32 := 3i32;
+	let d: u8 := 4u8;
+	let e: u16 := 5u16;
+	let f: u32 := 6u32;
+	let g: u64 := 7u64;
+	let h: f32 := 8.5f32;
 
 	println("${a} ${b} ${c} ${d} ${e} ${f} ${g} ${h}");
 	println(c.to_string());

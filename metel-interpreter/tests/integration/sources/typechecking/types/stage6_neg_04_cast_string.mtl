@@ -1,3 +1,3 @@
 // Casting a String to i64 should fail with T0007.
-let s: String = "hello";
-let n: i64 = s as i64; // ERROR[T0007]
+let s: String := "hello";
+let n: i64 := s as i64; // ERROR[T0007]

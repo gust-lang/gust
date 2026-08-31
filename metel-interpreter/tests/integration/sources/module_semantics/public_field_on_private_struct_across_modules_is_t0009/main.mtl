@@ -5,6 +5,6 @@
 // never names `Secret` itself.
 import token::make;
 fun main() -> i64 {
-    let s = make();
+    let s := make();
     return s.value;
 }

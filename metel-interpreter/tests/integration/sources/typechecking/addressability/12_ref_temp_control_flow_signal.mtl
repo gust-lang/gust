@@ -3,13 +3,13 @@
 // The evaluator must propagate the control-flow signal rather than force it through
 // Signal::into_value(), which previously panicked instead of returning normally.
 fun returns_seven() -> i64 {
-    let r = &(return 7);
+    let r := &(return 7);
     0
 }
 
 fun breaks_nine() -> i64 {
     loop {
-        let r = &(break 9);
+        let r := &(break 9);
     }
 }
 

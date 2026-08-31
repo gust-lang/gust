@@ -16,9 +16,9 @@ fun bucket_of(v: f32, bucket_size: f32) -> u8 {
 }
 
 fun mean_f32(values: List<f32>) -> f32 {
-    var sum: f32 = 0.0;
-    let values_ref = &values;
-    let sl = values_ref.as_slice();
+    var sum: f32 := 0.0;
+    let values_ref := &values;
+    let sl := values_ref.as_slice();
     for (v in sl) {
         sum += v;
     }
@@ -26,11 +26,11 @@ fun mean_f32(values: List<f32>) -> f32 {
 }
 
 fun sum_i32(values: List<i32>) -> i64 {
-    var total: i64 = 0;
-    let sl = values.as_slice();
+    var total: i64 := 0;
+    let sl := values.as_slice();
     for (v in sl) {
-        let wide: i64 = v as i64;
-        total = total + wide;
+        let wide: i64 := v as i64;
+        total := total + wide;
     }
     total
 }
@@ -38,17 +38,17 @@ fun sum_i32(values: List<i32>) -> i64 {
 fun main() {
     // Build samples from raw i16 sensor readings.
     // Polymorphic literals: all untyped literals adopt the context type.
-    let raw_readings: [i16; 5] = [10, 50, 100, 200, 255];
-    let factor: f32 = 0.5;
-    let bucket_size: f32 = 25.0;
+    let raw_readings: [i16; 5] := [10, 50, 100, 200, 255];
+    let factor: f32 := 0.5;
+    let bucket_size: f32 := 25.0;
 
-    var samples: List<Sample> = List::new();
-    let sl = raw_readings;
-    var idx: u64 = 0;
+    var samples: List<Sample> := List::new();
+    let sl := raw_readings;
+    var idx: u64 := 0;
     while (idx < 5) {
-        let r = sl[idx];
-        let s = scale(r, factor);
-        let b = bucket_of(s, bucket_size);
+        let r := sl[idx];
+        let s := scale(r, factor);
+        let b := bucket_of(s, bucket_size);
         samples.push(Sample { raw = r, scaled = s, bucket = b });
         idx += 1;
     }
@@ -82,41 +82,41 @@ fun main() {
     };
 
     // Collect scaled values into a List<f32> and compute mean.
-    var scaled_vals: List<f32> = List::new();
-    let s_slice = (&samples).as_slice();
+    var scaled_vals: List<f32> := List::new();
+    let s_slice := (&samples).as_slice();
     for (s in s_slice) {
         scaled_vals.push(s.scaled);
     }
-    let m = mean_f32(scaled_vals);
+    let m := mean_f32(scaled_vals);
     // mean of [5.0, 25.0, 50.0, 100.0, 127.5] = 307.5 / 5 = 61.5
     assert(m == 61.5f32);
 
     // Cross-sized cast chain: i16 → i32 → i64 → u8 (lower byte).
-    let wide: i32 = 255i16 as i32;
+    let wide: i32 := 255i16 as i32;
     assert(wide == 255i32);
-    let wider: i64 = wide as i64;
+    let wider: i64 := wide as i64;
     assert(wider == 255);
-    let narrow: u8 = wider as u8;
+    let narrow: u8 := wider as u8;
     assert(narrow == 255u8);
 
     // i32 accumulation via sum_i32.
-    var int_vals: List<i32> = List::new();
+    var int_vals: List<i32> := List::new();
     int_vals.push(10);
     int_vals.push(20);
     int_vals.push(30);
     int_vals.push(40);
-    let total = sum_i32(int_vals);
+    let total := sum_i32(int_vals);
     assert(total == 100);
 
     // Fixed-size array repeat construction and coercion to slice.
-    let zeros: [i32; 4] = [0; 4];
+    let zeros: [i32; 4] := [0; 4];
     assert(zeros.len() == 4);
-    let z_slice: i32[] = zeros;
+    let z_slice: i32[] := zeros;
     assert(z_slice[0] == 0i32);
     assert(z_slice[3] == 0i32);
 
     // Polymorphic literal flows through function return and struct field.
-    let s0: Sample = Sample { raw = 0, scaled = 0.0, bucket = 0 };
+    let s0: Sample := Sample { raw = 0, scaled = 0.0, bucket = 0 };
     assert(s0.raw    == 0i16);
     assert(s0.scaled == 0.0f32);
     assert(s0.bucket == 0u8);

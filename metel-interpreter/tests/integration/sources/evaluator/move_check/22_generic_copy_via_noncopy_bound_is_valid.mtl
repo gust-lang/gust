@@ -5,7 +5,7 @@ struct Witness<T> { }
 extend<T: Marker> Witness<T>: Copy;
 
 fun duplicate<T: Marker>(value: Witness<T>) -> Witness<T> {
-    let copied = value;
+    let copied := value;
     value
 }
 

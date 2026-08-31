@@ -8,4 +8,4 @@ fun first_or_default(items: i64[], fallback: Perhaps<i64>) -> i64 {
     }
 }
 
-let _: i64 = first_or_default([1, 2, 3], None);
+let _: i64 := first_or_default([1, 2, 3], None);

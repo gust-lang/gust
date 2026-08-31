@@ -1,1 +1,1 @@
-let bad = [1, true, 3];  // ERROR[T0001]
+let bad := [1, true, 3];  // ERROR[T0001]

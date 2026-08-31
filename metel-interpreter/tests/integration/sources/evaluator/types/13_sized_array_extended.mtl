@@ -1,38 +1,38 @@
 fun main() {
     // Empty sized array [T; 0] — len() returns 0.
-    let empty: [i64; 0] = [0; 0];
+    let empty: [i64; 0] := [0; 0];
     assert(empty.len() == 0);
 
     // Single-element sized array.
-    let single: [i64; 1] = [42];
+    let single: [i64; 1] := [42];
     assert(single[0] == 42);
 
     // Repeat with a non-trivial expression.
-    let computed: [i64; 3] = [2 + 3; 3];
+    let computed: [i64; 3] := [2 + 3; 3];
     assert(computed[0] == 5);
     assert(computed[1] == 5);
     assert(computed[2] == 5);
 
     // Mutation of a sized array element.
-    var arr: [i64; 3] = [1, 2, 3];
-    arr[1] = 99;
+    var arr: [i64; 3] := [1, 2, 3];
+    arr[1] := 99;
     assert(arr[0] == 1);
     assert(arr[1] == 99);
     assert(arr[2] == 3);
 
     // Coercion: [T; N] iterates via for-in (same as T[]).
-    let sized: [i64; 4] = [10, 20, 30, 40];
-    var dyn_sum = 0;
+    let sized: [i64; 4] := [10, 20, 30, 40];
+    var dyn_sum := 0;
     for (x in sized) {
         dyn_sum += x;
     }
     assert(dyn_sum == 100);
 
     // Pattern: ..rest is empty when only one element in the sized array.
-    let arr1: [i64; 1] = [42];
-    let rest_empty = match arr1 {
+    let arr1: [i64; 1] := [42];
+    let rest_empty := match arr1 {
         [head, ..rest] => {
-            var cnt = 0;
+            var cnt := 0;
             for (_ in rest) { cnt += 1; }
             head + cnt
         },
@@ -40,21 +40,21 @@ fun main() {
     assert(rest_empty == 42);
 
     // Pattern: ..rest collects remaining elements.
-    let arr2: [i64; 4] = [1, 2, 3, 4];
-    let rest_sum = match arr2 {
+    let arr2: [i64; 4] := [1, 2, 3, 4];
+    let rest_sum := match arr2 {
         [_a, _b, ..rest] => rest[0] + rest[1],
     };
     assert(rest_sum == 7);
 
     // Exact-count pattern: element bindings are correct.
-    let coords: [i64; 3] = [3, 4, 0];
-    let dist_sq = match coords {
+    let coords: [i64; 3] := [3, 4, 0];
+    let dist_sq := match coords {
         [x, y, _z] => x * x + y * y,
     };
     assert(dist_sq == 25);
 
     // for-in over a repeat-constructed sized array.
-    var total = 0;
+    var total := 0;
     for (v in [7; 5]) {
         total += v;
     }

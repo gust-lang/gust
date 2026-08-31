@@ -7,8 +7,8 @@ fun main() {
     assert(!(false || false));
     assert(false || true);
     // Short-circuit: RHS is skipped when the result is already determined.
-    let sc_and = false && (1 / 0 == 0);
+    let sc_and := false && (1 / 0 == 0);
     assert(!sc_and);
-    let sc_or = true || (1 / 0 == 0);
+    let sc_or := true || (1 / 0 == 0);
     assert(sc_or);
 }

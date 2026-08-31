@@ -1,5 +1,5 @@
 // TYPECHECK_ERROR[out of bounds]
 fun main() {
-    let t = (1, 2);
-    let _x = t.5;
+    let t := (1, 2);
+    let _x := t.5;
 }

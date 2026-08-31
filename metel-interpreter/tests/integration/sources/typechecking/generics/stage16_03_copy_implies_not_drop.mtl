@@ -41,10 +41,10 @@ fun via_copy<T: Copy>(x: T) -> T {
 }
 
 fun main() {
-    let b = Both { x = 1 };
-    let direct = needs_no_drop(b);
+    let b := Both { x = 1 };
+    let direct := needs_no_drop(b);
     assert(direct.x == 1);
 
-    let through_generic = via_copy(b);
+    let through_generic := via_copy(b);
     assert(through_generic.x == 1);
 }

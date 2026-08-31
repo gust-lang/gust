@@ -15,32 +15,32 @@ fun swap<A, B>(pair: (A, B)) -> (B, A) { (pair.1, pair.0) }
 
 fun main() {
     // array_first / array_second at i64.
-    let ints = [10, 20, 30];
+    let ints := [10, 20, 30];
     assert(array_first(ints) == 10);
     assert(array_second(ints) == 20);
 
     // array_first at boolean.
-    let bools = [false, true];
+    let bools := [false, true];
     assert(!array_first(bools));
     assert(array_second(bools));
 
     // fst / snd on (i64, boolean).
-    let p1 = (42, true);
+    let p1 := (42, true);
     assert(fst(p1) == 42);
     assert(snd(p1));
 
     // fst / snd on (boolean, i64).
-    let p2 = (false, 99);
+    let p2 := (false, 99);
     assert(!fst(p2));
     assert(snd(p2) == 99);
 
     // swap (i64, boolean) → (boolean, i64).
-    let s1 = swap((7, true));
+    let s1 := swap((7, true));
     assert(s1.0);
     assert(s1.1 == 7);
 
     // swap (String, i64).
-    let s2 = swap(("hi", 5));
+    let s2 := swap(("hi", 5));
     assert(s2.0 == 5);
     assert(s2.1 == "hi");
 }

@@ -4,6 +4,6 @@
 fun show<T: Display>(x: T) -> String { x.to_string() }
 
 fun main() {
-    let r = { x = 1 };
-    let s = show(r);
+    let r := { x = 1 };
+    let s := show(r);
 }

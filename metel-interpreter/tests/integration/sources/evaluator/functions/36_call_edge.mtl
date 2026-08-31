@@ -29,10 +29,10 @@ fun main() {
     assert(sign(-3) == -1);
     assert(sign(0)  ==  0);
     // Calling a builtin from a user function.
-    let s = greet("world");
+    let s := greet("world");
     assert(s == "hello world");
     // Call through a variable binding.
-    let f = double;
-    let r = f(21);
+    let f := double;
+    let r := f(21);
     assert(r == 42);
 }

@@ -3,5 +3,5 @@
 // An if without an else has type Unit; the then-branch must also produce Unit.
 // Using a non-Unit value (like i64) in the then-branch with no else is a type error.
 
-let x: i64 = 5;
+let x: i64 := 5;
 if (x > 0) { x }; // ERROR[T0001]

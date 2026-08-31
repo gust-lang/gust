@@ -1,26 +1,26 @@
 fun main() {
     // i8 arithmetic
-    let a: i8 = 10i8 + 20i8;
+    let a: i8 := 10i8 + 20i8;
     assert(a == 30i8);
 
-    let b: i8 = 50i8 - 20i8;
+    let b: i8 := 50i8 - 20i8;
     assert(b == 30i8);
 
-    let c: i8 = 6i8 * 5i8;
+    let c: i8 := 6i8 * 5i8;
     assert(c == 30i8);
 
-    let d: i8 = 60i8 / 2i8;
+    let d: i8 := 60i8 / 2i8;
     assert(d == 30i8);
 
-    let e: i8 = 32i8 % 10i8;
+    let e: i8 := 32i8 % 10i8;
     assert(e == 2i8);
 
     // u32 arithmetic
-    let x: u32 = 1000000u32 + 500000u32;
+    let x: u32 := 1000000u32 + 500000u32;
     assert(x == 1500000u32);
 
     // u64 arithmetic
-    let y: u64 = 9000000000000000000u64 + 1u64;
+    let y: u64 := 9000000000000000000u64 + 1u64;
     assert(y == 9000000000000000001u64);
 
     // Comparison

@@ -3,6 +3,6 @@ fun need_copy<T: Copy>(x: T) -> T {
 }
 
 fun main() {
-    let seed: [String; 2] = ["a", "b"];
-    let bad = need_copy(seed);
+    let seed: [String; 2] := ["a", "b"];
+    let bad := need_copy(seed);
 }

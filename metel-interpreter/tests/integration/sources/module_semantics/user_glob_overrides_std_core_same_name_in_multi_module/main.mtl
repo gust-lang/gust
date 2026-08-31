@@ -1,5 +1,5 @@
 import mylib::*;         
 fun main() {         
-    let result = print(41);         
+    let result := print(41);         
     assert(result == 42);         
 }

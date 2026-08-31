@@ -12,17 +12,17 @@ fun sum3(xs: [i64; 3]) -> i64 {
     xs[0] + xs[1] + xs[2]
 }
 
-let zeros: [i64; 3] = [0; 3];
-let ones:  [i64; 3] = [1, 2, 3];
-let result: i64 = sum3(ones);
+let zeros: [i64; 3] := [0; 3];
+let ones:  [i64; 3] := [1, 2, 3];
+let result: i64 := sum3(ones);
 
 // Coercion: [T; N] coerces to T[] when passed as T[] argument.
 fun first(xs: i64[]) -> i64 { xs[0] }
-let coerced: i64 = first(zeros);
+let coerced: i64 := first(zeros);
 
 // For-in over sized array.
 fun total(xs: [i64; 3]) -> i64 {
-    var acc = 0;
+    var acc := 0;
     for (x in xs) {
         acc += x;
     }
@@ -31,4 +31,4 @@ fun total(xs: [i64; 3]) -> i64 {
 
 // len() is available on sized arrays.
 fun sized_len(xs: [i64; 3]) -> i64 { xs.len() }
-let _n: i64 = sized_len(ones);
+let _n: i64 := sized_len(ones);

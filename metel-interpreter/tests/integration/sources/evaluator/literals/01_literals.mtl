@@ -1,15 +1,15 @@
-let global_a = 7;
+let global_a := 7;
 
 fun main() {
-    let i = 42;
+    let i := 42;
     assert(i == 42);
-    let f = 3.14;
+    let f := 3.14;
     assert(f == 3.14);
     assert(true);
     assert(!false);
-    let s = "hello";
+    let s := "hello";
     assert(s == "hello");
-    let _u = ();
+    let _u := ();
     // Identifier lookup: top-level let is in scope inside main.
     assert(global_a == 7);
 }

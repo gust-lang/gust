@@ -17,21 +17,21 @@ fun main() {
     assert("hi".to_string() == "hi");
 
     // Numeric From conversions via casts (int → int, int → float, float → int)
-    let a: i8 = 7i64 as i8;
+    let a: i8 := 7i64 as i8;
     assert(a == 7i8);
-    let b: u64 = 7i8 as u64;
+    let b: u64 := 7i8 as u64;
     assert(b == 7u64);
-    let c: f32 = 2i64 as f32;
-    let d: i64 = c as i64;
+    let c: f32 := 2i64 as f32;
+    let d: i64 := c as i64;
     assert(d == 2);
-    let e: f64 = 3i32 as f64;
-    let f: i32 = e as i32;
+    let e: f64 := 3i32 as f64;
+    let f: i32 := e as i32;
     assert(f == 3);
 
     // Char ↔ u32 (Unicode code point)
-    let code: u32 = 'Z' as u32;
+    let code: u32 := 'Z' as u32;
     assert(code == 90u32);
-    let ch: Char = 90u32 as Char;
+    let ch: Char := 90u32 as Char;
     assert(ch == 'Z');
 
     println("ok");

@@ -1,6 +1,6 @@
 fun main() {
     // main() is defined before helper(), but hoisting makes it available.
-    let x = 1 + 1;
+    let x := 1 + 1;
     assert(x == 2);
 }
 fun helper() { }

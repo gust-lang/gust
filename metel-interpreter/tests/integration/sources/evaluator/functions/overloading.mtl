@@ -6,8 +6,8 @@ fun print(x: i64) {
 	println("i64: ${x}")
 }
 fun main(){
-	let x = 1i32;
-	let y = 1i64;
+	let x := 1i32;
+	let y := 1i64;
 	print(x);
 	print(y);
 }

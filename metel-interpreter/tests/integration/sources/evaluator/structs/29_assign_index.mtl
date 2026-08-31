@@ -1,7 +1,7 @@
 fun main() {
     // Plain index assignment.
-    var arr: [i64; 3] = [10, 20, 30];
-    arr[1] = 99;
+    var arr: [i64; 3] := [10, 20, 30];
+    arr[1] := 99;
     assert(arr[0] == 10);
     assert(arr[1] == 99);
     assert(arr[2] == 30);
@@ -11,7 +11,7 @@ fun main() {
     arr[2] *= 2;
     assert(arr[2] == 60);
     // Assignment using a variable as the index.
-    let i = 1;
-    arr[i as u64] = 0;
+    let i := 1;
+    arr[i as u64] := 0;
     assert(arr[1] == 0);
 }

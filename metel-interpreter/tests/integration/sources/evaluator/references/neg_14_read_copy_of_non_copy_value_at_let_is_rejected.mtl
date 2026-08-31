@@ -5,7 +5,7 @@
 struct NotCopy { v: String }
 
 fun main() {
-    let owned = NotCopy { v = "x" };
-    let r: &NotCopy = &owned;
-    let copy: NotCopy = r;
+    let owned := NotCopy { v = "x" };
+    let r: &NotCopy := &owned;
+    let copy: NotCopy := r;
 }

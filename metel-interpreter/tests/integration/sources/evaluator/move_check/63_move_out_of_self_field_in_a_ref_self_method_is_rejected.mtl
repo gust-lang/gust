@@ -5,12 +5,12 @@ struct Item { name: Name, count: i64 }
 
 extend Item {
     fun peek(&self) -> String {
-        let v = self.name.value;
+        let v := self.name.value;
         v
     }
 }
 
 fun main() {
-    let item = Item { name = Name { value = "n" }, count = 1 };
-    let _ = item.peek();
+    let item := Item { name = Name { value = "n" }, count = 1 };
+    let _ := item.peek();
 }

@@ -10,5 +10,5 @@ fun plus_one(x: i64) -> i64 {
 }
 
 fun main() {
-    let _ = show(plus_one); // ERROR[T0012]
+    let _ := show(plus_one); // ERROR[T0012]
 }

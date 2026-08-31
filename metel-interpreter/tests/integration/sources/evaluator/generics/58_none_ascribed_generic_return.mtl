@@ -6,8 +6,8 @@ fun maybe_head<T: Copy>(items: T[]) {
 }
 
 fun main() {
-    let present = maybe_head([1, 2, 3]);
-    let empty = maybe_head([] : i64[]);
+    let present := maybe_head([1, 2, 3]);
+    let empty := maybe_head([] : i64[]);
 
     match present {
         Perhaps::Some { value } => assert(value == 1),

@@ -4,6 +4,6 @@
 fun f() -> i64 { return 41; }
 
 fun main() {
-    let p: &i64 = &f();
+    let p: &i64 := &f();
     assert(*p == 41);
 }

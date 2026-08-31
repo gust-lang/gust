@@ -14,7 +14,7 @@ fun main() {
     assert("a" < "b");
 
     // literal defaulting against an annotated binding
-    let n: u8 = 7;
+    let n: u8 := 7;
     assert(n == 7);
     assert(n + 1 == 8);
 }

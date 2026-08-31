@@ -1,6 +1,6 @@
 fun main() {
-    let values = [1, 2, 3];
-    var total = 0;
+    let values := [1, 2, 3];
+    var total := 0;
     for (var item in values) {
         item += 1;
         total += item;

@@ -47,7 +47,7 @@ extend Pair<i64, f64> {
 
     // cast first to f64 for arithmetic
     fun sum_as_float(self) -> f64 {
-        let a_float: f64 = self.first as f64;
+        let a_float: f64 := self.first as f64;
         return a_float + self.second;
     }
 }
@@ -68,38 +68,38 @@ fun clamp(value: f64, lo: f64, hi: f64) -> f64 {
 
 fun main() {
     // --- i64 -> f64 cast ---
-    let i = 7;
-    let f: f64 = i as f64;
+    let i := 7;
+    let f: f64 := i as f64;
     println(float_to_string(f));          // 7.0
 
     // --- f64 -> i64 cast (truncates toward zero) ---
-    let pi: f64 = 3.99;
-    let truncated: i64 = pi as i64;
+    let pi: f64 := 3.99;
+    let truncated: i64 := pi as i64;
     println(int_to_string(truncated));    // 3
 
-    let neg: f64 = -2.7;
-    let neg_int: i64 = neg as i64;
+    let neg: f64 := -2.7;
+    let neg_int: i64 := neg as i64;
     println(int_to_string(neg_int));      // -2  (truncates toward zero)
 
     // --- as used in arithmetic ---
-    let count = 3;
-    let total: f64 = 10.0;
-    let avg = total / (count as f64);
+    let count := 3;
+    let total: f64 := 10.0;
+    let avg := total / (count as f64);
     println(float_to_string(avg));        // 3.3333...
 
     // --- generic Box ---
-    let bi = Box::new(42);
-    let bs = Box::new("hello");
+    let bi := Box::new(42);
+    let bs := Box::new("hello");
     show(bi);    // Box(42)
     show(bs);    // Box(hello)
 
     // --- Pair with cast in method ---
-    let p = Pair::new(3, 1.5);
+    let p := Pair::new(3, 1.5);
     println(float_to_string(p.sum_as_float()));   // 4.5
 
     // --- swap generic pair (Pair<String, i64>) ---
-    let sp: Pair<String, i64> = Pair { first = "world", second = 99 };
-    let swapped = swap(sp);
+    let sp: Pair<String, i64> := Pair { first = "world", second = 99 };
+    let swapped := swap(sp);
     println(int_to_string(swapped.first));   // 99
     println(swapped.second);                 // world
 

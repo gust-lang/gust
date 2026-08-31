@@ -21,4 +21,4 @@ fun is_nonzero(n: i64) -> boolean {
     n > 0
 }
 
-let result = classify(5);
+let result := classify(5);

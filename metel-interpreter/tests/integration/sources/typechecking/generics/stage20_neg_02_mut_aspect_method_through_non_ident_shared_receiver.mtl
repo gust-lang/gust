@@ -8,7 +8,7 @@ struct C {
 
 extend C: Bump {
     fun bump(&var self) {
-        self.v = self.v + 1;
+        self.v := self.v + 1;
     }
 }
 
@@ -20,6 +20,6 @@ fun sneak<T: Bump>(pair: (&T, i64)) {
 }
 
 fun main() {
-    var c = C { v = 0 };
+    var c := C { v = 0 };
     sneak((&c, 1));
 }

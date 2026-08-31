@@ -14,20 +14,20 @@ aspect Container {
 struct Box1 { v: i64 }
 
 extend Box1: Container {
-    type Item = i64;
+    type Item := i64;
     fun get(&self) -> i64 {
-        let x: Self::Item = self.v;
+        let x: Self::Item := self.v;
         return x;
     }
 }
 
 fun unwrap<T: Container>(c: &T) -> i64 {
-    let x: T::Item = c.get();
+    let x: T::Item := c.get();
     return x;
 }
 
 fun main() {
-    let b = Box1 { v = 7 };
+    let b := Box1 { v = 7 };
     assert(b.get() == 7);
     assert(unwrap(&b) == 7);
 }

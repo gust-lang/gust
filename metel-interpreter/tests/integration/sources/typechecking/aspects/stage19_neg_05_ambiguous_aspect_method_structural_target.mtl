@@ -27,6 +27,6 @@ extend<T: Clone> T[]: Bar { // ERROR[T0013]
 }
 
 fun main() {
-    let a: i64[] = [1, 2, 3];
+    let a: i64[] := [1, 2, 3];
     println(a.describe());
 }

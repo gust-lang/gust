@@ -1,6 +1,6 @@
 // Exact-count pattern [a, b] on a [i64; 3] scrutinee has the wrong element count.
 // The constraint [i64; 3] ~ [i64; 2] fails, leaving the match non-exhaustive.
 fun main() {
-    let sized: [i64; 3] = [1, 2, 3];
-    let _ = match sized { [a, b] => a + b, };  // ERROR[T0008]
+    let sized: [i64; 3] := [1, 2, 3];
+    let _ := match sized { [a, b] => a + b, };  // ERROR[T0008]
 }

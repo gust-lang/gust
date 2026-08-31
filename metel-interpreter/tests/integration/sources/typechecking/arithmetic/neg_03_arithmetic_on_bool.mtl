@@ -1,4 +1,4 @@
 // Negative test: arithmetic operator on non-numeric type (T0005)
 // boolean is not a valid operand for arithmetic.
 
-let x = true + false; // ERROR[T0005]
+let x := true + false; // ERROR[T0005]

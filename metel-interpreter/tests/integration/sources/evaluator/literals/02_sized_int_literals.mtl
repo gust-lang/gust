@@ -1,11 +1,11 @@
 fun main() {
-    let a: i8  = 42i8;
-    let b: i16 = 1000i16;
-    let c: i32 = 100000i32;
-    let d: u8  = 255u8;
-    let e: u16 = 65535u16;
-    let f: u32 = 4294967295u32;
-    let g: u64 = 18446744073709551615u64;
+    let a: i8  := 42i8;
+    let b: i16 := 1000i16;
+    let c: i32 := 100000i32;
+    let d: u8  := 255u8;
+    let e: u16 := 65535u16;
+    let f: u32 := 4294967295u32;
+    let g: u64 := 18446744073709551615u64;
 
     assert(a == 42i8);
     assert(b == 1000i16);

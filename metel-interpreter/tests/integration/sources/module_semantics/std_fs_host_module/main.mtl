@@ -17,7 +17,7 @@ fun main() {
     assert(read_to_string("/tmp/metel_fs_fixture_x7q2/note.txt").unwrap_or("") == "hello world");
 
     // read_dir returns the single entry name
-    let entries = read_dir("/tmp/metel_fs_fixture_x7q2").unwrap_or([]);
+    let entries := read_dir("/tmp/metel_fs_fixture_x7q2").unwrap_or([]);
     assert(entries.len() == 1);
     assert(entries[0] == "note.txt");
 

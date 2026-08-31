@@ -470,7 +470,7 @@ mod tests {
     fn resolves_top_level_call_to_its_symbol_id() {
         let graph = single_module_graph(
             "fun helper() -> i64 { 1 }\n\
-             fun main() { let x = 1; helper(); }",
+             fun main() { let x := 1; helper(); }",
         );
         let names = resolve(&graph).unwrap();
         let helper_id = names.symbols[&(vec![], "helper".to_string())];
@@ -488,7 +488,7 @@ mod tests {
     fn local_binding_shadows_top_level_declaration() {
         let graph = single_module_graph(
             "fun foo() -> i64 { 1 }\n\
-             fun main() { let foo = 2; foo; }",
+             fun main() { let foo := 2; foo; }",
         );
         let names = resolve(&graph).unwrap();
         let foo_id = names.symbols[&(vec![], "foo".to_string())];
@@ -510,7 +510,7 @@ mod tests {
         let graph = single_module_graph(
             "fun print(x: i64) {}\n\
              fun print(x: String) {}\n\
-             fun main() { let f = print; }",
+             fun main() { let f := print; }",
         );
         let names = resolve(&graph).unwrap();
         let stale_id = names.symbols[&(vec![], "print".to_string())];

@@ -26,7 +26,7 @@ fun take_display(d: extends Display) -> String {
 }
 
 fun main() {
-	let int_val = make_int();
+	let int_val := make_int();
 	// Pass the opaque return to a function with extends Display parameter
-	let result = take_display(int_val);
+	let result := take_display(int_val);
 }

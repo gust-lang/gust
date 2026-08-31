@@ -4,4 +4,4 @@ struct Pair {
     left: i64,
 }
 
-let pair: Pair = Pair;
+let pair: Pair := Pair;

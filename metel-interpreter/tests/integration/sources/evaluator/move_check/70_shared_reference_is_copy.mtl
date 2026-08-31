@@ -5,8 +5,8 @@
 fun show(r: &i64) -> i64 { *r }
 
 fun main() {
-    let x = 5;
-    let r = &x;
+    let x := 5;
+    let r := &x;
     assert(show(r) == 5);
     assert(show(r) == 5);
 }

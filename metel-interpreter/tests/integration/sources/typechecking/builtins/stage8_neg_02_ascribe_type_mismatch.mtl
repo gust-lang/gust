@@ -1,4 +1,4 @@
 // Stage 8 negative: ascription with incompatible type is a type error.
 // `1 : f64` is an error — use `1 as f64` to convert.
 
-let z: f64 = 1 : f64; // ERROR[T0001]
+let z: f64 := 1 : f64; // ERROR[T0001]

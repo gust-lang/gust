@@ -1,6 +1,6 @@
 // match arms with incompatible types should fail.
-let x: i64 = 42;
-let result = match x {
+let x: i64 := 42;
+let result := match x {
     0 => "zero",
     _ => 42, // ERROR[T0001]
 };

@@ -12,8 +12,8 @@ extend Counter {
 }
 
 fun main() {
-    let original = Counter { value = 0 };
-    let next = original.incremented();
+    let original := Counter { value = 0 };
+    let next := original.incremented();
     assert(original.value == 0);
     assert(next.value == 1);
 }

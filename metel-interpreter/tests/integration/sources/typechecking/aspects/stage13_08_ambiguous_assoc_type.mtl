@@ -14,11 +14,11 @@ struct Wrapper {
 }
 
 extend Wrapper: A {
-    type Item = i64;
+    type Item := i64;
 }
 
 extend Wrapper: B {
-    type Item = i64;
+    type Item := i64;
 }
 
 fun use_item<T: A + B>(x: T) -> T::Item { // ERROR[T0013]
@@ -26,6 +26,6 @@ fun use_item<T: A + B>(x: T) -> T::Item { // ERROR[T0013]
 }
 
 fun main() {
-    let w = Wrapper { value = 42 };
-    let _: i64 = use_item(w);
+    let w := Wrapper { value = 42 };
+    let _: i64 := use_item(w);
 }

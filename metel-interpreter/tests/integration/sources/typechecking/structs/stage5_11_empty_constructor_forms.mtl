@@ -4,7 +4,7 @@ enum Flag {
     On {},
 }
 
-let _: Empty = Empty;
-let _: Empty = Empty {};
-let _: Flag = Flag::On;
-let _: Flag = Flag::On {};
+let _: Empty := Empty;
+let _: Empty := Empty {};
+let _: Flag := Flag::On;
+let _: Flag := Flag::On {};

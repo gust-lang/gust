@@ -43,5 +43,5 @@ fun several(a: extends Printable[], b: extends Printable, c: (extends Printable[
 
 // Let annotation.
 fun in_let_annotation(xs: Label[]) {
-    let ys: extends Printable[] = xs;
+    let ys: extends Printable[] := xs;
 }

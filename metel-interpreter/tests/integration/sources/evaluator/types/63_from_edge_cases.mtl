@@ -63,77 +63,77 @@ extend Fahrenheit: From<Celsius> {
 }
 
 fun approx(a: f64, b: f64) -> boolean {
-    let d = a - b;
-    let abs_d = if (d < 0.0) { 0.0 - d } else { d };
+    let d := a - b;
+    let abs_d := if (d < 0.0) { 0.0 - d } else { d };
     abs_d < 0.01
 }
 
 fun main() {
     // Zero value
-    let zero_m = Meters { value = 0.0 };
-    let zero_f = zero_m as Feet;
+    let zero_m := Meters { value = 0.0 };
+    let zero_f := zero_m as Feet;
     assert(zero_f.value == 0.0);
 
     // Large value
-    let km = Meters { value = 1000.0 };
-    let km_ft = km as Feet;
+    let km := Meters { value = 1000.0 };
+    let km_ft := km as Feet;
     assert(approx(km_ft.value, 3280.84));
 
     // Negative value
-    let neg = Meters { value = -1.0 };
-    let neg_ft = neg as Feet;
+    let neg := Meters { value = -1.0 };
+    let neg_ft := neg as Feet;
     assert(approx(neg_ft.value, -3.28084));
 
     // Multiple From targets from same source type
-    let c100 = Celsius { degrees = 100.0 };
-    let k100 = c100 as Kelvin;
+    let c100 := Celsius { degrees = 100.0 };
+    let k100 := c100 as Kelvin;
     assert(approx(k100.degrees, 373.15));
-    let f100 = c100 as Fahrenheit;
+    let f100 := c100 as Fahrenheit;
     assert(f100.degrees == 212.0);
 
     // Chained casts: Meters → Feet → Inches
-    let one_m = Meters { value = 1.0 };
-    let ft = one_m as Feet;
-    let in_ = ft as Inches;
+    let one_m := Meters { value = 1.0 };
+    let ft := one_m as Feet;
+    let in_ := ft as Inches;
     assert(approx(in_.value, 39.37)); // 1m ≈ 39.37 inches
 
     // Round-trip: Meters → Feet → Meters
-    let orig = Meters { value = 5.0 };
-    let via_ft = orig as Feet;
-    let back = via_ft as Meters;
+    let orig := Meters { value = 5.0 };
+    let via_ft := orig as Feet;
+    let back := via_ft as Meters;
     assert(approx(back.value, 5.0));
 
     // Round-trip: Celsius → Kelvin → Celsius
-    let c37 = Celsius { degrees = 37.0 };
-    let k37 = c37 as Kelvin;
+    let c37 := Celsius { degrees = 37.0 };
+    let k37 := c37 as Kelvin;
     assert(approx(k37.degrees, 310.15));
-    let back_c = k37 as Celsius;
+    let back_c := k37 as Celsius;
     assert(approx(back_c.degrees, 37.0));
 
     // absolute zero: 0 K → Celsius
-    let abs_zero = Kelvin { degrees = 0.0 };
-    let abs_c = abs_zero as Celsius;
+    let abs_zero := Kelvin { degrees = 0.0 };
+    let abs_c := abs_zero as Celsius;
     assert(approx(abs_c.degrees, -273.15));
 
     // built-in i64 as f64: exact
-    let i0: i64 = 0;
+    let i0: i64 := 0;
     assert((i0 as f64) == 0.0);
-    let i1: i64 = 1;
+    let i1: i64 := 1;
     assert((i1 as f64) == 1.0);
-    let ineg: i64 = -5;
+    let ineg: i64 := -5;
     assert((ineg as f64) == -5.0);
-    let big: i64 = 1000000;
+    let big: i64 := 1000000;
     assert((big as f64) == 1000000.0);
 
     // built-in f64 as i64: truncation toward zero
-    let f3_9: f64 = 3.9;
+    let f3_9: f64 := 3.9;
     assert((f3_9 as i64) == 3);
-    let f3_1: f64 = 3.1;
+    let f3_1: f64 := 3.1;
     assert((f3_1 as i64) == 3);
-    let fexact: f64 = 5.0;
+    let fexact: f64 := 5.0;
     assert((fexact as i64) == 5);
-    let fneg: f64 = -2.7;
+    let fneg: f64 := -2.7;
     assert((fneg as i64) == -2); // truncation toward zero
-    let f0: f64 = 0.0;
+    let f0: f64 := 0.0;
     assert((f0 as i64) == 0);
 }

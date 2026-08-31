@@ -10,27 +10,27 @@ fun make_point(x: i64, y: i64) -> Point {
 
 fun main() {
     // Basic shorthand: both fields.
-    let x = 3;
-    let y = 7;
-    let p = Point { x, y };
+    let x := 3;
+    let y := 7;
+    let p := Point { x, y };
     assert(p.x == 3);
     assert(p.y == 7);
 
     // Mixed: shorthand and explicit.
-    let x2 = 10;
-    let p2 = Point { x = x2, y = 20 };
+    let x2 := 10;
+    let p2 := Point { x = x2, y = 20 };
     assert(p2.x == 10);
     assert(p2.y == 20);
 
     // Shorthand via function that uses it internally.
-    let p3 = make_point(5, 6);
+    let p3 := make_point(5, 6);
     assert(p3.x == 5);
     assert(p3.y == 6);
 
     // String field.
-    let name = "hello";
-    let value = 42;
-    let n = Named { name, value };
+    let name := "hello";
+    let value := 42;
+    let n := Named { name, value };
     assert(n.value == 42);
     assert(n.name.len() == 5);
 }

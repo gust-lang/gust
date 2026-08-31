@@ -6,32 +6,32 @@ enum Shape {
     Rectangle { width: f64, height: f64 },
 }
 
-let s: Shape = Shape::Circle { radius = 3.0 };
+let s: Shape := Shape::Circle { radius = 3.0 };
 
 // Block arm with a local binding and computation.
-let area: f64 = match s {
+let area: f64 := match s {
     Shape::Circle { radius } => {
-        let r = radius;
+        let r := radius;
         r * r
     },
     Shape::Rectangle { width, height } => width * height,
 };
 
 // Block arm producing unit (no tail expression).
-let msg: Perhaps<i64> = Perhaps::Some { value = 1 };
+let msg: Perhaps<i64> := Perhaps::Some { value = 1 };
 match msg {
     Perhaps::Some { value } => {
-        let v = value;
+        let v := value;
     },
     None => {},
 };
 
 // Mixed: one arm is a bare expr, one is a block.
-let ok: Result<i64, String> = Result::Ok { value = 5 };
-let n: i64 = match ok {
+let ok: Result<i64, String> := Result::Ok { value = 5 };
+let n: i64 := match ok {
     Result::Ok { value } => value,
     Result::Err { error } => {
-        let fallback = 0;
+        let fallback := 0;
         fallback
     },
 };

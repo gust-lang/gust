@@ -14,8 +14,8 @@ fun main() {
     assert(first("a", "b") == "a");
 
     // apply passes a closure through the generic pipeline
-    let double = (x: i64) -> i64 { x * 2 };
+    let double := (x: i64) -> i64 { x * 2 };
     assert(apply(double, 5) == 10);
-    let double2 = (x: i64) -> i64 { x * 2 };
+    let double2 := (x: i64) -> i64 { x * 2 };
     assert(apply(double2, 0) == 0);
 }

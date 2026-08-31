@@ -34,9 +34,9 @@ extend Fighter {
 
     // Deals `raw` damage reduced by self.defense, minimum 1.
     fun take_damage(&self, raw: i64) -> Fighter {
-        let reduced = raw - self.defense;
-        let dmg     = if (reduced > 1) { reduced } else { 1 };
-        let new_hp  = if (self.hp - dmg > 0) { self.hp - dmg } else { 0 };
+        let reduced := raw - self.defense;
+        let dmg     := if (reduced > 1) { reduced } else { 1 };
+        let new_hp  := if (self.hp - dmg > 0) { self.hp - dmg } else { 0 };
         Fighter {
             name =    self.name.clone(),
             hp =      new_hp,
@@ -48,7 +48,7 @@ extend Fighter {
 
     // Heals by `amount`, capped at max_hp.
     fun heal(&self, amount: i64) -> Fighter {
-        let new_hp = if (self.hp + amount < self.max_hp) {
+        let new_hp := if (self.hp + amount < self.max_hp) {
             self.hp + amount
         } else {
             self.max_hp
@@ -75,9 +75,9 @@ extend Fighter {
 
     // Short string representation: "Name[hp/max_hp]".
     fun summary(&self) -> String {
-        let part1 = self.name + "[";
-        let part2 = self.hp.to_string() + "/";
-        let part3 = self.max_hp.to_string() + "]";
+        let part1 := self.name + "[";
+        let part2 := self.hp.to_string() + "/";
+        let part3 := self.max_hp.to_string() + "]";
         part1 + part2 + part3
     }
 }
@@ -89,7 +89,7 @@ extend Fighter {
 fun resolve(action: Action, actor: &Fighter, target: &Fighter) -> (Fighter, Fighter) {
     match action {
         Action::Attack => {
-            let damaged = target.take_damage(actor.attack);
+            let damaged := target.take_damage(actor.attack);
             (
                 Fighter {
                     name = actor.name.clone(),
@@ -102,7 +102,7 @@ fun resolve(action: Action, actor: &Fighter, target: &Fighter) -> (Fighter, Figh
             )
         },
         Action::Defend => {
-            let buffed = actor.add_defense(3);
+            let buffed := actor.add_defense(3);
             (
                 buffed,
                 Fighter {
@@ -115,7 +115,7 @@ fun resolve(action: Action, actor: &Fighter, target: &Fighter) -> (Fighter, Figh
             )
         },
         Action::Heal { amount } => {
-            let healed = actor.heal(amount);
+            let healed := actor.heal(amount);
             (
                 healed,
                 Fighter {
@@ -171,26 +171,26 @@ fun defender_strategy(actor: &Fighter, target: &Fighter) -> Action {
 
 // "R<n> | <f1 summary> vs <f2 summary>"
 fun format_round(round: i64, f1: &Fighter, f2: &Fighter) -> String {
-    let prefix = "R" + round.to_string();
-    let mid    = f1.summary() + " vs ";
+    let prefix := "R" + round.to_string();
+    let mid    := f1.summary() + " vs ";
     prefix + " | " + mid + f2.summary()
 }
 
 // Sum of HP across all fighters in the party.
 fun total_party_hp(party: Fighter[]) -> i64 {
-    var total = 0;
+    var total := 0;
     for (f in party) { total += f.hp; }
     total
 }
 
 // Index of the fighter with highest attack.  Returns None for an empty party.
 fun best_attacker_idx(party: Fighter[]) -> Perhaps<i64> {
-    let n = party.len();
+    let n := party.len();
     if (n == 0) { return None; }
-    var best = 0;
-    for (var i = 1; i < n; i += 1) {
+    var best := 0;
+    for (var i := 1; i < n; i += 1) {
         if (party[i as u64].attack > party[best as u64].attack) {
-            best = i;
+            best := i;
         }
     }
     Perhaps::Some { value = best }
@@ -204,14 +204,14 @@ fun simulate_rounds(
     action_fn: (&Fighter, &Fighter) -> Action,
     n:         i64
 ) -> (Fighter, Fighter) {
-    var f1 = f1_init;
-    var f2 = f2_init;
-    var i = 0;
+    var f1 := f1_init;
+    var f2 := f2_init;
+    var i := 0;
     while (i < n) {
-        let a  = action_fn(&f1, &f2);
-        let r  = resolve(a, &f1, &f2);
-        f1 = r.0;
-        f2 = r.1;
+        let a  := action_fn(&f1, &f2);
+        let r  := resolve(a, &f1, &f2);
+        f1 := r.0;
+        f2 := r.1;
         i += 1;
     }
     (f1, f2)
@@ -229,23 +229,23 @@ fun battle(
     s2:         (&Fighter, &Fighter) -> Action,
     max_rounds: i64
 ) -> Perhaps<String> {
-    var f1 = f1_init;
-    var f2 = f2_init;
-    var round = 0;
+    var f1 := f1_init;
+    var f2 := f2_init;
+    var round := 0;
     while (round < max_rounds) {
         // Fighter 1 acts.
-        let a1 = s1(&f1, &f2);
-        let r1 = resolve(a1, &f1, &f2);
-        f1 = r1.0;
-        f2 = r1.1;
+        let a1 := s1(&f1, &f2);
+        let r1 := resolve(a1, &f1, &f2);
+        f1 := r1.0;
+        f2 := r1.1;
         if (!(&f2).is_alive()) {
             return Perhaps::Some { value = f1.name };
         } else {
             // Fighter 2 acts.
-            let a2 = s2(&f2, &f1);
-            let r2 = resolve(a2, &f2, &f1);
-            f2 = r2.0;
-            f1 = r2.1;
+            let a2 := s2(&f2, &f1);
+            let r2 := resolve(a2, &f2, &f1);
+            f2 := r2.0;
+            f1 := r2.1;
             if (!(&f1).is_alive()) {
                 return Perhaps::Some { value = f2.name };
             }
@@ -258,32 +258,32 @@ fun battle(
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 fun main() {
-    let knight = Fighter { name = "Knight", hp = 100, max_hp = 100, attack = 25, defense = 5 };
-    let goblin  = Fighter { name = "Goblin",  hp = 30,  max_hp = 30,  attack = 8,  defense = 2 };
-    let mage    = Fighter { name = "Mage",    hp = 60,  max_hp = 60,  attack = 30, defense = 1 };
-    let healer  = Fighter { name = "Healer",  hp = 50,  max_hp = 50,  attack = 5,  defense = 3 };
+    let knight := Fighter { name = "Knight", hp = 100, max_hp = 100, attack = 25, defense = 5 };
+    let goblin  := Fighter { name = "Goblin",  hp = 30,  max_hp = 30,  attack = 8,  defense = 2 };
+    let mage    := Fighter { name = "Mage",    hp = 60,  max_hp = 60,  attack = 30, defense = 1 };
+    let healer  := Fighter { name = "Healer",  hp = 50,  max_hp = 50,  attack = 5,  defense = 3 };
 
     // 1. take_damage: net = raw - defense (minimum 1).
     // Knight takes 8 raw: 8-5=3 net → hp=97.
-    let wounded = (&knight).take_damage(8);
+    let wounded := (&knight).take_damage(8);
     assert(wounded.hp == 97);
     // Goblin takes 3 raw: 3-2=1, exactly the minimum → hp=29.
-    let scratched = (&goblin).take_damage(3);
+    let scratched := (&goblin).take_damage(3);
     assert(scratched.hp == 29);
     // take_damage that kills: hp floors at 0.
-    let dead = (&goblin).take_damage(100);
+    let dead := (&goblin).take_damage(100);
     assert(dead.hp == 0);
     assert(!(&dead).is_alive());
 
     // 2. heal: capped at max_hp.
-    let injured = Fighter { name = "Test", hp = 40, max_hp = 50, attack = 10, defense = 5 };
-    let full    = (&injured).heal(20);  // 40+20=60 > 50 → 50
-    let partial = (&injured).heal(5);   // 40+5=45 < 50 → 45
+    let injured := Fighter { name = "Test", hp = 40, max_hp = 50, attack = 10, defense = 5 };
+    let full    := (&injured).heal(20);  // 40+20=60 > 50 → 50
+    let partial := (&injured).heal(5);   // 40+5=45 < 50 → 45
     assert(full.hp    == 50);
     assert(partial.hp == 45);
 
     // 3. add_defense: only defense field changes.
-    let buffed = (&knight).add_defense(3);
+    let buffed := (&knight).add_defense(3);
     assert(buffed.defense == 8);
     assert(buffed.hp      == 100);
 
@@ -293,31 +293,31 @@ fun main() {
 
     // 5. resolve Attack: actor unchanged, target takes damage.
     // Knight attacks Goblin: 25-2=23 damage, 30-23=7 hp.
-    let r_atk = resolve(Action::Attack, &knight, &goblin);
+    let r_atk := resolve(Action::Attack, &knight, &goblin);
     assert(r_atk.0.hp == 100);
     assert(r_atk.1.hp == 7);
 
     // 6. resolve Heal: actor healed, target unchanged.
-    let half_hp = Fighter { name = "Half", hp = 25, max_hp = 50, attack = 10, defense = 5 };
-    let r_heal  = resolve(Action::Heal { amount = 15 }, &half_hp, &goblin);
+    let half_hp := Fighter { name = "Half", hp = 25, max_hp = 50, attack = 10, defense = 5 };
+    let r_heal  := resolve(Action::Heal { amount = 15 }, &half_hp, &goblin);
     assert(r_heal.0.hp == 40);
     assert(r_heal.1.hp == 30);
 
     // 7. resolve Defend: actor gains +3 defense, target unchanged.
-    let r_def = resolve(Action::Defend, &goblin, &knight);
+    let r_def := resolve(Action::Defend, &goblin, &knight);
     assert(r_def.0.defense == 5);
     assert(r_def.1.hp      == 100);
 
     // 8. describe_action — match-with-blocks on enum with fields.
-    let desc_atk  = describe_action(Action::Attack);
-    let desc_def  = describe_action(Action::Defend);
-    let desc_heal = describe_action(Action::Heal { amount = 15 });
+    let desc_atk  := describe_action(Action::Attack);
+    let desc_def  := describe_action(Action::Defend);
+    let desc_heal := describe_action(Action::Heal { amount = 15 });
     assert(desc_atk.len()  > 0);
     assert(desc_def.len()  > 0);
     assert(desc_heal.len() > 0);
 
     // 9. always_attack: must return Attack variant.
-    let a_atk = always_attack(&knight, &goblin);
+    let a_atk := always_attack(&knight, &goblin);
     match a_atk {
         Action::Attack          => (),
         Action::Defend          => assert(false, "expected Attack"),
@@ -325,15 +325,15 @@ fun main() {
     };
 
     // 10. smart_healer: heals when below half HP, attacks when ok.
-    let low_hp     = Fighter { name = "Low", hp = 10, max_hp = 50, attack = 10, defense = 5 };
-    let heal_choice = smart_healer(&low_hp, &goblin);  // 10*2=20 < 50 → Heal
+    let low_hp     := Fighter { name = "Low", hp = 10, max_hp = 50, attack = 10, defense = 5 };
+    let heal_choice := smart_healer(&low_hp, &goblin);  // 10*2=20 < 50 → Heal
     match heal_choice {
         Action::Heal { amount } => assert(amount == 20),
         Action::Attack          => assert(false, "expected Heal"),
         Action::Defend          => assert(false, "expected Heal"),
     };
-    let ok_hp      = Fighter { name = "Ok", hp = 40, max_hp = 50, attack = 10, defense = 5 };
-    let atk_choice  = smart_healer(&ok_hp, &goblin);  // 40*2=80 > 50 → Attack
+    let ok_hp      := Fighter { name = "Ok", hp = 40, max_hp = 50, attack = 10, defense = 5 };
+    let atk_choice  := smart_healer(&ok_hp, &goblin);  // 40*2=80 > 50 → Attack
     match atk_choice {
         Action::Attack          => (),
         Action::Defend          => assert(false, "expected Attack"),
@@ -341,52 +341,52 @@ fun main() {
     };
 
     // 11. defender_strategy: defends when defense < 8, attacks otherwise.
-    let def_action  = defender_strategy(&goblin, &knight);   // goblin.def=2 < 8 → Defend
-    let def_action2 = defender_strategy(&knight, &goblin);   // knight.def=5 < 8 → Defend
-    let def_action3 = defender_strategy(&buffed, &goblin);   // buffed.def=8, not < 8 → Attack
+    let def_action  := defender_strategy(&goblin, &knight);   // goblin.def=2 < 8 → Defend
+    let def_action2 := defender_strategy(&knight, &goblin);   // knight.def=5 < 8 → Defend
+    let def_action3 := defender_strategy(&buffed, &goblin);   // buffed.def=8, not < 8 → Attack
     match def_action  { Action::Defend => (), Action::Attack => assert(false, "expected Defend"), Action::Heal { amount } => assert(false, "expected Defend"), };
     match def_action2 { Action::Defend => (), Action::Attack => assert(false, "expected Defend"), Action::Heal { amount } => assert(false, "expected Defend"), };
     match def_action3 { Action::Attack => (), Action::Defend => assert(false, "expected Attack"), Action::Heal { amount } => assert(false, "expected Attack"), };
 
     // 12. simulate_rounds: 1 round where Knight attacks Goblin.
     // After 1 round: Goblin hp = 30 - (25-2) = 7.  Knight unchanged.
-    let sim_knight = Fighter { name = "Knight", hp = 100, max_hp = 100, attack = 25, defense = 5 };
-    let sim_goblin = Fighter { name = "Goblin", hp = 30, max_hp = 30, attack = 8, defense = 2 };
-    let sim_attack = (actor: &Fighter, target: &Fighter) -> Action { Action::Attack };
-    let sim1 = simulate_rounds(sim_knight, sim_goblin, sim_attack, 1);
+    let sim_knight := Fighter { name = "Knight", hp = 100, max_hp = 100, attack = 25, defense = 5 };
+    let sim_goblin := Fighter { name = "Goblin", hp = 30, max_hp = 30, attack = 8, defense = 2 };
+    let sim_attack := (actor: &Fighter, target: &Fighter) -> Action { Action::Attack };
+    let sim1 := simulate_rounds(sim_knight, sim_goblin, sim_attack, 1);
     assert(sim1.0.hp == 100);
     assert(sim1.1.hp == 7);
 
     // 13. format_round returns a non-empty string.
-    let round_str = format_round(3, &knight, &goblin);
+    let round_str := format_round(3, &knight, &goblin);
     assert(round_str.len() > 0);
 
     // 14. Battle: Knight (aggressive) vs Goblin (aggressive) — Knight wins.
     //   Round 1: Knight hits Goblin for 23 → hp=7; Goblin hits Knight for 3 → hp=97.
     //   Round 2: Knight hits Goblin for 23 → hp=0.  Knight wins.
-    let battle_knight = Fighter { name = "Knight", hp = 100, max_hp = 100, attack = 25, defense = 5 };
-    let battle_goblin = Fighter { name = "Goblin", hp = 30, max_hp = 30, attack = 8, defense = 2 };
-    let attack_s1 = (actor: &Fighter, target: &Fighter) -> Action { Action::Attack };
-    let attack_s2 = (actor: &Fighter, target: &Fighter) -> Action { Action::Attack };
-    let result1 = battle(battle_knight, attack_s1, battle_goblin, attack_s2, 10);
+    let battle_knight := Fighter { name = "Knight", hp = 100, max_hp = 100, attack = 25, defense = 5 };
+    let battle_goblin := Fighter { name = "Goblin", hp = 30, max_hp = 30, attack = 8, defense = 2 };
+    let attack_s1 := (actor: &Fighter, target: &Fighter) -> Action { Action::Attack };
+    let attack_s2 := (actor: &Fighter, target: &Fighter) -> Action { Action::Attack };
+    let result1 := battle(battle_knight, attack_s1, battle_goblin, attack_s2, 10);
     match result1 {
         Perhaps::Some { value } => assert(value.len() > 0),
         None => assert(false, "expected Some"),
     };
 
     // 15. Battle: draw when max_rounds = 0 (no rounds fought).
-    let draw_knight = Fighter { name = "Knight", hp = 100, max_hp = 100, attack = 25, defense = 5 };
-    let draw_goblin = Fighter { name = "Goblin", hp = 30, max_hp = 30, attack = 8, defense = 2 };
-    let draw_s1 = (actor: &Fighter, target: &Fighter) -> Action { Action::Attack };
-    let draw_s2 = (actor: &Fighter, target: &Fighter) -> Action { Action::Attack };
-    let draw = battle(draw_knight, draw_s1, draw_goblin, draw_s2, 0);
+    let draw_knight := Fighter { name = "Knight", hp = 100, max_hp = 100, attack = 25, defense = 5 };
+    let draw_goblin := Fighter { name = "Goblin", hp = 30, max_hp = 30, attack = 8, defense = 2 };
+    let draw_s1 := (actor: &Fighter, target: &Fighter) -> Action { Action::Attack };
+    let draw_s2 := (actor: &Fighter, target: &Fighter) -> Action { Action::Attack };
+    let draw := battle(draw_knight, draw_s1, draw_goblin, draw_s2, 0);
     match draw { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
 
     // 16. Battle with inline closure strategy and named-function strategy.
     //   Mage (atk=30, def=1) always attacks; Healer uses smart_healer.
     //   Mage deals 30-3=27/round; Healer heals when < half HP.
     //   Healer falls behind eventually and Mage wins within 20 rounds.
-    let result2 = battle(
+    let result2 := battle(
         Fighter { name = "Mage", hp = 60, max_hp = 60, attack = 30, defense = 1 },
         (a: &Fighter, t: &Fighter) -> Action { Action::Attack },
         Fighter { name = "Healer", hp = 50, max_hp = 50, attack = 5, defense = 3 },
@@ -399,8 +399,8 @@ fun main() {
     };
 
     // 17. Closure capturing an outer variable (hp threshold for heal decision).
-    let hp_threshold = 25;
-    let threshold_healer = (actor: &Fighter, target: &Fighter) -> Action {
+    let hp_threshold := 25;
+    let threshold_healer := (actor: &Fighter, target: &Fighter) -> Action {
         if (actor.hp < hp_threshold) {
             Action::Heal { amount = 10 }
         } else {
@@ -408,10 +408,10 @@ fun main() {
         }
     };
     // Knight hp=100 ≥ 25 → Attack.
-    let tc1 = threshold_healer(&knight, &goblin);
+    let tc1 := threshold_healer(&knight, &goblin);
     match tc1 { Action::Attack => (), Action::Defend => assert(false, "expected Attack"), Action::Heal { amount } => assert(false, "expected Attack"), };
     // low_hp hp=10 < 25 → Heal { amount: 10 }.
-    let tc2 = threshold_healer(&low_hp, &goblin);
+    let tc2 := threshold_healer(&low_hp, &goblin);
     match tc2 {
         Action::Heal { amount } => assert(amount == 10),
         Action::Attack          => assert(false, "expected Heal"),
@@ -419,43 +419,43 @@ fun main() {
     };
 
     // 18. Array of fighters: total HP and best attacker index.
-    let party: Fighter[] = [
+    let party: Fighter[] := [
         Fighter { name = "A", hp = 80,  max_hp = 80,  attack = 15, defense = 8 },
         Fighter { name = "B", hp = 60,  max_hp = 60,  attack = 20, defense = 3 },
         Fighter { name = "C", hp = 100, max_hp = 100, attack = 10, defense = 12 },
     ];
-    let total_hp = total_party_hp(party);
+    let total_hp := total_party_hp(party);
     assert(total_hp == 240);
 
-    let party_for_best: Fighter[] = [
+    let party_for_best: Fighter[] := [
         Fighter { name = "A", hp = 80,  max_hp = 80,  attack = 15, defense = 8 },
         Fighter { name = "B", hp = 60,  max_hp = 60,  attack = 20, defense = 3 },
         Fighter { name = "C", hp = 100, max_hp = 100, attack = 10, defense = 12 },
     ];
-    let best_idx = best_attacker_idx(party_for_best);
+    let best_idx := best_attacker_idx(party_for_best);
     match best_idx {
         Perhaps::Some { value } => assert(value == 1),
         None => assert(false, "expected Some"),
     };
     // Empty party returns None.
-    let empty_party: Fighter[] = [];
-    let no_best = best_attacker_idx(empty_party);
+    let empty_party: Fighter[] := [];
+    let no_best := best_attacker_idx(empty_party);
     match no_best { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
 
     // 19. Count alive fighters in party via for-in (all have hp > 0).
-    let party_for_alive: Fighter[] = [
+    let party_for_alive: Fighter[] := [
         Fighter { name = "A", hp = 80,  max_hp = 80,  attack = 15, defense = 8 },
         Fighter { name = "B", hp = 60,  max_hp = 60,  attack = 20, defense = 3 },
         Fighter { name = "C", hp = 100, max_hp = 100, attack = 10, defense = 12 },
     ];
-    var alive_count = 0;
+    var alive_count := 0;
     for (f in party_for_alive) {
         if ((&f).is_alive()) { alive_count += 1; }
     }
     assert(alive_count == 3);
 
     // 20. Range for-in: accumulate damage Knight deals over 5 rounds (25-2=23/round).
-    var total_damage = 0;
+    var total_damage := 0;
     for (r in 0..5) {
         total_damage += knight.attack - goblin.defense;
     }
@@ -463,16 +463,16 @@ fun main() {
 
     // 21. C-style for: apply Defend action `n` times and check final defense.
     // Goblin starts at defense=2; each Defend adds 3.  After 4 rounds: 2+4*3=14.
-    var cur_goblin = Fighter { name = "Goblin", hp = 30, max_hp = 30, attack = 8, defense = 2 };
-    for (var k = 0; k < 4; k += 1) {
-        let rd = resolve(Action::Defend, &cur_goblin, &knight);
-        cur_goblin = rd.0;
+    var cur_goblin := Fighter { name = "Goblin", hp = 30, max_hp = 30, attack = 8, defense = 2 };
+    for (var k := 0; k < 4; k += 1) {
+        let rd := resolve(Action::Defend, &cur_goblin, &knight);
+        cur_goblin := rd.0;
     }
     assert(cur_goblin.defense == 14);
 
     // 22. Tuple: pair the round count with the final fighter state.
-    let rounds_fought = 4;
-    let report: (i64, Fighter) = (rounds_fought, cur_goblin);
+    let rounds_fought := 4;
+    let report: (i64, Fighter) := (rounds_fought, cur_goblin);
     assert(report.0 == 4);
     assert(report.1.defense == 14);
 }

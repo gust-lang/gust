@@ -11,41 +11,41 @@ fun returns_u64() -> u64 { 0 }
 
 fun main() {
     // Annotation coerces literal.
-    let _a: i8   = 0;
-    let _b: i16  = 0;
-    let _c: i32  = 0;
-    let _d: u8   = 0;
-    let _e: u16  = 0;
-    let _f: u32  = 0;
-    let _g: u64  = 0;
-    let _h: f32  = 0.0;
-    let _i: f64  = 0.0;
+    let _a: i8   := 0;
+    let _b: i16  := 0;
+    let _c: i32  := 0;
+    let _d: u8   := 0;
+    let _e: u16  := 0;
+    let _f: u32  := 0;
+    let _g: u64  := 0;
+    let _h: f32  := 0.0;
+    let _i: f64  := 0.0;
 
     // Function call coerces.
-    let _j = take_u8(255);
-    let _k = take_f32(1.0);
+    let _j := take_u8(255);
+    let _k := take_f32(1.0);
 
     // Return type coerces.
-    let _l: i8  = returns_i8();
-    let _m: f32 = returns_f32();
-    let _n: u64 = returns_u64();
+    let _l: i8  := returns_i8();
+    let _m: f32 := returns_f32();
+    let _n: u64 := returns_u64();
 
     // Struct field coerces.
-    let _o = Point { x = 10, y = -20 };
+    let _o := Point { x = 10, y = -20 };
 
     // Arithmetic between literal and typed var is well-typed.
-    let base: i32 = 100i32;
-    let _p = base + 1;
-    let _q = base * 2;
+    let base: i32 := 100i32;
+    let _p := base + 1;
+    let _q := base * 2;
 
     // Chained binding propagates type.
-    let tmp = 5;
-    let _r: i32 = tmp;
+    let tmp := 5;
+    let _r: i32 := tmp;
 
     // Array annotation coerces elements.
-    let _s: u8[] = [0, 1, 2, 255];
+    let _s: u8[] := [0, 1, 2, 255];
 
     // Cast is well-typed when From impl exists.
-    let _t: u8  = 200 as u8;
-    let _u: f32 = 3 as f32;
+    let _t: u8  := 200 as u8;
+    let _u: f32 := 3 as f32;
 }

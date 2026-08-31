@@ -13,9 +13,9 @@ extend Counter {
 }
 
 fun main() {
-    var value = 0;
-    let ptr: &var i64 = &var value;
+    var value := 0;
+    let ptr: &var i64 := &var value;
     ptr += 1;
-    let read_only: &i64 = ptr;
-    let _snapshot: i64 = read_only;
+    let read_only: &i64 := ptr;
+    let _snapshot: i64 := read_only;
 }

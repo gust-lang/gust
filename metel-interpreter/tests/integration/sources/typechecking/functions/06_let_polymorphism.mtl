@@ -18,6 +18,6 @@ fun identity(x) {
     x
 }
 
-let a = identity(42);
-let b = identity(true);
-let c = identity("hi");
+let a := identity(42);
+let b := identity(true);
+let c := identity("hi");

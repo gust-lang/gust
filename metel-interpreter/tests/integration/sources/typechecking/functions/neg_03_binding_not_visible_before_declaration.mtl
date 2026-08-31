@@ -1,4 +1,4 @@
 fun main() {
-    let _before = value;
-    let value = 42;
+    let _before := value;
+    let value := 42;
 }

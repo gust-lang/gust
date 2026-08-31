@@ -1,18 +1,18 @@
 fun get_closures() {
-    var shared = 0;
-    var ptr = &var shared;
-    let first_ptr: &&var i64 = &ptr;
-    let second_ptr: &&var i64 = &ptr;
-    let third_ptr: &&var i64 = &ptr;
-    let first_closure = () -> {
+    var shared := 0;
+    var ptr := &var shared;
+    let first_ptr: &&var i64 := &ptr;
+    let second_ptr: &&var i64 := &ptr;
+    let third_ptr: &&var i64 := &ptr;
+    let first_closure := () -> {
         **first_ptr += 1;
     };
 
-    let second_closure = () -> {
+    let second_closure := () -> {
         **second_ptr += 2;
     };
 
-    let third_closure = () -> i64 {
+    let third_closure := () -> i64 {
         return third_ptr;
     };
 
@@ -21,11 +21,11 @@ fun get_closures() {
 
 fun main() {
     
-    let closures = get_closures();
+    let closures := get_closures();
     
-    let first_closure = closures.0;
-    let second_closure = closures.1;
-    let third_closure = closures.2;
+    let first_closure := closures.0;
+    let second_closure := closures.1;
+    let third_closure := closures.2;
 
     first_closure();
     first_closure();

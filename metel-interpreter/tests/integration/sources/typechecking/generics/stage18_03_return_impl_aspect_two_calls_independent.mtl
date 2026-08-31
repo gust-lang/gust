@@ -26,11 +26,11 @@ fun take_display(d: extends Display) -> String {
 
 fun main() {
 	// Two separate calls - each should get independent fresh type variables
-	let int1 = make_int();
-	let int2 = make_int();
+	let int1 := make_int();
+	let int2 := make_int();
 	
 	// Pass each to functions that take extends Display - this should prove
 	// independent instantiation
-	let s1 = take_display(int1);
-	let s2 = take_display(int2);
+	let s1 := take_display(int1);
+	let s2 := take_display(int2);
 }

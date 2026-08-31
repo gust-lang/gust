@@ -3,7 +3,7 @@
 // five forms #712 characterised, plus a bare-statement call with a `var` present.
 
 fun call_in_let_initializer() -> i64 {
-    let r = f();
+    let r := f();
     fun f() -> i64 { 7 }
     r
 }
@@ -22,9 +22,9 @@ fun call_as_bare_statement_no_let_var() -> i64 {
 
 // Same shape with a var present -- the new fallback path, via a bare statement.
 fun call_as_bare_statement_with_var() -> i64 {
-    var hit = 0;
+    var hit := 0;
     i();
-    fun i() { hit = 11; }
+    fun i() { hit := 11; }
     hit
 }
 

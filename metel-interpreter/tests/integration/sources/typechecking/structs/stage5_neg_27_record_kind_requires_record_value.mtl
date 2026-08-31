@@ -1,5 +1,5 @@
 fun any_record<record T>(_value: T) -> i64 { 0 }
 
 fun main() {
-    let _ = any_record(1);
+    let _ := any_record(1);
 }

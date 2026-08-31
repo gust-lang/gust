@@ -9,5 +9,5 @@ struct Box<T> {
 fun keep<T>(value: T) -> T { value }
 
 fun main() {
-    let value: i64 = keep(1);
+    let value: i64 := keep(1);
 }

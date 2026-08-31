@@ -6,8 +6,8 @@ fun pick(cond: boolean, a: &i64, b: &i64) -> i64 {
 }
 
 fun main() {
-    let x = 10;
-    let y = 20;
+    let x := 10;
+    let y := 20;
     assert(pick(true, &x, &y) == 10);
     assert(pick(false, &x, &y) == 20);
 }

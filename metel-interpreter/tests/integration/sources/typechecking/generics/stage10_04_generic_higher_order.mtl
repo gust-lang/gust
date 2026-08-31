@@ -10,14 +10,14 @@ fun transform<A, B>(f: (A) -> B, x: A) -> B { f(x) }
 fun pipe<A, B, C>(f: (A) -> B, g: (B) -> C, x: A) -> C { g(f(x)) }
 
 fun use_ho() -> i64 {
-    let doubled: i64 = apply((n: i64) -> i64 { n * 2 }, 5);
-    let negated: boolean = apply((b: boolean) -> boolean { !b }, false);
-    let _b: boolean = negated;
+    let doubled: i64 := apply((n: i64) -> i64 { n * 2 }, 5);
+    let negated: boolean := apply((b: boolean) -> boolean { !b }, false);
+    let _b: boolean := negated;
 
-    let to_bool: boolean = transform((n: i64) -> boolean { n > 0 }, 3);
-    let _b2: boolean = to_bool;
+    let to_bool: boolean := transform((n: i64) -> boolean { n > 0 }, 3);
+    let _b2: boolean := to_bool;
 
-    let result: i64 = pipe(
+    let result: i64 := pipe(
         (n: i64) -> boolean { n > 0 },
         (b: boolean) -> i64 { if (b) 1 else 0 },
         10

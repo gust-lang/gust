@@ -16,5 +16,5 @@ fun bad_int() -> extends Display { // ERROR[T0012]
 }
 
 fun main() {
-	let val = bad_int();
+	let val := bad_int();
 }

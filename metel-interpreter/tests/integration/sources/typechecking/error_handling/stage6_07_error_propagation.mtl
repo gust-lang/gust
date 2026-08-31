@@ -11,13 +11,13 @@ fun parse_positive(n: i64) -> Result<i64, String> {
 
 // Function using ? to propagate errors
 fun double_positive(n: i64) -> Result<i64, String> {
-    let x: i64 = parse_positive(n)?;
+    let x: i64 := parse_positive(n)?;
     Result::Ok { value = x * 2 }
 }
 
 // Chained ? calls
 fun sum_positive(a: i64, b: i64) -> Result<i64, String> {
-    let x: i64 = parse_positive(a)?;
-    let y: i64 = parse_positive(b)?;
+    let x: i64 := parse_positive(a)?;
+    let y: i64 := parse_positive(b)?;
     Result::Ok { value = x + y }
 }

@@ -15,16 +15,16 @@ struct Box<T> {
 
 extend<T: !Copy> Box<T>: NonCopyTake {
     fun describe(self) -> String {
-        let first = self.value;
-        let second = self.value;
+        let first := self.value;
+        let second := self.value;
         "non-copy"
     }
 }
 
 extend<T: Copy> Box<T>: CopyTake {
     fun describe(self) -> String {
-        let first = self.value;
-        let second = self.value;
+        let first := self.value;
+        let second := self.value;
         "copy"
     }
 }

@@ -11,11 +11,11 @@ fun identity_constrained<T>(a: T, _b: T) -> T { a }
 fun make_pair<A, B>(a: A, b: B) -> (A, B) { (a, b) }
 
 fun use_multi() -> i64 {
-    let a = first(10, 20);
-    let b = second(1, 2);
-    let c = identity_constrained(5, 5);
-    let p = make_pair(true, 99);
-    let _x: boolean = p.0;
-    let _y: i64  = p.1;
+    let a := first(10, 20);
+    let b := second(1, 2);
+    let c := identity_constrained(5, 5);
+    let p := make_pair(true, 99);
+    let _x: boolean := p.0;
+    let _y: i64  := p.1;
     a + b + c
 }

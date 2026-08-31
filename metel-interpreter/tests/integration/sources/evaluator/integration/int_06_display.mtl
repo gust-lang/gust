@@ -62,9 +62,9 @@ extend StringBag {
 extend StringBag: Iterable<String> {
     fun next(&var self) -> Perhaps<String> {
         if (self.pos < self.items.len()) {
-            let pos = self.pos;
-            self.pos = pos + 1;
-            let v = (&self.items[pos as u64]).to_string();
+            let pos := self.pos;
+            self.pos := pos + 1;
+            let v := (&self.items[pos as u64]).to_string();
             Perhaps::Some { value = v }
         } else {
             None
@@ -91,7 +91,7 @@ fun parse_score(s: String) -> Result<Score, FormatError> {
 
 fun render_score(s: String) -> Result<String, RenderError> {
     // cross-type match + as-cast (? cross-type deferred to #13)
-    let sc = match parse_score(s) {
+    let sc := match parse_score(s) {
         Result::Ok { value } => value,
         Result::Err { error } => { return Result::Err { error = error as RenderError }; },
     };
@@ -139,70 +139,70 @@ fun main() {
     println("done");
 
     // From<i64> for Score
-    let seven: i64 = 7;
-    let s7 = seven as Score;
+    let seven: i64 := 7;
+    let s7 := seven as Score;
     assert(s7.points == 7);
     assert(s7.format() == "Score(7)");
 
     // From<f64> for Temperature
-    let boiling: f64 = 100.0;
-    let t100 = boiling as Temperature;
+    let boiling: f64 := 100.0;
+    let t100 := boiling as Temperature;
     assert(t100.celsius == 100.0);
     assert(t100.format() == "Temp(100)");
 
-    let body_temp: f64 = 37.5;
-    let t37 = body_temp as Temperature;
+    let body_temp: f64 := 37.5;
+    let t37 := body_temp as Temperature;
     assert(t37.celsius == 37.5);
     assert(t37.format() == "Temp(37.5)");
 
     // Printable format on Score 0 and large value
-    let s0 = Score { points = 0 };
+    let s0 := Score { points = 0 };
     assert(s0.format() == "Score(0)");
-    let s1000 = Score { points = 1000 };
+    let s1000 := Score { points = 1000 };
     assert(s1000.format() == "Score(1000)");
 
     // StringBag Iterable: concatenate labels
-    let bag = StringBag::new(["a", "b", "c"]);
+    let bag := StringBag::new(["a", "b", "c"]);
     assert(bag.len() == 3);
-    var result = "";
+    var result := "";
     for (label in bag) {
-        result = result + label;
+        result := result + label;
     }
     assert(result == "abc");
 
     // Empty StringBag
-    var empty_ran = false;
-    let empty_strs: String[] = [];
-    for (_label in StringBag::new(empty_strs)) { empty_ran = true; }
+    var empty_ran := false;
+    let empty_strs: String[] := [];
+    for (_label in StringBag::new(empty_strs)) { empty_ran := true; }
     assert(!empty_ran);
 
     // ? success path: "100" → Score(100)
-    let r1 = render_score("100");
+    let r1 := render_score("100");
     match r1 {
         Result::Ok  { value } => assert(value == "Score(100)"),
         Result::Err { error } => assert(false),
     };
 
     // ? success path: "0" → Score(0)
-    let r2 = render_score("0");
+    let r2 := render_score("0");
     match r2 {
         Result::Ok  { value } => assert(value == "Score(0)"),
         Result::Err { error } => assert(false),
     };
 
     // ? failure: FormatError coerced to RenderError via From
-    let r3 = render_score("bad");
+    let r3 := render_score("bad");
     match r3 {
         Result::Ok  { value } => assert(false),
         Result::Err { error } => assert(error.msg == "fmt: bad score: bad"),
     };
 
     // string + to_string composition
-    let n: i64 = 99;
-    let composed = "value=" + n.to_string();
+    let n: i64 := 99;
+    let composed := "value=" + n.to_string();
     assert(composed == "value=99");
 
-    let f: f64 = 1.5;
-    let composed2 = "f=" + f.to_string();
+    let f: f64 := 1.5;
+    let composed2 := "f=" + f.to_string();
     assert(composed2 == "f=1.5");
 }

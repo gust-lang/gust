@@ -42,13 +42,13 @@ fun make_string() -> extends Display {
 }
 
 fun main() {
-	let a = make_int();
-	let b = make_string();
-	let c = make_int();
+	let a := make_int();
+	let b := make_string();
+	let c := make_int();
 
-	let a_str = a.display();
-	let b_str = b.display();
+	let a_str := a.display();
+	let b_str := b.display();
 	// Before the fix, this aliased `c`'s type with `b_str`'s (String),
 	// producing a spurious "no method `display` on `String`" error.
-	let c_str = c.display();
+	let c_str := c.display();
 }

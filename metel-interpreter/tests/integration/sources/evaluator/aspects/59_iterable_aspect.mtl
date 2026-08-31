@@ -18,8 +18,8 @@ extend Counter {
 extend Counter: Iterable<i64> {
     fun next(&var self) -> Perhaps<i64> {
         if (self.current < self.limit) {
-            let val = self.current;
-            self.current = self.current + 1;
+            let val := self.current;
+            self.current := self.current + 1;
             return Perhaps::Some { value = val };
         }
         return None;
@@ -27,8 +27,8 @@ extend Counter: Iterable<i64> {
 }
 
 fun main() {
-    var sum = 0;
-    let c = Counter::new(5);
+    var sum := 0;
+    let c := Counter::new(5);
     for (x in c) {
         sum += x;
     }

@@ -4,7 +4,7 @@
 // neg_05_mut_address_of_literal.mtl, which tested the pre-extension rejection of both
 // forms.
 fun main() {
-    let p: &var i64 = &var 1;
-    *p = 2;
+    let p: &var i64 := &var 1;
+    *p := 2;
     assert(*p == 2);
 }

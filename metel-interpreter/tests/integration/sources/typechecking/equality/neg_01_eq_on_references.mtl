@@ -7,9 +7,9 @@
 // RFC-0062. For references specifically, peeling would also silently settle whether two
 // references compare referents or identity, which is deliberately open.
 fun main() {
-    let a = 1;
-    let b = 1;
-    let p: &i64 = &a;
-    let q: &i64 = &b;
-    let same = p == q; // ERROR[T0005]
+    let a := 1;
+    let b := 1;
+    let p: &i64 := &a;
+    let q: &i64 := &b;
+    let same := p == q; // ERROR[T0005]
 }

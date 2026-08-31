@@ -17,7 +17,7 @@ fun divide(a: f64, b: f64) -> Result<f64, String> {
 
 // Break None in a loop whose result is annotated as Perhaps<i64>.
 fun first_positive(arr: i64[]) -> Perhaps<i64> {
-    let result: Perhaps<i64> = loop {
+    let result: Perhaps<i64> := loop {
         break None;
     };
     result

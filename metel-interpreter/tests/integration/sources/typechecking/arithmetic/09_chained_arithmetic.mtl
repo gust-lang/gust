@@ -18,4 +18,4 @@ fun compute(a: i64, b: i64, c: i64) -> i64 {
     (a + b) * c
 }
 
-let result = compute(2, 3, 4);
+let result := compute(2, 3, 4);

@@ -11,13 +11,13 @@ aspect Container {
 struct Box1 { v: i64 }
 
 extend Box1: Container {
-    type Item = i64;
+    type Item := i64;
     fun get(&self) -> Self::Item {
         return self.v;
     }
 }
 
 fun main() {
-    let b = Box1 { v = 7 };
+    let b := Box1 { v = 7 };
     assert(b.get() == 7);
 }

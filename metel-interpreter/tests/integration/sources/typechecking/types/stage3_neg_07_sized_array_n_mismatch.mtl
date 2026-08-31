@@ -1,2 +1,2 @@
 // [expr; N] with annotation [T; M] where N ≠ M must be rejected.
-let x: [i64; 3] = [0; 4];  // ERROR[T0001]
+let x: [i64; 3] := [0; 4];  // ERROR[T0001]

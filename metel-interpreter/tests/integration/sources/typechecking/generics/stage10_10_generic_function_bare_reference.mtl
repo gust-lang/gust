@@ -7,6 +7,6 @@
 fun identity<T>(x: T) -> T { return x; }
 
 fun main() {
-    let alias = identity;
+    let alias := identity;
     alias(3);
 }

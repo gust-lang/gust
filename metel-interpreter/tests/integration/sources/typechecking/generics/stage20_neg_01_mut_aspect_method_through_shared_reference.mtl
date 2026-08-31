@@ -8,7 +8,7 @@ struct C {
 
 extend C: Bump {
     fun bump(&var self) {
-        self.v = self.v + 1;
+        self.v := self.v + 1;
     }
 }
 
@@ -19,6 +19,6 @@ fun mutate_through_shared<T: Bump>(x: &T) {
 }
 
 fun main() {
-    var c = C { v = 0 };
+    var c := C { v = 0 };
     mutate_through_shared(&c);
 }

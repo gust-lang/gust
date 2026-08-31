@@ -5,5 +5,5 @@
 fun always_int<T>(_x: T) -> T { 42 }
 
 fun use_bad() {
-    let _s: boolean = always_int(true); // ERROR[T0001]
+    let _s: boolean := always_int(true); // ERROR[T0001]
 }

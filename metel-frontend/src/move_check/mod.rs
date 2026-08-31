@@ -2823,7 +2823,7 @@ aspect Container {
 }
 
 fun inspect<T: Container>(value: T) {
-    let item = value.get();
+    let item := value.get();
     item.inspect();
 }
 
@@ -2848,8 +2848,8 @@ aspect Blend {
 }
 
 fun blend_twice<T: Blend>(value: T, other: T) {
-    var value = value;
-    var other = other;
+    var value := value;
+    var other := other;
     value.blend(&var other);
     value.blend(&var other);
 }
@@ -2913,9 +2913,9 @@ fun main() { }
         assert_has_violation(
             r#"
 fun main() {
-    let a = "hello";
-    let b = a;
-    let c = a;
+    let a := "hello";
+    let b := a;
+    let c := a;
 }
 "#,
             "a",
@@ -2929,9 +2929,9 @@ fun main() {
 fun take(s: String) { }
 
 fun main() {
-    let s = "hello";
+    let s := "hello";
     take(s);
-    let again = s;
+    let again := s;
 }
 "#,
             "s",
@@ -2947,9 +2947,9 @@ fun forward(s: String) -> String {
 }
 
 fun main() {
-    let s = "hello";
-    let kept = forward(s);
-    let again = s;
+    let s := "hello";
+    let kept := forward(s);
+    let again := s;
 }
 "#,
             "s",
@@ -2961,17 +2961,17 @@ fun main() {
         assert_no_violations(
             r#"
 fun main() {
-    let n = 41;
-    let a = n;
-    let b = n;
+    let n := 41;
+    let a := n;
+    let b := n;
 }
 "#,
         );
         assert_no_violations(
             r#"
 fun main() {
-    let n = 5;
-    let f = () -> i64 { return n; };
+    let n := 5;
+    let f := () -> i64 { return n; };
     assert(n == 5);
 }
 "#,
@@ -2988,9 +2988,9 @@ struct Pair {
 }
 
 fun main() {
-    let pair = Pair { left = "a", right = 1 };
-    let moved: String = pair.left;
-    let again: String = pair.left;
+    let pair := Pair { left = "a", right = 1 };
+    let moved: String := pair.left;
+    let again: String := pair.left;
 }
 "#,
         );
@@ -3009,9 +3009,9 @@ struct Pair {
 }
 
 fun main() {
-    let pair = Pair { left = "a", right = 1 };
-    let moved: String = pair.left;
-    let still_live: i64 = pair.right;
+    let pair := Pair { left = "a", right = 1 };
+    let moved: String := pair.left;
+    let still_live: i64 := pair.right;
 }
 "#,
         );
@@ -3031,9 +3031,9 @@ fun take(pair: Pair) -> i64 {
 }
 
 fun main() {
-    let pair = Pair { left = "a", right = 1 };
-    let moved: String = pair.left;
-    let value: i64 = take(pair);
+    let pair := Pair { left = "a", right = 1 };
+    let moved: String := pair.left;
+    let value: i64 := take(pair);
 }
 "#,
             "pair",
@@ -3055,8 +3055,8 @@ extend Handle: Drop {
 }
 
 fun main() {
-    let handle = Handle { name = "x", fd = 1 };
-    let name = handle.name;
+    let handle := Handle { name = "x", fd = 1 };
+    let name := handle.name;
 }
 "#,
             "handle",
@@ -3077,8 +3077,8 @@ extend Handle: Drop {
 }
 
 fun main() {
-    let handle = Handle { name = "x", fd = 1 };
-    let n = match handle.name {
+    let handle := Handle { name = "x", fd = 1 };
+    let n := match handle.name {
         name => name.len(),
     };
 }
@@ -3106,11 +3106,11 @@ fun take(r: { n: i64, name: String }) -> i64 {
 }
 
 fun main() {
-    let r = { name = "x", n = 1 };
-    let moved = match r {
+    let r := { name = "x", n = 1 };
+    let moved := match r {
         { name, n } => name,
     };
-    let again = take(r);
+    let again := take(r);
 }
 "#,
             "r",
@@ -3130,8 +3130,8 @@ extend Wrapper: Drop {
 }
 
 fun main() {
-    let wrapper = Wrapper { pair = ("x", 1) };
-    let n = match wrapper.pair {
+    let wrapper := Wrapper { pair = ("x", 1) };
+    let n := match wrapper.pair {
         (name, _) => name.len(),
     };
 }
@@ -3158,10 +3158,10 @@ extend Wrapper: Drop {
 }
 
 fun main() {
-    let wrapper = Wrapper {
+    let wrapper := Wrapper {
         payload = MaybeText::Full { text = "x" },
     };
-    let n = match wrapper.payload {
+    let n := match wrapper.payload {
         MaybeText::Full { text } => text.len(),
         MaybeText::Empty => 0,
     };
@@ -3184,8 +3184,8 @@ extend Wrapper: Drop {
 }
 
 fun main() {
-    let wrapper = Wrapper { pair = ("x", 1) };
-    let name = wrapper.pair.0;
+    let wrapper := Wrapper { pair = ("x", 1) };
+    let name := wrapper.pair.0;
 }
 "#,
             "wrapper",
@@ -3197,9 +3197,9 @@ fun main() {
         assert_has_violation(
             r#"
 fun main() {
-    let pair = ("x", 1);
-    let left = pair.0;
-    let again = pair.0;
+    let pair := ("x", 1);
+    let left := pair.0;
+    let again := pair.0;
 }
 "#,
             "pair",
@@ -3216,12 +3216,12 @@ enum MaybeText {
 }
 
 fun main() {
-    let value = MaybeText::Full { text = "x" };
-    let n = match value {
+    let value := MaybeText::Full { text = "x" };
+    let n := match value {
         MaybeText::Full { text } => text.len(),
         MaybeText::Empty => 0,
     };
-    let again = value;
+    let again := value;
 }
 "#,
             "value",
@@ -3233,8 +3233,8 @@ fun main() {
         assert_has_violation(
             r#"
 fun main() {
-    let xs = ["x"];
-    let first = xs[0];
+    let xs := ["x"];
+    let first := xs[0];
 }
 "#,
             "xs",
@@ -3246,8 +3246,8 @@ fun main() {
         assert_has_violation(
             r#"
 fun main() {
-    let xs = ["x"];
-    let n = match xs[0] {
+    let xs := ["x"];
+    let n := match xs[0] {
         s => s.len(),
     };
 }
@@ -3261,8 +3261,8 @@ fun main() {
         assert_has_violation(
             r#"
 fun main() {
-    let xs: [String; 1] = ["x"];
-    let n = match xs {
+    let xs: [String; 1] := ["x"];
+    let n := match xs {
         [s] => s.len(),
     };
 }
@@ -3276,9 +3276,9 @@ fun main() {
         let violations = assert_has_violation(
             r#"
 fun main() {
-    let s = "hello";
-    let f = () -> String { s };
-    let again = s;
+    let s := "hello";
+    let f := () -> String { s };
+    let again := s;
 }
 "#,
             "s",
@@ -3291,13 +3291,13 @@ fun main() {
         assert_has_violation(
             r#"
 fun main() {
-    let s = "hello";
+    let s := "hello";
     if (true) {
-        let moved = s;
+        let moved := s;
     } else {
-        let keep = 0;
+        let keep := 0;
     }
-    let again = s;
+    let again := s;
 }
 "#,
             "s",
@@ -3309,12 +3309,12 @@ fun main() {
         assert_has_violation(
             r#"
 fun main() {
-    let s = "hello";
+    let s := "hello";
     loop {
-        let moved = s;
+        let moved := s;
         break;
     }
-    let again = s;
+    let again := s;
 }
 "#,
             "s",
@@ -3330,8 +3330,8 @@ struct Counter { value: i64 }
 fun bump(r: &var Counter) { }
 
 fun main() {
-    var c = Counter { value = 0 };
-    let r = &var c;
+    var c := Counter { value = 0 };
+    let r := &var c;
     bump(r);
     bump(r);
 }
@@ -3348,9 +3348,9 @@ struct Counter { value: i64 }
 fun bump(r: &var Counter) { }
 
 fun main() {
-    var c = Counter { value = 0 };
-    let r = &var c;
-    let q = r;
+    var c := Counter { value = 0 };
+    let r := &var c;
+    let q := r;
     bump(r);
 }
 "#,
@@ -3368,8 +3368,8 @@ struct Pair {
 }
 
 fun main() {
-    let pair = Pair { left = "a", right = 1 };
-    let moved = pair.left;
+    let pair := Pair { left = "a", right = 1 };
+    let moved := pair.left;
 }
 "#,
         );
@@ -3389,9 +3389,9 @@ struct Pair {
 }
 
 fun main() {
-    let pair = Pair { left = "a", right = 1 };
-    let moved = pair.left;
-    let sibling = pair.right;
+    let pair := Pair { left = "a", right = 1 };
+    let moved := pair.left;
+    let sibling := pair.right;
 }
 "#,
         );
@@ -3413,9 +3413,9 @@ struct Owned {
 }
 
 fun main() {
-    let a = Owned { s = "x" };
-    let t = (a, 1);
-    let n = a.s.len();
+    let a := Owned { s = "x" };
+    let t := (a, 1);
+    let n := a.s.len();
 }
 "#,
             "a",
@@ -3436,8 +3436,8 @@ extend Handle: Drop {
 }
 
 fun main() {
-    let h = Handle { name = "x", fd = 1 };
-    let t = (h.name, 1);
+    let h := Handle { name = "x", fd = 1 };
+    let t := (h.name, 1);
 }
 "#,
             "h",
@@ -3449,8 +3449,8 @@ fun main() {
         assert_has_violation(
             r#"
 fun main() {
-    let xs = ["a"];
-    let ys = [xs[0]];
+    let xs := ["a"];
+    let ys := [xs[0]];
 }
 "#,
             "xs",
@@ -3486,7 +3486,7 @@ fun first<T: Copy>(items: T[]) -> T {
 }
 
 fun main() {
-    let values: i64[] = [1, 2, 3];
+    let values: i64[] := [1, 2, 3];
     assert(first(values) == 1);
 }
 "#,
@@ -3502,7 +3502,7 @@ fun increment(value: i64) -> i64 { value + 1 }
 fun apply(f: (i64) -> i64) -> i64 { f(1) }
 
 fun main() {
-    let f = increment;
+    let f := increment;
     assert(apply(f) == 2);
     assert(apply(f) == 2);
 }
@@ -3610,11 +3610,11 @@ fun main() {
         let violations = assert_has_violation(
             r#"
 fun main() {
-    let s = "hello";
-    var i = 0;
+    let s := "hello";
+    var i := 0;
     loop {
         i += 1;
-        let moved = s;
+        let moved := s;
         if (i == 2) { break; }
     }
 }
@@ -3634,14 +3634,14 @@ fun main() {
         let violations = assert_has_violation(
             r#"
 fun main() {
-    let s = "hello";
-    var i = 0;
+    let s := "hello";
+    var i := 0;
     while (i < 3) {
         i += 1;
-        var j = 0;
+        var j := 0;
         while (j < 2) {
             j += 1;
-            let moved = s;
+            let moved := s;
         }
     }
 }
@@ -3656,12 +3656,12 @@ fun main() {
         assert_no_violations(
             r#"
 fun main() {
-    let s = "hello";
-    var i = 0;
+    let s := "hello";
+    var i := 0;
     loop {
         i += 1;
         if (i == 2) {
-            let moved = s;
+            let moved := s;
             break;
         }
     }
@@ -3675,12 +3675,12 @@ fun main() {
         assert_no_violations(
             r#"
 fun main() {
-    let s = "hello";
-    var i = 0;
+    let s := "hello";
+    var i := 0;
     loop {
         i += 1;
         if (i == 2) {
-            let moved = s;
+            let moved := s;
             return;
         }
     }
@@ -3694,11 +3694,11 @@ fun main() {
         let violations = assert_has_violation(
             r#"
 fun main() {
-    let s = "hello";
-    var i = 0;
+    let s := "hello";
+    var i := 0;
     loop {
         i += 1;
-        let moved = s;
+        let moved := s;
         if (i < 3) { continue; }
         break;
     }
@@ -3714,16 +3714,16 @@ fun main() {
         assert_has_violation(
             r#"
 fun main() {
-    let s = "hello";
-    var i = 0;
+    let s := "hello";
+    var i := 0;
     loop {
         i += 1;
         if (i == 2) {
-            let moved = s;
+            let moved := s;
             break;
         }
     }
-    let again = s;
+    let again := s;
 }
 "#,
             "s",
@@ -3735,11 +3735,11 @@ fun main() {
         assert_no_violations(
             r#"
 fun main() {
-    var i = 0;
+    var i := 0;
     while (i < 3) {
         i += 1;
-        let local = "fresh";
-        let moved = local;
+        let local := "fresh";
+        let moved := local;
     }
 }
 "#,
@@ -3753,12 +3753,12 @@ fun main() {
         assert_no_violations(
             r#"
 fun main() {
-    let s = "hello";
+    let s := "hello";
     if (true) {
-        let moved = s;
+        let moved := s;
         return;
     }
-    let again = s;
+    let again := s;
 }
 "#,
         );
@@ -3769,11 +3769,11 @@ fun main() {
         assert_has_violation(
             r#"
 fun main() {
-    let s = "hello";
+    let s := "hello";
     if (true) {
-        let moved = s;
+        let moved := s;
     }
-    let again = s;
+    let again := s;
 }
 "#,
             "s",
@@ -3790,10 +3790,10 @@ fun main() {
         assert_no_violations(
             r#"
 fun main() {
-    var s = "hello";
-    let moved = s;
-    s = "again";
-    let ok = s;
+    var s := "hello";
+    let moved := s;
+    s := "again";
+    let ok := s;
 }
 "#,
         );
@@ -3804,12 +3804,12 @@ fun main() {
         assert_no_violations(
             r#"
 fun main() {
-    var s = "hello";
-    var i = 0;
+    var s := "hello";
+    var i := 0;
     loop {
         i += 1;
-        let moved = s;
-        s = "again";
+        let moved := s;
+        s := "again";
         if (i == 3) { break; }
     }
 }
@@ -3824,10 +3824,10 @@ fun main() {
 struct Pair { left: String, right: String }
 
 fun main() {
-    var p = Pair { left = "a", right = "b" };
-    let taken = p.left;
-    p.left = "c";
-    let whole = p;
+    var p := Pair { left = "a", right = "b" };
+    let taken := p.left;
+    p.left := "c";
+    let whole := p;
 }
 "#,
         );
@@ -3841,9 +3841,9 @@ fun main() {
 struct Pair { left: String, right: String }
 
 fun main() {
-    var p = Pair { left = "a", right = "b" };
-    let whole = p;
-    p.left = "c";
+    var p := Pair { left = "a", right = "b" };
+    let whole := p;
+    p.left := "c";
 }
 "#,
             "p",
@@ -3857,10 +3857,10 @@ fun main() {
 struct Pair { left: String, right: String }
 
 fun main() {
-    var p = Pair { left = "a", right = "b" };
-    let taken = p.right;
-    p.left = "c";
-    let whole = p;
+    var p := Pair { left = "a", right = "b" };
+    let taken := p.right;
+    p.left := "c";
+    let whole := p;
 }
 "#,
             "p",
@@ -3874,11 +3874,11 @@ fun main() {
         assert_no_violations(
             r#"
 fun main() {
-    let s = "hello";
-    var i = 0;
+    let s := "hello";
+    var i := 0;
     while (i < 3) {
         i += 1;
-        let moved = s;
+        let moved := s;
         loop { return; }
     }
 }
@@ -3891,11 +3891,11 @@ fun main() {
         assert_has_violation(
             r#"
 fun main() {
-    let s = "hello";
-    var i = 0;
+    let s := "hello";
+    var i := 0;
     while (i < 3) {
         i += 1;
-        let moved = s;
+        let moved := s;
         loop { break; }
     }
 }
@@ -3916,12 +3916,12 @@ fun main() {
         assert_has_violation(
             r#"
 fun main() {
-    let s = "original";
-    var i = 0;
+    let s := "original";
+    var i := 0;
     loop {
         i += 1;
-        let moved = s;
-        let s = "replacement";
+        let moved := s;
+        let s := "replacement";
         if (i == 2) { break; }
     }
 }
@@ -3935,13 +3935,13 @@ fun main() {
         assert_has_violation(
             r#"
 fun main() {
-    let s = "original";
+    let s := "original";
     loop {
-        let moved = s;
-        let s = "replacement";
+        let moved := s;
+        let s := "replacement";
         break;
     }
-    let again = s;
+    let again := s;
 }
 "#,
             "s",
@@ -3955,15 +3955,15 @@ fun main() {
         assert_no_violations(
             r#"
 fun main() {
-    let s = "original";
-    var i = 0;
+    let s := "original";
+    var i := 0;
     loop {
         i += 1;
-        let s = "shadow";
-        let moved = s;
+        let s := "shadow";
+        let moved := s;
         if (i == 2) { break; }
     }
-    let outer = s;
+    let outer := s;
 }
 "#,
         );
@@ -3976,13 +3976,13 @@ fun main() {
         assert_has_violation(
             r#"
 fun main() {
-    let s = "original";
-    var i = 0;
+    let s := "original";
+    var i := 0;
     loop {
         i += 1;
-        let moved = s;
-        let s = "first";
-        let s = "second";
+        let moved := s;
+        let s := "first";
+        let s := "second";
         if (i == 2) { break; }
     }
 }
@@ -3998,10 +3998,10 @@ fun main() {
 fun eat(s: String) -> i64 { 1 }
 
 fun main() {
-    let s = "hello";
-    let p = &s;
-    let first = eat(*p);
-    let second = eat(*p);
+    let s := "hello";
+    let p := &s;
+    let first := eat(*p);
+    let second := eat(*p);
 }
 "#,
             "p",
@@ -4026,9 +4026,9 @@ struct B { v: String }
 extend B: Consume { fun eat(self) -> String { return self.v; } }
 
 fun main() {
-    let b = B { v = "owned" };
-    let r = &b;
-    let first = r.eat();
+    let b := B { v = "owned" };
+    let r := &b;
+    let first := r.eat();
 }
 "#,
             "r",
@@ -4050,9 +4050,9 @@ struct B { v: String }
 extend B: Consume { fun eat(self) -> String { return self.v; } }
 
 fun main() {
-    let b = B { v = "owned" };
-    let r = &b;
-    let first = (*r).eat();
+    let b := B { v = "owned" };
+    let r := &b;
+    let first := (*r).eat();
 }
 "#,
             "r",
@@ -4072,9 +4072,9 @@ struct B { v: String }
 extend B: Consume { fun eat(self) -> String { return self.v; } }
 
 fun main() {
-    var b = B { v = "owned" };
-    let r = &var b;
-    let first = r.eat();
+    var b := B { v = "owned" };
+    let r := &var b;
+    let first := r.eat();
 }
 "#,
             "r",
@@ -4094,13 +4094,13 @@ struct B { v: String }
 extend B: Consume { fun eat(self) -> String { return self.v; } }
 
 fun twice<T: Consume>(x: &T) -> String {
-    let a = x.eat();
+    let a := x.eat();
     return x.eat();
 }
 
 fun main() {
-    let b = B { v = "owned" };
-    let result = twice(&b);
+    let b := B { v = "owned" };
+    let result := twice(&b);
 }
 "#,
             "x",
@@ -4123,8 +4123,8 @@ fun consume_sneak<T: Consume>(pair: (&T, i64)) -> String {
 }
 
 fun main() {
-    let b = B { v = "owned" };
-    let result = consume_sneak((&b, 1));
+    let b := B { v = "owned" };
+    let result := consume_sneak((&b, 1));
 }
 "#,
             "pair",
@@ -4143,9 +4143,9 @@ struct B { v: String }
 extend B: Consume { fun eat(self) -> String { return self.v; } }
 
 fun main() {
-    let b = B { v = "owned" };
-    let out = b.eat();
-    let again = b.v;
+    let b := B { v = "owned" };
+    let out := b.eat();
+    let again := b.v;
 }
 "#,
             "b",
@@ -4161,16 +4161,16 @@ aspect Bump { fun bump(&var self); }
 struct B { v: String }
 extend B: Show { fun show(&self) -> String { return self.v.clone(); } }
 struct C { v: i64 }
-extend C: Bump { fun bump(&var self) { self.v = self.v + 1; } }
+extend C: Bump { fun bump(&var self) { self.v := self.v + 1; } }
 
 fun main() {
-    let b = B { v = "x" };
-    let r = &b;
-    let a = r.show();
-    let c = r.show();
+    let b := B { v = "x" };
+    let r := &b;
+    let a := r.show();
+    let c := r.show();
 
-    var cc = C { v = 0 };
-    let rc = &var cc;
+    var cc := C { v = 0 };
+    let rc := &var cc;
     rc.bump();
     rc.bump();
 }
@@ -4196,10 +4196,10 @@ extend Pair: Copy;
 extend Pair { fun sum(self) -> i64 { self.a + self.b } }
 
 fun main() {
-    let p = Pair { a = 1, b = 2 };
-    let r = &p;
-    let first = r.sum();
-    let second = r.sum();
+    let p := Pair { a = 1, b = 2 };
+    let r := &p;
+    let first := r.sum();
+    let second := r.sum();
 }
 "#,
         );
@@ -4222,8 +4222,8 @@ extend B: Consume { fun eat(self) -> String { return self.v; } }
 fun get_ref(x: &B) -> &B { return x; }
 
 fun main() {
-    let b = B { v = "owned" };
-    let out = get_ref(&b).eat();
+    let b := B { v = "owned" };
+    let out := get_ref(&b).eat();
 }
 "#,
             "<temporary>",
@@ -4244,10 +4244,10 @@ struct B { v: String }
 extend B: Consume { fun eat(self) -> String { return self.v; } }
 
 fun main() {
-    let b = B { v = "owned" };
-    let r = &b;
-    let rr = &r;
-    let out = rr.eat();
+    let b := B { v = "owned" };
+    let r := &b;
+    let rr := &r;
+    let out := rr.eat();
 }
 "#,
             "rr",
@@ -4275,13 +4275,13 @@ struct Name { value: String }
 struct Item { name: Name, count: i64 }
 extend Item {
     fun peek(&self) -> String {
-        let v = self.name.value;
+        let v := self.name.value;
         v
     }
 }
 fun main() {
-    let item = Item { name = Name { value = "n" }, count = 1 };
-    let _ = item.peek();
+    let item := Item { name = Name { value = "n" }, count = 1 };
+    let _ := item.peek();
 }
 "#,
             "self",
@@ -4299,12 +4299,12 @@ fun main() {
 struct Name { value: String }
 struct Item { name: Name, count: i64 }
 fun peek(item: &Item) -> String {
-    let v = item.name.value;
+    let v := item.name.value;
     v
 }
 fun main() {
-    let item = Item { name = Name { value = "n" }, count = 1 };
-    let _ = peek(&item);
+    let item := Item { name = Name { value = "n" }, count = 1 };
+    let _ := peek(&item);
 }
 "#,
             "item",
@@ -4320,9 +4320,9 @@ fun main() {
             r#"
 struct B { v: String }
 fun main() {
-    let b = B { v = "x" };
-    let r = &b;
-    let x: B = *r;
+    let b := B { v = "x" };
+    let r := &b;
+    let x: B := *r;
 }
 "#,
             "r",
@@ -4337,9 +4337,9 @@ fun main() {
 struct B { v: String }
 fun takes(b: B) -> String { b.v }
 fun main() {
-    let b = B { v = "x" };
-    let r = &b;
-    let n = takes(*r);
+    let b := B { v = "x" };
+    let r := &b;
+    let n := takes(*r);
 }
 "#,
             "r",
@@ -4356,9 +4356,9 @@ struct Name { value: String }
 struct Item { name: Name }
 fun takes(v: String) -> i64 { v.len() }
 fun main() {
-    let item = Item { name = Name { value = "x" } };
-    let r = &item;
-    let n = takes(r.name.value);
+    let item := Item { name = Name { value = "x" } };
+    let r := &item;
+    let n := takes(r.name.value);
 }
 "#,
             "r",
@@ -4373,12 +4373,12 @@ fun main() {
             r#"
 struct Item { count: i64, name: String }
 fun peek(item: &Item) -> i64 {
-    let v = item.count;
+    let v := item.count;
     v
 }
 fun main() {
-    let item = Item { count = 5, name = "n" };
-    let _ = peek(&item);
+    let item := Item { count = 5, name = "n" };
+    let _ := peek(&item);
 }
 "#,
         );
@@ -4403,10 +4403,10 @@ extend B: Consume { fun eat(self) -> String { return self.v; } }
 struct Middle { payload: B }
 struct Outer { inner: &Middle }
 fun main() {
-    let b = B { v = "owned" };
-    let middle = Middle { payload = b };
-    let outer = Outer { inner = &middle };
-    let taken = outer.inner.payload.eat();
+    let b := B { v = "owned" };
+    let middle := Middle { payload = b };
+    let outer := Outer { inner = &middle };
+    let taken := outer.inner.payload.eat();
 }
 "#,
             "outer",
@@ -4426,7 +4426,7 @@ extend Item {
     }
 }
 fun main() {
-    let item = Item { count = 1, name = "n" };
+    let item := Item { count = 1, name = "n" };
     println(item.show());
 }
 "#,

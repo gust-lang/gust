@@ -4,6 +4,6 @@ fun make_combiner() -> () -> i64 {
     return () -> i64 { return left_val() + right_val(); };         
 }         
 fun main() {         
-    let f = make_combiner();         
+    let f := make_combiner();         
     assert(f() == 16);         
 }

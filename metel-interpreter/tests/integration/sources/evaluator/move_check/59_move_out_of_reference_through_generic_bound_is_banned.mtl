@@ -16,11 +16,11 @@ extend B: Consume {
 // in the other direction. `consume_method_receiver` is the single place both
 // resolve through, so there is no second copy of this rule to drift.
 fun twice<T: Consume>(x: &T) -> String {
-    let a = x.eat();
+    let a := x.eat();
     return x.eat();
 }
 
 fun main() {
-    let b = B { v = "owned" };
-    let result = twice(&b);
+    let b := B { v = "owned" };
+    let result := twice(&b);
 }

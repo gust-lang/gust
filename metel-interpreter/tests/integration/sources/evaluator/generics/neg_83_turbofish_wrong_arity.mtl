@@ -2,5 +2,5 @@
 fun identity<T>(x: T) -> T { x }
 
 fun main() {
-    let x = identity::<i64, boolean>(42);
+    let x := identity::<i64, boolean>(42);
 }

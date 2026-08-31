@@ -9,12 +9,12 @@ struct Handle { fd: i64, name: String }
 
 extend Handle {
     fun narrow_let(self) -> i64 {
-        let x: Self.{ fd } = self.{ fd };
+        let x: Self.{ fd } := self.{ fd };
         return x.fd;
     }
 }
 
 fun main() {
-    let h = Handle { fd = 3, name = "stdin" };
+    let h := Handle { fd = 3, name = "stdin" };
     assert(h.narrow_let() == 3);
 }

@@ -5,13 +5,13 @@ fun swap<A, B>(a: A, b: B) -> (B, A) { (b, a) }
 fun dup<T: Copy>(x: T) -> (T, T) { (x, x) }
 
 fun use_tuples() -> i64 {
-    let p: (i64, boolean) = make_pair(42, true);
-    let s: (boolean, i64) = swap(1, false);
-    let d: (i64, i64)  = dup(7);
+    let p: (i64, boolean) := make_pair(42, true);
+    let s: (boolean, i64) := swap(1, false);
+    let d: (i64, i64)  := dup(7);
 
-    let _b1: boolean = p.1;
-    let _b2: boolean = s.0;
-    let _n2: i64  = d.1;
+    let _b1: boolean := p.1;
+    let _b2: boolean := s.0;
+    let _n2: i64  := d.1;
 
     p.0 + d.0
 }

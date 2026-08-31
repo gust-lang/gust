@@ -1,20 +1,20 @@
 fun main() {
     // Break with a value.
-    let x = loop { break 42; };
+    let x := loop { break 42; };
     assert(x == 42);
     // Continue skips the current iteration.
-    var count = 0;
-    var i = 0;
+    var count := 0;
+    var i := 0;
     loop {
         if (i >= 5) { break; }
-        i = i + 1;
+        i := i + 1;
         if (i == 3) { continue; }
-        count = count + 1;
+        count := count + 1;
     }
     assert(count == 4);
     // Assignments inside the loop are visible in subsequent iterations.
-    var acc = 0;
-    var j = 1;
+    var acc := 0;
+    var j := 1;
     loop {
         if (j > 5) { break; }
         acc += j;

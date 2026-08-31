@@ -20,7 +20,7 @@
 struct Pair<A, B> { first: A, second: B }
 
 fun main() {
-    let p = Pair { first = 1, second = "one" };
+    let p := Pair { first = 1, second = "one" };
 
     // The issue's own repro: direct method dispatch on an unannotated field.
     assert(p.first.to_string() == "1");
@@ -32,18 +32,18 @@ fun main() {
     // Confirmed broken even one level removed: copying the field into an
     // unannotated local first did not help, since the copy's own TypeVar is
     // yet another fresh var unified with the same chain.
-    let copied = p.first;
+    let copied := p.first;
     assert(copied.to_string() == "1");
 
     // Float literals are tagged and defaulted the same way as integers —
     // cover that path too, not just i64.
-    let q = Pair { first = 2.5, second = "half" };
+    let q := Pair { first = 2.5, second = "half" };
     assert(q.first.to_string() == "2.5");
 
     // Two hops through unannotated locals, to exercise a longer chain of
     // unifications rather than just the one hop the issue's own repro shows.
-    let once = q.first;
-    let twice = once;
+    let once := q.first;
+    let twice := once;
     assert(twice.to_string() == "2.5");
 
     // Arithmetic and an explicit type annotation on a copy were never broken
@@ -51,6 +51,6 @@ fun main() {
     // future change can't quietly break the cases this bug's own workaround
     // relied on.
     assert(p.first + 4 == 5);
-    let annotated: i64 = p.first;
+    let annotated: i64 := p.first;
     assert(annotated.to_string() == "1");
 }

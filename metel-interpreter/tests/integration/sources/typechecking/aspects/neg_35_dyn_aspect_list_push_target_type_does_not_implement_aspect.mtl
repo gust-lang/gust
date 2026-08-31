@@ -1,6 +1,6 @@
 struct Rock { }
 
 fun main() {
-    var shapes: List<dyn Display> = List::new();
+    var shapes: List<dyn Display> := List::new();
     shapes.push(Rock { });
 }

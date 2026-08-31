@@ -3,11 +3,11 @@
 // `&var` layer at once — convenient, but it made the number of layers invisible at the
 // write site and left no way to repoint any of them.
 fun main() {
-    var n = 1;
-    var p: &var i64 = &var n;
-    let pp: &var &var i64 = &var p;
+    var n := 1;
+    var p: &var i64 := &var n;
+    let pp: &var &var i64 := &var p;
 
-    **pp = 5;      // two layers, two stars
+    **pp := 5;      // two layers, two stars
     assert(n == 5);
 
     **pp += 10;
@@ -15,9 +15,9 @@ fun main() {
 
     // One star reaches the inner reference itself, not the i64 — which is what makes
     // repointing through a chain expressible at all.
-    var m = 100;
-    *pp = &var m;  // p now refers to m; n keeps its value
+    var m := 100;
+    *pp := &var m;  // p now refers to m; n keeps its value
     assert(n == 15);
-    **pp = 7;
+    **pp := 7;
     assert(m == 7);
 }

@@ -15,7 +15,7 @@ aspect Container {
 struct Box1 { v: i64 }
 
 extend Box1: Container {
-    type Item = i64;
+    type Item := i64;
     fun get(&self) -> i64 {
         return self.v;
     }
@@ -26,8 +26,8 @@ fun unwrap<T: Container>(c: &T) -> T::Item {
 }
 
 fun main() {
-    let b = Box1 { v = 7 };
-    let r = unwrap(&b);
+    let b := Box1 { v = 7 };
+    let r := unwrap(&b);
     assert(r == 7);
     assert(unwrap(&b) == 7);
 }

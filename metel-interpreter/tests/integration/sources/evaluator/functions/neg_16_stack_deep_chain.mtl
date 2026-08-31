@@ -3,7 +3,7 @@
 // middle of a deep stack are retained.
 
 fun depth_e() {
-    let _ = 1 / 0;
+    let _ := 1 / 0;
 }
 
 fun depth_d() {

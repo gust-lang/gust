@@ -1,34 +1,34 @@
 // Stage 8: type ascription operator `:`.
 
 // Empty array element type resolved via ascription
-let n: i64[] = [] : i64[];
+let n: i64[] := [] : i64[];
 
 // Identity ascription on a literal
-let x: i64 = 1 : i64;
+let x: i64 := 1 : i64;
 
 // Ascription on a variable reference
 fun check_var() {
-    let v: boolean = true;
-    let w: boolean = v : boolean;
+    let v: boolean := true;
+    let w: boolean := v : boolean;
 }
 
 // Ascription in argument position
 fun take_ints(arr: i64[]) -> i64 { arr.len() }
-let _: i64 = take_ints([] : i64[]);
+let _: i64 := take_ints([] : i64[]);
 
 // Ascription disambiguates two empty-array arguments
 fun two_arrays(a: i64[], b: f64[]) -> i64 { a.len() }
-let _: i64 = two_arrays([] : i64[], [] : f64[]);
+let _: i64 := two_arrays([] : i64[], [] : f64[]);
 
 // Ascription on a struct literal
 struct Point { x: i64, y: i64 }
 fun check_struct() {
-    let p: Point = Point { x = 1, y = 2 } : Point;
+    let p: Point := Point { x = 1, y = 2 } : Point;
 }
 
 // Ascription on a tuple
 fun check_tuple() {
-    let t: (i64, boolean) = (1, true) : (i64, boolean);
+    let t: (i64, boolean) := (1, true) : (i64, boolean);
 }
 
 // Ascription as the tail expression of a function body
@@ -38,14 +38,14 @@ fun returns_ascribed() -> i64 {
 
 // Ascription resolves the type of an unannotated let binding
 fun check_inferred() {
-    let arr = [] : i64[];
-    let _: i64 = arr.len();
+    let arr := [] : i64[];
+    let _: i64 := arr.len();
 }
 
 // Ascription inside a binary expression operand
 fun check_binop() {
-    let _: boolean = (1 : i64) == 1;
+    let _: boolean := (1 : i64) == 1;
 }
 
 // as conversion still works alongside ascription
-let f: f64 = 1 as f64;
+let f: f64 := 1 as f64;

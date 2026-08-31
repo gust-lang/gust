@@ -4,7 +4,7 @@
 //         positional access (.0 .1), tuple destructuring in match.
 
 fun sum(arr: i64[]) -> i64 {
-    var total = 0;
+    var total := 0;
     for (n in arr) {
         total += n;
     }
@@ -12,8 +12,8 @@ fun sum(arr: i64[]) -> i64 {
 }
 
 fun reverse(arr: i64[]) -> i64[] {
-    var result: i64[]  = [];
-    var i = array_len(arr) - 1;
+    var result: i64[]  := [];
+    var i := array_len(arr) - 1;
     while (i >= 0) {
         array_push(result, arr[i]);
         i -= 1;
@@ -22,9 +22,9 @@ fun reverse(arr: i64[]) -> i64[] {
 }
 
 fun zip_sum(a: i64[], b: i64[]) -> i64[] {
-    var result: i64[]  = [];
-    var i = 0;
-    let len = array_len(a);
+    var result: i64[]  := [];
+    var i := 0;
+    let len := array_len(a);
     while (i < len) {
         array_push(result, a[i] + b[i]);
         i += 1;
@@ -33,29 +33,29 @@ fun zip_sum(a: i64[], b: i64[]) -> i64[] {
 }
 
 fun min_max(arr: i64[]) -> (i64, i64) {
-    var lo = arr[0];
-    var hi = arr[0];
+    var lo := arr[0];
+    var hi := arr[0];
     for (n in arr) {
-        if (n < lo) { lo = n; }
-        if (n > hi) { hi = n; }
+        if (n < lo) { lo := n; }
+        if (n > hi) { hi := n; }
     }
     return (lo, hi);
 }
 
 fun main() {
     // --- array literal and T[] type ---
-    let nums: i64[] = [5, 3, 8, 1, 9, 2];
+    let nums: i64[] := [5, 3, 8, 1, 9, 2];
     println(int_to_string(array_len(nums)));   // 6
     println(int_to_string(nums[0]));           // 5
     println(int_to_string(nums[4]));           // 9
 
     // --- Array<T> syntax is equivalent ---
-    let words: Array<String> = ["alpha", "beta", "gamma"];
+    let words: Array<String> := ["alpha", "beta", "gamma"];
     println(words[1]);                         // beta
     println(int_to_string(array_len(words)));  // 3
 
     // --- array_push ---
-    var growing: i64[]  = [];
+    var growing: i64[]  := [];
     array_push(growing, 10);
     array_push(growing, 20);
     array_push(growing, 30);
@@ -65,38 +65,38 @@ fun main() {
     // --- sum and reverse ---
     println(int_to_string(sum(nums)));          // 28
 
-    let rev = reverse([1, 2, 3, 4, 5]);
+    let rev := reverse([1, 2, 3, 4, 5]);
     for (n in rev) {
         print(int_to_string(n) + " ");          // 5 4 3 2 1
     }
     println("");
 
     // --- zip_sum ---
-    let a: i64[] = [1, 2, 3];
-    let b: i64[] = [4, 5, 6];
-    let zipped = zip_sum(a, b);
+    let a: i64[] := [1, 2, 3];
+    let b: i64[] := [4, 5, 6];
+    let zipped := zip_sum(a, b);
     for (n in zipped) {
         print(int_to_string(n) + " ");          // 5 7 9
     }
     println("");
 
     // --- tuples ---
-    let coord: (i64, i64) = (10, 20);
+    let coord: (i64, i64) := (10, 20);
     println(int_to_string(coord.0));            // 10
     println(int_to_string(coord.1));            // 20
 
-    let triple: (String, i64, boolean) = ("yes", 42, true);
+    let triple: (String, i64, boolean) := ("yes", 42, true);
     println(triple.0);                          // yes
     println(int_to_string(triple.1));           // 42
     println(bool_to_string(triple.2));          // true
 
     // --- tuple returned from function ---
-    let bounds = min_max([3, 1, 7, 2, 9, 0, 5]);
+    let bounds := min_max([3, 1, 7, 2, 9, 0, 5]);
     println(int_to_string(bounds.0));           // 0  (min)
     println(int_to_string(bounds.1));           // 9  (max)
 
     // --- tuple destructuring in match ---
-    let pair = (true, 99);
+    let pair := (true, 99);
     match pair {
         (true, n)  => println("flag set, value=" + int_to_string(n)),  // flag set, value=99
         (false, _) => println("flag not set"),

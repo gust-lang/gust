@@ -3,7 +3,7 @@
 // a complementary test to neg_14 which only verifies the inner frame.
 
 fun inner_call() {
-    let _ = 1 / 0;
+    let _ := 1 / 0;
 }
 
 fun outer_call() {

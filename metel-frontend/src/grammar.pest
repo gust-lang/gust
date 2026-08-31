@@ -59,8 +59,10 @@ decl = {
   | let_decl
 }
 
-let_decl     = { "let" ~ !mut_kw ~ ident ~ (":" ~ type_expr)? ~ "=" ~ expr ~ ";" }
-let_mut_decl = { ("let" ~ mut_kw | mut_kw) ~ ident ~ (":" ~ type_expr)? ~ "=" ~ expr ~ ";" }
+// RFC-0136: the initializer separator is `:=` (a kept binding). Old `=` here is
+// a hard parse error, no alias. Type annotation stays `:`.
+let_decl     = { "let" ~ !mut_kw ~ ident ~ (":" ~ type_expr)? ~ ":=" ~ expr ~ ";" }
+let_mut_decl = { ("let" ~ mut_kw | mut_kw) ~ ident ~ (":" ~ type_expr)? ~ ":=" ~ expr ~ ";" }
 
 fun_decl    = { native_attr? ~ pub_kw? ~ "fun" ~ ident ~ generic_params? ~ "(" ~ param_list? ~ ")" ~ ("->" ~ type_expr)? ~ where_clause? ~ (block | ";") }
 // Stdlib-only host-binding attribute: `native(@std.core.print) fun print(...);`
@@ -86,7 +88,10 @@ extend_impl_bodyless = { ":" ~ extend_aspect_list ~ where_clause? ~ ";" }
 extend_impl_braced   = { (":" ~ extend_aspect)? ~ where_clause? ~ "{" ~ (assoc_type_def | fun_decl)* ~ "}" }
 extend_aspect_list   = { extend_aspect ~ ("," ~ extend_aspect)* }
 extend_aspect        = { bang? ~ named_type }
-assoc_type_def = { "type" ~ ident ~ "=" ~ type_expr ~ ";" }
+// RFC-0136: an associated-type *definition* introduces `ident` into the impl's
+// namespace (kept), so `:=`. Use-site `assoc_binding` (`Deref<Target = Node>`)
+// selects a pre-declared slot and keeps `=`.
+assoc_type_def = { "type" ~ ident ~ ":=" ~ type_expr ~ ";" }
 
 aspect_decl  = { pub_kw? ~ "aspect" ~ ident ~ generic_params? ~ (";" | "{" ~ (assoc_type_decl | aspect_method)* ~ "}") }
 aspect_method = { "fun" ~ ident ~ generic_params? ~ "(" ~ param_list? ~ ")" ~ ("->" ~ type_expr)? ~ (block | ";") }
@@ -157,7 +162,10 @@ expr             = { assign_expr }
 interp_expr_entry = { SOI ~ expr ~ EOI }
 
 assign_expr      = { unary_expr ~ assign_op ~ assign_expr | or_expr }
-assign_op        = { "+=" | "-=" | "*=" | "/=" | "%=" | ("=" ~ !"=") }
+// RFC-0136: plain reassignment reassigns a kept binding, so `:=`. The compound
+// operators keep `=` — the token already signals an in-place update of existing
+// storage. `==` is unaffected (it is never `assign_op`).
+assign_op        = { "+=" | "-=" | "*=" | "/=" | "%=" | ":=" }
 
 or_expr          = { and_expr ~ (or_op ~ and_expr)* }
 or_op            = { "||" }

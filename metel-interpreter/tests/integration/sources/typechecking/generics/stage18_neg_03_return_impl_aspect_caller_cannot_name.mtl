@@ -21,7 +21,7 @@ fun make_int() -> extends Display {
 }
 
 fun main() {
-	let int_val = make_int();
+	let int_val := make_int();
 	// This should fail - cannot name the concrete type of opaque return
-	let concrete: MyInt = int_val; // ERROR[T0018]
+	let concrete: MyInt := int_val; // ERROR[T0018]
 }

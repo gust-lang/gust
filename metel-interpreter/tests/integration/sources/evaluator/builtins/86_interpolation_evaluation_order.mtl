@@ -5,8 +5,8 @@ fun next(counter: &var i64) -> i64 {
 }
 
 fun main() {
-    var counter = 0;
-    let message = "${next(&var counter)} ${next(&var counter)}";
+    var counter := 0;
+    let message := "${next(&var counter)} ${next(&var counter)}";
     assert(message == "1 2");
     assert(counter == 2);
 }

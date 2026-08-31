@@ -2,19 +2,19 @@
 
 fun main() {
     // ── Minimum values for each signed type ──────────────────────────────────
-    let a: i8  = -128i8;
-    let b: i16 = -32768i16;
-    let c: i32 = -2147483648i32;
+    let a: i8  := -128i8;
+    let b: i16 := -32768i16;
+    let c: i32 := -2147483648i32;
 
     assert(a == -128i8);
     assert(b == -32768i16);
     assert(c == -2147483648i32);
 
     // ── Arithmetic with minimum values ────────────────────────────────────────
-    let sum_i8:  i8  = -128i8 + 1i8;
+    let sum_i8:  i8  := -128i8 + 1i8;
     assert(sum_i8 == -127i8);
 
-    let sum_i16: i16 = -32768i16 + 1i16;
+    let sum_i16: i16 := -32768i16 + 1i16;
     assert(sum_i16 == -32767i16);
 
     // ── Comparison ────────────────────────────────────────────────────────────
@@ -23,12 +23,12 @@ fun main() {
     assert(-2147483648i32 < 0i32);
 
     // ── Cast from minimum to wider type ──────────────────────────────────────
-    let as_i16: i16 = -128i8 as i16;
+    let as_i16: i16 := -128i8 as i16;
     assert(as_i16 == -128i16);
 
-    let as_i32: i32 = -32768i16 as i32;
+    let as_i32: i32 := -32768i16 as i32;
     assert(as_i32 == -32768i32);
 
-    let as_i64: i64 = -2147483648i32 as i64;
+    let as_i64: i64 := -2147483648i32 as i64;
     assert(as_i64 == -2147483648);
 }

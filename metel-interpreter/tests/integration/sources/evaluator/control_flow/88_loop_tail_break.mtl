@@ -2,9 +2,9 @@
 // as a loop-body tail expression with no trailing `;` (previously required
 // `break computed_value;`).
 fun compute() -> i64 {
-    var i: i64 = 0;
+    var i: i64 := 0;
     loop {
-        i = i + 1;
+        i := i + 1;
         if (i == 5) {
             break i * 10
         }

@@ -3,91 +3,91 @@ struct Pair { first: i64, second: i64 }
 fun id(x: i64) -> i64 { x }
 
 fun return_in_binop() -> i64 {
-    let value = 1 + (return 7);
+    let value := 1 + (return 7);
     0
 }
 
 fun return_in_call_arg() -> i64 {
-    let value = id(return 7);
+    let value := id(return 7);
     0
 }
 
 fun return_in_array_elem() -> i64 {
-    let value = [return 7, 1];
+    let value := [return 7, 1];
     0
 }
 
 fun return_in_tuple_elem() -> i64 {
-    let value = (return 7, 1);
+    let value := (return 7, 1);
     0
 }
 
 fun return_in_struct_field() -> i64 {
-    let value = Pair { first = return 7, second = 1 };
+    let value := Pair { first = return 7, second = 1 };
     0
 }
 
 fun return_in_unary_operand() -> i64 {
-    let value = -(return 7);
+    let value := -(return 7);
     0
 }
 
 fun return_in_match_scrutinee() -> i64 {
-    let value = match (return 7) {
+    let value := match (return 7) {
         _ => 0,
     };
     0
 }
 
 fun return_in_if_condition() -> i64 {
-    let value = if (return 7) { 1 } else { 0 };
+    let value := if (return 7) { 1 } else { 0 };
     0
 }
 
 fun return_in_let_initializer() -> i64 {
-    let value = return 7;
+    let value := return 7;
     0
 }
 
 fun break_in_binop() -> i64 {
     loop {
-        let value = 1 + (break 7);
+        let value := 1 + (break 7);
     }
 }
 
 fun break_in_call_arg() -> i64 {
     loop {
-        let value = id(break 7);
+        let value := id(break 7);
     }
 }
 
 fun break_in_array_elem() -> i64 {
     loop {
-        let value = [break 7, 1];
+        let value := [break 7, 1];
     }
 }
 
 fun break_in_tuple_elem() -> i64 {
     loop {
-        let value = (break 7, 1);
+        let value := (break 7, 1);
     }
 }
 
 fun break_in_struct_field() -> i64 {
     loop {
-        let value = Pair { first = break 7, second = 1 };
+        let value := Pair { first = break 7, second = 1 };
     }
 }
 
 fun break_in_unary_operand() -> i64 {
     loop {
-        let value = -(break 7);
+        let value := -(break 7);
     }
 }
 
 fun break_in_match_scrutinee() -> i64 {
     loop {
-        let value = match (break 7) {
+        let value := match (break 7) {
             _ => 0,
         };
     }
@@ -95,23 +95,23 @@ fun break_in_match_scrutinee() -> i64 {
 
 fun break_in_if_condition() -> i64 {
     loop {
-        let value = if (break 7) { 1 } else { 0 };
+        let value := if (break 7) { 1 } else { 0 };
     }
 }
 
 fun break_in_let_initializer() -> i64 {
     loop {
-        let value = break 7;
+        let value := break 7;
     }
 }
 
 fun continue_in_binop() -> i64 {
-    var i = 0;
-    var hits = 0;
+    var i := 0;
+    var hits := 0;
     loop {
         i += 1;
         if (i < 3) {
-            let value = 1 + (continue);
+            let value := 1 + (continue);
         }
         hits += 1;
         if (i == 3) { break hits; }
@@ -119,12 +119,12 @@ fun continue_in_binop() -> i64 {
 }
 
 fun continue_in_call_arg() -> i64 {
-    var i = 0;
-    var hits = 0;
+    var i := 0;
+    var hits := 0;
     loop {
         i += 1;
         if (i < 3) {
-            let value = id(continue);
+            let value := id(continue);
         }
         hits += 1;
         if (i == 3) { break hits; }
@@ -132,12 +132,12 @@ fun continue_in_call_arg() -> i64 {
 }
 
 fun continue_in_array_elem() -> i64 {
-    var i = 0;
-    var hits = 0;
+    var i := 0;
+    var hits := 0;
     loop {
         i += 1;
         if (i < 3) {
-            let value = [continue, 1];
+            let value := [continue, 1];
         }
         hits += 1;
         if (i == 3) { break hits; }
@@ -145,12 +145,12 @@ fun continue_in_array_elem() -> i64 {
 }
 
 fun continue_in_tuple_elem() -> i64 {
-    var i = 0;
-    var hits = 0;
+    var i := 0;
+    var hits := 0;
     loop {
         i += 1;
         if (i < 3) {
-            let value = (continue, 1);
+            let value := (continue, 1);
         }
         hits += 1;
         if (i == 3) { break hits; }
@@ -158,12 +158,12 @@ fun continue_in_tuple_elem() -> i64 {
 }
 
 fun continue_in_struct_field() -> i64 {
-    var i = 0;
-    var hits = 0;
+    var i := 0;
+    var hits := 0;
     loop {
         i += 1;
         if (i < 3) {
-            let value = Pair { first = continue, second = 1 };
+            let value := Pair { first = continue, second = 1 };
         }
         hits += 1;
         if (i == 3) { break hits; }
@@ -171,12 +171,12 @@ fun continue_in_struct_field() -> i64 {
 }
 
 fun continue_in_unary_operand() -> i64 {
-    var i = 0;
-    var hits = 0;
+    var i := 0;
+    var hits := 0;
     loop {
         i += 1;
         if (i < 3) {
-            let value = -(continue);
+            let value := -(continue);
         }
         hits += 1;
         if (i == 3) { break hits; }
@@ -184,12 +184,12 @@ fun continue_in_unary_operand() -> i64 {
 }
 
 fun continue_in_match_scrutinee() -> i64 {
-    var i = 0;
-    var hits = 0;
+    var i := 0;
+    var hits := 0;
     loop {
         i += 1;
         if (i < 3) {
-            let value = match (continue) {
+            let value := match (continue) {
                 _ => 0,
             };
         }
@@ -199,12 +199,12 @@ fun continue_in_match_scrutinee() -> i64 {
 }
 
 fun continue_in_if_condition() -> i64 {
-    var i = 0;
-    var hits = 0;
+    var i := 0;
+    var hits := 0;
     loop {
         i += 1;
         if (i < 3) {
-            let value = if (continue) { 1 } else { 0 };
+            let value := if (continue) { 1 } else { 0 };
         }
         hits += 1;
         if (i == 3) { break hits; }
@@ -212,12 +212,12 @@ fun continue_in_if_condition() -> i64 {
 }
 
 fun continue_in_let_initializer() -> i64 {
-    var i = 0;
-    var hits = 0;
+    var i := 0;
+    var hits := 0;
     loop {
         i += 1;
         if (i < 3) {
-            let value = continue;
+            let value := continue;
         }
         hits += 1;
         if (i == 3) { break hits; }
@@ -229,25 +229,25 @@ fun continue_in_let_initializer() -> i64 {
 // uses a single loop, so nothing above would catch a propagation that unwound one
 // level too far.
 fun inner_break_binds_inner_loop() -> i64 {
-    var outer = 0;
-    var n = 0;
+    var outer := 0;
+    var n := 0;
     loop {
         n += 1;
-        loop { let k = 1 + (break 0); }
+        loop { let k := 1 + (break 0); }
         outer += 1;
         if (n == 3) { break outer; }
     }
 }
 
 fun inner_continue_binds_inner_loop() -> i64 {
-    var outer = 0;
-    var n = 0;
+    var outer := 0;
+    var n := 0;
     loop {
         n += 1;
-        var j = 0;
+        var j := 0;
         loop {
             j += 1;
-            if (j < 3) { let v = 1 + (continue); }
+            if (j < 3) { let v := 1 + (continue); }
             break 0;
         }
         outer += j;

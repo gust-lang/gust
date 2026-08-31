@@ -1,2 +1,2 @@
 // calling a builtin with the wrong argument type should fail.
-let bad: List<i64> = List::from(42); // ERROR[T0001]
+let bad: List<i64> := List::from(42); // ERROR[T0001]

@@ -10,6 +10,6 @@ fun loop_forever<T>() -> T {
 }
 
 fun main() {
-    let x: i64 = loop_forever();
-    let y: boolean = loop_forever();
+    let x: i64 := loop_forever();
+    let y: boolean := loop_forever();
 }

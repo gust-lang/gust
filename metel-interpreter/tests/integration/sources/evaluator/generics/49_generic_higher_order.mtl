@@ -11,34 +11,34 @@ fun pipe<A, B, C>(f: (A) -> B, g: (B) -> C, x: A) -> C { g(f(x)) }
 
 fun main() {
     // apply at i64.
-    let r1 = apply((n: i64) -> i64 { n * 2 }, 5);
+    let r1 := apply((n: i64) -> i64 { n * 2 }, 5);
     assert(r1 == 10);
 
     // apply at boolean.
-    let r2 = apply((b: boolean) -> boolean { !b }, false);
+    let r2 := apply((b: boolean) -> boolean { !b }, false);
     assert(r2);
 
     // apply at String (identity).
-    let r3 = apply((s: String) -> String { s }, "hello");
+    let r3 := apply((s: String) -> String { s }, "hello");
     assert(r3 == "hello");
 
     // Nested apply: apply applied to result of apply.
-    let r4 = apply((n: i64) -> i64 { n + 1 }, apply((n: i64) -> i64 { n * 3 }, 4));
+    let r4 := apply((n: i64) -> i64 { n + 1 }, apply((n: i64) -> i64 { n * 3 }, 4));
     assert(r4 == 13);
 
     // transform: i64 → boolean.
-    let r5 = transform((n: i64) -> boolean { n > 0 }, 3);
+    let r5 := transform((n: i64) -> boolean { n > 0 }, 3);
     assert(r5);
 
-    let r6 = transform((n: i64) -> boolean { n > 0 }, 0);
+    let r6 := transform((n: i64) -> boolean { n > 0 }, 0);
     assert(!r6);
 
     // transform: boolean → i64.
-    let r7 = transform((b: boolean) -> i64 { if (b) 1 else 0 }, true);
+    let r7 := transform((b: boolean) -> i64 { if (b) 1 else 0 }, true);
     assert(r7 == 1);
 
     // pipe: i64 → boolean → i64.
-    let r8 = pipe(
+    let r8 := pipe(
         (n: i64) -> boolean { n > 0 },
         (b: boolean) -> i64 { if (b) 10 else -1 },
         5
@@ -46,7 +46,7 @@ fun main() {
     assert(r8 == 10);
 
     // pipe: i64 → i64 → i64 (two arithmetic steps).
-    let r9 = pipe(
+    let r9 := pipe(
         (n: i64) -> i64 { n * 2 },
         (n: i64) -> i64 { n + 1 },
         7

@@ -6,6 +6,6 @@ fun show<T: Display>(x: T) -> String {
 }
 
 fun main() {
-    let pair = (1, 2);
-    let _ = show(pair); // ERROR[T0012]
+    let pair := (1, 2);
+    let _ := show(pair); // ERROR[T0012]
 }

@@ -8,7 +8,7 @@ aspect Container {
 }
 
 fun consume_item_twice<C: Container>(container: C) {
-    let item = container.get();
+    let item := container.get();
     item.consume();
     item.consume();
 }

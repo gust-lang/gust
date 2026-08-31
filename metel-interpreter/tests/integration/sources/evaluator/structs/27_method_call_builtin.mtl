@@ -1,12 +1,12 @@
 fun main() {
     // String.len() — built-in type method.
-    let s = "hello";
-    let n = s.len();
+    let s := "hello";
+    let n := s.len();
     assert(n == 5);
     // Empty string.
-    let empty = "";
+    let empty := "";
     assert(empty.len() == 0);
     // Unicode: len counts codepoints.
-    let longer = "abcdef";
+    let longer := "abcdef";
     assert(longer.len() == 6);
 }

@@ -1,5 +1,5 @@
 fun duplicate<T: Copy>(value: T) -> T {
-    let copied = value;
+    let copied := value;
     value
 }
 
