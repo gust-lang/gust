@@ -1,3 +1,6 @@
+[options]
+spec = ["spec.declarations.variables.mutable-bindings.legality-1"]
+
 [expect]
 status = "parse_error"
 code = "P0001"
