@@ -1,11 +1,57 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 use crate::ast::{ImportTree, PathRoot, Program};
 use crate::error::{MetelError, ParseErrorCode};
 use crate::module_paths::resolve_path_root;
 use crate::parser;
+
+/// Process-global memo of `parser::parse` for the embedded standard-library
+/// modules. Their source is fixed for the life of the process, so parsing it
+/// once per test run instead of once per fixture removes the dominant repeated
+/// cost of the integration suite (metel-core#873). Keyed by
+/// `(module path, source hash)` so an LSP overlay that shadows a stdlib module
+/// with different text is a clean miss. A `Program` AST is pure owned data
+/// (spans are byte offsets, no `SymbolId`/`TypeVar`/diagnostic state), so a
+/// clone per load is equivalent to a fresh parse and cannot leak between runs.
+type StdlibParseCache = Mutex<HashMap<(Vec<String>, u64), Program>>;
+static STDLIB_PARSE_CACHE: OnceLock<StdlibParseCache> = OnceLock::new();
+
+fn hash_source(source: &str) -> u64 {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    source.hash(&mut h);
+    h.finish()
+}
+
+/// Parse an embedded stdlib module, serving a clone from the process cache on a
+/// repeat of the same `(module_path, source)`.
+fn parse_stdlib_cached(
+    module_path: &[String],
+    source: &str,
+    filename: &str,
+) -> Result<Program, MetelError> {
+    let key = (module_path.to_vec(), hash_source(source));
+    let cache = STDLIB_PARSE_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    // `unwrap_or_else(PoisonError::into_inner)`: a poisoned lock only means some
+    // other parse panicked; the memo map itself is still a consistent
+    // `HashMap<_, Program>` and safe to keep using.
+    if let Some(program) = cache
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(&key)
+    {
+        return Ok(program.clone());
+    }
+    let program = parser::parse(source, filename)?;
+    cache
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(key, program.clone());
+    Ok(program)
+}
 
 /// Supplies module source text to the loader (RFC-0058).
 ///
@@ -175,7 +221,7 @@ impl Loader<'_> {
                             ))
                         })
                 })?;
-            let program = parser::parse(&source, &filename)?;
+            let program = parse_stdlib_cached(&module_path, &source, &filename)?;
             let file_path = PathBuf::from(&filename);
             self.visited.insert(file_path.clone());
             self.file_to_path
