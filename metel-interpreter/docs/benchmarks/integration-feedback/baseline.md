@@ -56,17 +56,29 @@ the on-disk `integration_generated.rs` and skips the write when byte-identical.
 This stops an unrelated fixture edit from touching the file `integration.rs`
 `include!`s.
 
-> **Known limitation, not fixed here.** `build.rs` still emits
-> `cargo:rerun-if-changed` for the five fixture *directories*, and cargo
-> recurses those, so editing any fixture's contents still re-runs the build
-> script and — because the `RunCustomBuild` fingerprint tracks those file
-> mtimes — recompiles `lib metel` and the test crate (~30 s here). Removing
-> the directory watch is the fix, but it trades away zero-touch discovery of
-> newly-added fixtures. Options for a follow-up: (a) move the integration
-> harness + `build.rs` into its own workspace member so a fixture edit never
-> invalidates `lib metel`; (b) watch a checked-in `fixtures.manifest`
-> (structure only) instead of the dirs, with a `cargo xtask` / CI check that
-> the manifest matches disk. Both are larger than this PR.
+## Change 3 — manifest-driven fixture discovery (stable harness)
+
+`build.rs` no longer watches the fixture *directories*. It generates one
+`#[test]` per line of a checked-in `tests/integration/fixtures.manifest`
+(`suite<TAB>test_name<TAB>relative_path`) and `rerun-if-changed`s only that
+file. Editing a fixture's contents changes no watched path, so **the build
+script does not re-run and nothing recompiles**.
+
+Discovery stays automatic via a normal test, `fixtures_manifest_is_current`:
+it re-walks `tests/integration/sources/` and fails — with the exact diff and
+`UPDATE_FIXTURES=1 cargo test -p metel --test integration fixtures_manifest_is_current`
+— whenever a fixture is added / removed / renamed without regenerating the
+manifest. CI runs it, so a stale manifest can't merge. Running it with
+`UPDATE_FIXTURES=1` rewrites the manifest in place.
+
+The dir-walk / name-sanitisation logic moved from `build.rs` into
+`tests/integration/harness/discover.rs` so the generator and the currency
+test share one implementation.
+
+| fixture change | before | after |
+|---|---:|---:|
+| edit contents (in-place or atomic-rename save) | ~30 s recompile | **0.07 s (no-op)** |
+| add / remove / rename + `UPDATE_FIXTURES=1` regen | ~30 s recompile | ~30 s recompile (unchanged — rare, explicit) |
 
 ## Results
 
@@ -76,8 +88,10 @@ This stops an unrelated fixture edit from touching the file `integration.rs`
 | suite user time | 2 m 30 s | 1 m 00 s | −60 % |
 | `14_match` parse phase | 134 ms | **9 ms** | −93 % |
 | `14_match` total | 271 ms | **150 ms** | −45 % |
+| rebuild after a fixture *content* edit | ~30 s | **~0.07 s** | — |
 
-945 tests pass in both `--release` and debug.
+946 tests pass in both `--release` and debug (945 fixtures +
+`fixtures_manifest_is_current`).
 
 ## Remaining dominant cost
 
