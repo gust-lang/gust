@@ -1,0 +1,44 @@
+// STRESS: a substantial *generic* function body, called many times with the
+// SAME concrete type argument. Being generic forces the typechecker's
+// construction-at-call-time pass (`construct_generic_body`) to run on the body;
+// there is no memoisation, so it re-runs on every one of the 800 calls.
+//
+// This is the near-best case for a construction-body cache (800 calls, exactly
+// one monomorphisation, a non-trivial body). It was prototyped and measured at
+// only ~1.25× here and ≤1.05× on the realistic `int_*` generic fixtures — see
+// `../../docs/benchmarks/solve-cubic-cost/baseline.md` "candidate #1". Kept as a
+// regression witness for that path.
+fun heavy<T>(seed: T, x: i64) -> i64 {
+    let pass := (seed, x);
+    let y := pass.1;
+    let _hold := (y, pass.0);
+    let a := (y * 3i64) % 97i64;
+    let b := (a + y) % 89i64;
+    let c := (b * 2i64 + 1i64) % 83i64;
+    let d := if (a < b) {
+        if (b < c) { c } else { b }
+    } else {
+        if (a < c) { c } else { a }
+    };
+    let e := match (d % 4i64) {
+        0i64 => a + b,
+        1i64 => b + c,
+        2i64 => c + a,
+        _ => a + b + c,
+    };
+    let f := if (e < d) { e * 2i64 } else { d + 7i64 };
+    let g := match (f % 3i64) {
+        0i64 => f + a,
+        1i64 => f + b,
+        _ => f + c,
+    };
+    (a + b + c + d + e + f + g) % 100i64
+}
+
+fun main() -> i64 {
+    var acc := 0i64;
+    for (i in 0i64..800i64) {
+        acc := acc + heavy(i, i);
+    }
+    acc % 100i64
+}

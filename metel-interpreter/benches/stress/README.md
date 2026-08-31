@@ -14,6 +14,7 @@ pick them up.
 | `deep_type.mtl` | one generic type nested `DEEP_N` levels (`List<List<…<i64>>>`) — `apply`/`unify` recursion + eager re-apply over deep structure |
 | `solve_storm.mtl` | `STORM_N` sequential generic `List` method calls — per-expression eager `solve()` + full substitution clone |
 | `id_chain.mtl` | `CHAIN_N` generic `id()` calls — instantiation-var / constraint accumulation |
+| `generic_body_reuse.mtl` | one chunky generic body, 800 calls at one monomorphisation — the near-best case for construction-at-call-time memoisation (prototyped, rejected; see the `baseline.md` "candidate #1") |
 
 ## Regenerate (tune sizes)
 
