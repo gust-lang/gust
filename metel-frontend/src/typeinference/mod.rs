@@ -384,14 +384,73 @@ fn render_with_names(
 #[derive(Debug, Clone, Default)]
 pub struct Substitution {
     bindings: HashMap<TypeVar, InferType>,
+    /// Reverse index: `rev[u]` is the set of keys `k` such that `bindings[k]`'s
+    /// *value* mentions the variable `u`. Maintained by every mutation below.
+    ///
+    /// This is what lets `compose`/`compose_in_place` rewrite only the bindings a
+    /// delta can actually change, instead of re-applying (and deep-cloning) every
+    /// binding on every call — the O(depth^3) term in
+    /// `docs/benchmarks/solve-cubic-cost/baseline.md`, where a `solve()` over an
+    /// `n`-deep nested generic composes `n` single-key deltas over `n` binding
+    /// values that keep getting re-cloned even though the delta touches none.
+    rev: HashMap<TypeVar, HashSet<TypeVar>>,
 }
 
 impl Substitution {
     #[must_use]
     pub fn new() -> Self {
-        Substitution {
-            bindings: HashMap::new(),
+        Self::default()
+    }
+
+    /// Add `key`'s membership in the reverse index for every variable in `value`.
+    fn index(&mut self, key: TypeVar, value: &InferType) {
+        let mut vs = HashSet::new();
+        collect_free_vars(value, &mut vs);
+        for u in vs {
+            self.rev.entry(u).or_default().insert(key);
         }
+    }
+
+    /// Remove `key`'s membership in the reverse index for every variable in `value`.
+    fn deindex(&mut self, key: TypeVar, value: &InferType) {
+        let mut vs = HashSet::new();
+        collect_free_vars(value, &mut vs);
+        for u in vs {
+            if let Some(set) = self.rev.get_mut(&u) {
+                set.remove(&key);
+                if set.is_empty() {
+                    self.rev.remove(&u);
+                }
+            }
+        }
+    }
+
+    /// Insert or replace `key -> value`, keeping the reverse index consistent.
+    fn put(&mut self, key: TypeVar, value: InferType) {
+        if let Some(old) = self.bindings.get(&key).cloned() {
+            self.deindex(key, &old);
+        }
+        self.index(key, &value);
+        self.bindings.insert(key, value);
+    }
+
+    /// Remove `key`'s binding, keeping the reverse index consistent.
+    fn drop_key(&mut self, key: TypeVar) {
+        if let Some(old) = self.bindings.remove(&key) {
+            self.deindex(key, &old);
+        }
+    }
+
+    /// The keys whose value mentions any variable bound by `other` — the only
+    /// bindings a `compose*` with `other` can change.
+    fn affected_by(&self, other: &Substitution) -> HashSet<TypeVar> {
+        let mut out = HashSet::new();
+        for k in other.bindings.keys() {
+            if let Some(set) = self.rev.get(k) {
+                out.extend(set.iter().copied());
+            }
+        }
+        out
     }
 
     /// Record that `var` maps to `ty`.
@@ -401,10 +460,10 @@ impl Substitution {
     /// `{a→b}` with `{b→a}`), and storing it would make `apply` recurse forever.
     pub fn bind(&mut self, var: TypeVar, ty: InferType) {
         if matches!(ty, InferType::Var(v) if v == var) {
-            self.bindings.remove(&var);
+            self.drop_key(var);
             return;
         }
-        self.bindings.insert(var, ty);
+        self.put(var, ty);
     }
 
     /// Look up the direct binding for `var`, if any.
@@ -416,12 +475,10 @@ impl Substitution {
     /// Recursively replace all type variables in `ty` using this substitution.
     #[must_use]
     pub fn apply(&self, ty: &InferType) -> InferType {
-        // Fast path: an empty substitution is the identity. Without this the
-        // caller still pays a full deep `clone()` of `ty` at every recursion
-        // level — the dominant term in the O(depth^3) inference cost measured in
-        // `docs/benchmarks/solve-cubic-cost/baseline.md`, because `unify` and
-        // `compose_in_place` call `apply` with an empty running substitution all
-        // the way down a deeply-nested equal type.
+        // Fast path: an empty substitution is the identity — skip the deep
+        // `clone()` walk. `unify_seq` and `compose_in_place` both call `apply`
+        // with an empty running accumulator all the way down a deeply-nested
+        // equal type (see `docs/benchmarks/solve-cubic-cost/baseline.md`).
         if self.bindings.is_empty() {
             return ty.clone();
         }
@@ -479,12 +536,21 @@ impl Substitution {
         if self.bindings.is_empty() {
             return other.clone();
         }
+        let affected = self.affected_by(other);
         let mut result = Substitution::new();
         for (var, ty) in &self.bindings {
-            result.bind(*var, other.apply(ty));
+            if affected.contains(var) {
+                result.bind(*var, other.apply(ty));
+            } else {
+                // The delta cannot mention any variable in this value, so
+                // `other.apply(ty) == *ty` — carry it through without the walk.
+                result.put(*var, ty.clone());
+            }
         }
         for (var, ty) in &other.bindings {
-            result.bindings.entry(*var).or_insert_with(|| ty.clone());
+            if !result.bindings.contains_key(var) {
+                result.put(*var, ty.clone());
+            }
         }
         result
     }
@@ -492,22 +558,33 @@ impl Substitution {
     /// Update this substitution in place so it becomes equivalent to
     /// `other ∘ self`, avoiding the temporary map allocation from `compose`.
     pub fn compose_in_place(&mut self, other: &Substitution) {
-        // Fast path: composing an empty delta changes nothing. The
-        // `values_mut()` loop below is O(bindings × type size) and is a
-        // per-constraint cost in `solve()`; most constraints over already-equal
-        // nested types produce an empty `other` (baseline.md).
+        // Fast path: composing an empty delta changes nothing.
         if other.bindings.is_empty() {
             return;
         }
-        for ty in self.bindings.values_mut() {
-            *ty = other.apply(ty);
+        // Only bindings whose value mentions a variable `other` binds can
+        // change; the old code re-applied (and deep-cloned) *every* binding
+        // here, which is the O(depth^3) cost in baseline.md.
+        for key in self.affected_by(other) {
+            let Some(old) = self.bindings.get(&key).cloned() else {
+                continue;
+            };
+            let new = other.apply(&old);
+            if new == old {
+                continue;
+            }
+            if matches!(&new, InferType::Var(v) if *v == key) {
+                // Composition produced an identity binding — drop it, as `bind`
+                // would, so `apply` can't recurse forever.
+                self.drop_key(key);
+            } else {
+                self.put(key, new);
+            }
         }
-        // Drop identity bindings (`?v → ?v`) that composition may have produced;
-        // they are no-ops and would make `apply` recurse forever. See `bind`.
-        self.bindings
-            .retain(|var, ty| !matches!(ty, InferType::Var(v) if v == var));
         for (var, ty) in &other.bindings {
-            self.bindings.entry(*var).or_insert_with(|| ty.clone());
+            if !self.bindings.contains_key(var) {
+                self.put(*var, ty.clone());
+            }
         }
     }
 }
