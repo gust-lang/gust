@@ -416,6 +416,15 @@ impl Substitution {
     /// Recursively replace all type variables in `ty` using this substitution.
     #[must_use]
     pub fn apply(&self, ty: &InferType) -> InferType {
+        // Fast path: an empty substitution is the identity. Without this the
+        // caller still pays a full deep `clone()` of `ty` at every recursion
+        // level — the dominant term in the O(depth^3) inference cost measured in
+        // `docs/benchmarks/solve-cubic-cost/baseline.md`, because `unify` and
+        // `compose_in_place` call `apply` with an empty running substitution all
+        // the way down a deeply-nested equal type.
+        if self.bindings.is_empty() {
+            return ty.clone();
+        }
         match ty {
             InferType::Concrete(_) | InferType::Never => ty.clone(),
             InferType::Var(v) => match self.bindings.get(v) {
@@ -464,6 +473,12 @@ impl Substitution {
     /// in the *values*, not the *keys*.
     #[must_use]
     pub fn compose(&self, other: &Substitution) -> Substitution {
+        if other.bindings.is_empty() {
+            return self.clone();
+        }
+        if self.bindings.is_empty() {
+            return other.clone();
+        }
         let mut result = Substitution::new();
         for (var, ty) in &self.bindings {
             result.bind(*var, other.apply(ty));
@@ -477,6 +492,13 @@ impl Substitution {
     /// Update this substitution in place so it becomes equivalent to
     /// `other ∘ self`, avoiding the temporary map allocation from `compose`.
     pub fn compose_in_place(&mut self, other: &Substitution) {
+        // Fast path: composing an empty delta changes nothing. The
+        // `values_mut()` loop below is O(bindings × type size) and is a
+        // per-constraint cost in `solve()`; most constraints over already-equal
+        // nested types produce an empty `other` (baseline.md).
+        if other.bindings.is_empty() {
+            return;
+        }
         for ty in self.bindings.values_mut() {
             *ty = other.apply(ty);
         }
@@ -530,6 +552,24 @@ fn bind_var(var: TypeVar, ty: &InferType) -> Result<Substitution, MetelError> {
     Ok(s)
 }
 
+/// Unify `x` and `y` under the running accumulator `acc`, folding the result
+/// back into `acc`. Skips the `acc.apply(...)` deep-clone of both operands when
+/// `acc` is still empty — the common case walking down a deeply-nested equal
+/// type, where each level would otherwise re-clone the whole remaining subtree
+/// (the O(depth^3) term in `docs/benchmarks/solve-cubic-cost/baseline.md`).
+///
+/// # Errors
+/// Propagates a unification failure from `unify`.
+fn unify_seq(acc: &mut Substitution, x: &InferType, y: &InferType) -> Result<(), MetelError> {
+    let s = if acc.bindings.is_empty() {
+        unify(x, y)?
+    } else {
+        unify(&acc.apply(x), &acc.apply(y))?
+    };
+    acc.compose_in_place(&s);
+    Ok(())
+}
+
 /// Unify two inference types, returning a substitution that makes them equal.
 ///
 /// # Errors
@@ -558,11 +598,9 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             }
             let mut subst = Substitution::new();
             for (p1, p2) in params1.iter().zip(params2.iter()) {
-                let s = unify(&subst.apply(p1), &subst.apply(p2))?;
-                subst.compose_in_place(&s);
+                unify_seq(&mut subst, p1, p2)?;
             }
-            let s = unify(&subst.apply(ret1), &subst.apply(ret2))?;
-            subst.compose_in_place(&s);
+            unify_seq(&mut subst, ret1, ret2)?;
             Ok(subst)
         }
         (InferType::Tuple(ts1), InferType::Tuple(ts2)) => {
@@ -571,8 +609,7 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             }
             let mut subst = Substitution::new();
             for (t1, t2) in ts1.iter().zip(ts2.iter()) {
-                let s = unify(&subst.apply(t1), &subst.apply(t2))?;
-                subst.compose_in_place(&s);
+                unify_seq(&mut subst, t1, t2)?;
             }
             Ok(subst)
         }
@@ -585,8 +622,7 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
                 if name1 != name2 {
                     return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
                 }
-                let s = unify(&subst.apply(ty1), &subst.apply(ty2))?;
-                subst.compose_in_place(&s);
+                unify_seq(&mut subst, ty1, ty2)?;
             }
             Ok(subst)
         }
@@ -610,8 +646,7 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             }
             let mut subst = Substitution::new();
             for (a1, a2) in args1.iter().zip(args2.iter()) {
-                let s = unify(&subst.apply(a1), &subst.apply(a2))?;
-                subst.compose_in_place(&s);
+                unify_seq(&mut subst, a1, a2)?;
             }
             Ok(subst)
         }
@@ -638,8 +673,7 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
                 if name1 != name2 {
                     return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
                 }
-                let s = unify(&subst.apply(ty1), &subst.apply(ty2))?;
-                subst.compose_in_place(&s);
+                unify_seq(&mut subst, ty1, ty2)?;
             }
             Ok(subst)
         }
@@ -664,8 +698,7 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             }
             let mut subst = Substitution::new();
             for (a1, a2) in args1.iter().zip(args2.iter()) {
-                let s = unify(&subst.apply(a1), &subst.apply(a2))?;
-                subst.compose_in_place(&s);
+                unify_seq(&mut subst, a1, a2)?;
             }
             Ok(subst)
         }
@@ -3363,7 +3396,7 @@ pub struct InferContext {
     /// Inferred return type for each closure expression, keyed by the closure span.
     /// Pass 2 reuses this so unannotated closures keep their solved return type.
     closure_return_types: HashMap<Span, InferType>,
-    cached_subst: Substitution,
+    cached_subst: Rc<Substitution>,
     solved_constraint_count: usize,
     solve_stats: SolveStats,
     /// Free-function overload sets for the current module (METEL-180). Names with
@@ -3435,7 +3468,7 @@ impl InferContext {
             declared_var_names: HashMap::new(),
             opaque_return_vars: HashSet::new(),
             closure_return_types: HashMap::new(),
-            cached_subst: Substitution::new(),
+            cached_subst: Rc::new(Substitution::new()),
             solved_constraint_count: 0,
             solve_stats: SolveStats::default(),
             overloads: OverloadTable::new(),
@@ -4197,16 +4230,32 @@ impl InferContext {
 
     /// Solve all accumulated constraints and return the resulting substitution.
     ///
+    /// Mutates `cached_subst` in place (via `Rc::make_mut`) rather than cloning
+    /// it in and cloning it back out — the previous two full deep clones per
+    /// call were a per-expression cost during inference. The return is an
+    /// `Rc` handle: callers that just `.apply(...)` a result pay only a refcount
+    /// bump. `Rc::make_mut` deep-copies only when a caller is still holding a
+    /// handle from an earlier `solve()` (rare — most sites drop it immediately).
+    ///
+    /// A failed solve leaves `cached_subst` with the partial bindings from the
+    /// constraints processed before the failure; `solved_constraint_count` is
+    /// not advanced, so the next `solve()` reprocesses them. `apply_constraint*`
+    /// is convergent under reprocessing (already-resolved sides produce an empty
+    /// delta), so this is sound for `?`-propagating callers. The one speculative
+    /// caller (`type_expr_to_infer` #774 assoc-projection probe) checkpoints and
+    /// restores around its call.
+    ///
     /// # Errors
     /// Returns an error if any accumulated constraint fails to unify.
-    pub fn solve(&mut self) -> Result<Substitution, MetelError> {
+    pub fn solve(&mut self) -> Result<Rc<Substitution>, MetelError> {
         let started = Instant::now();
         self.solve_stats.solve_calls += 1;
 
-        let mut subst = self.cached_subst.clone();
+        let new_count = self.constraints.len();
+        let subst = Rc::make_mut(&mut self.cached_subst);
         for constraint in &self.constraints[self.solved_constraint_count..] {
             apply_constraint_with_coercion(
-                &mut subst,
+                subst,
                 constraint,
                 &self.integer_literal_vars,
                 &self.float_literal_vars,
@@ -4216,13 +4265,24 @@ impl InferContext {
             )?;
         }
 
-        self.solve_stats.constraints_processed +=
-            (self.constraints.len() - self.solved_constraint_count) as u64;
+        self.solve_stats.constraints_processed += (new_count - self.solved_constraint_count) as u64;
         self.solve_stats.solve_ns += started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
-        self.solved_constraint_count = self.constraints.len();
-        self.cached_subst = subst.clone();
+        self.solved_constraint_count = new_count;
 
-        Ok(subst)
+        Ok(Rc::clone(&self.cached_subst))
+    }
+
+    /// Snapshot `(cached_subst, solved_constraint_count)` for a speculative
+    /// `solve()` that must not commit on failure. Both are cheap (`Rc` bump +
+    /// `usize`).
+    pub(crate) fn solve_checkpoint(&self) -> (Rc<Substitution>, usize) {
+        (Rc::clone(&self.cached_subst), self.solved_constraint_count)
+    }
+
+    /// Restore a `solve_checkpoint`.
+    pub(crate) fn solve_restore(&mut self, cp: (Rc<Substitution>, usize)) {
+        self.cached_subst = cp.0;
+        self.solved_constraint_count = cp.1;
     }
 
     #[must_use]

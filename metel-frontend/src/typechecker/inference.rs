@@ -117,7 +117,14 @@ fn ann_to_infer(te: &TypeExpr, ctx: &mut InferContext) -> InferType {
     if let TypeExpr::RecordProjection { path, .. } = te {
         if let [name] = path.as_slice() {
             if let Some(base_tv) = ctx.type_params().get(name.as_str()).copied() {
-                if let Ok(solved) = ctx.solve() {
+                // Speculative: `solve()` now mutates `cached_subst` in place, so
+                // checkpoint and roll back if this probe fails to solve.
+                let checkpoint = ctx.solve_checkpoint();
+                let solved = ctx.solve();
+                if solved.is_err() {
+                    ctx.solve_restore(checkpoint);
+                }
+                if let Ok(solved) = solved {
                     if let InferType::Named(concrete_name, _)
                     | InferType::Concrete(Type::Named(concrete_name, _)) =
                         solved.apply(&InferType::Var(base_tv))
