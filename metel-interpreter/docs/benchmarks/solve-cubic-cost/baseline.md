@@ -133,3 +133,49 @@ constraint's non-empty delta over all existing bindings. Both are O(depth) work
 × O(depth) bindings × O(depth) constraints. Only **path compression** (`find`
 with link-rewriting, needs `&mut`/`RefCell` on the lookup path) or union links
 (don't store nested types at all) collapse that. That is prototype v2.
+
+## Prototype v2 (this branch) — reverse index in `Substitution`
+
+`Substitution` gains `rev: HashMap<TypeVar, HashSet<TypeVar>>` — `rev[u]` = the
+keys whose *value* mentions `u`, maintained by every mutation. `compose` /
+`compose_in_place` then rewrite **only** the bindings a delta can actually
+change (`affected_by`), instead of re-applying and deep-cloning every binding.
+
+Instrumenting first (temporary `apply` call-site counters, since reverted)
+**corrected the diagnosis**:
+
+- Of ~57k `apply` calls on `deep_type` d200, `apply_constraint` (the `solve()`
+  path) makes exactly **2 per constraint**, O(1) each. The bulk come from Pass 2
+  **construction** — `typechecker/mod.rs` `infer_type_args_for_construction`
+  (`:929`/`:937`, ~40k), `construction.rs:79/54/188`, `construction/calls.rs`.
+- After v2, `compose_in_place` touches a **constant ~85 bindings** regardless of
+  depth (was O(depth)).
+
+Results — `945` integration + `139` frontend + `2` interpreter tests green.
+
+Default fixtures (typecheck ms / solve ms, baseline → v1 → v2):
+
+| fixture | typecheck | solve |
+|---|---|---|
+| `deep_type` (90) | 165 → 70 → **34** | 80 → 37 → **4.6** |
+| `solve_storm` (250) | 108 → 56 → **43** | 41 → 19 → **5.6** |
+| `id_chain` (400) | 50 → 29 → **26** | 13 → 7 → **1.1** |
+
+`deep_type` typecheck-phase scaling (metel-bench, `typecheck_ns` only):
+
+| depth | 100 | 200 | 400 | 200→400 |
+|------:|----:|----:|----:|--------:|
+| baseline | 81 | 657 | 7070 | 10.8× (≈O(n³·⁴)) |
+| **v2** | 41 | 131 | **470** | **3.6× (≈O(n^1.8))** |
+
+**Verdict: v2 breaks the typecheck cubic.** typecheck is ~15× faster at d400 and
+now scales ~quadratically. `solve_ns` is near-linear (reverse index) with an
+O(n²) residual from `apply_constraint`'s per-constraint `subst.apply(rhs)`.
+
+The remaining `apply_constraint` O(n²) and the Pass 2 construction super-linear
+term (`construct_generic_body` re-instantiating nested generic bodies with no
+memoization — `../v0.8.2-evaluator-integration/optimization-shortlist.md`
+candidate #2) are the next targets. Separately, `deep_type`'s **wall** time is
+now **evaluator-bound** (eval ≈ O(n³): the interpreter deep-clones the O(depth)
+nested runtime value at each of `depth` levels) — a distinct concern from
+type-checking.
