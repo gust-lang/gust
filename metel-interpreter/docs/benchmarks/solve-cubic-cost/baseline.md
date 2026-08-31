@@ -89,3 +89,47 @@ is the signal).
 Recommended: prototype **1 + 3** on a branch, re-run `metel-bench --fixtures-dir
 metel-interpreter/benches/stress` plus the depth sweep, compare `solve_ns` /
 `inference_ns` / wall-time-vs-depth against the tables above.
+
+## Prototype v1 (this branch) — `#3` + partial `#1`
+
+Changes in `typeinference/mod.rs` (+ one caller):
+
+- **`#3`**: `cached_subst: Rc<Substitution>`; `solve()` mutates in place via
+  `Rc::make_mut` and returns an `Rc` handle — was two full deep clones per call.
+  The one speculative `solve()` caller checkpoints/restores.
+- **partial `#1`**: `unify`'s sub-term recursion goes through `unify_seq`, which
+  skips `acc.apply(x)`/`acc.apply(y)` while the running accumulator is empty
+  (the deep-nested-equal-type case). Empty-substitution / empty-delta fast paths
+  on `apply` / `compose` / `compose_in_place`.
+- **not done**: path compression / union-find `find`. `Substitution` is still a
+  raw chain map.
+
+Results — `945` integration + `139` + `139` unit tests green, no regressions.
+
+Default fixtures (typecheck ms, before → after):
+
+| fixture | typecheck | inference | solve |
+|---|---|---|---|
+| `deep_type` (90) | 165 → **70** (−58%) | 59 → **7.7** (−87%) | 80 → 37 |
+| `solve_storm` (250) | 108 → **56** (−48%) | 46 → 18 | 41 → 19 |
+| `id_chain` (400) | 50 → **29** (−42%) | 21 → 9 | 13 → 7 |
+
+Depth sweep (`deep_type` wall ms, before → after):
+
+| depth | 40 | 80 | 120 | 160 | 200 | 300 | 400 | 500 |
+|------:|---:|---:|----:|----:|----:|----:|----:|----:|
+| before | 410 | 621 | 1064 | 1961 | 3529 | 11742 | 27637 | 53317 |
+| after  | 347 | 447 |  713 | 1182 | 1951 |  6438 | 15005 | 29287 |
+| speedup | 1.18× | 1.39× | 1.49× | 1.66× | 1.81× | 1.82× | 1.84× | 1.82× |
+
+**Verdict: ~1.8× constant-factor win, cubic unchanged.** The speedup plateaus:
+200→400 is still 7.7× time for 2× depth (baseline was 7.8×) → still O(depth³).
+
+The residual cubic is where the prototype deliberately didn't touch:
+`solve()` → `apply_constraint_with_coercion` → `subst.apply(&constraint.lhs)`
+against the **accumulated** `cached_subst` (not empty — ~`depth` chained
+bindings), plus `compose_in_place`'s `values_mut()` loop applying each
+constraint's non-empty delta over all existing bindings. Both are O(depth) work
+× O(depth) bindings × O(depth) constraints. Only **path compression** (`find`
+with link-rewriting, needs `&mut`/`RefCell` on the lookup path) or union links
+(don't store nested types at all) collapse that. That is prototype v2.
