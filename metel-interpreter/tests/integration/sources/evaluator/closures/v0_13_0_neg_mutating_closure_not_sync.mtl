@@ -1,0 +1,16 @@
+// v0.13.0 closure cluster (RFC-0153 legality-14): a closure's Send/Sync is
+// the aggregate rule over its captures, plus one closure-specific fact -- a
+// `mutating` closure value is not `Sync`.
+//
+// DRAFT FIXTURE -- written against the RFC text ahead of implementation.
+// Also depends on Sync-bound checking (RFC-0080 / RFC-0096), so double-gated.
+// Not runnable yet: see the `skip` reason in the sidecar.
+// Intended once live: spec = ["spec.functions.closures.legality-14"]
+fun needs_sync<T: Sync>(x: T) -> () {
+}
+
+fun main() {
+    let n := 0;
+    let m := [n] mut () -> i64 { n := n + 1; n };
+    needs_sync(m); // error: a `mutating` closure is not `Sync`
+}

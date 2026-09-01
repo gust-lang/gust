@@ -1,0 +1,19 @@
+// v0.13.0 closure cluster (RFC-0050 legality-5): a capture list holds all four
+// specifier forms -- `&var ident`, `&ident`, `ident` (bare), `ident.clone()`.
+//
+// DRAFT FIXTURE -- written against the RFC text ahead of implementation
+// (metel-core#926). Not runnable yet: see the `skip` reason in the sidecar.
+// Intended once live: spec = ["spec.functions.closures.legality-5"]
+fun main() {
+    var count := 0;
+    let cfg := 10;
+    let tag := 42;
+    let name := "log";
+    let handler := [&var count, &cfg, tag, name.clone()] mut (req: i64) -> i64 {
+        count += 1;
+        req + cfg + tag
+    };
+    assert(handler(1) == 53);
+    assert(count == 1);
+    assert(name == "log"); // outer `name` still usable -- `[name.clone()]` didn't move it
+}

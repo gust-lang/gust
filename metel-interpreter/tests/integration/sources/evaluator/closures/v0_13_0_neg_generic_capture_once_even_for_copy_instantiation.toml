@@ -1,0 +1,8 @@
+[options]
+move_check = true
+skip = "metel-core#927 -- RFC-0134 once/many not implemented"
+# intended once live: spec = ["spec.functions.closures.legality-17"]
+
+[expect]
+status = "typecheck_error"
+contains = "moved"

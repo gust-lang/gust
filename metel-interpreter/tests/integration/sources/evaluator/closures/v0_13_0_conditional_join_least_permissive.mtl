@@ -1,0 +1,25 @@
+// v0.13.0 closure cluster (RFC-0152 legality-16): a conditional whose arms
+// are function-typed has, as its type, the least-permissive arm under the
+// widening order, and each arm widens to it. Here one arm is genuinely
+// `once`, so the whole `if` is `once` and the `many` arm widens in.
+//
+// DRAFT FIXTURE -- written against the RFC text ahead of implementation
+// (metel-core#928). Not runnable yet: see the `skip` reason in the sidecar.
+// Intended once live: spec = ["spec.functions.closures.legality-16"]
+fun make_once(s: String) -> once () -> String {
+    [s] () -> String { s }
+}
+
+fun call_once(f: once () -> String) -> String {
+    f()
+}
+
+fun main() {
+    let cond := true;
+    let picked := if cond {
+        make_once("a")
+    } else {
+        () -> String { "b" } // `many` by default; widens `many -> once` into the join
+    };
+    assert(call_once(picked) == "a");
+}

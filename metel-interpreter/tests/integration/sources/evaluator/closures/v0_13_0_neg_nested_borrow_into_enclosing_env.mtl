@@ -1,0 +1,16 @@
+// v0.13.0 closure cluster (RFC-0050 legality-11): an inner closure may not
+// capture, by `&` or `&var`, a binding that is a by-value capture of an
+// enclosing closure. Interim rejection -- lifted when the borrow checker
+// (RFC-0122) lands.
+//
+// DRAFT FIXTURE -- written against the RFC text ahead of implementation
+// (metel-core#926). Not runnable yet: see the `skip` reason in the sidecar.
+// Intended once live: spec = ["spec.functions.closures.legality-11"]
+fun main() {
+    let s := "data";
+    let outer := [s] () -> boolean {
+        let inner := [&s] () -> boolean { s == "data" }; // `&` into the enclosing closure's env
+        inner()
+    };
+    outer();
+}

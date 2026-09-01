@@ -1,0 +1,24 @@
+// v0.13.0 closure cluster (RFC-0153 dynamics-13): if a plain `mut` (not
+// `once`) closure's body exits early via `?` or `return`, the mutations that
+// already ran stay visible and the closure remains callable in a
+// valid-but-partial state. (A `panic` is uncatchable and ends the process --
+// out of scope here.)
+//
+// DRAFT FIXTURE -- written against the RFC text ahead of implementation
+// (metel-core#929). Not runnable yet: see the `skip` reason in the sidecar.
+// Intended once live: spec = ["spec.functions.closures.dynamics-13"]
+fun main() {
+    var log := 0;
+    let step := [&var log] mut (stop: boolean) -> i64 {
+        log += 1;
+        if stop {
+            return log; // early return, mid-mutation
+        }
+        log += 10;
+        log
+    };
+    assert(step(true) == 1);   // returned after the first mutation only
+    assert(log == 1);          // partial mutation is visible
+    assert(step(false) == 12); // closure still callable; resumes from log == 1
+    assert(log == 12);
+}

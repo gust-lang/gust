@@ -1,0 +1,4 @@
+[options]
+move_check = true
+skip = "metel-core#929 -- RFC-0153 call_mutation axis not implemented"
+# intended once live: spec = ["spec.functions.closures.dynamics-8"]

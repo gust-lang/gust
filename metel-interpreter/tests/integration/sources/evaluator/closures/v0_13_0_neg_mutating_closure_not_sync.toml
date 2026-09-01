@@ -1,0 +1,7 @@
+[options]
+skip = "metel-core#929 + RFC-0080 -- call_mutation axis and Sync-bound checking not implemented"
+# intended once live: spec = ["spec.functions.closures.legality-14"]
+
+[expect]
+status = "typecheck_error"
+contains = "Sync"

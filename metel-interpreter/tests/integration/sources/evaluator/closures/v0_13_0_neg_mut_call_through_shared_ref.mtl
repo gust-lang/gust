@@ -1,0 +1,20 @@
+// v0.13.0 closure cluster (RFC-0153 legality-10): a `mutating` call needs
+// exclusive access to the callee for the call's duration. Calling one through
+// a shared `&` reference (here a `&Cell` receiver) is a compile error.
+//
+// DRAFT FIXTURE -- written against the RFC text ahead of implementation
+// (metel-core#929). Not runnable yet: see the `skip` reason in the sidecar.
+// Intended once live: spec = ["spec.functions.closures.legality-10"]
+struct Cell {
+    go: mut () -> i64,
+}
+
+fun peek(c: &Cell) -> i64 {
+    (c.go)() // error (T0024): `mut` closure called through a shared `&` reference
+}
+
+fun main() {
+    let n := 0;
+    let c := Cell { go = [n] mut () -> i64 { n := n + 1; n } };
+    assert(peek(&c) == 1);
+}
