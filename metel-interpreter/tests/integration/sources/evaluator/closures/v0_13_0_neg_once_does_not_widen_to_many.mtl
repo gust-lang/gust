@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0152 legality-9): widening is one-directional
+// v0.13.0 closure cluster (RFC 0152 legality-9): widening is one-directional
 // -- a `once` function value may NOT be used where a `many` slot is
 // expected; the reverse of legality-9 is the ordinary type mismatch.
 //

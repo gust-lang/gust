@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0157 base / dynamics-11): when a closure value
+// v0.13.0 closure cluster (RFC 0157 base / dynamics-11): when a closure value
 // is dropped its environment is dropped -- each owned capture dropped in
 // capture-list order, as a struct's fields are. A once-consumed or
 // partially-moved environment drops only its still-owned captures.

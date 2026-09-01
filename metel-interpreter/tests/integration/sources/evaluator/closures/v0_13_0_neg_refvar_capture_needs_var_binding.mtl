@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0050 legality-13): a `[&var ident]` capture
+// v0.13.0 closure cluster (RFC 0050 legality-13): a `[&var ident]` capture
 // requires `ident` to be a `var` binding. (A closure literal also cannot
 // reference its own `let` binding -- not exercised here.)
 //

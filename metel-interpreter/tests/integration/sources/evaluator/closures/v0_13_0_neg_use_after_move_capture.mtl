@@ -1,10 +1,10 @@
-// v0.13.0 closure cluster (RFC-0157 D5): `[s]` moves a non-Copy binding into
+// v0.13.0 closure cluster (RFC 0157 D5): `[s]` moves a non-Copy binding into
 // the closure, consuming the outer binding. Using it afterward is the
-// ordinary moved-value error (RFC-0134 §2 cites T0019's existing shape).
+// ordinary moved-value error (RFC 0134 §2 cites T0019's existing shape).
 //
 // DRAFT FIXTURE -- written against the RFC text ahead of implementation
 // (metel-core#930). Not runnable yet: see the `skip` reason in the sidecar.
-// Needs move_check = true: this is the general affine-move check (RFC-0071),
+// Needs move_check = true: this is the general affine-move check (RFC 0071),
 // not one of the closure-specific always-on checks (ADR-0052 §1).
 // Intended once live: spec = ["spec.functions.closures.dynamics-5"]
 fun main() {

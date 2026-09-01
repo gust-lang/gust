@@ -1,11 +1,11 @@
-// v0.13.0 closure cluster (RFC-0134 legality-17): a captured free variable of
+// v0.13.0 closure cluster (RFC 0134 legality-17): a captured free variable of
 // type parameter `T` is classified from the bounds at the closure's
 // definition, not per instantiation. A moved unbounded-`T` capture makes the
 // closure `once` for *every* instantiation, `T = i64` included.
 //
 // DRAFT FIXTURE -- written against the RFC text ahead of implementation
 // (metel-core#927). Not runnable yet: see the `skip` reason in the sidecar.
-// Needs move_check = true (general moved-value check, RFC-0071).
+// Needs move_check = true (general moved-value check, RFC 0071).
 // Intended once live: spec = ["spec.functions.closures.legality-17"]
 fun make<T>(t: T) -> once () -> T {
     [t] once () -> T { t }

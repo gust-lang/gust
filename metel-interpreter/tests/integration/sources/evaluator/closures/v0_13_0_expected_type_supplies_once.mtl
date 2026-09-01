@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0134 legality-18): an unqualified closure
+// v0.13.0 closure cluster (RFC 0134 legality-18): an unqualified closure
 // literal in a typed position takes its `once` / `var` from the expected
 // type rather than defaulting to `many` / `reading` and then failing.
 //

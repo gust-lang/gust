@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0050 legality-23): the closure *literal*
+// v0.13.0 closure cluster (RFC 0050 legality-23): the closure *literal*
 // prefix order is fixed -- capture list, then `once`, then `var`, then the
 // parameter list. `var once` (and a qualifier before the capture list) is a
 // parse error, even though the function *type* spelling is order-insensitive

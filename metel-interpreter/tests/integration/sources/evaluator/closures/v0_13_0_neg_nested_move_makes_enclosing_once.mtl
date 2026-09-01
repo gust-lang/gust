@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0050 legality-22): evaluating an inner closure
+// v0.13.0 closure cluster (RFC 0050 legality-22): evaluating an inner closure
 // literal performs the capture, so an inner `[s]` that moves an
 // enclosing-held `s` makes the *enclosing* closure `once` -- even though the
 // inner is only constructed, never called. Calling the enclosing closure
@@ -6,7 +6,7 @@
 //
 // DRAFT FIXTURE -- written against the RFC text ahead of implementation
 // (metel-core#926). Not runnable yet: see the `skip` reason in the sidecar.
-// Needs move_check = true (general moved-value check, RFC-0071).
+// Needs move_check = true (general moved-value check, RFC 0071).
 // Intended once live: spec = ["spec.functions.closures.legality-22"]
 fun main() {
     let s := "data";

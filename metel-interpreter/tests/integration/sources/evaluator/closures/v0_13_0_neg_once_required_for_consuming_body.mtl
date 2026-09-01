@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0134 legality-8): a closure whose body moves
+// v0.13.0 closure cluster (RFC 0134 legality-8): a closure whose body moves
 // a non-Copy capture out must be written `once`; omitting it is a compile
 // error at the definition site.
 //

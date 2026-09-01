@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0152 legality-9): a `many` function value may
+// v0.13.0 closure cluster (RFC 0152 legality-9): a `many` function value may
 // be used where a `once` slot is expected -- one-directional widening. The
 // widened value is still `many`; it just satisfies the more permissive
 // requirement.

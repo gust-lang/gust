@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0050 legality-5): a capture list holds all four
+// v0.13.0 closure cluster (RFC 0050 legality-5): a capture list holds all four
 // specifier forms -- `&var ident`, `&ident`, `ident` (bare), `ident.clone()`.
 //
 // DRAFT FIXTURE -- written against the RFC text ahead of implementation

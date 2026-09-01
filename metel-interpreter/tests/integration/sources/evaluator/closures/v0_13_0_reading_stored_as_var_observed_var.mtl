@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0152 dynamics-14): storing a `reading` closure
+// v0.13.0 closure cluster (RFC 0152 dynamics-14): storing a `reading` closure
 // into a `var`-typed field coerces it into that field's declared type -- a
 // one-way precision loss. Later reads of the field yield a `var` value; there
 // is no automatic re-narrowing back to `reading`.

@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0050 legality-7): once a capture list is
+// v0.13.0 closure cluster (RFC 0050 legality-7): once a capture list is
 // present it must be exhaustive -- every free local the body references must
 // appear, even `Copy` ones. Module-level items are never capture items.
 //

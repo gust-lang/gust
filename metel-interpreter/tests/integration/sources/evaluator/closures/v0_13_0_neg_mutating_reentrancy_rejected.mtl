@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0153 dynamics-9): for the extent of a
+// v0.13.0 closure cluster (RFC 0153 dynamics-9): for the extent of a
 // `mutating` call the callee is exclusively borrowed. A second `mutating`
 // call on the same closure value reached from inside the first is rejected --
 // before the borrow checker lands, as a runtime error (R0007).

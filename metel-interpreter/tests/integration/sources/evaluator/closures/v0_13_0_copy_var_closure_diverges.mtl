@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0153 dynamics-8): copying a `Copy` `mutating`
+// v0.13.0 closure cluster (RFC 0153 dynamics-8): copying a `Copy` `mutating`
 // closure copies its environment; the copies then have independent state.
 //
 // DRAFT FIXTURE -- written against the RFC text ahead of implementation

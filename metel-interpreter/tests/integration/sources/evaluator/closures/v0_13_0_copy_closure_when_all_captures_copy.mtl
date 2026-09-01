@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0134 legality-20): a closure value is `Copy`
+// v0.13.0 closure cluster (RFC 0134 legality-20): a closure value is `Copy`
 // exactly when every capture is `Copy`. `[n]` over `n: i64` yields a `Copy`
 // closure -- it can be copied and the original stays usable.
 //

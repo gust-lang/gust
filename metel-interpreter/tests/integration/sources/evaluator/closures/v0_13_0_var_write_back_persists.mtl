@@ -1,6 +1,6 @@
-// v0.13.0 closure cluster (RFC-0153 dynamics-7): a `mutating` closure's
+// v0.13.0 closure cluster (RFC 0153 dynamics-7): a `mutating` closure's
 // writes to its by-value captures persist across calls -- private mutable
-// state, with no per-call re-clone (RFC-0157 D5 is the base this relies on).
+// state, with no per-call re-clone (RFC 0157 D5 is the base this relies on).
 //
 // DRAFT FIXTURE -- written against the RFC text ahead of implementation
 // (metel-core#929). Not runnable yet: see the `skip` reason in the sidecar.

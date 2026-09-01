@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0153 legality-10): a `mutating` call needs
+// v0.13.0 closure cluster (RFC 0153 legality-10): a `mutating` call needs
 // exclusive access to the callee for the call's duration. Calling one through
 // a shared `&` reference (here a `&Cell` receiver) is a compile error.
 //

@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0153 dynamics-13): if a plain `var` (not
+// v0.13.0 closure cluster (RFC 0153 dynamics-13): if a plain `var` (not
 // `once`) closure's body exits early via `?` or `return`, the mutations that
 // already ran stay visible and the closure remains callable in a
 // valid-but-partial state. (A `panic` is uncatchable and ends the process --

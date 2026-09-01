@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0157 D5): capturing a non-Copy binding by
+// v0.13.0 closure cluster (RFC 0157 D5): capturing a non-Copy binding by
 // value moves it into the closure at creation; the captured environment is
 // built once and is not re-cloned per call.
 //

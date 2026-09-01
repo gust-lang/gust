@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0050 legality-6): a closure must carry a
+// v0.13.0 closure cluster (RFC 0050 legality-6): a closure must carry a
 // capture list if its body references a free non-Copy local binding.
 //
 // DRAFT FIXTURE -- written against the RFC text ahead of implementation

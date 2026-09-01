@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0050 legality-19): verification runs in a
+// v0.13.0 closure cluster (RFC 0050 legality-19): verification runs in a
 // fixed stage order -- capture classification first, then use_multiplicity,
 // then `once`, then `var`. A body that both omits a required capture list AND
 // mutates that binding is reported at stage 1 ("add a capture list"), not at

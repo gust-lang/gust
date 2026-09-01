@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0134 legality-12): a closure value satisfies
+// v0.13.0 closure cluster (RFC 0134 legality-12): a closure value satisfies
 // no aspects. `==`, `<`, `.clone()` and other aspect-gated operations on a
 // closure value do not type-check.
 //

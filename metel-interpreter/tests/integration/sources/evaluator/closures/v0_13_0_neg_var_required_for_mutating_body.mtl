@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0153 legality-25): a closure whose body
+// v0.13.0 closure cluster (RFC 0153 legality-25): a closure whose body
 // assigns to a by-value capture must be written `var`; omitting it is a
 // compile error at the definition site.
 //

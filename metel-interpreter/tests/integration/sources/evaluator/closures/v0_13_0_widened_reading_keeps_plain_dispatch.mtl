@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0152 dynamics-12): widening is type-level
+// v0.13.0 closure cluster (RFC 0152 dynamics-12): widening is type-level
 // only. A `reading` closure widened into a `var` slot keeps its plain call
 // path -- no exclusive borrow, no in-call flag -- because call lowering
 // branches on the value's own mutation axis, not the slot type. So calling it

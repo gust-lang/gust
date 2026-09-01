@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0152 legality-16): a conditional whose arms
+// v0.13.0 closure cluster (RFC 0152 legality-16): a conditional whose arms
 // are function-typed has, as its type, the least-permissive arm under the
 // widening order, and each arm widens to it. Here one arm is genuinely
 // `once`, so the whole `if` is `once` and the `many` arm widens in.

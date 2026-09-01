@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0050 legality-21): a `[&x]` capture is
+// v0.13.0 closure cluster (RFC 0050 legality-21): a `[&x]` capture is
 // read-only. A body that writes through it is a compile error at the
 // capture, not a silent upgrade to `mutating`.
 //

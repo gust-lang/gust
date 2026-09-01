@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0153 legality-24): as a function *type*
+// v0.13.0 closure cluster (RFC 0153 legality-24): as a function *type*
 // spelling, `once` and `var` are order-insensitive -- `var once (T) -> U` and
 // `once var (T) -> U` denote the identical type. (The closure *literal* prefix
 // order stays fixed -- legality-23.)
