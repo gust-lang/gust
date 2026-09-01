@@ -83,8 +83,10 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
             super::RuntimeCallable::Closure(rc) => rc
                 .fun_type
                 .clone()
-                .unwrap_or_else(|| Type::Fun(vec![], Box::new(Type::Unit))),
-            super::RuntimeCallable::Intrinsic { .. } => Type::Fun(vec![], Box::new(Type::Unit)),
+                .unwrap_or_else(|| crate::types::default_fun_type(vec![], Type::Unit)),
+            super::RuntimeCallable::Intrinsic { .. } => {
+                crate::types::default_fun_type(vec![], Type::Unit)
+            }
         },
         Value::Reference(rc) => Type::Reference(Box::new(go(&rc.borrow()))),
         Value::MutReference(rc) => Type::MutReference(Box::new(go(&rc.borrow()))),
@@ -169,13 +171,20 @@ pub fn refine_with_static(runtime: &Type, static_ty: &Type) -> Type {
                     .collect(),
             )
         }
-        (Type::Fun(rp, rr), Type::Fun(sp, sr)) if rp.len() == sp.len() => Type::Fun(
-            rp.iter()
-                .zip(sp.iter())
-                .map(|(a, b)| refine_with_static(a, b))
-                .collect(),
-            Box::new(refine_with_static(rr, sr)),
-        ),
+        (Type::Fun(rp, rr, _, _, _), Type::Fun(sp, sr, call_mult, use_mult, call_mut))
+            if rp.len() == sp.len() =>
+        {
+            Type::Fun(
+                rp.iter()
+                    .zip(sp.iter())
+                    .map(|(a, b)| refine_with_static(a, b))
+                    .collect(),
+                Box::new(refine_with_static(rr, sr)),
+                *call_mult,
+                *use_mult,
+                *call_mut,
+            )
+        }
         _ => runtime.clone(),
     }
 }

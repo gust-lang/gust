@@ -755,7 +755,7 @@ pub(crate) fn reject_unregisterable_impl_target(
         }
         TypeExpr::Tuple(_) => "a tuple type",
         TypeExpr::Record(_) => "an anonymous record type",
-        TypeExpr::Fun(_, _) => "a function type",
+        TypeExpr::Fun { .. } => "a function type",
         TypeExpr::SizedArray(_, _) => "a fixed-size array type",
         TypeExpr::Reference(_) | TypeExpr::MutReference(_) => "a reference type",
         TypeExpr::Unit => "the unit type",

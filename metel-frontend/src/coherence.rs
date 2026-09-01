@@ -80,7 +80,12 @@ enum CanonicalType {
     SizedArray(Box<CanonicalType>, u64),
     Reference(Box<CanonicalType>),
     MutReference(Box<CanonicalType>),
-    Fun(Vec<CanonicalType>, Option<Box<CanonicalType>>),
+    Fun(
+        Vec<CanonicalType>,
+        Option<Box<CanonicalType>>,
+        crate::types::CallMultiplicity,
+        crate::types::CallMutation,
+    ),
     /// `impl Aspect` in parameter position — not expected in an impl's own
     /// target type, kept only so canonicalization stays total.
     Opaque,
@@ -113,9 +118,16 @@ fn canonicalize(names: &ResolvedNames, current_module: &[String], ty: &TypeExpr)
         TypeExpr::SizedArray(inner, n) => CanonicalType::SizedArray(Box::new(go(inner)), *n),
         TypeExpr::Reference(inner) => CanonicalType::Reference(Box::new(go(inner))),
         TypeExpr::MutReference(inner) => CanonicalType::MutReference(Box::new(go(inner))),
-        TypeExpr::Fun(params, ret) => CanonicalType::Fun(
+        TypeExpr::Fun {
+            params,
+            return_type: ret,
+            call_multiplicity,
+            call_mutation,
+        } => CanonicalType::Fun(
             params.iter().map(go).collect(),
             ret.as_deref().map(go).map(Box::new),
+            *call_multiplicity,
+            *call_mutation,
         ),
         // `T::AssocType` (RFC-0082) isn't resolved to a concrete type at this pass
         // either — both stay opaque until issue #242 does that resolution for real.
@@ -187,13 +199,20 @@ fn canonicalize_impl_target(
                 .map(|(name, ty)| (name.clone(), canonicalize(names, current_module, ty)))
                 .collect(),
         ),
-        TypeExpr::Fun(params, ret) => CanonicalType::Fun(
+        TypeExpr::Fun {
+            params,
+            return_type: ret,
+            call_multiplicity,
+            call_mutation,
+        } => CanonicalType::Fun(
             params
                 .iter()
                 .enumerate()
                 .map(|(i, arg)| map_arg(i, arg))
                 .collect(),
             ret.as_deref().map(|r| Box::new(map_arg(params.len(), r))),
+            *call_multiplicity,
+            *call_mutation,
         ),
         _ => canonicalize(names, current_module, &ib.target_type),
     }
@@ -260,7 +279,11 @@ fn scoped_type_param_bounds(ib: &ImplBlock) -> (Vec<Vec<GenericBound>>, Vec<Vec<
                 .collect();
             (items.len(), map)
         }
-        TypeExpr::Fun(params, ret) => {
+        TypeExpr::Fun {
+            params,
+            return_type: ret,
+            ..
+        } => {
             let mut map: HashMap<&str, usize> = params
                 .iter()
                 .enumerate()
@@ -476,8 +499,10 @@ fn canonical_types_compatible(a: &CanonicalType, b: &CanonicalType) -> bool {
         | (CanonicalType::MutReference(x), CanonicalType::MutReference(y)) => {
             canonical_types_compatible(x, y)
         }
-        (CanonicalType::Fun(ps1, r1), CanonicalType::Fun(ps2, r2)) => {
+        (CanonicalType::Fun(ps1, r1, c1, m1), CanonicalType::Fun(ps2, r2, c2, m2)) => {
             ps1.len() == ps2.len()
+                && c1 == c2
+                && m1 == m2
                 && ps1
                     .iter()
                     .zip(ps2)
@@ -512,7 +537,7 @@ fn contains_type_param(ct: &CanonicalType) -> bool {
         | CanonicalType::SizedArray(inner, _)
         | CanonicalType::Reference(inner)
         | CanonicalType::MutReference(inner) => contains_type_param(inner),
-        CanonicalType::Fun(params, ret) => {
+        CanonicalType::Fun(params, ret, _, _) => {
             params.iter().any(contains_type_param)
                 || ret.as_deref().is_some_and(contains_type_param)
         }
@@ -668,7 +693,7 @@ pub fn check(graph: &NormalizedModuleGraph, names: &ResolvedNames) -> Result<(),
                     TypeExpr::Array(_)
                         | TypeExpr::SizedArray(_, _)
                         | TypeExpr::Tuple(_)
-                        | TypeExpr::Fun(_, _)
+                        | TypeExpr::Fun { .. }
                 );
             let target_head = match &ib.target_type {
                 TypeExpr::Named(name, _) => name.rsplit("::").next().unwrap_or(name).to_string(),

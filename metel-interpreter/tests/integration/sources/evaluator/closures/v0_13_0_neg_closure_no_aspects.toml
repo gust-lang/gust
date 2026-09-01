@@ -1,0 +1,5 @@
+[options]
+spec = ["spec.functions.closures.legality-12"]
+
+[expect]
+status = "typecheck_error"

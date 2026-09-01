@@ -103,19 +103,26 @@ fn lower_impl_aspect_param_type(
         TypeExpr::MutReference(inner) => TypeExpr::MutReference(Box::new(
             lower_impl_aspect_param_type(inner, counter, extra_generics),
         )),
-        TypeExpr::Fun(params, ret) => TypeExpr::Fun(
-            params
+        TypeExpr::Fun {
+            params,
+            return_type: ret,
+            call_multiplicity,
+            call_mutation,
+        } => TypeExpr::Fun {
+            params: params
                 .iter()
                 .map(|param| lower_impl_aspect_param_type(param, counter, extra_generics))
                 .collect(),
-            ret.as_ref().map(|ret_ty| {
+            return_type: ret.as_ref().map(|ret_ty| {
                 Box::new(lower_impl_aspect_param_type(
                     ret_ty,
                     counter,
                     extra_generics,
                 ))
             }),
-        ),
+            call_multiplicity: *call_multiplicity,
+            call_mutation: *call_mutation,
+        },
         TypeExpr::Projection {
             base,
             assoc_name,
@@ -398,11 +405,17 @@ fn lower_projections_in_expr(expr: &Expr, generics: &std::collections::HashSet<S
             span: span.clone(),
         },
         Expr::Closure {
+            captures,
+            call_multiplicity,
+            call_mutation,
             params,
             return_type,
             body,
             span,
         } => Expr::Closure {
+            captures: captures.clone(),
+            call_multiplicity: *call_multiplicity,
+            call_mutation: *call_mutation,
             params: params
                 .iter()
                 .map(|p| Param {
@@ -571,10 +584,17 @@ fn lower_projections_in_type(
         TypeExpr::SizedArray(inner, n) => TypeExpr::SizedArray(Box::new(go(inner)), *n),
         TypeExpr::Reference(inner) => TypeExpr::Reference(Box::new(go(inner))),
         TypeExpr::MutReference(inner) => TypeExpr::MutReference(Box::new(go(inner))),
-        TypeExpr::Fun(params, ret) => TypeExpr::Fun(
-            params.iter().map(go).collect(),
-            ret.as_deref().map(go).map(Box::new),
-        ),
+        TypeExpr::Fun {
+            params,
+            return_type: ret,
+            call_multiplicity,
+            call_mutation,
+        } => TypeExpr::Fun {
+            params: params.iter().map(go).collect(),
+            return_type: ret.as_deref().map(go).map(Box::new),
+            call_multiplicity: *call_multiplicity,
+            call_mutation: *call_mutation,
+        },
         TypeExpr::ImplAspect {
             bound,
             source_spell,

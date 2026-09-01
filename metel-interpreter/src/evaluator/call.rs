@@ -45,7 +45,15 @@ fn call_runtime_callable(
             result
         }
         RuntimeCallable::Closure(rc) => {
-            let closure = (*rc).clone();
+            let is_mutating = rc.call_mutation == crate::types::CallMutation::Mutating;
+            if is_mutating && rc.in_call.replace(true) {
+                return Err(attach_stack(MetelError::panic(
+                    RuntimeErrorCode::R0016,
+                    "re-entrant call to a mutating closure",
+                    span,
+                )));
+            }
+            let closure = rc.as_ref();
             let fn_name = closure
                 .name
                 .clone()
@@ -103,6 +111,9 @@ fn call_runtime_callable(
             };
             let result = result.map_err(attach_stack);
             pop_frame();
+            if is_mutating {
+                rc.in_call.set(false);
+            }
             let sig = result?;
             Ok(match sig {
                 Signal::Return(v) => Signal::Value(v),

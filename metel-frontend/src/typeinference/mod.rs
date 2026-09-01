@@ -7,7 +7,7 @@ use crate::ast::{AspectMethod, AssocTypeDecl, ReceiverKind, RowBound, Span, Type
 use crate::error::MetelError;
 use crate::name_resolver::{resolve_name_provided_by_module, GlobTier, ModuleScope};
 use crate::symbols::SymbolId;
-use crate::types::Type;
+use crate::types::{CallMultiplicity, CallMutation, Type, UseMultiplicity};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::Rc;
@@ -92,8 +92,14 @@ pub enum InferType {
     /// The bottom type `!` — produced by diverging expressions (infinite loops with
     /// no reachable `break`, `return`, `panic!`). Unifies with any type.
     Never,
-    /// A function type with parameter types and a return type.
-    Fun(Vec<InferType>, Box<InferType>),
+    /// A function type with parameter types, a return type, and closure axes.
+    Fun(
+        Vec<InferType>,
+        Box<InferType>,
+        CallMultiplicity,
+        UseMultiplicity,
+        CallMutation,
+    ),
     /// A tuple type.
     Tuple(Vec<InferType>),
     /// A closed anonymous record type with lexicographically sorted labels.
@@ -151,10 +157,26 @@ impl InferType {
     pub fn never() -> Self {
         InferType::Never
     }
+    #[must_use]
+    pub fn fun(params: Vec<InferType>, ret: impl Into<InferType>) -> Self {
+        InferType::Fun(
+            params,
+            Box::new(ret.into()),
+            CallMultiplicity::Many,
+            UseMultiplicity::Move,
+            CallMutation::Reading,
+        )
+    }
     #[allow(dead_code)] // public API used by typeinference test suite
     #[must_use]
     pub fn var(v: TypeVar) -> Self {
         InferType::Var(v)
+    }
+}
+
+impl From<Box<InferType>> for InferType {
+    fn from(value: Box<InferType>) -> Self {
+        *value
     }
 }
 
@@ -164,7 +186,13 @@ impl std::fmt::Display for InferType {
             InferType::Concrete(t) => write!(f, "{t}"),
             InferType::Var(v) => write!(f, "{v}"),
             InferType::Never => write!(f, "!"),
-            InferType::Fun(params, ret) => {
+            InferType::Fun(params, ret, call_mult, _use_mult, call_mut) => {
+                if *call_mult == CallMultiplicity::Once {
+                    write!(f, "once ")?;
+                }
+                if *call_mut == CallMutation::Mutating {
+                    write!(f, "var ")?;
+                }
                 write!(f, "(")?;
                 for (i, p) in params.iter().enumerate() {
                     if i > 0 {
@@ -295,7 +323,7 @@ fn collect_free_vars_in_order(
                 label
             });
         }
-        InferType::Fun(params, ret) => {
+        InferType::Fun(params, ret, ..) => {
             for p in params {
                 collect_free_vars_in_order(p, known, local, next);
             }
@@ -338,8 +366,18 @@ fn render_with_names(
             .or_else(|| local.get(v))
             .cloned()
             .unwrap_or_else(|| ty.to_string()),
-        InferType::Fun(params, ret) => format!(
-            "({}) -> {}",
+        InferType::Fun(params, ret, call_mult, _use_mult, call_mut) => format!(
+            "{}{}({}) -> {}",
+            if *call_mult == CallMultiplicity::Once {
+                "once "
+            } else {
+                ""
+            },
+            if *call_mut == CallMutation::Mutating {
+                "var "
+            } else {
+                ""
+            },
             params
                 .iter()
                 .map(|p| render_with_names(p, known, local))
@@ -488,9 +526,12 @@ impl Substitution {
                 Some(resolved) => self.apply(resolved),
                 None => ty.clone(),
             },
-            InferType::Fun(params, ret) => InferType::Fun(
+            InferType::Fun(params, ret, call_mult, use_mult, call_mut) => InferType::Fun(
                 params.iter().map(|p| self.apply(p)).collect(),
                 Box::new(self.apply(ret)),
+                *call_mult,
+                *use_mult,
+                *call_mut,
             ),
             InferType::Tuple(ts) => InferType::Tuple(ts.iter().map(|t| self.apply(t)).collect()),
             InferType::Record(fields) => InferType::Record(
@@ -597,7 +638,7 @@ fn occurs_in(var: TypeVar, ty: &InferType) -> bool {
     match ty {
         InferType::Concrete(_) | InferType::Never => false,
         InferType::Var(v) => *v == var,
-        InferType::Fun(params, ret) => {
+        InferType::Fun(params, ret, ..) => {
             params.iter().any(|p| occurs_in(var, p)) || occurs_in(var, ret)
         }
         InferType::Tuple(ts) => ts.iter().any(|t| occurs_in(var, t)),
@@ -647,6 +688,75 @@ fn unify_seq(acc: &mut Substitution, x: &InferType, y: &InferType) -> Result<(),
     Ok(())
 }
 
+/// RFC-0152 permits capability widening only for the outer function type of a
+/// first-order assignment/call. Once unification descends into a parameter or
+/// return type, every nested function capability must match exactly.
+fn nested_fun_axes_match(a: &InferType, b: &InferType) -> bool {
+    match (a, b) {
+        (InferType::Fun(ap, ar, ac, au, am), InferType::Fun(bp, br, bc, bu, bm)) => {
+            ac == bc
+                && au == bu
+                && am == bm
+                && ap.len() == bp.len()
+                && ap.iter().zip(bp).all(|(a, b)| nested_fun_axes_match(a, b))
+                && nested_fun_axes_match(ar, br)
+        }
+        (InferType::Tuple(as_), InferType::Tuple(bs)) => {
+            as_.len() == bs.len() && as_.iter().zip(bs).all(|(a, b)| nested_fun_axes_match(a, b))
+        }
+        (InferType::Record(as_), InferType::Record(bs)) => {
+            as_.len() == bs.len()
+                && as_
+                    .iter()
+                    .zip(bs)
+                    .all(|((an, a), (bn, b))| an == bn && nested_fun_axes_match(a, b))
+        }
+        (
+            InferType::Array(a) | InferType::SizedArray(a, _),
+            InferType::Array(b) | InferType::SizedArray(b, _),
+        )
+        | (InferType::Reference(a), InferType::Reference(b))
+        | (InferType::MutReference(a), InferType::MutReference(b)) => nested_fun_axes_match(a, b),
+        (InferType::Named(an, as_), InferType::Named(bn, bs)) => {
+            an == bn
+                && as_.len() == bs.len()
+                && as_.iter().zip(bs).all(|(a, b)| nested_fun_axes_match(a, b))
+        }
+        (
+            InferType::Residual {
+                brand: ab,
+                fields: af,
+            },
+            InferType::Residual {
+                brand: bb,
+                fields: bf,
+            },
+        ) => {
+            ab == bb
+                && af.len() == bf.len()
+                && af
+                    .iter()
+                    .zip(bf)
+                    .all(|((an, a), (bn, b))| an == bn && nested_fun_axes_match(a, b))
+        }
+        (
+            InferType::Dyn {
+                aspect: aa,
+                type_args: at,
+            },
+            InferType::Dyn {
+                aspect: ba,
+                type_args: bt,
+            },
+        ) => {
+            aa == ba
+                && at.len() == bt.len()
+                && at.iter().zip(bt).all(|(a, b)| nested_fun_axes_match(a, b))
+        }
+        _ => true,
+    }
+}
+
 /// Unify two inference types, returning a substitution that makes them equal.
 ///
 /// # Errors
@@ -669,13 +779,32 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
         }
         (InferType::Var(v), _) => bind_var(*v, b),
         (_, InferType::Var(v)) => bind_var(*v, a),
-        (InferType::Fun(params1, ret1), InferType::Fun(params2, ret2)) => {
+        (
+            InferType::Fun(params1, ret1, call1, use1, mut1),
+            InferType::Fun(params2, ret2, call2, use2, mut2),
+        ) => {
             if params1.len() != params2.len() {
+                return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
+            }
+            // Function capability widening is directional: callers pass the actual type on
+            // the left and the expected type on the right. A many/reading/Copy function can
+            // satisfy once/var/non-Copy storage, but never the reverse.
+            let multiplicity_ok =
+                *call1 == CallMultiplicity::Many || *call2 == CallMultiplicity::Once;
+            let mutation_ok = *mut1 == CallMutation::Reading || *mut2 == CallMutation::Mutating;
+            let use_ok = *use1 == UseMultiplicity::Copy || *use2 == UseMultiplicity::Move;
+            if !multiplicity_ok || !use_ok || !mutation_ok {
                 return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
             }
             let mut subst = Substitution::new();
             for (p1, p2) in params1.iter().zip(params2.iter()) {
+                if !nested_fun_axes_match(p1, p2) {
+                    return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
+                }
                 unify_seq(&mut subst, p1, p2)?;
+            }
+            if !nested_fun_axes_match(ret1, ret2) {
+                return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
             }
             unify_seq(&mut subst, ret1, ret2)?;
             Ok(subst)
@@ -1166,7 +1295,7 @@ fn collect_free_vars(ty: &InferType, vars: &mut HashSet<TypeVar>) {
         InferType::Var(v) => {
             vars.insert(*v);
         }
-        InferType::Fun(params, ret) => {
+        InferType::Fun(params, ret, ..) => {
             for p in params {
                 collect_free_vars(p, vars);
             }
@@ -1616,8 +1745,19 @@ impl fmt::Display for GenericBound {
                     f.write_str("&var ")?;
                     write_type_expr(f, inner)
                 }
-                TypeExpr::Fun(params, ret) => {
-                    f.write_str("fun(")?;
+                TypeExpr::Fun {
+                    params,
+                    return_type: ret,
+                    call_multiplicity,
+                    call_mutation,
+                } => {
+                    if *call_multiplicity == CallMultiplicity::Once {
+                        f.write_str("once ")?;
+                    }
+                    if *call_mutation == CallMutation::Mutating {
+                        f.write_str("var ")?;
+                    }
+                    f.write_str("(")?;
                     for (index, param) in params.iter().enumerate() {
                         if index > 0 {
                             f.write_str(", ")?;
@@ -1725,9 +1865,12 @@ pub fn type_to_infer(ty: &Type) -> InferType {
         ),
         Type::Reference(t) => InferType::Reference(Box::new(type_to_infer(t))),
         Type::MutReference(t) => InferType::MutReference(Box::new(type_to_infer(t))),
-        Type::Fun(ps, ret) => InferType::Fun(
+        Type::Fun(ps, ret, call_mult, use_mult, call_mut) => InferType::Fun(
             ps.iter().map(type_to_infer).collect(),
             Box::new(type_to_infer(ret)),
+            *call_mult,
+            *use_mult,
+            *call_mut,
         ),
         Type::Named(n, args) => {
             InferType::Named(n.clone(), args.iter().map(type_to_infer).collect())
@@ -2765,7 +2908,14 @@ impl TypeDefinitionRegistry {
             // `Var` is answered by the assumption lookup above and cannot
             // reach here; `Never` and `Fun` implement nothing, matching what
             // the pre-`InferType` version returned for them.
-            InferType::Var(_) | InferType::Never | InferType::Fun(_, _) => false,
+            InferType::Fun(_, _, _, use_multiplicity, call_mutation) => match aspect_name {
+                "Copy" => *use_multiplicity == UseMultiplicity::Copy,
+                // RFC-0153 reserves the mutating-closure `!Sync` rule here until
+                // RFC-0096 owns the wider callable auto-trait model.
+                "Sync" => *call_mutation != CallMutation::Mutating,
+                _ => false,
+            },
+            InferType::Var(_) | InferType::Never => false,
             InferType::Concrete(other) => {
                 let name = match other {
                     Type::Str => "String",

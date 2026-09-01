@@ -1,0 +1,19 @@
+// v0.13.0 closure cluster (RFC 0152 legality-15): widening applies at
+// first-order positions only. Below the first level of function-type nesting
+// an exact match is required -- RFC 0152 conservatively rejects mismatches a
+// settled higher-order (contravariant) rule would accept. That rule is
+// RFC 0155's, not v0.13.0's.
+//
+// DRAFT FIXTURE -- written against the RFC text ahead of implementation
+// (metel-core#928). Not runnable yet: see the `skip` reason in the sidecar.
+// Intended once live: spec = ["spec.functions.closures.legality-15"]
+fun sink(cb: (var () -> i64) -> i64) -> i64 {
+    0
+}
+
+fun main() {
+    // `f`'s parameter is `reading () -> i64`; `sink` wants a nested `var () -> i64`.
+    // Nested position => exact match => rejected, even though `f` only reads it.
+    let f := (inner: () -> i64) -> i64 { inner() };
+    sink(f);
+}

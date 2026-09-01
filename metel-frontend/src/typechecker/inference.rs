@@ -243,7 +243,7 @@ fn native_fun_ty(fun: &FunDecl, ctx: &mut InferContext) -> Result<NativeFunTyRes
         None => InferType::unit(),
     };
     Ok(NativeFunTyResult {
-        fun_ty: InferType::Fun(param_types, Box::new(ret_ty)),
+        fun_ty: InferType::fun(param_types, ret_ty),
         bounds: bounds_by_var,
         neg_bounds: neg_bounds_by_var,
         record_kinds: record_kinds_by_var,
@@ -345,7 +345,7 @@ fn infer_type_to_concrete_if_closed(ty: &InferType) -> Option<Type> {
             }),
         InferType::Never
         | InferType::Var(_)
-        | InferType::Fun(_, _)
+        | InferType::Fun(..)
         | InferType::Record(_)
         | InferType::Residual { .. } => None,
     }
@@ -362,7 +362,11 @@ fn mentions_type_param(ty: &TypeExpr, params: &std::collections::HashSet<&str>) 
         | TypeExpr::SizedArray(inner, _)
         | TypeExpr::Reference(inner)
         | TypeExpr::MutReference(inner) => go(inner),
-        TypeExpr::Fun(ps, ret) => ps.iter().any(go) || ret.as_deref().is_some_and(go),
+        TypeExpr::Fun {
+            params: ps,
+            return_type: ret,
+            ..
+        } => ps.iter().any(go) || ret.as_deref().is_some_and(go),
         TypeExpr::Projection { base, .. } => go(base),
         TypeExpr::DynAspect { bound, .. } => go(bound),
         TypeExpr::Unit | TypeExpr::ImplAspect { .. } | TypeExpr::RecordProjection { .. } => false,
@@ -432,7 +436,13 @@ fn substitute_impl_params(
         InferType::Named(name, args) => {
             InferType::Named(name.clone(), args.iter().map(go).collect())
         }
-        InferType::Fun(ps, ret) => InferType::Fun(ps.iter().map(go).collect(), Box::new(go(ret))),
+        InferType::Fun(ps, ret, call_mult, use_mult, call_mut) => InferType::Fun(
+            ps.iter().map(go).collect(),
+            Box::new(go(ret)),
+            *call_mult,
+            *use_mult,
+            *call_mut,
+        ),
         InferType::Residual { brand, fields } => InferType::Residual {
             brand: brand.clone(),
             fields: fields
@@ -732,7 +742,7 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                 };
 
                 let env_fvs = ctx.env_free_vars();
-                let provisional_fun_ty = InferType::Fun(param_types, Box::new(ret_ty));
+                let provisional_fun_ty = InferType::fun(param_types, ret_ty);
                 let provisional_scheme = generalize(provisional_fun_ty, &env_fvs);
                 ctx.bind_poly(&fun.name, provisional_scheme);
             }
@@ -956,9 +966,17 @@ fn signature_type_expr_to_infer(te: &TypeExpr, env: &SignatureEnv) -> InferType 
         TypeExpr::SizedArray(inner, size) => InferType::SizedArray(Box::new(go(inner)), *size),
         TypeExpr::Reference(inner) => InferType::Reference(Box::new(go(inner))),
         TypeExpr::MutReference(inner) => InferType::MutReference(Box::new(go(inner))),
-        TypeExpr::Fun(params, ret) => InferType::Fun(
+        TypeExpr::Fun {
+            params,
+            return_type: ret,
+            call_multiplicity,
+            call_mutation,
+        } => InferType::Fun(
             params.iter().map(go).collect(),
             Box::new(ret.as_deref().map_or_else(InferType::unit, go)),
+            *call_multiplicity,
+            crate::types::UseMultiplicity::Move,
+            *call_mutation,
         ),
         TypeExpr::ImplAspect { bound, .. } => go(bound),
         TypeExpr::Projection {

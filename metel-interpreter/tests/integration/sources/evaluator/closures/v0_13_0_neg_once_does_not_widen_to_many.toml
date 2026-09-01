@@ -1,0 +1,6 @@
+[options]
+spec = ["spec.functions.closures.legality-9"]
+
+[expect]
+status = "typecheck_error"
+contains = "once"

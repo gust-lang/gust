@@ -7,6 +7,17 @@ use super::{
     TypedExpr,
 };
 
+fn is_through_shared_reference(expr: &TypedExpr) -> bool {
+    match expr {
+        TypedExpr::FieldAccess { object, .. }
+        | TypedExpr::TupleAccess { object, .. }
+        | TypedExpr::Index { object, .. } => {
+            matches!(object.ty(), Type::Reference(_)) || is_through_shared_reference(object)
+        }
+        _ => matches!(expr.ty(), Type::Reference(_)),
+    }
+}
+
 /// Build a typed Call expression.
 ///
 /// For polymorphic callees (Idents in `scheme_env` whose type still contains free
@@ -39,7 +50,8 @@ pub(super) fn construct_call(
             let entries = &ctx.overloads[name];
             match super::super::overload::select(entries, &arg_types) {
                 Some(entry) => {
-                    let fun_ty = Type::Fun(entry.params.clone(), Box::new(entry.ret.clone()));
+                    let fun_ty =
+                        crate::types::default_fun_type(entry.params.clone(), entry.ret.clone());
                     let typed_callee =
                         TypedExpr::Ident(name.to_string(), fun_ty, callee.span().clone());
                     return Ok(TypedExpr::Call {
@@ -67,7 +79,7 @@ pub(super) fn construct_call(
     // Generic (scheme-based) callees need arg types first for instantiation — no hints there.
     let param_hints: Vec<Option<Type>> = match callee {
         Expr::Ident(name, _) => match ctx.lookup(name) {
-            Some(Type::Fun(params, _)) if params.len() == args.len() => {
+            Some(Type::Fun(params, ..)) if params.len() == args.len() => {
                 params.iter().map(|p| Some(p.clone())).collect()
             }
             _ => vec![None; args.len()],
@@ -75,14 +87,14 @@ pub(super) fn construct_call(
         Expr::Path(segments, _) => {
             let last = segments.last().map_or("", std::string::String::as_str);
             match ctx.lookup(last) {
-                Some(Type::Fun(params, _)) if params.len() == args.len() => {
+                Some(Type::Fun(params, ..)) if params.len() == args.len() => {
                     params.iter().map(|p| Some(p.clone())).collect()
                 }
                 _ => vec![None; args.len()],
             }
         }
         Expr::ResolvedPath { resolved, .. } => match ctx.lookup(resolved) {
-            Some(Type::Fun(params, _)) if params.len() == args.len() => {
+            Some(Type::Fun(params, ..)) if params.len() == args.len() => {
                 params.iter().map(|p| Some(p.clone())).collect()
             }
             _ => vec![None; args.len()],
@@ -405,7 +417,7 @@ pub(super) fn construct_call(
         }
         other => other,
     };
-    let typed_args = if let Type::Fun(params, _) = fun_ty_for_hints {
+    let typed_args = if let Type::Fun(params, ..) = fun_ty_for_hints {
         if params.len() == typed_args.len()
             && typed_args
                 .iter()
@@ -430,7 +442,7 @@ pub(super) fn construct_call(
     // below instead, so this is the one place that needs its own explicit
     // coercion pass. A no-op for every param that isn't `Type::Dyn` (or
     // already matches).
-    let typed_args = if let Type::Fun(params, _) = fun_ty_for_hints {
+    let typed_args = if let Type::Fun(params, ..) = fun_ty_for_hints {
         typed_args
             .into_iter()
             .zip(params.iter())
@@ -456,7 +468,7 @@ pub(super) fn construct_call(
     // it structurally can't satisfy, so anything still disagreeing here is
     // genuine, not a literal that just needed the hint.
     if explicit_tys.is_some() {
-        if let Type::Fun(params, _) = fun_ty_for_hints {
+        if let Type::Fun(params, ..) = fun_ty_for_hints {
             if params.len() == typed_args.len()
                 && typed_args
                     .iter()
@@ -482,7 +494,16 @@ pub(super) fn construct_call(
         other => other,
     };
     match fun_ty_inner {
-        Type::Fun(params, ret) => {
+        Type::Fun(params, ret, _, _, call_mutation) => {
+            if *call_mutation == crate::types::CallMutation::Mutating
+                && is_through_shared_reference(&typed_callee)
+            {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0029,
+                    "cannot call a `var` closure through a shared reference",
+                    span,
+                ));
+            }
             if params.len() != typed_args.len() {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0004,
@@ -593,7 +614,7 @@ pub(super) fn try_generic_method_scheme(
         }
     }
     let partial_params: Vec<InferType> = match subst.apply(&scheme.ty) {
-        InferType::Fun(p, _) => p,
+        InferType::Fun(p, ..) => p,
         _ => return Err(MetelError::internal("method scheme is not a function type")),
     };
     let typed_args: Vec<TypedExpr> = args
@@ -1153,7 +1174,7 @@ pub(super) fn check_type_satisfies_bounds(
             }
             return Ok(());
         }
-        Type::Reference(_) | Type::MutReference(_) | Type::Fun(_, _) => {
+        Type::Reference(_) | Type::MutReference(_) | Type::Fun(..) => {
             for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
                 if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
                     return Err(MetelError::type_error(
@@ -1255,7 +1276,7 @@ pub(super) fn check_type_does_not_satisfy_bound(
         | Type::Tuple(_)
         | Type::Reference(_)
         | Type::MutReference(_)
-        | Type::Fun(_, _)
+        | Type::Fun(..)
         | Type::Record(_) => concrete.to_string(),
         other => match super::super::inference::primitive_type_name(other) {
             Some(n) => n,
@@ -1367,7 +1388,7 @@ pub(super) fn instantiate_scheme_for_call(
 ) -> Result<(Type, HashMap<TypeVar, Type>), MetelError> {
     let (instance, renaming) = typeinference::instantiate_with_renaming(scheme, gen);
 
-    let InferType::Fun(params, ret) = instance else {
+    let InferType::Fun(params, ret, call_mult, use_mult, call_mut) = instance else {
         return Err(MetelError::internal("scheme type is not a function"));
     };
 
@@ -1433,7 +1454,13 @@ pub(super) fn instantiate_scheme_for_call(
     }
 
     Ok((
-        Type::Fun(concrete_params, Box::new(concrete_ret)),
+        Type::Fun(
+            concrete_params,
+            Box::new(concrete_ret),
+            call_mult,
+            use_mult,
+            call_mut,
+        ),
         var_to_concrete,
     ))
 }
@@ -1501,7 +1528,7 @@ pub(super) fn instantiate_scheme_with_expected_ret(
     current_module: &[String],
 ) -> Result<(Type, HashMap<TypeVar, Type>), MetelError> {
     let (instance, renaming) = typeinference::instantiate_with_renaming(scheme, gen);
-    let InferType::Fun(params, ret) = instance else {
+    let InferType::Fun(params, ret, call_mult, use_mult, call_mut) = instance else {
         return Err(MetelError::internal("scheme type is not a function"));
     };
     let mut subst = Substitution::new();
@@ -1560,7 +1587,13 @@ pub(super) fn instantiate_scheme_with_expected_ret(
         }
     }
     Ok((
-        Type::Fun(concrete_params, Box::new(concrete_ret)),
+        Type::Fun(
+            concrete_params,
+            Box::new(concrete_ret),
+            call_mult,
+            use_mult,
+            call_mut,
+        ),
         var_to_concrete,
     ))
 }

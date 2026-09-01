@@ -121,7 +121,7 @@ pub(super) fn infer_stmt(
                                     subst.bind(tv, concrete.clone());
                                 }
                                 match subst.apply(&scheme.ty) {
-                                    InferType::Fun(_, ret) => match *ret {
+                                    InferType::Fun(_, ret, ..) => match *ret {
                                         InferType::Named(n, mut args)
                                             if n == "Perhaps" && args.len() == 1 =>
                                         {
@@ -299,7 +299,7 @@ pub(super) fn infer_expr(
                         let ret_var = ctx.fresh_var();
                         ctx.add_constraint(
                             callee_ty,
-                            InferType::Fun(arg_infer.to_vec(), Box::new(ret_var.clone())),
+                            InferType::fun(arg_infer.to_vec(), ret_var.clone()),
                             span.clone(),
                         );
                         Ok(ret_var)
@@ -376,7 +376,7 @@ pub(super) fn infer_expr(
                         // them before a third, corrupted the third's inferred type.
                         let (instantiated_ty, renaming) = ctx.instantiate_with_renaming(&scheme);
 
-                        if let InferType::Fun(params, ret) = instantiated_ty {
+                        if let InferType::Fun(params, ret, ..) = instantiated_ty {
                             // Constrain arguments to match the instantiated function type
                             for (arg_ty, param) in arg_infer.iter().zip(params.iter()) {
                                 ctx.add_constraint(arg_ty.clone(), param.clone(), span.clone());
@@ -414,7 +414,7 @@ pub(super) fn infer_expr(
                 .iter()
                 .map(|a| infer_expr(a, ctx, fun_generalizations))
                 .collect::<Result<_, _>>()?;
-            if let InferType::Fun(params, _) = &callee_ty {
+            if let InferType::Fun(params, ret, ..) = &callee_ty {
                 if params.len() != arg_tys.len() {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0004,
@@ -426,6 +426,10 @@ pub(super) fn infer_expr(
                         span,
                     ));
                 }
+                for (arg_ty, param) in arg_tys.iter().zip(params.iter()) {
+                    ctx.add_constraint(arg_ty.clone(), param.clone(), span.clone());
+                }
+                return Ok(*ret.clone());
             }
             let ret_var = ctx.fresh_var();
             // `callee_ty` on the right, the caller-built `Fun` on the left (#266
@@ -441,7 +445,7 @@ pub(super) fn infer_expr(
             // dispatch bug, here affecting name-tagging instead of literal
             // defaulting. Swapping which side is `lhs` restores that.
             ctx.add_constraint(
-                InferType::Fun(arg_tys, Box::new(ret_var.clone())),
+                InferType::fun(arg_tys, ret_var.clone()),
                 callee_ty,
                 span.clone(),
             );
@@ -481,8 +485,42 @@ pub(super) fn infer_expr(
             let then_ty = infer_block(then_branch, ctx, fun_generalizations)?;
             if let Some(else_block) = else_branch {
                 let else_ty = infer_block(else_block, ctx, fun_generalizations)?;
-                ctx.add_constraint(then_ty.clone(), else_ty, span.clone());
-                Ok(then_ty)
+                // RFC-0152: a function-valued conditional joins at the least
+                // permissive capability. Both arms then widen to that joined type.
+                let joined = match (&then_ty, &else_ty) {
+                    (
+                        InferType::Fun(then_params, then_ret, then_call, then_use, then_mut),
+                        InferType::Fun(else_params, else_ret, else_call, else_use, else_mut),
+                    ) if then_params.len() == else_params.len() => InferType::Fun(
+                        then_params.clone(),
+                        Box::new((**then_ret).clone()),
+                        if *then_call == crate::types::CallMultiplicity::Once
+                            || *else_call == crate::types::CallMultiplicity::Once
+                        {
+                            crate::types::CallMultiplicity::Once
+                        } else {
+                            crate::types::CallMultiplicity::Many
+                        },
+                        if *then_use == crate::types::UseMultiplicity::Move
+                            || *else_use == crate::types::UseMultiplicity::Move
+                        {
+                            crate::types::UseMultiplicity::Move
+                        } else {
+                            crate::types::UseMultiplicity::Copy
+                        },
+                        if *then_mut == crate::types::CallMutation::Mutating
+                            || *else_mut == crate::types::CallMutation::Mutating
+                        {
+                            crate::types::CallMutation::Mutating
+                        } else {
+                            crate::types::CallMutation::Reading
+                        },
+                    ),
+                    _ => then_ty.clone(),
+                };
+                ctx.add_constraint(then_ty, joined.clone(), span.clone());
+                ctx.add_constraint(else_ty, joined.clone(), span.clone());
+                Ok(joined)
             } else {
                 ctx.add_constraint(then_ty, InferType::unit(), span.clone());
                 Ok(InferType::unit())
@@ -741,7 +779,7 @@ pub(super) fn infer_expr(
                     ));
                 }
 
-                if let InferType::Fun(params, ret) = &method_ty {
+                if let InferType::Fun(params, ret, ..) = &method_ty {
                     if params.len().saturating_sub(1) != arg_tys.len() {
                         return Err(MetelError::type_error(
                             TypeErrorCode::T0004,
@@ -831,11 +869,11 @@ pub(super) fn infer_expr(
 
                 let ret_var = ctx.fresh_var();
                 let receiver_ty_for_method = peel_all_references(&recv_ty);
-                let expected = InferType::Fun(
+                let expected = InferType::fun(
                     std::iter::once(receiver_ty_for_method)
                         .chain(arg_tys)
                         .collect(),
-                    Box::new(ret_var.clone()),
+                    ret_var.clone(),
                 );
                 ctx.add_constraint(method_ty, expected, span.clone());
                 return Ok(ret_var);
@@ -1296,10 +1334,14 @@ pub(super) fn infer_expr(
             ))
         }
         Expr::Closure {
+            captures,
+            call_multiplicity,
+            call_mutation,
             params,
             return_type,
             body,
             span,
+            ..
         } => {
             let param_types: Vec<InferType> = params
                 .iter()
@@ -1320,6 +1362,20 @@ pub(super) fn infer_expr(
                 None => ctx.fresh_var(),
             };
             ctx.push_scope();
+            for capture in captures {
+                let (name, mutable) = match capture {
+                    crate::ast::CaptureSpec::Owned { name, .. }
+                    | crate::ast::CaptureSpec::Clone { name, .. } => (name, true),
+                    // Construction performs the closure-specific capture diagnostic. Keeping
+                    // this binding writable here prevents the generic immutable-binding check
+                    // from pre-empting the required `&var` diagnostic.
+                    crate::ast::CaptureSpec::SharedRef { name, .. } => (name, true),
+                    crate::ast::CaptureSpec::MutRef { name, .. } => (name, true),
+                };
+                if let Some(ty) = ctx.lookup(name) {
+                    ctx.bind_mono(name, ty, mutable);
+                }
+            }
             for (p, pt) in params.iter().zip(param_types.iter()) {
                 ctx.bind_mono(&p.name, pt.clone(), p.mutable);
             }
@@ -1331,7 +1387,13 @@ pub(super) fn infer_expr(
             ctx.pop_return_type(saved_ret);
             ctx.pop_scope();
             ctx.record_closure_return_type(span.clone(), ret_ty.clone());
-            Ok(InferType::Fun(param_types, Box::new(ret_ty)))
+            Ok(InferType::Fun(
+                param_types,
+                Box::new(ret_ty),
+                *call_multiplicity,
+                crate::types::UseMultiplicity::Move,
+                *call_mutation,
+            ))
         }
         Expr::Match(m) => infer_match(m, ctx, fun_generalizations),
         Expr::PropagateError { expr, span } => {

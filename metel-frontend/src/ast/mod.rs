@@ -1,4 +1,5 @@
 use crate::symbols::SymbolId;
+use crate::types::{CallMultiplicity, CallMutation};
 
 // ── Span ──────────────────────────────────────────────────────────────────────
 
@@ -520,6 +521,9 @@ pub enum Expr {
         span: Span,
     },
     Closure {
+        captures: Vec<CaptureSpec>,
+        call_multiplicity: CallMultiplicity,
+        call_mutation: CallMutation,
         params: Vec<Param>,
         return_type: Option<TypeExpr>,
         body: Block,
@@ -552,6 +556,14 @@ pub enum Expr {
     Return(ReturnExpr),
     Break(BreakExpr),
     Continue(Span),
+}
+
+#[derive(Debug, Clone)]
+pub enum CaptureSpec {
+    Owned { name: String, span: Span },
+    SharedRef { name: String, span: Span },
+    MutRef { name: String, span: Span },
+    Clone { name: String, span: Span },
 }
 
 impl Expr {
@@ -758,7 +770,12 @@ pub enum TypeExpr {
     SizedArray(Box<TypeExpr>, u64),
     Reference(Box<TypeExpr>),
     MutReference(Box<TypeExpr>),
-    Fun(Vec<TypeExpr>, Option<Box<TypeExpr>>),
+    Fun {
+        params: Vec<TypeExpr>,
+        return_type: Option<Box<TypeExpr>>,
+        call_multiplicity: CallMultiplicity,
+        call_mutation: CallMutation,
+    },
     /// `extends Aspect` in parameter position (spelled `impl Aspect` before RFC-0130;
     /// the AST node keeps the internal name). Lowered to a fresh anonymous type param
     /// before inference. Retained in the AST only until the lowering pass runs.

@@ -1,0 +1,15 @@
+// v0.13.0 closure cluster (RFC 0134 legality-18): an unqualified closure
+// literal in a typed position takes its `once` / `var` from the expected
+// type rather than defaulting to `many` / `reading` and then failing.
+//
+// DRAFT FIXTURE -- written against the RFC text ahead of implementation
+// (metel-core#927). Not runnable yet: see the `skip` reason in the sidecar.
+// Intended once live: spec = ["spec.functions.closures.legality-18"]
+fun make(s: String) -> once () -> String {
+    [s] () -> String { s } // no `once` written; the return type supplies it
+}
+
+fun main() {
+    let f := make("hi");
+    assert(f() == "hi");
+}

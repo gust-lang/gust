@@ -1,0 +1,14 @@
+// v0.13.0 closure cluster (RFC 0153 dynamics-8): copying a `Copy` `mutating`
+// closure copies its environment; the copies then have independent state.
+//
+// DRAFT FIXTURE -- written against the RFC text ahead of implementation
+// (metel-core#929). Not runnable yet: see the `skip` reason in the sidecar.
+// Intended once live: spec = ["spec.functions.closures.dynamics-8"]
+fun main() {
+    let n := 0;
+    var c := [n] var () -> i64 { n := n + 1; n };
+    var d := c; // `n: i64` is Copy => `c` is Copy; `d` gets an independent env
+    assert(c() == 1);
+    assert(c() == 2);
+    assert(d() == 1); // `d`'s counter did not advance with `c`'s
+}

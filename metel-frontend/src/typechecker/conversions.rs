@@ -234,13 +234,21 @@ fn type_expr_to_infer_in_context(
         TypeExpr::MutReference(t) => InferType::MutReference(Box::new(
             type_expr_to_infer_in_context(t, generics, self_ty_name, assoc_ctx),
         )),
-        TypeExpr::Fun(ps, ret) => InferType::Fun(
+        TypeExpr::Fun {
+            params: ps,
+            return_type: ret,
+            call_multiplicity,
+            call_mutation,
+        } => InferType::Fun(
             ps.iter()
                 .map(|p| type_expr_to_infer_in_context(p, generics, self_ty_name, assoc_ctx))
                 .collect(),
             Box::new(ret.as_deref().map_or(InferType::unit(), |r| {
                 type_expr_to_infer_in_context(r, generics, self_ty_name, assoc_ctx)
             })),
+            *call_multiplicity,
+            crate::types::UseMultiplicity::Move,
+            *call_mutation,
         ),
         TypeExpr::ImplAspect { bound, .. } => {
             type_expr_to_infer_in_context(bound, generics, self_ty_name, assoc_ctx)
@@ -371,9 +379,15 @@ pub(super) fn infer_type_to_type(ty: &InferType, span: &Span) -> Result<Type, Me
             "cannot infer type; add a type annotation",
             span,
         )),
-        InferType::Fun(params, ret) => {
+        InferType::Fun(params, ret, call_mult, use_mult, call_mut) => {
             let p: Result<Vec<_>, _> = params.iter().map(|p| infer_type_to_type(p, span)).collect();
-            Ok(Type::Fun(p?, Box::new(infer_type_to_type(ret, span)?)))
+            Ok(Type::Fun(
+                p?,
+                Box::new(infer_type_to_type(ret, span)?),
+                *call_mult,
+                *use_mult,
+                *call_mut,
+            ))
         }
         InferType::Tuple(ts) => {
             let t: Result<Vec<_>, _> = ts.iter().map(|t| infer_type_to_type(t, span)).collect();

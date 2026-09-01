@@ -1,0 +1,12 @@
+// v0.13.0 closure cluster (RFC 0134 legality-8): a closure whose body moves
+// a non-Copy capture out must be written `once`; omitting it is a compile
+// error at the definition site.
+//
+// DRAFT FIXTURE -- written against the RFC text ahead of implementation
+// (metel-core#927). Not runnable yet: see the `skip` reason in the sidecar.
+// Intended once live: spec = ["spec.functions.closures.legality-8"]
+fun main() {
+    let s := "hello";
+    let take := [s] () -> String { s }; // moves `s` out; missing `once`
+    take();
+}

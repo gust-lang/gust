@@ -1,0 +1,7 @@
+[options]
+move_check = true
+spec = ["spec.functions.closures.legality-22"]
+
+[expect]
+status = "typecheck_error"
+contains = "moved"

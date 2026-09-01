@@ -16,6 +16,405 @@ use super::{
     TypedLetDecl, TypedMutDecl, TypedReturnExpr, TypedStmt, TypedWhileStmt, UnaryOp,
 };
 
+fn capture_name(capture: &crate::ast::CaptureSpec) -> &str {
+    match capture {
+        crate::ast::CaptureSpec::Owned { name, .. }
+        | crate::ast::CaptureSpec::SharedRef { name, .. }
+        | crate::ast::CaptureSpec::MutRef { name, .. }
+        | crate::ast::CaptureSpec::Clone { name, .. } => name,
+    }
+}
+
+fn collect_closure_body_uses(
+    block: &crate::ast::Block,
+    bound: &mut std::collections::BTreeSet<String>,
+    reads: &mut std::collections::BTreeSet<String>,
+    writes: &mut std::collections::BTreeSet<String>,
+) {
+    for decl in &block.stmts {
+        match decl {
+            crate::ast::Decl::Let(ld) => {
+                collect_closure_expr_uses(&ld.value, bound, reads, writes);
+                bound.insert(ld.name.clone());
+            }
+            crate::ast::Decl::Mut(md) => {
+                collect_closure_expr_uses(&md.value, bound, reads, writes);
+                bound.insert(md.name.clone());
+            }
+            crate::ast::Decl::Stmt(stmt) => collect_closure_stmt_uses(stmt, bound, reads, writes),
+            crate::ast::Decl::Fun(fun) => {
+                bound.insert(fun.name.clone());
+            }
+            crate::ast::Decl::Struct(_)
+            | crate::ast::Decl::Enum(_)
+            | crate::ast::Decl::Impl(_)
+            | crate::ast::Decl::Aspect(_) => {}
+        }
+    }
+    if let Some(tail) = &block.tail {
+        collect_closure_expr_uses(tail, bound, reads, writes);
+    }
+}
+
+fn collect_closure_stmt_uses(
+    stmt: &crate::ast::Stmt,
+    bound: &mut std::collections::BTreeSet<String>,
+    reads: &mut std::collections::BTreeSet<String>,
+    writes: &mut std::collections::BTreeSet<String>,
+) {
+    match stmt {
+        crate::ast::Stmt::Expr(expr) => collect_closure_expr_uses(expr, bound, reads, writes),
+        crate::ast::Stmt::While(ws) => {
+            collect_closure_expr_uses(&ws.condition, bound, reads, writes);
+            collect_closure_body_uses(&ws.body, &mut bound.clone(), reads, writes);
+        }
+        crate::ast::Stmt::For(fs) => {
+            let mut loop_bound = bound.clone();
+            if let Some(init) = &fs.init {
+                match init {
+                    crate::ast::ForInit::Let(ld) => {
+                        collect_closure_expr_uses(&ld.value, &mut loop_bound, reads, writes);
+                        loop_bound.insert(ld.name.clone());
+                    }
+                    crate::ast::ForInit::Mut(md) => {
+                        collect_closure_expr_uses(&md.value, &mut loop_bound, reads, writes);
+                        loop_bound.insert(md.name.clone());
+                    }
+                    crate::ast::ForInit::Expr(expr) => {
+                        collect_closure_expr_uses(expr, &mut loop_bound, reads, writes);
+                    }
+                }
+            }
+            if let Some(condition) = &fs.condition {
+                collect_closure_expr_uses(condition, &mut loop_bound, reads, writes);
+            }
+            if let Some(step) = &fs.step {
+                collect_closure_expr_uses(step, &mut loop_bound, reads, writes);
+            }
+            collect_closure_body_uses(&fs.body, &mut loop_bound, reads, writes);
+        }
+        crate::ast::Stmt::ForIn(fs) => {
+            collect_closure_expr_uses(&fs.iterable, bound, reads, writes);
+            let mut loop_bound = bound.clone();
+            loop_bound.insert(fs.binding.clone());
+            collect_closure_body_uses(&fs.body, &mut loop_bound, reads, writes);
+        }
+    }
+}
+
+fn collect_assign_target_uses(
+    target: &crate::ast::AssignTarget,
+    bound: &std::collections::BTreeSet<String>,
+    reads: &mut std::collections::BTreeSet<String>,
+    writes: &mut std::collections::BTreeSet<String>,
+) {
+    match target {
+        crate::ast::AssignTarget::Ident(name, _) => {
+            if !bound.contains(name) {
+                writes.insert(name.clone());
+            }
+        }
+        crate::ast::AssignTarget::FieldAccess { object, .. }
+        | crate::ast::AssignTarget::TupleAccess { object, .. }
+        | crate::ast::AssignTarget::Deref { object, .. } => {
+            collect_closure_expr_uses(object, &mut bound.clone(), reads, writes);
+            if let crate::ast::Expr::Ident(name, _) = object.as_ref() {
+                if !bound.contains(name) {
+                    writes.insert(name.clone());
+                }
+            }
+        }
+        crate::ast::AssignTarget::Index { object, index, .. } => {
+            collect_closure_expr_uses(object, &mut bound.clone(), reads, writes);
+            collect_closure_expr_uses(index, &mut bound.clone(), reads, writes);
+            if let crate::ast::Expr::Ident(name, _) = object.as_ref() {
+                if !bound.contains(name) {
+                    writes.insert(name.clone());
+                }
+            }
+        }
+    }
+}
+
+// clippy-allow: closure body use walker keeps one exhaustive AST traversal table.
+#[allow(clippy::too_many_lines)]
+fn collect_closure_expr_uses(
+    expr: &Expr,
+    bound: &mut std::collections::BTreeSet<String>,
+    reads: &mut std::collections::BTreeSet<String>,
+    writes: &mut std::collections::BTreeSet<String>,
+) {
+    match expr {
+        Expr::Ident(name, _) => {
+            if !bound.contains(name) {
+                reads.insert(name.clone());
+            }
+        }
+        Expr::ResolvedPath { resolved, .. } => {
+            if !bound.contains(resolved) {
+                reads.insert(resolved.clone());
+            }
+        }
+        Expr::Tuple(items, _) | Expr::Array(items, _) => {
+            for item in items {
+                collect_closure_expr_uses(item, bound, reads, writes);
+            }
+        }
+        Expr::RecordLiteral { fields, .. } => {
+            for (_, value) in fields {
+                collect_closure_expr_uses(value, bound, reads, writes);
+            }
+        }
+        Expr::RepeatArray(value, _, _)
+        | Expr::UnaryOp(_, value, _)
+        | Expr::Cast { expr: value, .. }
+        | Expr::Ascribe { expr: value, .. }
+        | Expr::PropagateError { expr: value, .. } => {
+            collect_closure_expr_uses(value, bound, reads, writes);
+        }
+        Expr::BinOp(left, _, right, _)
+        | Expr::Index {
+            object: left,
+            index: right,
+            ..
+        } => {
+            collect_closure_expr_uses(left, bound, reads, writes);
+            collect_closure_expr_uses(right, bound, reads, writes);
+        }
+        Expr::Assign { target, value, .. } => {
+            collect_assign_target_uses(target, bound, reads, writes);
+            collect_closure_expr_uses(value, bound, reads, writes);
+        }
+        Expr::Call { callee, args, .. } => {
+            collect_closure_expr_uses(callee, bound, reads, writes);
+            for arg in args {
+                collect_closure_expr_uses(arg, bound, reads, writes);
+            }
+        }
+        Expr::MethodCall { receiver, args, .. } => {
+            collect_closure_expr_uses(receiver, bound, reads, writes);
+            for arg in args {
+                collect_closure_expr_uses(arg, bound, reads, writes);
+            }
+        }
+        Expr::FieldAccess { object, .. } | Expr::TupleAccess { object, .. } => {
+            collect_closure_expr_uses(object, bound, reads, writes);
+        }
+        Expr::Match(m) => {
+            collect_closure_expr_uses(&m.scrutinee, bound, reads, writes);
+            for arm in &m.arms {
+                let mut arm_bound = bound.clone();
+                collect_pattern_bindings(&arm.pattern, &mut arm_bound);
+                if let Some(guard) = &arm.guard {
+                    collect_closure_expr_uses(guard, &mut arm_bound, reads, writes);
+                }
+                collect_closure_body_uses(&arm.body, &mut arm_bound, reads, writes);
+            }
+        }
+        Expr::If {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            collect_closure_expr_uses(condition, bound, reads, writes);
+            collect_closure_body_uses(then_branch, &mut bound.clone(), reads, writes);
+            if let Some(else_branch) = else_branch {
+                collect_closure_body_uses(else_branch, &mut bound.clone(), reads, writes);
+            }
+        }
+        Expr::Loop { body, .. } => {
+            collect_closure_body_uses(body, &mut bound.clone(), reads, writes);
+        }
+        Expr::Return(ret) => {
+            if let Some(value) = &ret.value {
+                collect_closure_expr_uses(value, bound, reads, writes);
+            }
+        }
+        Expr::Break(brk) => {
+            if let Some(value) = &brk.value {
+                collect_closure_expr_uses(value, bound, reads, writes);
+            }
+        }
+        Expr::Closure { .. }
+        | Expr::Literal(_, _)
+        | Expr::Path(_, _)
+        | Expr::StructLiteral { .. }
+        | Expr::RecordProjection { .. }
+        | Expr::Continue(_) => {}
+    }
+}
+
+fn collect_pattern_bindings(
+    pattern: &crate::ast::Pattern,
+    bound: &mut std::collections::BTreeSet<String>,
+) {
+    match pattern {
+        crate::ast::Pattern::Binding(name, _) => {
+            bound.insert(name.clone());
+        }
+        crate::ast::Pattern::Tuple(items, _) => {
+            for item in items {
+                collect_pattern_bindings(item, bound);
+            }
+        }
+        crate::ast::Pattern::Array { elems, rest, .. } => {
+            for item in elems {
+                collect_pattern_bindings(item, bound);
+            }
+            if let Some(rest) = rest {
+                bound.insert(rest.clone());
+            }
+        }
+        crate::ast::Pattern::EnumVariant { fields, .. }
+        | crate::ast::Pattern::Struct { fields, .. }
+        | crate::ast::Pattern::Record { fields, .. } => {
+            bound.extend(fields.iter().cloned());
+        }
+        crate::ast::Pattern::Wildcard(_) | crate::ast::Pattern::Literal(_, _) => {}
+    }
+}
+
+fn verify_closure_capture_list(
+    captures: &[crate::ast::CaptureSpec],
+    call_multiplicity: crate::types::CallMultiplicity,
+    call_mutation: crate::types::CallMutation,
+    params: &[Param],
+    body: &crate::ast::Block,
+    span: &Span,
+    ctx: &mut ConstructCtx,
+) -> Result<(), MetelError> {
+    let mut bound: std::collections::BTreeSet<String> =
+        params.iter().map(|param| param.name.clone()).collect();
+    let mut reads = std::collections::BTreeSet::new();
+    let mut writes = std::collections::BTreeSet::new();
+    collect_closure_body_uses(body, &mut bound, &mut reads, &mut writes);
+    let used: std::collections::BTreeSet<_> = reads.union(&writes).cloned().collect();
+    let listed: std::collections::BTreeSet<_> = captures
+        .iter()
+        .map(capture_name)
+        .map(str::to_string)
+        .collect();
+
+    for capture in captures {
+        if let crate::ast::CaptureSpec::MutRef { name, span } = capture {
+            if ctx.lookup(name).is_none() {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0003,
+                    format!("undefined variable `{name}`"),
+                    span,
+                ));
+            }
+            if !ctx.is_mutable(name) {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0028,
+                    format!("`{name}` must be a `var` binding for a `&var` capture"),
+                    span,
+                ));
+            }
+            if call_mutation != crate::types::CallMutation::Mutating {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0028,
+                    "a `&var` capture makes this closure `var`; write `[...] var (...)`",
+                    span,
+                ));
+            }
+        }
+        if matches!(
+            capture,
+            crate::ast::CaptureSpec::SharedRef { .. } | crate::ast::CaptureSpec::MutRef { .. }
+        ) && ctx.is_enclosing_owned_capture(capture_name(capture))
+        {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0030,
+                format!(
+                    "cannot borrow `{}` into an enclosing closure's environment",
+                    capture_name(capture)
+                ),
+                match capture {
+                    crate::ast::CaptureSpec::Owned { span, .. }
+                    | crate::ast::CaptureSpec::SharedRef { span, .. }
+                    | crate::ast::CaptureSpec::MutRef { span, .. }
+                    | crate::ast::CaptureSpec::Clone { span, .. } => span,
+                },
+            ));
+        }
+    }
+
+    if captures.is_empty() {
+        for name in &used {
+            let Some(ty) = ctx.lookup(name) else {
+                continue;
+            };
+            if !ctx
+                .registry
+                .type_satisfies_aspect(ctx.current_module, ty, "Copy")
+            {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0026,
+                    format!("closure captures non-`Copy` `{name}`; add a capture list"),
+                    span,
+                ));
+            }
+        }
+    } else {
+        for name in &used {
+            if ctx.lookup(name).is_some() && !listed.contains(name) {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0026,
+                    format!("`{name}` is captured but not listed"),
+                    span,
+                ));
+            }
+        }
+    }
+
+    for capture in captures {
+        if let crate::ast::CaptureSpec::SharedRef { name, span } = capture {
+            if writes.contains(name) {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0028,
+                    format!("`{name}` is captured by shared reference; use `&var {name}`"),
+                    span,
+                ));
+            }
+        }
+    }
+
+    // A tail read of an owned non-Copy capture is returned by value, so it
+    // consumes the environment field. RFC-0134 requires that capability to be
+    // written as `once`; ordinary reads in non-consuming positions stay many.
+    if call_multiplicity != crate::types::CallMultiplicity::Once {
+        if let Some(crate::ast::Expr::Ident(name, _)) = body.tail.as_deref() {
+            if captures.iter().any(|capture| {
+                matches!(capture, crate::ast::CaptureSpec::Owned { name: captured, .. } if captured == name)
+            }) && ctx.lookup(name).is_some_and(|ty| {
+                !ctx.registry.type_satisfies_aspect(ctx.current_module, ty, "Copy")
+            }) {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0027,
+                    format!("closure consumes captured `{name}`; write `once`"),
+                    span,
+                ));
+            }
+        }
+    }
+
+    if call_mutation != crate::types::CallMutation::Mutating {
+        for name in &writes {
+            if listed.contains(name) {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0028,
+                    format!("closure writes captured `{name}`; write `var`"),
+                    span,
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
 // Exhaustive match over every AST/type-system variant; splitting it up would
 // scatter one coherent dispatch table across many small functions with no
 // real gain in clarity.
@@ -95,7 +494,7 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
                         None => value,
                     };
                     let ty = expected_ty.unwrap_or_else(|| value.ty().clone());
-                    ctx.bind(&md.name, ty);
+                    ctx.bind_mut(&md.name, ty);
                     let typed_md = TypedMutDecl {
                         name: md.name.clone(),
                         type_ann: md.type_ann.clone(),
@@ -145,7 +544,7 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
                         .get(type_name.as_str())
                         .and_then(|m| m.get("next"))
                         .and_then(|ty| {
-                            if let Type::Fun(_, ret) = ty {
+                            if let Type::Fun(_, ret, ..) = ty {
                                 Some(ret.as_ref().clone())
                             } else {
                                 None
@@ -159,7 +558,7 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
                                 subst.bind(tv, type_to_infer(concrete));
                             }
                             match subst.apply(&scheme.ty) {
-                                InferType::Fun(_, ret) => {
+                                InferType::Fun(_, ret, ..) => {
                                     let dummy = Span::new(0, 0, "");
                                     infer_type_to_type(&ret, &dummy).ok()
                                 }
@@ -258,10 +657,10 @@ pub(super) fn construct_expr(
                     // direct call already uses) unifies `expected_ty`'s own param
                     // types against the scheme exactly as if they were argument
                     // types.
-                    if let Some(Type::Fun(expected_params, _)) = expected_ty {
+                    if let Some(Type::Fun(expected_params, ..)) = expected_ty {
                         let arity_matches = matches!(
                             &scheme.ty,
-                            InferType::Fun(p, _) if p.len() == expected_params.len()
+                            InferType::Fun(p, ..) if p.len() == expected_params.len()
                         );
                         if arity_matches {
                             let arg_types: Vec<&Type> = expected_params.iter().collect();
@@ -753,7 +1152,7 @@ pub(super) fn construct_expr(
                     ));
                 }
                 let ret_ty = match method_fun_ty {
-                    Type::Fun(_, ret) => *ret,
+                    Type::Fun(_, ret, ..) => *ret,
                     _ => return Err(MetelError::internal("array method type is not a function")),
                 };
                 let dispatch = dispatch_for_resolved_method(ctx, winning_aspect.as_deref());
@@ -944,7 +1343,7 @@ pub(super) fn construct_expr(
                     (ty, typed_args, dispatch)
                 };
             let ret_ty = match method_fun_ty {
-                Type::Fun(_, ret) => *ret,
+                Type::Fun(_, ret, ..) => *ret,
                 _ => return Err(MetelError::internal("method type is not a function")),
             };
             Ok(TypedExpr::MethodCall {
@@ -1263,9 +1662,9 @@ pub(super) fn construct_expr(
                             .iter()
                             .map(|field| infer_type_to_type(&field.ty, span))
                             .collect::<Result<_, _>>()?;
-                        let ty = Type::Fun(
+                        let ty = crate::types::default_fun_type(
                             field_types,
-                            Box::new(Type::Named(type_name.clone(), vec![])),
+                            Type::Named(type_name.clone(), vec![]),
                         );
                         return Ok(TypedExpr::Path(segments.clone(), ty, span.clone()));
                     }
@@ -1277,11 +1676,29 @@ pub(super) fn construct_expr(
             )))
         }
         Expr::Closure {
+            captures,
+            call_multiplicity,
+            call_mutation,
             params,
             return_type,
             body,
             span,
         } => {
+            let (effective_multiplicity, effective_mutation) = match expected_ty {
+                Some(Type::Fun(_, _, expected_multiplicity, _, expected_mutation)) => {
+                    (*expected_multiplicity, *expected_mutation)
+                }
+                _ => (*call_multiplicity, *call_mutation),
+            };
+            verify_closure_capture_list(
+                captures,
+                effective_multiplicity,
+                effective_mutation,
+                params,
+                body,
+                span,
+                ctx,
+            )?;
             let param_types: Vec<Type> = params
                 .iter()
                 .map(|p| {
@@ -1308,7 +1725,33 @@ pub(super) fn construct_expr(
                     .transpose()?
                     .unwrap_or(Type::Unit)
             };
+            let use_multiplicity = if captures.iter().all(|capture| match capture {
+                crate::ast::CaptureSpec::SharedRef { .. }
+                | crate::ast::CaptureSpec::MutRef { .. } => true,
+                crate::ast::CaptureSpec::Owned { name, .. }
+                | crate::ast::CaptureSpec::Clone { name, .. } => {
+                    ctx.lookup(name).is_some_and(|ty| {
+                        ctx.registry
+                            .type_satisfies_aspect(ctx.current_module, ty, "Copy")
+                    })
+                }
+            }) {
+                crate::types::UseMultiplicity::Copy
+            } else {
+                crate::types::UseMultiplicity::Move
+            };
             ctx.push_scope();
+            ctx.enter_closure(
+                captures
+                    .iter()
+                    .filter_map(|capture| match capture {
+                        crate::ast::CaptureSpec::Owned { name, .. }
+                        | crate::ast::CaptureSpec::Clone { name, .. } => Some(name.clone()),
+                        crate::ast::CaptureSpec::SharedRef { .. }
+                        | crate::ast::CaptureSpec::MutRef { .. } => None,
+                    })
+                    .collect(),
+            );
             for (p, ty) in params.iter().zip(param_types.iter()) {
                 ctx.bind(&p.name, ty.clone());
             }
@@ -1326,9 +1769,19 @@ pub(super) fn construct_expr(
             let typed_body = construct_block(body, body_expected, ctx)?;
             ctx.pop_loop_depth(saved_loop_depth);
             ctx.pop_return_type(saved_return);
+            ctx.exit_closure();
             ctx.pop_scope();
-            let ty = Type::Fun(param_types, Box::new(ret_ty));
+            let ty = Type::Fun(
+                param_types,
+                Box::new(ret_ty),
+                effective_multiplicity,
+                use_multiplicity,
+                effective_mutation,
+            );
             Ok(TypedExpr::Closure {
+                captures: captures.clone(),
+                call_multiplicity: effective_multiplicity,
+                call_mutation: effective_mutation,
                 params: params.clone(),
                 return_type: return_type.clone(),
                 body: typed_body,

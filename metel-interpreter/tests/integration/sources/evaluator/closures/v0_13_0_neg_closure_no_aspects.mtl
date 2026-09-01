@@ -1,0 +1,12 @@
+// v0.13.0 closure cluster (RFC 0134 legality-12): a closure value satisfies
+// no aspects. `==`, `<`, `.clone()` and other aspect-gated operations on a
+// closure value do not type-check.
+//
+// DRAFT FIXTURE -- written against the RFC text ahead of implementation
+// (metel-core#927). Not runnable yet: see the `skip` reason in the sidecar.
+// Intended once live: spec = ["spec.functions.closures.legality-12"]
+fun main() {
+    let a := () -> i64 { 1 };
+    let b := () -> i64 { 1 };
+    assert(a == b); // error: closures do not satisfy `Eq`
+}

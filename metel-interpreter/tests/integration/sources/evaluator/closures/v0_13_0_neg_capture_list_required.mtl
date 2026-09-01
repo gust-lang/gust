@@ -1,0 +1,11 @@
+// v0.13.0 closure cluster (RFC 0050 legality-6): a closure must carry a
+// capture list if its body references a free non-Copy local binding.
+//
+// DRAFT FIXTURE -- written against the RFC text ahead of implementation
+// (metel-core#926). Not runnable yet: see the `skip` reason in the sidecar.
+// Intended once live: spec = ["spec.functions.closures.legality-6"]
+fun main() {
+    let name := "log";
+    let greet := () -> String { name }; // missing capture list for `name`
+    assert(greet() == "log");
+}

@@ -5,12 +5,12 @@
 use std::collections::HashMap;
 
 use crate::ast::{
-    AspectMethod, AssignOp, BinOp, Block, FieldDef, GenericParam, Literal, Param, Pattern,
-    Polarity, Span, TypeExpr, UnaryOp, VariantDef,
+    AspectMethod, AssignOp, BinOp, Block, CaptureSpec, FieldDef, GenericParam, Literal, Param,
+    Pattern, Polarity, Span, TypeExpr, UnaryOp, VariantDef,
 };
 use crate::symbols::SymbolId;
 use crate::typeinference::{TypeDefinitionRegistry, TypeScheme};
-use crate::types::Type;
+use crate::types::{CallMultiplicity, CallMutation, Type};
 
 /// How a method call is dispatched, resolved by the elaboration pass.
 #[derive(Debug, Clone, PartialEq)]
@@ -404,6 +404,9 @@ pub enum TypedExpr {
         span: Span,
     },
     Closure {
+        captures: Vec<CaptureSpec>,
+        call_multiplicity: CallMultiplicity,
+        call_mutation: CallMutation,
         params: Vec<Param>,
         #[allow(dead_code)] // kept for future type annotation checking
         return_type: Option<TypeExpr>,
@@ -417,6 +420,9 @@ pub enum TypedExpr {
         /// Binding name from the enclosing `let`/`mut` declaration, used at runtime to look
         /// up the closure's `TypeScheme` from `type_ctx.scheme_env` for construction-at-call-time.
         name: Option<String>,
+        captures: Vec<CaptureSpec>,
+        call_multiplicity: CallMultiplicity,
+        call_mutation: CallMutation,
         params: Vec<Param>,
         #[allow(dead_code)] // kept for future type annotation checking
         return_type: Option<TypeExpr>,

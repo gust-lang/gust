@@ -1,0 +1,24 @@
+// v0.13.0 closure cluster (RFC 0153 legality-24): as a function *type*
+// spelling, `once` and `var` are order-insensitive -- `var once (T) -> U` and
+// `once var (T) -> U` denote the identical type. (The closure *literal* prefix
+// order stays fixed -- legality-23.)
+//
+// DRAFT FIXTURE -- written against the RFC text ahead of implementation
+// (metel-core#929). Not runnable yet: see the `skip` reason in the sidecar.
+// Intended once live: spec = ["spec.functions.closures.legality-24"]
+fun apply_it(f: var once (String) -> String) -> String {
+    f("x")
+}
+
+fun main() {
+    var log := 0;
+    let s := "seed";
+    // literal order is `once var` (legality-23); body mutates `log` (-> var) and
+    // moves captured `s` out (-> once), so `once var` is genuinely correct.
+    let g := [&var log, s] once var (extra: String) -> String {
+        log += 1;
+        s
+    };
+    assert(apply_it(g) == "seed"); // param typed `var once` -- same type, unifies
+    assert(log == 1);
+}

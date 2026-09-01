@@ -1,0 +1,6 @@
+[options]
+spec = ["spec.functions.closures.legality-23"]
+
+[expect]
+status = "parse_error"
+contains = "var"
