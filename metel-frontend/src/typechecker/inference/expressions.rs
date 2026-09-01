@@ -1364,13 +1364,13 @@ pub(super) fn infer_expr(
             ctx.push_scope();
             for capture in captures {
                 let (name, mutable) = match capture {
-                    crate::ast::CaptureSpec::Owned { name, .. }
-                    | crate::ast::CaptureSpec::Clone { name, .. } => (name, true),
                     // Construction performs the closure-specific capture diagnostic. Keeping
                     // this binding writable here prevents the generic immutable-binding check
                     // from pre-empting the required `&var` diagnostic.
-                    crate::ast::CaptureSpec::SharedRef { name, .. } => (name, true),
-                    crate::ast::CaptureSpec::MutRef { name, .. } => (name, true),
+                    crate::ast::CaptureSpec::Owned { name, .. }
+                    | crate::ast::CaptureSpec::Clone { name, .. }
+                    | crate::ast::CaptureSpec::SharedRef { name, .. }
+                    | crate::ast::CaptureSpec::MutRef { name, .. } => (name, true),
                 };
                 if let Some(ty) = ctx.lookup(name) {
                     ctx.bind_mono(name, ty, mutable);

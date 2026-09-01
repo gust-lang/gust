@@ -1555,6 +1555,11 @@ impl Environment {
         copied
     }
 
+    /// Captures the bindings named by a closure capture list.
+    ///
+    /// # Errors
+    ///
+    /// Returns a runtime error when a capture is not available in this environment.
     pub fn capture_closure(
         &self,
         captures: &[CaptureSpec],
@@ -1563,9 +1568,11 @@ impl Environment {
         if captures.is_empty() {
             return Ok(self.capture_clone());
         }
-        let mut captured = Environment::new();
-        captured.pending_funs = self.pending_funs.clone();
-        captured.type_ctx = self.type_ctx.clone();
+        let mut closure_environment = Environment::new();
+        closure_environment
+            .pending_funs
+            .clone_from(&self.pending_funs);
+        closure_environment.type_ctx.clone_from(&self.type_ctx);
         for capture in captures {
             match capture {
                 CaptureSpec::Owned { name, .. } | CaptureSpec::Clone { name, .. } => {
@@ -1576,7 +1583,7 @@ impl Environment {
                             span,
                         )
                     })?;
-                    captured.define(name, value);
+                    closure_environment.define(name, value);
                 }
                 CaptureSpec::SharedRef { name, .. } | CaptureSpec::MutRef { name, .. } => {
                     let cell = self.get_rc(name).ok_or_else(|| {
@@ -1586,11 +1593,11 @@ impl Environment {
                             span,
                         )
                     })?;
-                    captured.define_rc(name, cell);
+                    closure_environment.define_rc(name, cell);
                 }
             }
         }
-        Ok(captured)
+        Ok(closure_environment)
     }
 }
 

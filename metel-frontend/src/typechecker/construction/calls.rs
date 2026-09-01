@@ -1388,7 +1388,7 @@ pub(super) fn instantiate_scheme_for_call(
 ) -> Result<(Type, HashMap<TypeVar, Type>), MetelError> {
     let (instance, renaming) = typeinference::instantiate_with_renaming(scheme, gen);
 
-    let InferType::Fun(params, ret, call_mult, use_mult, call_mut) = instance else {
+    let InferType::Fun(params, ret, call_mult, use_mult, call_mutation) = instance else {
         return Err(MetelError::internal("scheme type is not a function"));
     };
 
@@ -1459,7 +1459,7 @@ pub(super) fn instantiate_scheme_for_call(
             Box::new(concrete_ret),
             call_mult,
             use_mult,
-            call_mut,
+            call_mutation,
         ),
         var_to_concrete,
     ))
@@ -1528,7 +1528,7 @@ pub(super) fn instantiate_scheme_with_expected_ret(
     current_module: &[String],
 ) -> Result<(Type, HashMap<TypeVar, Type>), MetelError> {
     let (instance, renaming) = typeinference::instantiate_with_renaming(scheme, gen);
-    let InferType::Fun(params, ret, call_mult, use_mult, call_mut) = instance else {
+    let InferType::Fun(params, ret, call_mult, use_mult, call_mutation) = instance else {
         return Err(MetelError::internal("scheme type is not a function"));
     };
     let mut subst = Substitution::new();
@@ -1592,7 +1592,7 @@ pub(super) fn instantiate_scheme_with_expected_ret(
             Box::new(concrete_ret),
             call_mult,
             use_mult,
-            call_mut,
+            call_mutation,
         ),
         var_to_concrete,
     ))

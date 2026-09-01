@@ -171,7 +171,7 @@ pub fn refine_with_static(runtime: &Type, static_ty: &Type) -> Type {
                     .collect(),
             )
         }
-        (Type::Fun(rp, rr, _, _, _), Type::Fun(sp, sr, call_mult, use_mult, call_mut))
+        (Type::Fun(rp, rr, _, _, _), Type::Fun(sp, sr, call_mult, use_mult, call_mutation))
             if rp.len() == sp.len() =>
         {
             Type::Fun(
@@ -182,7 +182,7 @@ pub fn refine_with_static(runtime: &Type, static_ty: &Type) -> Type {
                 Box::new(refine_with_static(rr, sr)),
                 *call_mult,
                 *use_mult,
-                *call_mut,
+                *call_mutation,
             )
         }
         _ => runtime.clone(),

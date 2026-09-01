@@ -276,7 +276,7 @@ fn collect_pattern_bindings(
 }
 
 fn verify_closure_capture_list(
-    captures: &[crate::ast::CaptureSpec],
+    capture_specs: &[crate::ast::CaptureSpec],
     call_multiplicity: crate::types::CallMultiplicity,
     call_mutation: crate::types::CallMutation,
     params: &[Param],
@@ -284,19 +284,99 @@ fn verify_closure_capture_list(
     span: &Span,
     ctx: &mut ConstructCtx,
 ) -> Result<(), MetelError> {
+    verify_capture_specs(capture_specs, call_mutation, ctx)?;
     let mut bound: std::collections::BTreeSet<String> =
         params.iter().map(|param| param.name.clone()).collect();
     let mut reads = std::collections::BTreeSet::new();
     let mut writes = std::collections::BTreeSet::new();
     collect_closure_body_uses(body, &mut bound, &mut reads, &mut writes);
     let used: std::collections::BTreeSet<_> = reads.union(&writes).cloned().collect();
-    let listed: std::collections::BTreeSet<_> = captures
+    let listed: std::collections::BTreeSet<_> = capture_specs
         .iter()
         .map(capture_name)
         .map(str::to_string)
         .collect();
 
-    for capture in captures {
+    if capture_specs.is_empty() {
+        for name in &used {
+            let Some(ty) = ctx.lookup(name) else {
+                continue;
+            };
+            if !ctx
+                .registry
+                .type_satisfies_aspect(ctx.current_module, ty, "Copy")
+            {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0026,
+                    format!("closure captures non-`Copy` `{name}`; add a capture list"),
+                    span,
+                ));
+            }
+        }
+    } else {
+        for name in &used {
+            if ctx.lookup(name).is_some() && !listed.contains(name) {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0026,
+                    format!("`{name}` is captured but not listed"),
+                    span,
+                ));
+            }
+        }
+    }
+
+    for capture in capture_specs {
+        if let crate::ast::CaptureSpec::SharedRef { name, span } = capture {
+            if writes.contains(name) {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0028,
+                    format!("`{name}` is captured by shared reference; use `&var {name}`"),
+                    span,
+                ));
+            }
+        }
+    }
+
+    // A tail read of an owned non-Copy capture is returned by value, so it
+    // consumes the environment field. RFC-0134 requires that capability to be
+    // written as `once`; ordinary reads in non-consuming positions stay many.
+    if call_multiplicity != crate::types::CallMultiplicity::Once {
+        if let Some(crate::ast::Expr::Ident(name, _)) = body.tail.as_deref() {
+            if capture_specs.iter().any(|capture| {
+                matches!(capture, crate::ast::CaptureSpec::Owned { name: captured, .. } if captured == name)
+            }) && ctx.lookup(name).is_some_and(|ty| {
+                !ctx.registry.type_satisfies_aspect(ctx.current_module, ty, "Copy")
+            }) {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0027,
+                    format!("closure consumes captured `{name}`; write `once`"),
+                    span,
+                ));
+            }
+        }
+    }
+
+    if call_mutation != crate::types::CallMutation::Mutating {
+        for name in &writes {
+            if listed.contains(name) {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0028,
+                    format!("closure writes captured `{name}`; write `var`"),
+                    span,
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn verify_capture_specs(
+    capture_specs: &[crate::ast::CaptureSpec],
+    call_mutation: crate::types::CallMutation,
+    ctx: &ConstructCtx,
+) -> Result<(), MetelError> {
+    for capture in capture_specs {
         if let crate::ast::CaptureSpec::MutRef { name, span } = capture {
             if ctx.lookup(name).is_none() {
                 return Err(MetelError::type_error(
@@ -331,88 +411,20 @@ fn verify_closure_capture_list(
                     "cannot borrow `{}` into an enclosing closure's environment",
                     capture_name(capture)
                 ),
-                match capture {
-                    crate::ast::CaptureSpec::Owned { span, .. }
-                    | crate::ast::CaptureSpec::SharedRef { span, .. }
-                    | crate::ast::CaptureSpec::MutRef { span, .. }
-                    | crate::ast::CaptureSpec::Clone { span, .. } => span,
-                },
+                capture_span(capture),
             ));
         }
     }
-
-    if captures.is_empty() {
-        for name in &used {
-            let Some(ty) = ctx.lookup(name) else {
-                continue;
-            };
-            if !ctx
-                .registry
-                .type_satisfies_aspect(ctx.current_module, ty, "Copy")
-            {
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0026,
-                    format!("closure captures non-`Copy` `{name}`; add a capture list"),
-                    span,
-                ));
-            }
-        }
-    } else {
-        for name in &used {
-            if ctx.lookup(name).is_some() && !listed.contains(name) {
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0026,
-                    format!("`{name}` is captured but not listed"),
-                    span,
-                ));
-            }
-        }
-    }
-
-    for capture in captures {
-        if let crate::ast::CaptureSpec::SharedRef { name, span } = capture {
-            if writes.contains(name) {
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0028,
-                    format!("`{name}` is captured by shared reference; use `&var {name}`"),
-                    span,
-                ));
-            }
-        }
-    }
-
-    // A tail read of an owned non-Copy capture is returned by value, so it
-    // consumes the environment field. RFC-0134 requires that capability to be
-    // written as `once`; ordinary reads in non-consuming positions stay many.
-    if call_multiplicity != crate::types::CallMultiplicity::Once {
-        if let Some(crate::ast::Expr::Ident(name, _)) = body.tail.as_deref() {
-            if captures.iter().any(|capture| {
-                matches!(capture, crate::ast::CaptureSpec::Owned { name: captured, .. } if captured == name)
-            }) && ctx.lookup(name).is_some_and(|ty| {
-                !ctx.registry.type_satisfies_aspect(ctx.current_module, ty, "Copy")
-            }) {
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0027,
-                    format!("closure consumes captured `{name}`; write `once`"),
-                    span,
-                ));
-            }
-        }
-    }
-
-    if call_mutation != crate::types::CallMutation::Mutating {
-        for name in &writes {
-            if listed.contains(name) {
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0028,
-                    format!("closure writes captured `{name}`; write `var`"),
-                    span,
-                ));
-            }
-        }
-    }
-
     Ok(())
+}
+
+fn capture_span(capture: &crate::ast::CaptureSpec) -> &Span {
+    match capture {
+        crate::ast::CaptureSpec::Owned { span, .. }
+        | crate::ast::CaptureSpec::SharedRef { span, .. }
+        | crate::ast::CaptureSpec::MutRef { span, .. }
+        | crate::ast::CaptureSpec::Clone { span, .. } => span,
+    }
 }
 
 // Exhaustive match over every AST/type-system variant; splitting it up would

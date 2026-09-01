@@ -2061,7 +2061,7 @@ fn substitute_named_generics(
                 .map(|arg| substitute_named_generics(arg, named_samples))
                 .collect(),
         ),
-        InferType::Fun(params, ret, call_mult, use_mult, call_mut) => InferType::Fun(
+        InferType::Fun(params, ret, call_mult, use_mult, call_mutation) => InferType::Fun(
             params
                 .iter()
                 .map(|param| substitute_named_generics(param, named_samples))
@@ -2069,7 +2069,7 @@ fn substitute_named_generics(
             Box::new(substitute_named_generics(ret, named_samples)),
             *call_mult,
             *use_mult,
-            *call_mut,
+            *call_mutation,
         ),
         InferType::Tuple(items) => InferType::Tuple(
             items
@@ -2176,7 +2176,7 @@ fn type_to_infer_under_generic_env(
         Type::MutReference(inner) => InferType::MutReference(Box::new(
             type_to_infer_under_generic_env(inner, placeholders),
         )),
-        Type::Fun(params, ret, call_mult, use_mult, call_mut) => InferType::Fun(
+        Type::Fun(params, ret, call_mult, use_mult, call_mutation) => InferType::Fun(
             params
                 .iter()
                 .map(|param| type_to_infer_under_generic_env(param, placeholders))
@@ -2184,7 +2184,7 @@ fn type_to_infer_under_generic_env(
             Box::new(type_to_infer_under_generic_env(ret, placeholders)),
             *call_mult,
             *use_mult,
-            *call_mut,
+            *call_mutation,
         ),
         Type::Named(name, args) => {
             if args.is_empty() {
@@ -2267,7 +2267,7 @@ fn infer_to_type(ty: &crate::typeinference::InferType) -> Option<Type> {
         InferType::MutReference(inner) => {
             infer_to_type(inner).map(|inner| Type::MutReference(Box::new(inner)))
         }
-        InferType::Fun(params, ret, call_mult, use_mult, call_mut) => Some(Type::Fun(
+        InferType::Fun(params, ret, call_mult, use_mult, call_mutation) => Some(Type::Fun(
             params
                 .iter()
                 .map(infer_to_type)
@@ -2275,7 +2275,7 @@ fn infer_to_type(ty: &crate::typeinference::InferType) -> Option<Type> {
             Box::new(infer_to_type(ret)?),
             *call_mult,
             *use_mult,
-            *call_mut,
+            *call_mutation,
         )),
         InferType::Named(name, args) => Some(Type::Named(
             name.clone(),
@@ -3565,7 +3565,7 @@ fun main() {
 
     #[test]
     fn fun_with_an_unresolved_param_converts_to_none_not_a_shorter_signature() {
-        let ty = InferType::Fun(vec![var(), concrete()], Box::new(concrete()));
+        let ty = InferType::fun(vec![var(), concrete()], concrete());
         assert_eq!(infer_to_type(&ty), None);
     }
 
@@ -3583,10 +3583,16 @@ fun main() {
             Some(Type::Tuple(vec![Type::I64, Type::I64, Type::I64]))
         );
 
-        let fun = InferType::Fun(vec![concrete(), concrete()], Box::new(concrete()));
+        let fun = InferType::fun(vec![concrete(), concrete()], concrete());
         assert_eq!(
             infer_to_type(&fun),
-            Some(Type::Fun(vec![Type::I64, Type::I64], Box::new(Type::I64)))
+            Some(Type::Fun(
+                vec![Type::I64, Type::I64],
+                Box::new(Type::I64),
+                crate::types::CallMultiplicity::Many,
+                crate::types::UseMultiplicity::Move,
+                crate::types::CallMutation::Reading,
+            ))
         );
     }
 
@@ -3596,22 +3602,19 @@ fun main() {
         // be `[i64, i64]`, and `observe_call_args` -- which indexes positionally -- would
         // then judge the third argument against the second parameter's type. That decides
         // borrow-vs-move, so the shift silently turns a reborrow into a move or back.
-        let fun_ty = InferType::Fun(
-            vec![concrete(), concrete(), var(), concrete()],
-            Box::new(concrete()),
-        );
+        let fun_ty = InferType::fun(vec![concrete(), concrete(), var(), concrete()], concrete());
         assert_eq!(infer_method_arg_types(&fun_ty), None);
     }
 
     #[test]
     fn method_arg_types_skip_the_receiver_and_keep_the_rest_in_order() {
-        let fun_ty = InferType::Fun(
+        let fun_ty = InferType::fun(
             vec![
                 InferType::Concrete(Type::Boolean),
                 InferType::Concrete(Type::I64),
                 InferType::Concrete(Type::MutReference(Box::new(Type::I64))),
             ],
-            Box::new(concrete()),
+            concrete(),
         );
         assert_eq!(
             infer_method_arg_types(&fun_ty),

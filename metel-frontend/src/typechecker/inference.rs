@@ -436,12 +436,12 @@ fn substitute_impl_params(
         InferType::Named(name, args) => {
             InferType::Named(name.clone(), args.iter().map(go).collect())
         }
-        InferType::Fun(ps, ret, call_mult, use_mult, call_mut) => InferType::Fun(
+        InferType::Fun(ps, ret, call_mult, use_mult, call_mutation) => InferType::Fun(
             ps.iter().map(go).collect(),
             Box::new(go(ret)),
             *call_mult,
             *use_mult,
-            *call_mut,
+            *call_mutation,
         ),
         InferType::Residual { brand, fields } => InferType::Residual {
             brand: brand.clone(),

@@ -186,11 +186,11 @@ impl std::fmt::Display for InferType {
             InferType::Concrete(t) => write!(f, "{t}"),
             InferType::Var(v) => write!(f, "{v}"),
             InferType::Never => write!(f, "!"),
-            InferType::Fun(params, ret, call_mult, _use_mult, call_mut) => {
+            InferType::Fun(params, ret, call_mult, _use_mult, call_mutation) => {
                 if *call_mult == CallMultiplicity::Once {
                     write!(f, "once ")?;
                 }
-                if *call_mut == CallMutation::Mutating {
+                if *call_mutation == CallMutation::Mutating {
                     write!(f, "var ")?;
                 }
                 write!(f, "(")?;
@@ -366,14 +366,14 @@ fn render_with_names(
             .or_else(|| local.get(v))
             .cloned()
             .unwrap_or_else(|| ty.to_string()),
-        InferType::Fun(params, ret, call_mult, _use_mult, call_mut) => format!(
+        InferType::Fun(params, ret, call_mult, _use_mult, call_mutation) => format!(
             "{}{}({}) -> {}",
             if *call_mult == CallMultiplicity::Once {
                 "once "
             } else {
                 ""
             },
-            if *call_mut == CallMutation::Mutating {
+            if *call_mutation == CallMutation::Mutating {
                 "var "
             } else {
                 ""
@@ -526,12 +526,12 @@ impl Substitution {
                 Some(resolved) => self.apply(resolved),
                 None => ty.clone(),
             },
-            InferType::Fun(params, ret, call_mult, use_mult, call_mut) => InferType::Fun(
+            InferType::Fun(params, ret, call_mult, use_mult, call_mutation) => InferType::Fun(
                 params.iter().map(|p| self.apply(p)).collect(),
                 Box::new(self.apply(ret)),
                 *call_mult,
                 *use_mult,
-                *call_mut,
+                *call_mutation,
             ),
             InferType::Tuple(ts) => InferType::Tuple(ts.iter().map(|t| self.apply(t)).collect()),
             InferType::Record(fields) => InferType::Record(
@@ -1865,12 +1865,12 @@ pub fn type_to_infer(ty: &Type) -> InferType {
         ),
         Type::Reference(t) => InferType::Reference(Box::new(type_to_infer(t))),
         Type::MutReference(t) => InferType::MutReference(Box::new(type_to_infer(t))),
-        Type::Fun(ps, ret, call_mult, use_mult, call_mut) => InferType::Fun(
+        Type::Fun(ps, ret, call_mult, use_mult, call_mutation) => InferType::Fun(
             ps.iter().map(type_to_infer).collect(),
             Box::new(type_to_infer(ret)),
             *call_mult,
             *use_mult,
-            *call_mut,
+            *call_mutation,
         ),
         Type::Named(n, args) => {
             InferType::Named(n.clone(), args.iter().map(type_to_infer).collect())

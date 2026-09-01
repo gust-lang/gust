@@ -379,14 +379,14 @@ pub(super) fn infer_type_to_type(ty: &InferType, span: &Span) -> Result<Type, Me
             "cannot infer type; add a type annotation",
             span,
         )),
-        InferType::Fun(params, ret, call_mult, use_mult, call_mut) => {
+        InferType::Fun(params, ret, call_mult, use_mult, call_mutation) => {
             let p: Result<Vec<_>, _> = params.iter().map(|p| infer_type_to_type(p, span)).collect();
             Ok(Type::Fun(
                 p?,
                 Box::new(infer_type_to_type(ret, span)?),
                 *call_mult,
                 *use_mult,
-                *call_mut,
+                *call_mutation,
             ))
         }
         InferType::Tuple(ts) => {
