@@ -1,0 +1,7 @@
+[options]
+spec = ["spec.functions.closures.legality-6"]
+
+[expect]
+status = "typecheck_error"
+code = "T0026"
+contains = "capture"

@@ -422,7 +422,11 @@ impl Cx<'_> {
                 impl_aspect_allowed,
                 local_types,
             ),
-            TypeExpr::Fun(params, ret) => {
+            TypeExpr::Fun {
+                params,
+                return_type: ret,
+                ..
+            } => {
                 for p in params {
                     self.ty_at(
                         p,
@@ -888,6 +892,7 @@ impl Cx<'_> {
                 return_type,
                 body,
                 span,
+                ..
             } => {
                 for param in params {
                     self.param(param, generics, self_allowed, self_target, local_types)?;

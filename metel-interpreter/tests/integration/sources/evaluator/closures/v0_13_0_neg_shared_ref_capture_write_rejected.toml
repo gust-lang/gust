@@ -1,0 +1,6 @@
+[options]
+spec = ["spec.functions.closures.legality-21"]
+
+[expect]
+status = "typecheck_error"
+contains = "&var"

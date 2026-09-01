@@ -56,7 +56,7 @@ fn type_bucket(ty: &Type) -> String {
         Type::Str => "String".to_string(),
         Type::Reference(_) => "&T".to_string(),
         Type::MutReference(_) => "&var T".to_string(),
-        Type::Fun(_, _) => "fun".to_string(),
+        Type::Fun(..) => "fun".to_string(),
         Type::Named(name, _) => format!("named:{}", name.rsplit("::").next().unwrap_or(name)),
         other => format!("other:{other}"),
     }
@@ -497,7 +497,7 @@ impl<'a> Checker<'a> {
             &generic_env.placeholders,
             &generic_env.assumptions,
         );
-        let InferType::Fun(params, _) = &scheme.ty else {
+        let InferType::Fun(params, ..) = &scheme.ty else {
             return None;
         };
         let arg_types = params
@@ -838,7 +838,16 @@ impl<'a> Checker<'a> {
         current_module: &[String],
         state: &mut FlowState,
     ) {
-        self.observe_expr(callee, current_module, state);
+        if matches!(
+            callee.ty(),
+            Type::Fun(_, _, crate::types::CallMultiplicity::Once, ..)
+        ) {
+            // RFC-0134: calling a once closure consumes its callee place even
+            // when the body returns early.
+            self.consume_expr(callee, current_module, state);
+        } else {
+            self.observe_expr(callee, current_module, state);
+        }
         self.observe_call_args(
             args,
             function_param_types(callee.ty()),
@@ -1541,8 +1550,10 @@ impl<'a> Checker<'a> {
     }
 
     fn is_copy(&self, current_module: &[String], ty: &Type) -> bool {
-        matches!(peel_type_references(ty), Type::Fun(_, _))
-            || self.type_satisfies_aspect(current_module, ty, "Copy")
+        matches!(
+            peel_type_references(ty),
+            Type::Fun(_, _, _, crate::types::UseMultiplicity::Copy, _)
+        ) || self.type_satisfies_aspect(current_module, ty, "Copy")
     }
 
     fn is_drop(&self, current_module: &[String], ty: &Type) -> bool {
@@ -1801,7 +1812,7 @@ impl<'a> Checker<'a> {
 
 fn function_param_types(ty: &Type) -> Option<&[Type]> {
     match ty {
-        Type::Fun(params, _) => Some(params),
+        Type::Fun(params, ..) => Some(params),
         _ => None,
     }
 }
@@ -2026,7 +2037,7 @@ fn symbolic_method_ambiguity_reason(
 /// either.
 fn infer_method_arg_types(fun_ty: &crate::typeinference::InferType) -> Option<Vec<Type>> {
     match fun_ty {
-        crate::typeinference::InferType::Fun(params, _) => params
+        crate::typeinference::InferType::Fun(params, ..) => params
             .iter()
             .skip(1)
             .map(infer_to_type)
@@ -2050,12 +2061,15 @@ fn substitute_named_generics(
                 .map(|arg| substitute_named_generics(arg, named_samples))
                 .collect(),
         ),
-        InferType::Fun(params, ret) => InferType::Fun(
+        InferType::Fun(params, ret, call_mult, use_mult, call_mut) => InferType::Fun(
             params
                 .iter()
                 .map(|param| substitute_named_generics(param, named_samples))
                 .collect(),
             Box::new(substitute_named_generics(ret, named_samples)),
+            *call_mult,
+            *use_mult,
+            *call_mut,
         ),
         InferType::Tuple(items) => InferType::Tuple(
             items
@@ -2162,12 +2176,15 @@ fn type_to_infer_under_generic_env(
         Type::MutReference(inner) => InferType::MutReference(Box::new(
             type_to_infer_under_generic_env(inner, placeholders),
         )),
-        Type::Fun(params, ret) => InferType::Fun(
+        Type::Fun(params, ret, call_mult, use_mult, call_mut) => InferType::Fun(
             params
                 .iter()
                 .map(|param| type_to_infer_under_generic_env(param, placeholders))
                 .collect(),
             Box::new(type_to_infer_under_generic_env(ret, placeholders)),
+            *call_mult,
+            *use_mult,
+            *call_mut,
         ),
         Type::Named(name, args) => {
             if args.is_empty() {
@@ -2250,12 +2267,15 @@ fn infer_to_type(ty: &crate::typeinference::InferType) -> Option<Type> {
         InferType::MutReference(inner) => {
             infer_to_type(inner).map(|inner| Type::MutReference(Box::new(inner)))
         }
-        InferType::Fun(params, ret) => Some(Type::Fun(
+        InferType::Fun(params, ret, call_mult, use_mult, call_mut) => Some(Type::Fun(
             params
                 .iter()
                 .map(infer_to_type)
                 .collect::<Option<Vec<_>>>()?,
             Box::new(infer_to_type(ret)?),
+            *call_mult,
+            *use_mult,
+            *call_mut,
         )),
         InferType::Named(name, args) => Some(Type::Named(
             name.clone(),

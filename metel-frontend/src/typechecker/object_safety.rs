@@ -149,7 +149,11 @@ fn type_expr_violation(te: &TypeExpr, assoc_type_names: &HashSet<&str>) -> Optio
         | TypeExpr::SizedArray(inner, _)
         | TypeExpr::Reference(inner)
         | TypeExpr::MutReference(inner) => type_expr_violation(inner, assoc_type_names),
-        TypeExpr::Fun(params, ret) => params
+        TypeExpr::Fun {
+            params,
+            return_type: ret,
+            ..
+        } => params
             .iter()
             .find_map(|p| type_expr_violation(p, assoc_type_names))
             .or_else(|| {

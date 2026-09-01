@@ -265,7 +265,9 @@ match_arm   = { pattern ~ ("if" ~ expr)? ~ "=>" ~ (block | expr) }
 if_expr     = { "if" ~ "(" ~ expr ~ ")" ~ (block | expr) ~ ("else" ~ (if_expr | block | expr))? }
 loop_expr   = { "loop" ~ block }
 
-closure_expr = { "(" ~ param_list? ~ ")" ~ "->" ~ type_expr? ~ block }
+closure_expr = { capture_list? ~ once_kw? ~ mut_kw? ~ "(" ~ param_list? ~ ")" ~ "->" ~ type_expr? ~ block }
+capture_list = { "[" ~ (capture_item ~ ("," ~ capture_item)* ~ ","?)? ~ "]" }
+capture_item = { "&" ~ mut_kw ~ ident | "&" ~ ident | ident ~ "." ~ clone_kw ~ "(" ~ ")" | ident }
 
 struct_literal = { type_path ~ "{" ~ (field_init ~ ("," ~ field_init)* ~ ","?)? ~ "}" }
 record_lit = { "{" ~ (field_init ~ ("," ~ field_init)* ~ ","?)? ~ "}" }
@@ -343,7 +345,8 @@ tuple_type = { "(" ~ type_expr ~ ("," ~ type_expr)+ ~ ")" }
 record_type = { "{" ~ (record_type_field ~ ("," ~ record_type_field)* ~ ","?)? ~ "}" }
 record_type_field = { ident ~ ":" ~ type_expr }
 record_projection_type = { type_path ~ ".{" ~ ident ~ ("," ~ ident)* ~ ","? ~ "}" }
-fun_type   = { "(" ~ type_list? ~ ")" ~ "->" ~ type_expr }
+fun_type   = { fun_type_qualifier* ~ "(" ~ type_list? ~ ")" ~ "->" ~ type_expr }
+fun_type_qualifier = { once_kw | mut_kw }
 reference_type = { "&" ~ type_expr }
 mut_reference_type = { "&" ~ mut_kw ~ type_expr }
 sized_array_type = { "[" ~ type_expr ~ ";" ~ decimal_int ~ "]" }
@@ -389,6 +392,8 @@ unit_lit  = @{ "()" }
 
 pub_kw   = @{ "public" ~ !(ASCII_ALPHANUMERIC | "_") }
 mut_kw   = @{ "var" ~ !(ASCII_ALPHANUMERIC | "_") }
+once_kw  = @{ "once" ~ !(ASCII_ALPHANUMERIC | "_") }
+clone_kw = @{ "clone" ~ !(ASCII_ALPHANUMERIC | "_") }
 root_kw  = @{ "root" ~ !(ASCII_ALPHANUMERIC | "_") }
 std_kw   = @{ "std" ~ !(ASCII_ALPHANUMERIC | "_") }
 self_kw  = @{ "self" ~ !(ASCII_ALPHANUMERIC | "_") }
@@ -402,7 +407,7 @@ ident = @{
 keyword = @{
     ("and" | "as" | "aspect" | "break" | "continue" | "dyn" | "else" | "enum" |
      "export" | "extend" | "extends" | "false" | "for" | "fun" | "if" | "impl" |
-     "import" | "let" | "loop" | "match" | "mut" | "or" | "pub" |
+     "import" | "let" | "loop" | "match" | "mut" | "once" | "or" | "pub" |
      "public" | "return" | "root" | "self" | "std" | "struct" | "super" |
      "true" | "var" | "record" |
      "where" | "while")

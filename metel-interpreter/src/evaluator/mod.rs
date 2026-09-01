@@ -8,7 +8,7 @@ mod lvalue;
 mod pattern;
 mod type_of;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap};
 use std::ops::ControlFlow;
 use std::rc::Rc;
@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
-use crate::ast::{BinOp, Literal, Param, Span, TypeExpr, UnaryOp};
+use crate::ast::{BinOp, CaptureSpec, Literal, Param, Span, TypeExpr, UnaryOp};
 use crate::error::{FrameInfo, MetelError, RuntimeErrorCode};
 use crate::typeinference::TypeCtx;
 
@@ -821,9 +821,12 @@ impl RuntimeRegistry {
 #[derive(Debug, Clone)]
 pub struct ClosureValue {
     pub name: Option<String>,
+    pub captures: Vec<CaptureSpec>,
     pub params: Vec<Param>,
     pub body: ClosureBody,
     pub captured: Environment,
+    pub call_mutation: crate::types::CallMutation,
+    pub in_call: Cell<bool>,
     /// Present only when `body` is `ClosureBody::Untyped` (generic function). Provides
     /// the type context for construction-at-call-time so the untyped path is not needed.
     pub type_ctx: Option<std::rc::Rc<TypeCtx>>,
@@ -837,6 +840,32 @@ pub struct ClosureValue {
 /// All other value kinds contain no shared mutable state and can be cloned shallowly.
 fn deep_clone_value(v: Value) -> Value {
     match v {
+        Value::Callable(RuntimeCallable::Closure(closure))
+            if matches!(
+                closure.fun_type,
+                Some(crate::types::Type::Fun(
+                    _,
+                    _,
+                    _,
+                    crate::types::UseMultiplicity::Copy,
+                    _
+                ))
+            ) =>
+        {
+            Value::Callable(RuntimeCallable::Closure(Rc::new(ClosureValue {
+                name: closure.name.clone(),
+                captures: closure.captures.clone(),
+                params: closure.params.clone(),
+                body: closure.body.clone(),
+                // A Copy closure is copied as a value, not Rc-aliased. Its owned
+                // environment cells therefore begin as equal but independent state.
+                captured: closure.captured.capture_closure_copy(&closure.captures),
+                call_mutation: closure.call_mutation,
+                in_call: Cell::new(false),
+                type_ctx: closure.type_ctx.clone(),
+                fun_type: closure.fun_type.clone(),
+            })))
+        }
         Value::Array(rc) => {
             let cloned: Vec<Value> = rc.borrow().iter().cloned().map(deep_clone_value).collect();
             Value::Array(Rc::new(RefCell::new(cloned)))
@@ -1115,15 +1144,27 @@ fn runtime_type_key(ty: &TypeExpr) -> String {
         TypeExpr::SizedArray(inner, size) => format!("[{}; {}]", runtime_type_key(inner), size),
         TypeExpr::Reference(inner) => format!("&{}", runtime_type_key(inner)),
         TypeExpr::MutReference(inner) => format!("&var {}", runtime_type_key(inner)),
-        TypeExpr::Fun(params, ret) => {
+        TypeExpr::Fun {
+            params,
+            return_type: ret,
+            call_multiplicity,
+            call_mutation,
+        } => {
             let params = params
                 .iter()
                 .map(runtime_type_key)
                 .collect::<Vec<_>>()
                 .join(", ");
+            let mut prefix = String::new();
+            if *call_multiplicity == crate::types::CallMultiplicity::Once {
+                prefix.push_str("once ");
+            }
+            if *call_mutation == crate::types::CallMutation::Mutating {
+                prefix.push_str("var ");
+            }
             match ret {
-                Some(ret) => format!("fun({params}) -> {}", runtime_type_key(ret)),
-                None => format!("fun({params})"),
+                Some(ret) => format!("{prefix}({params}) -> {}", runtime_type_key(ret)),
+                None => format!("{prefix}({params})"),
             }
         }
         TypeExpr::ImplAspect { bound, .. } => format!("impl {}", runtime_type_key(bound)),
@@ -1491,6 +1532,66 @@ impl Environment {
             type_ctx: self.type_ctx.clone(),
         }
     }
+
+    /// Copy a closure environment. By-value capture cells are independent in the
+    /// copy; explicit `&` / `&var` captures retain the referent cell they borrowed.
+    #[must_use]
+    pub fn capture_closure_copy(&self, captures: &[CaptureSpec]) -> Self {
+        let mut copied = self.capture_clone();
+        for capture in captures {
+            let name = match capture {
+                CaptureSpec::SharedRef { name, .. } | CaptureSpec::MutRef { name, .. } => name,
+                CaptureSpec::Owned { .. } | CaptureSpec::Clone { .. } => continue,
+            };
+            if let Some(source) = self.get_rc(name) {
+                for scope in copied.scopes.iter_mut().rev() {
+                    if scope.contains_key(name) {
+                        scope.insert(name.clone(), source);
+                        break;
+                    }
+                }
+            }
+        }
+        copied
+    }
+
+    pub fn capture_closure(
+        &self,
+        captures: &[CaptureSpec],
+        span: &Span,
+    ) -> Result<Self, MetelError> {
+        if captures.is_empty() {
+            return Ok(self.capture_clone());
+        }
+        let mut captured = Environment::new();
+        captured.pending_funs = self.pending_funs.clone();
+        captured.type_ctx = self.type_ctx.clone();
+        for capture in captures {
+            match capture {
+                CaptureSpec::Owned { name, .. } | CaptureSpec::Clone { name, .. } => {
+                    let value = self.get(name).ok_or_else(|| {
+                        MetelError::panic(
+                            RuntimeErrorCode::R0003,
+                            format!("undefined variable `{name}`"),
+                            span,
+                        )
+                    })?;
+                    captured.define(name, value);
+                }
+                CaptureSpec::SharedRef { name, .. } | CaptureSpec::MutRef { name, .. } => {
+                    let cell = self.get_rc(name).ok_or_else(|| {
+                        MetelError::panic(
+                            RuntimeErrorCode::R0003,
+                            format!("undefined variable `{name}`"),
+                            span,
+                        )
+                    })?;
+                    captured.define_rc(name, cell);
+                }
+            }
+        }
+        Ok(captured)
+    }
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -1660,9 +1761,12 @@ fn run_passes(
                 let captured = env.clone();
                 let value = Value::Callable(RuntimeCallable::Closure(Rc::new(ClosureValue {
                     name: Some(f.name.clone()),
+                    captures: vec![],
                     params: f.params.clone(),
                     body,
                     captured,
+                    call_mutation: crate::types::CallMutation::Reading,
+                    in_call: Cell::new(false),
                     type_ctx: ctx,
                     fun_type: None,
                 })));
@@ -1690,18 +1794,24 @@ fn run_passes(
                             }
                             FunBody::Typed(b) => RuntimeCallable::Closure(Rc::new(ClosureValue {
                                 name: Some(method.name.clone()),
+                                captures: vec![],
                                 params: method.params.clone(),
                                 body: ClosureBody::Typed(b.clone()),
                                 captured: env.clone(),
+                                call_mutation: crate::types::CallMutation::Reading,
+                                in_call: Cell::new(false),
                                 type_ctx: None,
                                 fun_type: None,
                             })),
                             FunBody::Generic(b) => {
                                 RuntimeCallable::Closure(Rc::new(ClosureValue {
                                     name: Some(method.name.clone()),
+                                    captures: vec![],
                                     params: method.params.clone(),
                                     body: ClosureBody::Untyped(b.clone()),
                                     captured: env.clone(),
+                                    call_mutation: crate::types::CallMutation::Reading,
+                                    in_call: Cell::new(false),
                                     type_ctx: env.type_ctx.clone(),
                                     fun_type: None,
                                 }))
@@ -1752,18 +1862,24 @@ fn run_passes(
                             }
                             FunBody::Typed(b) => RuntimeCallable::Closure(Rc::new(ClosureValue {
                                 name: Some(method.name.clone()),
+                                captures: vec![],
                                 params: method.params.clone(),
                                 body: ClosureBody::Typed(b.clone()),
                                 captured: env.clone(),
+                                call_mutation: crate::types::CallMutation::Reading,
+                                in_call: Cell::new(false),
                                 type_ctx: None,
                                 fun_type: None,
                             })),
                             FunBody::Generic(b) => {
                                 RuntimeCallable::Closure(Rc::new(ClosureValue {
                                     name: Some(method.name.clone()),
+                                    captures: vec![],
                                     params: method.params.clone(),
                                     body: ClosureBody::Untyped(b.clone()),
                                     captured: env.clone(),
+                                    call_mutation: crate::types::CallMutation::Reading,
+                                    in_call: Cell::new(false),
                                     type_ctx: env.type_ctx.clone(),
                                     fun_type: None,
                                 }))
@@ -1937,9 +2053,12 @@ fn build_and_set_nested_fun(
     let captured = env.clone();
     let closure = Value::Callable(RuntimeCallable::Closure(Rc::new(ClosureValue {
         name: Some(f.name.clone()),
+        captures: vec![],
         params: f.params.clone(),
         body,
         captured,
+        call_mutation: crate::types::CallMutation::Reading,
+        in_call: Cell::new(false),
         type_ctx: ctx,
         fun_type: None,
     })));
@@ -3376,15 +3495,24 @@ pub fn eval_expr(
         } => eval_call_expr(callee, args, *callee_id, ty, span, env, runtime),
 
         TypedExpr::Closure {
-            params, body, ty, ..
+            captures,
+            call_mutation,
+            params,
+            body,
+            ty,
+            span,
+            ..
         } => {
-            let captured = env.capture_clone();
+            let captured = env.capture_closure(captures, span)?;
             Ok(Signal::Value(Value::Callable(RuntimeCallable::Closure(
                 Rc::new(ClosureValue {
                     name: None,
+                    captures: captures.clone(),
                     params: params.clone(),
                     body: ClosureBody::Typed(body.clone()),
                     captured,
+                    call_mutation: *call_mutation,
+                    in_call: Cell::new(false),
                     type_ctx: None,
                     fun_type: Some(ty.clone()),
                 }),
@@ -3392,15 +3520,24 @@ pub fn eval_expr(
         }
 
         TypedExpr::GenericClosure {
-            name, params, body, ..
+            name,
+            captures,
+            call_mutation,
+            params,
+            body,
+            span,
+            ..
         } => {
-            let captured = env.capture_clone();
+            let captured = env.capture_closure(captures, span)?;
             Ok(Signal::Value(Value::Callable(RuntimeCallable::Closure(
                 Rc::new(ClosureValue {
                     name: name.clone(),
+                    captures: captures.clone(),
                     params: params.clone(),
                     body: ClosureBody::Untyped(body.clone()),
                     captured,
+                    call_mutation: *call_mutation,
+                    in_call: Cell::new(false),
                     type_ctx: env.type_ctx.clone(),
                     fun_type: None,
                 }),

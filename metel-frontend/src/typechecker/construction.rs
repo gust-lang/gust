@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use crate::ast::{
     AspectMethod, AssignTarget, BinOp, Block, Decl, Expr, ForInit, FunDecl, ImplBlock, Literal,
@@ -97,6 +98,9 @@ struct ConstructCtx<'a> {
     subst: &'a Substitution,
     scheme_env: &'a SchemeEnv,
     env: Vec<HashMap<String, Type>>,
+    /// Binding mutability mirrors `env`; capture-list checking needs the declaration-site
+    /// fact for `[&var name]`, even though ordinary construction only needs the type.
+    mut_env: Vec<HashMap<String, bool>>,
     /// Stack of concrete struct field maps (name → fields with spans), innermost last.
     struct_scopes: Vec<ConcreteStructEnv>,
     /// Unified registry — source of truth for type definitions across all passes. See ADR-0025.
@@ -143,6 +147,10 @@ struct ConstructCtx<'a> {
     /// `return_type`/`body` to build a `GenericClosure` node from, the same shape
     /// `construct_decl`'s closure-literal special case already builds one from.
     fn_table: Vec<HashMap<String, FnDeclShape>>,
+    /// By-value capture names for each enclosing closure body. This is the
+    /// temporary RFC-0050 boundary: nested borrowing of one is rejected until
+    /// RFC-0122 can model the environment borrow's lifetime.
+    closure_owned_captures: Vec<HashSet<String>>,
 }
 
 impl<'a> ConstructCtx<'a> {
@@ -164,6 +172,7 @@ impl<'a> ConstructCtx<'a> {
             subst,
             scheme_env,
             env: vec![HashMap::new()],
+            mut_env: vec![HashMap::new()],
             struct_scopes: vec![concrete_struct_env], // global scope pre-pushed
             registry,
             method_env,
@@ -179,6 +188,7 @@ impl<'a> ConstructCtx<'a> {
             resolved_facts,
             current_self_type_name: None,
             fn_table: vec![HashMap::new()],
+            closure_owned_captures: Vec::new(),
         };
         // Derive concrete types for all monomorphic entries in scheme_env.
         // Both builtins and user functions are populated here — no second registration site.
@@ -196,10 +206,12 @@ impl<'a> ConstructCtx<'a> {
 
     fn push_scope(&mut self) {
         self.env.push(HashMap::new());
+        self.mut_env.push(HashMap::new());
         self.fn_table.push(HashMap::new());
     }
     fn pop_scope(&mut self) {
         self.env.pop();
+        self.mut_env.pop();
         self.fn_table.pop();
     }
 
@@ -227,11 +239,45 @@ impl<'a> ConstructCtx<'a> {
     }
 
     fn bind(&mut self, name: impl Into<String>, ty: Type) {
-        self.env.last_mut().unwrap().insert(name.into(), ty);
+        self.bind_with_mutability(name, ty, false);
+    }
+
+    fn bind_mut(&mut self, name: impl Into<String>, ty: Type) {
+        self.bind_with_mutability(name, ty, true);
+    }
+
+    fn bind_with_mutability(&mut self, name: impl Into<String>, ty: Type, is_mutable: bool) {
+        let name = name.into();
+        self.env.last_mut().unwrap().insert(name.clone(), ty);
+        self.mut_env.last_mut().unwrap().insert(name, is_mutable);
     }
 
     fn lookup(&self, name: &str) -> Option<&Type> {
         self.env.iter().rev().find_map(|s| s.get(name))
+    }
+
+    fn is_mutable(&self, name: &str) -> bool {
+        self.mut_env
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name))
+            .copied()
+            .unwrap_or(false)
+    }
+
+    fn enter_closure(&mut self, owned_captures: HashSet<String>) {
+        self.closure_owned_captures.push(owned_captures);
+    }
+
+    fn exit_closure(&mut self) {
+        self.closure_owned_captures.pop();
+    }
+
+    fn is_enclosing_owned_capture(&self, name: &str) -> bool {
+        self.closure_owned_captures
+            .iter()
+            .rev()
+            .any(|captures| captures.contains(name))
     }
 
     /// metel-core#736 / RFC-0138: register a generic `FunDecl`'s own shape (its
@@ -480,7 +526,7 @@ fn construct_method_args(
     args: &[crate::ast::Expr],
     ctx: &mut ConstructCtx,
 ) -> Result<Vec<TypedExpr>, crate::error::MetelError> {
-    if let Type::Fun(params, _) = method_fun_ty {
+    if let Type::Fun(params, ..) = method_fun_ty {
         // params[0] is self/receiver; the rest correspond to args.
         let arg_params: Vec<Option<&Type>> = params
             .iter()
@@ -593,7 +639,7 @@ pub(super) fn symbolic_aspect_method_scheme(
         assoc_projections: vec![],
         assoc_eq_constraints: vec![],
         opaque_returns: vec![],
-        ty: InferType::Fun(params, Box::new(ret)),
+        ty: InferType::fun(params, ret),
     })
 }
 
@@ -668,7 +714,7 @@ pub(super) fn symbolic_impl_method_scheme(
         assoc_projections: vec![],
         assoc_eq_constraints: vec![],
         opaque_returns: vec![],
-        ty: InferType::Fun(param_types, Box::new(ret)),
+        ty: InferType::fun(param_types, ret),
     })
 }
 
@@ -690,7 +736,7 @@ pub(super) fn construct_generic_body(
     let mut gen = TypeVarGenerator::with_counter(1_000_000);
 
     let (instance, renaming) = instantiate_with_renaming(scheme, &mut gen);
-    let InferType::Fun(param_infertypes, ret_infertype) = instance else {
+    let InferType::Fun(param_infertypes, ret_infertype, ..) = instance else {
         return Err(crate::error::MetelError::internal(
             "construct_generic_body: scheme is not a function type",
         ));
@@ -1160,10 +1206,14 @@ fn type_to_type_expr(ty: &Type) -> TypeExpr {
         Type::SizedArray(item, n) => TypeExpr::SizedArray(Box::new(type_to_type_expr(item)), *n),
         Type::Reference(item) => TypeExpr::Reference(Box::new(type_to_type_expr(item))),
         Type::MutReference(item) => TypeExpr::MutReference(Box::new(type_to_type_expr(item))),
-        Type::Fun(params, ret) => TypeExpr::Fun(
-            params.iter().map(type_to_type_expr).collect(),
-            Some(Box::new(type_to_type_expr(ret))),
-        ),
+        Type::Fun(params, ret, call_multiplicity, _use_multiplicity, call_mutation) => {
+            TypeExpr::Fun {
+                params: params.iter().map(type_to_type_expr).collect(),
+                return_type: Some(Box::new(type_to_type_expr(ret))),
+                call_multiplicity: *call_multiplicity,
+                call_mutation: *call_mutation,
+            }
+        }
         Type::Named(name, args) => {
             TypeExpr::Named(name.clone(), args.iter().map(type_to_type_expr).collect())
         }

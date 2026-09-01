@@ -1,0 +1,16 @@
+// v0.13.0 closure cluster (RFC 0152 legality-9): a `many` function value may
+// be used where a `once` slot is expected -- one-directional widening. The
+// widened value is still `many`; it just satisfies the more permissive
+// requirement.
+//
+// DRAFT FIXTURE -- written against the RFC text ahead of implementation
+// (metel-core#928). Not runnable yet: see the `skip` reason in the sidecar.
+// Intended once live: spec = ["spec.functions.closures.legality-9"]
+fun call_once(f: once () -> i64) -> i64 {
+    f()
+}
+
+fun main() {
+    let five := () -> i64 { 5 }; // `many` by default -- reads no captures
+    assert(call_once(five) == 5);
+}

@@ -15,6 +15,9 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
             // store it as GenericClosure. The name stays absent from ctx.env so call
             // sites use scheme_env instantiation in construct_call.
             if let Expr::Closure {
+                captures,
+                call_multiplicity,
+                call_mutation,
                 params,
                 return_type,
                 body,
@@ -28,6 +31,9 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                             type_ann: ld.type_ann.clone(),
                             value: TypedExpr::GenericClosure {
                                 name: Some(ld.name.clone()),
+                                captures: captures.clone(),
+                                call_multiplicity: *call_multiplicity,
+                                call_mutation: *call_mutation,
                                 params: params.clone(),
                                 return_type: return_type.clone(),
                                 body: body.clone(),
@@ -60,6 +66,9 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                                 type_ann: ld.type_ann.clone(),
                                 value: TypedExpr::GenericClosure {
                                     name: Some(ld.name.clone()),
+                                    captures: vec![],
+                                    call_multiplicity: crate::types::CallMultiplicity::Many,
+                                    call_mutation: crate::types::CallMutation::Reading,
                                     params,
                                     return_type,
                                     body,
@@ -115,7 +124,7 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                 None => value,
             };
             let ty = expected_ty.unwrap_or_else(|| value.ty().clone());
-            ctx.bind(&md.name, ty);
+            ctx.bind_mut(&md.name, ty);
             Ok(TypedDecl::Mut(TypedMutDecl {
                 name: md.name.clone(),
                 type_ann: md.type_ann.clone(),
@@ -196,13 +205,13 @@ pub(super) fn construct_fun_decl(
             assoc_projections: vec![],
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
-            ty: InferType::Fun(
+            ty: InferType::fun(
                 entry
                     .params
                     .iter()
                     .map(|t| InferType::Concrete(t.clone()))
                     .collect(),
-                Box::new(InferType::Concrete(entry.ret.clone())),
+                InferType::Concrete(entry.ret.clone()),
             ),
         },
         None => ctx
@@ -214,7 +223,7 @@ pub(super) fn construct_fun_decl(
 
     let body = if scheme.quantified_vars.is_empty() {
         let (param_types, ret_ty) = match ctx.subst.apply(&scheme.ty) {
-            InferType::Fun(params, ret) => {
+            InferType::Fun(params, ret, ..) => {
                 let pts = params
                     .iter()
                     .map(|p| infer_type_to_type(p, &fun.span))
@@ -273,7 +282,7 @@ pub(super) fn construct_fun_decl(
         }
         let substituted_ty = subst.apply(&scheme.ty);
         let (param_types, ret_ty) = match substituted_ty {
-            InferType::Fun(params, ret) => {
+            InferType::Fun(params, ret, ..) => {
                 let pts = params
                     .iter()
                     .map(|p| infer_type_to_type(p, &fun.span))

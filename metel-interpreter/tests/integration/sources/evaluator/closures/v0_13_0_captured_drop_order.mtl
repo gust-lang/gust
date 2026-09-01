@@ -1,0 +1,23 @@
+// v0.13.0 closure cluster (RFC 0157 base / dynamics-11): when a closure value
+// is dropped its environment is dropped -- each owned capture dropped in
+// capture-list order, as a struct's fields are. A once-consumed or
+// partially-moved environment drops only its still-owned captures.
+//
+// DRAFT FIXTURE -- written against the RFC text ahead of implementation
+// (metel-core#930). Also blocked on metel-core#292 (destructor invocation):
+// non-empty `drop` bodies are rejected until that lands, so the *order* claim
+// can't be asserted with an observable side effect yet -- this fixture only
+// checks the captures are held and the closure runs.
+// Not runnable yet: see the `skip` reason in the sidecar.
+// Intended once live: spec = ["spec.functions.closures.dynamics-11"]
+struct Owned {
+    id: i64,
+}
+
+fun main() {
+    let a := Owned { id = 1 };
+    let b := Owned { id = 2 };
+    let f := [a, b] () -> i64 { a.id + b.id };
+    assert(f() == 3);
+    // at scope end `f` drops: `a` then `b`, capture-list order.
+}

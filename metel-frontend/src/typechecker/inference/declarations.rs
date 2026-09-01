@@ -424,7 +424,11 @@ pub(super) fn type_expr_contains_impl_aspect(te: &TypeExpr) -> bool {
         | TypeExpr::SizedArray(elem, _)
         | TypeExpr::Reference(elem)
         | TypeExpr::MutReference(elem) => type_expr_contains_impl_aspect(elem),
-        TypeExpr::Fun(params, ret) => {
+        TypeExpr::Fun {
+            params,
+            return_type: ret,
+            ..
+        } => {
             params.iter().any(type_expr_contains_impl_aspect)
                 || ret
                     .as_ref()
@@ -494,14 +498,22 @@ pub(super) fn rewrite_impl_aspect_returns(
         TypeExpr::MutReference(elem) => TypeExpr::MutReference(Box::new(
             rewrite_impl_aspect_returns(elem, counter, replacements),
         )),
-        TypeExpr::Fun(params, ret) => TypeExpr::Fun(
-            params
+        TypeExpr::Fun {
+            params,
+            return_type: ret,
+            call_multiplicity,
+            call_mutation,
+        } => TypeExpr::Fun {
+            params: params
                 .iter()
                 .map(|p| rewrite_impl_aspect_returns(p, counter, replacements))
                 .collect(),
-            ret.as_ref()
+            return_type: ret
+                .as_ref()
                 .map(|r| Box::new(rewrite_impl_aspect_returns(r, counter, replacements))),
-        ),
+            call_multiplicity: *call_multiplicity,
+            call_mutation: *call_mutation,
+        },
         TypeExpr::DynAspect { bound, span } => TypeExpr::DynAspect {
             bound: Box::new(rewrite_impl_aspect_returns(bound, counter, replacements)),
             span: span.clone(),
@@ -705,7 +717,7 @@ pub(super) fn infer_fun_decl(
     ctx.restore_assoc_projections(saved_assoc_memo, saved_assoc_log);
     ctx.pop_scope();
 
-    let fun_ty = InferType::Fun(param_types, Box::new(ret_ty));
+    let fun_ty = InferType::fun(param_types, ret_ty);
 
     // Overloaded functions have no single shared binding to constrain; each
     // definition stands alone (its concrete signature lives in the overload
@@ -1212,7 +1224,7 @@ pub(super) fn infer_impl_method(
 
     let solved = ctx.solve()?;
     let partial_subst = ctx.default_literal_vars(&solved);
-    let fun_ty = InferType::Fun(param_types, Box::new(ret_ty));
+    let fun_ty = InferType::fun(param_types, ret_ty);
     let resolved_fun_ty = partial_subst.apply(&fun_ty);
 
     // Map each struct type-param TypeVar through the solution: body inference
@@ -1389,14 +1401,22 @@ pub(super) fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) 
         TypeExpr::MutReference(inner) => TypeExpr::MutReference(Box::new(
             substitute_structural_self(inner.as_ref(), replacement),
         )),
-        TypeExpr::Fun(params, ret) => TypeExpr::Fun(
-            params
+        TypeExpr::Fun {
+            params,
+            return_type: ret,
+            call_multiplicity,
+            call_mutation,
+        } => TypeExpr::Fun {
+            params: params
                 .iter()
                 .map(|param| substitute_structural_self(param, replacement))
                 .collect(),
-            ret.as_ref()
+            return_type: ret
+                .as_ref()
                 .map(|ret_ty| Box::new(substitute_structural_self(ret_ty.as_ref(), replacement))),
-        ),
+            call_multiplicity: *call_multiplicity,
+            call_mutation: *call_mutation,
+        },
         TypeExpr::ImplAspect {
             bound,
             source_spell,
@@ -1514,7 +1534,7 @@ pub(super) fn infer_default_aspect_method(
 
     let solved = ctx.solve()?;
     let partial_subst = ctx.default_literal_vars(&solved);
-    let fun_ty = InferType::Fun(param_types, Box::new(ret_ty));
+    let fun_ty = InferType::fun(param_types, ret_ty);
     let resolved_fun_ty = partial_subst.apply(&fun_ty);
     ctx.register_method(
         target_name.to_string(),

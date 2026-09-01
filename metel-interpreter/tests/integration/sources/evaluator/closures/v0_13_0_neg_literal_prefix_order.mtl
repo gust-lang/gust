@@ -1,0 +1,14 @@
+// v0.13.0 closure cluster (RFC 0050 legality-23): the closure *literal*
+// prefix order is fixed -- capture list, then `once`, then `var`, then the
+// parameter list. `var once` (and a qualifier before the capture list) is a
+// parse error, even though the function *type* spelling is order-insensitive
+// (legality-24).
+//
+// DRAFT FIXTURE -- written against the RFC text ahead of implementation
+// (metel-core#926). Not runnable yet: see the `skip` reason in the sidecar.
+// Intended once live: spec = ["spec.functions.closures.legality-23"]
+fun main() {
+    let c := 1;
+    let f := [c] var once () -> i64 { c }; // wrong order -- must be `once var`
+    f();
+}

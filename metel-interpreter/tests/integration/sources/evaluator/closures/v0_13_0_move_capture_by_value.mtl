@@ -1,0 +1,12 @@
+// v0.13.0 closure cluster (RFC 0157 D5): capturing a non-Copy binding by
+// value moves it into the closure at creation; the captured environment is
+// built once and is not re-cloned per call.
+//
+// DRAFT FIXTURE -- written against the RFC text ahead of implementation
+// (metel-core#930). Not runnable yet: see the `skip` reason in the sidecar.
+// Intended once live: spec = ["spec.functions.closures.dynamics-5"]
+fun main() {
+    let s := "hello";
+    let greet := [s] once () -> String { s };
+    assert(greet() == "hello");
+}

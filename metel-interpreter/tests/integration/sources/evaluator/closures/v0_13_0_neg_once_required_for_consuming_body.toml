@@ -1,0 +1,7 @@
+[options]
+spec = ["spec.functions.closures.legality-8"]
+
+[expect]
+status = "typecheck_error"
+code = "T0027"
+contains = "once"

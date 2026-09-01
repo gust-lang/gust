@@ -66,6 +66,17 @@ pub struct FixtureOptions {
     /// mid-migration can carry both fields at once for its still-unmigrated
     /// citations.
     pub spec: Vec<String>,
+    /// When set, `run_fixture` reports this fixture skipped instead of
+    /// running it -- for a fixture written ahead of the feature it exercises
+    /// (checked in against an accepted RFC whose implementation issue hasn't
+    /// landed yet). The `.mtl` source is real and checked in, but is not
+    /// attempted: it may use syntax the parser doesn't accept yet. Give the
+    /// reason a tracking issue, e.g. `skip = "metel-core#926 -- capture-list
+    /// syntax not implemented"`, and drop this key (plus add the real
+    /// `spec =` citation, if not already present) once the feature lands. A
+    /// skipped fixture does not count toward `rfc.py`'s spec-block fixture
+    /// coverage.
+    pub skip: Option<String>,
 }
 
 #[derive(Default)]
@@ -75,6 +86,7 @@ struct PartialConfig {
     move_check: Option<bool>,
     rfc: Option<Vec<String>>,
     spec: Option<Vec<String>>,
+    skip: Option<String>,
     status: Option<ExpectStatus>,
     code: Option<String>,
     contains: Option<String>,
@@ -187,6 +199,7 @@ fn merge_config(defaults: FixtureConfig, partial: PartialConfig) -> FixtureConfi
             move_check: partial.move_check.unwrap_or(defaults.options.move_check),
             rfc: partial.rfc.unwrap_or(defaults.options.rfc),
             spec: partial.spec.unwrap_or(defaults.options.spec),
+            skip: partial.skip.or(defaults.options.skip),
         },
         expect: Expectation {
             status: partial.status.unwrap_or(defaults.expect.status),
@@ -255,6 +268,7 @@ fn parse_sidecar(path: &Path) -> PartialConfig {
                 "move_check" => partial.move_check = Some(parse_bool(&value)),
                 "rfc" => partial.rfc = Some(parse_rfc_list(&value, path)),
                 "spec" => partial.spec = Some(parse_spec_list(&value, path)),
+                "skip" => partial.skip = Some(value),
                 other => panic!(
                     "unknown options sidecar key `{other}` in {}",
                     path.display()

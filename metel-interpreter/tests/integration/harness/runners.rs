@@ -12,6 +12,11 @@ use super::fixture::{
 };
 
 pub fn run_fixture(path: &Path, config: &FixtureConfig) {
+    if let Some(reason) = &config.options.skip {
+        eprintln!("SKIP {}: {reason}", path.display());
+        return;
+    }
+
     let result = match config.runner {
         super::fixture::RunnerKind::Parse => run_parse(path),
         super::fixture::RunnerKind::Typecheck => run_typecheck(path, config),

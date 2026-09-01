@@ -208,7 +208,7 @@ fn populate_schemes_from_embedded_core(
                     })
                     .collect();
                 let ret = fun.return_type.as_ref().map_or_else(InferType::unit, &te);
-                let fun_ty = InferType::Fun(params, Box::new(ret));
+                let fun_ty = InferType::fun(params, ret);
                 let bounds = super::inference::collect_fun_type_var_bounds(fun, &generic_map);
                 let neg_bounds =
                     super::inference::collect_negative_fun_type_var_bounds(fun, &generic_map);
@@ -259,7 +259,7 @@ fn populate_schemes_from_embedded_core(
                         .map_or_else(InferType::unit, |ann| {
                             type_expr_to_infer_with_generics(ann, &generic_map)
                         });
-                    let fun_ty = InferType::Fun(params, Box::new(ret));
+                    let fun_ty = InferType::fun(params, ret);
                     let scheme = crate::typeinference::generalize(fun_ty, &HashSet::default());
                     map.insert(format!("{target_name}::{}", method.name), scheme);
                 }
@@ -864,7 +864,7 @@ fn register_generic_impl_method_schemes(
             assoc_projections: vec![],
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
-            ty: InferType::Fun(param_types, Box::new(ret_ty)),
+            ty: InferType::fun(param_types, ret_ty),
         }
         .with_bounds(&method_by_var)
         .with_neg_bounds(&method_by_neg_var);
@@ -955,7 +955,7 @@ fn register_array_impl_method_schemes(
             assoc_projections: vec![],
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
-            ty: InferType::Fun(param_types, Box::new(ret_ty)),
+            ty: InferType::fun(param_types, ret_ty),
         }
         .with_bounds(&by_var)
         .with_neg_bounds(&by_neg_var);
@@ -1012,14 +1012,22 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
         TypeExpr::MutReference(inner) => TypeExpr::MutReference(Box::new(
             substitute_structural_self(inner.as_ref(), replacement),
         )),
-        TypeExpr::Fun(params, ret) => TypeExpr::Fun(
-            params
+        TypeExpr::Fun {
+            params,
+            return_type: ret,
+            call_multiplicity,
+            call_mutation,
+        } => TypeExpr::Fun {
+            params: params
                 .iter()
                 .map(|param| substitute_structural_self(param, replacement))
                 .collect(),
-            ret.as_ref()
+            return_type: ret
+                .as_ref()
                 .map(|ret_ty| Box::new(substitute_structural_self(ret_ty.as_ref(), replacement))),
-        ),
+            call_multiplicity: *call_multiplicity,
+            call_mutation: *call_mutation,
+        },
         TypeExpr::ImplAspect {
             bound,
             source_spell,
@@ -1085,7 +1093,7 @@ fn register_impl_methods<'a>(
         registry.register_method(
             target_name.to_string(),
             method.name.clone(),
-            InferType::Fun(param_types, Box::new(ret_ty)),
+            InferType::fun(param_types, ret_ty),
         );
         if let Some(receiver) = method.params.first().and_then(|p| p.receiver.clone()) {
             registry.register_method_receiver(
@@ -1169,7 +1177,7 @@ fn register_default_aspect_method(
     registry.register_method(
         target_name.to_string(),
         method.name.clone(),
-        InferType::Fun(param_types, Box::new(ret_ty)),
+        InferType::fun(param_types, ret_ty),
     );
     if let Some(receiver) = method.params.first().and_then(|p| p.receiver.clone()) {
         registry.register_method_receiver(target_name.to_string(), method.name.clone(), receiver);

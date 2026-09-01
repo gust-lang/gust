@@ -4,13 +4,14 @@ use pest_derive::Parser;
 
 use crate::ast::{
     AspectDecl, AspectMethod, AssignOp, AssignTarget, AssocTypeDecl, AssocTypeDef, BinOp, Block,
-    Bound, BoundHead, BreakExpr, Decl, EnumDecl, ExportDecl, Expr, FieldDef, ForInStmt, ForInit,
-    ForStmt, FunDecl, GenericParam, ImplBlock, ImportDecl, ImportPath, ImportTree, LetDecl,
-    Literal, MatchArm, MatchExpr, MutDecl, NativeBinding, Param, PathRoot, Pattern, Polarity,
-    Program, ReceiverKind, ReturnExpr, RowBound, RowBoundField, Span, Stmt, StructDecl, TypeExpr,
-    UnaryOp, VariantDef, Visibility, WhereClause, WhereConstraint, WhileStmt,
+    Bound, BoundHead, BreakExpr, CaptureSpec, Decl, EnumDecl, ExportDecl, Expr, FieldDef,
+    ForInStmt, ForInit, ForStmt, FunDecl, GenericParam, ImplBlock, ImportDecl, ImportPath,
+    ImportTree, LetDecl, Literal, MatchArm, MatchExpr, MutDecl, NativeBinding, Param, PathRoot,
+    Pattern, Polarity, Program, ReceiverKind, ReturnExpr, RowBound, RowBoundField, Span, Stmt,
+    StructDecl, TypeExpr, UnaryOp, VariantDef, Visibility, WhereClause, WhereConstraint, WhileStmt,
 };
 use crate::error::{MetelError, ParseErrorCode};
+use crate::types::{CallMultiplicity, CallMutation};
 
 #[derive(Parser)]
 #[grammar = "grammar.pest"]
@@ -1882,11 +1883,17 @@ fn parse_closure_expr(
     filename: &str,
 ) -> Result<Expr, MetelError> {
     let span = Span::of(&pair, filename);
+    let mut captures = vec![];
+    let mut call_multiplicity = CallMultiplicity::Many;
+    let mut call_mutation = CallMutation::Reading;
     let mut params = vec![];
     let mut return_type = None;
     let mut body = None;
     for p in pair.into_inner() {
         match p.as_rule() {
+            Rule::capture_list => captures = parse_capture_list(p, filename)?,
+            Rule::once_kw => call_multiplicity = CallMultiplicity::Once,
+            Rule::mut_kw => call_mutation = CallMutation::Mutating,
             Rule::param_list => params = parse_param_list(p, filename)?,
             Rule::type_expr => return_type = Some(parse_type_expr(p, filename)?),
             Rule::block => body = Some(parse_block(p, filename)?),
@@ -1894,11 +1901,43 @@ fn parse_closure_expr(
         }
     }
     Ok(Expr::Closure {
+        captures,
+        call_multiplicity,
+        call_mutation,
         params,
         return_type,
         body: body.ok_or_else(|| MetelError::internal("closure: missing body block"))?,
         span,
     })
+}
+
+fn parse_capture_list(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<Vec<CaptureSpec>, MetelError> {
+    pair.into_inner()
+        .filter(|p| p.as_rule() == Rule::capture_item)
+        .map(|item| {
+            let span = Span::of(&item, filename);
+            let spelling = item.as_str().trim();
+            let name = item
+                .clone()
+                .into_inner()
+                .find(|p| p.as_rule() == Rule::ident)
+                .ok_or_else(|| MetelError::internal("capture_item: expected identifier"))?
+                .as_str()
+                .to_string();
+            Ok(if spelling.starts_with("&var") {
+                CaptureSpec::MutRef { name, span }
+            } else if spelling.starts_with('&') {
+                CaptureSpec::SharedRef { name, span }
+            } else if spelling.ends_with(".clone()") {
+                CaptureSpec::Clone { name, span }
+            } else {
+                CaptureSpec::Owned { name, span }
+            })
+        })
+        .collect()
 }
 
 fn parse_struct_literal(
@@ -2726,8 +2765,33 @@ fn parse_type_expr(
         Rule::fun_type => {
             let mut params = vec![];
             let mut return_type = None;
+            let mut call_multiplicity = CallMultiplicity::Many;
+            let mut call_mutation = CallMutation::Reading;
             for p in pair.into_inner() {
                 match p.as_rule() {
+                    Rule::fun_type_qualifier => match p.as_str() {
+                        "once" => {
+                            if call_multiplicity == CallMultiplicity::Once {
+                                return Err(MetelError::parse(
+                                    ParseErrorCode::P0001,
+                                    "duplicate `once` function type qualifier",
+                                    &Span::of(&p, filename),
+                                ));
+                            }
+                            call_multiplicity = CallMultiplicity::Once;
+                        }
+                        "var" => {
+                            if call_mutation == CallMutation::Mutating {
+                                return Err(MetelError::parse(
+                                    ParseErrorCode::P0001,
+                                    "duplicate `var` function type qualifier",
+                                    &Span::of(&p, filename),
+                                ));
+                            }
+                            call_mutation = CallMutation::Mutating;
+                        }
+                        _ => {}
+                    },
                     Rule::type_list => {
                         params = p
                             .into_inner()
@@ -2739,7 +2803,12 @@ fn parse_type_expr(
                     _ => {}
                 }
             }
-            Ok(TypeExpr::Fun(params, return_type))
+            Ok(TypeExpr::Fun {
+                params,
+                return_type,
+                call_multiplicity,
+                call_mutation,
+            })
         }
         Rule::named_type => {
             let mut inner = pair.into_inner();

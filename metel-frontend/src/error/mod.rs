@@ -45,6 +45,11 @@ pub enum TypeErrorCode {
     T0023, // Assignment through a non-owning view (`T[]`)
     T0024, // Read-copy of a non-`Copy` value out of a reference (RFC-0067a §3a)
     T0025, // Aspect is not object-safe, used in `dyn` position (RFC-0008 §3)
+    T0026, // Closure capture-list error (RFC-0050)
+    T0027, // Closure requires `once` (RFC-0134)
+    T0028, // Closure requires `var` (RFC-0153)
+    T0029, // Mutating closure called through shared reference (RFC-0153)
+    T0030, // Borrow into enclosing closure environment (RFC-0050)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,6 +68,7 @@ pub enum RuntimeErrorCode {
     R0013, // Assertion failed
     R0014, // Unwrap on `None`/`Err` (`.yolo()`)
     R0015, // Explicit panic (`panic()`)
+    R0016, // Re-entrant call to a mutating closure (RFC-0153)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

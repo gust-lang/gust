@@ -28,7 +28,13 @@ pub enum Type {
     SizedArray(Box<Type>, u64),
     Reference(Box<Type>),
     MutReference(Box<Type>),
-    Fun(Vec<Type>, Box<Type>),
+    Fun(
+        Vec<Type>,
+        Box<Type>,
+        CallMultiplicity,
+        UseMultiplicity,
+        CallMutation,
+    ),
     /// A named type (struct, enum) with concrete type arguments after monomorphisation.
     Named(String, Vec<Type>),
     /// A narrowed residual of a struct's own row (RFC-0137, metel-core#857/#836) --
@@ -60,6 +66,38 @@ pub enum Type {
         aspect: String,
         type_args: Vec<Type>,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum CallMultiplicity {
+    Once,
+    #[default]
+    Many,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum UseMultiplicity {
+    #[default]
+    Move,
+    Copy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum CallMutation {
+    #[default]
+    Reading,
+    Mutating,
+}
+
+#[must_use]
+pub fn default_fun_type(params: Vec<Type>, ret: Type) -> Type {
+    Type::Fun(
+        params,
+        Box::new(ret),
+        CallMultiplicity::Many,
+        UseMultiplicity::Move,
+        CallMutation::Reading,
+    )
 }
 
 impl Type {
@@ -134,7 +172,13 @@ impl std::fmt::Display for Type {
             Type::SizedArray(t, n) => write!(f, "[{t}; {n}]"),
             Type::Reference(t) => write!(f, "&{t}"),
             Type::MutReference(t) => write!(f, "&var {t}"),
-            Type::Fun(params, ret) => {
+            Type::Fun(params, ret, call_mult, _use_mult, call_mut) => {
+                if *call_mult == CallMultiplicity::Once {
+                    write!(f, "once ")?;
+                }
+                if *call_mut == CallMutation::Mutating {
+                    write!(f, "var ")?;
+                }
                 write!(f, "(")?;
                 for (i, t) in params.iter().enumerate() {
                     if i > 0 {
