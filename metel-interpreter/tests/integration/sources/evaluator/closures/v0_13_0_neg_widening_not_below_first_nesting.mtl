@@ -7,12 +7,12 @@
 // DRAFT FIXTURE -- written against the RFC text ahead of implementation
 // (metel-core#928). Not runnable yet: see the `skip` reason in the sidecar.
 // Intended once live: spec = ["spec.functions.closures.legality-15"]
-fun sink(cb: (mut () -> i64) -> i64) -> i64 {
+fun sink(cb: (var () -> i64) -> i64) -> i64 {
     0
 }
 
 fun main() {
-    // `f`'s parameter is `reading () -> i64`; `sink` wants a nested `mut () -> i64`.
+    // `f`'s parameter is `reading () -> i64`; `sink` wants a nested `var () -> i64`.
     // Nested position => exact match => rejected, even though `f` only reads it.
     let f := (inner: () -> i64) -> i64 { inner() };
     sink(f);

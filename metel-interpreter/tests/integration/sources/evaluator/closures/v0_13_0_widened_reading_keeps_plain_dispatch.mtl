@@ -1,17 +1,17 @@
 // v0.13.0 closure cluster (RFC-0152 dynamics-12): widening is type-level
-// only. A `reading` closure widened into a `mut` slot keeps its plain call
+// only. A `reading` closure widened into a `var` slot keeps its plain call
 // path -- no exclusive borrow, no in-call flag -- because call lowering
 // branches on the value's own mutation axis, not the slot type. So calling it
-// twice from inside a `mut`-typed parameter is fine.
+// twice from inside a `var`-typed parameter is fine.
 //
 // DRAFT FIXTURE -- written against the RFC text ahead of implementation
 // (metel-core#928). Not runnable yet: see the `skip` reason in the sidecar.
 // Intended once live: spec = ["spec.functions.closures.dynamics-12"]
-fun call_mut(f: mut () -> i64) -> i64 {
+fun call_mut(f: var () -> i64) -> i64 {
     f() + f()
 }
 
 fun main() {
     let pure := () -> i64 { 7 }; // `reading`, `many`
-    assert(call_mut(pure) == 14); // widens into the `mut` slot, still dispatched plainly
+    assert(call_mut(pure) == 14); // widens into the `var` slot, still dispatched plainly
 }

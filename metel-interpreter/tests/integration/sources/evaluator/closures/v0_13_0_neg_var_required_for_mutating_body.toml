@@ -5,4 +5,4 @@ skip = "metel-core#929 -- RFC-0153 call_mutation axis not implemented"
 [expect]
 status = "typecheck_error"
 code = "T0023"
-contains = "mut"
+contains = "var"

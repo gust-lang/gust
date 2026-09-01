@@ -1,4 +1,4 @@
-// v0.13.0 closure cluster (RFC-0153 dynamics-13): if a plain `mut` (not
+// v0.13.0 closure cluster (RFC-0153 dynamics-13): if a plain `var` (not
 // `once`) closure's body exits early via `?` or `return`, the mutations that
 // already ran stay visible and the closure remains callable in a
 // valid-but-partial state. (A `panic` is uncatchable and ends the process --
@@ -9,7 +9,7 @@
 // Intended once live: spec = ["spec.functions.closures.dynamics-13"]
 fun main() {
     var log := 0;
-    var step := [&var log] mut (stop: boolean) -> i64 {
+    var step := [&var log] var (stop: boolean) -> i64 {
         log += 1;
         if stop {
             return log; // early return, mid-mutation

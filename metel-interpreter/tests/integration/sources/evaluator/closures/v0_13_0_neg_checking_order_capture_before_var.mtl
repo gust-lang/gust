@@ -1,8 +1,8 @@
 // v0.13.0 closure cluster (RFC-0050 legality-19): verification runs in a
 // fixed stage order -- capture classification first, then use_multiplicity,
-// then `once`, then `mut`. A body that both omits a required capture list AND
+// then `once`, then `var`. A body that both omits a required capture list AND
 // mutates that binding is reported at stage 1 ("add a capture list"), not at
-// stage 4 ("add `mut`").
+// stage 4 ("add `var`").
 //
 // DRAFT FIXTURE -- written against the RFC text ahead of implementation
 // (metel-core#926). Not runnable yet: see the `skip` reason in the sidecar.

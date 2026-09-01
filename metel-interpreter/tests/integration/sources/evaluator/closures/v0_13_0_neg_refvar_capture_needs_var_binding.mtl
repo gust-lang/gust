@@ -7,6 +7,6 @@
 // Intended once live: spec = ["spec.functions.closures.legality-13"]
 fun main() {
     let count := 0; // `let`, not `var`
-    let bump := [&var count] mut () -> () { count += 1; }; // error: `count` is not `var`
+    var bump := [&var count] var () -> () { count += 1; }; // error: `count` is not `var`
     bump();
 }

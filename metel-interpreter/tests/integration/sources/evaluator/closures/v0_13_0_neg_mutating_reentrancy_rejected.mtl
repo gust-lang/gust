@@ -7,13 +7,13 @@
 // (metel-core#929). Not runnable yet: see the `skip` reason in the sidecar.
 // Intended once live: spec = ["spec.functions.closures.dynamics-9"]
 struct Cell {
-    go: mut () -> i64,
+    go: var () -> i64,
 }
 
 fun main() {
     var c := Cell { go = () -> i64 { 0 } };
-    c.go := [&var c] mut () -> i64 {
-        (c.go)() + 1 // re-enters the same `mut` closure while its first call is live
+    c.go := [&var c] var () -> i64 {
+        (c.go)() + 1 // re-enters the same `var` closure while its first call is live
     };
     (c.go)(); // runtime error R0007 -- re-entrant call to a mutating closure
 }

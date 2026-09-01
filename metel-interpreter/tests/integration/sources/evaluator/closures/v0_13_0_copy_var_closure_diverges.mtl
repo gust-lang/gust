@@ -4,9 +4,9 @@
 // DRAFT FIXTURE -- written against the RFC text ahead of implementation
 // (metel-core#929). Not runnable yet: see the `skip` reason in the sidecar.
 // Intended once live: spec = ["spec.functions.closures.dynamics-8"]
-fun make_counter() -> mut () -> i64 {
+fun make_counter() -> var () -> i64 {
     let n := 0;
-    [n] mut () -> i64 { n := n + 1; n }
+    [n] var () -> i64 { n := n + 1; n }
 }
 
 fun main() {

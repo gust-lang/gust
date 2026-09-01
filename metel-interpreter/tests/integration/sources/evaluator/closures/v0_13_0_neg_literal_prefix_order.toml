@@ -4,4 +4,4 @@ skip = "metel-core#926 -- RFC-0050 capture-list grammar not implemented"
 
 [expect]
 status = "parse_error"
-contains = "mut"
+contains = "var"
