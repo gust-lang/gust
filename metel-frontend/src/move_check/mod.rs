@@ -3590,7 +3590,7 @@ fun main() {
                 vec![Type::I64, Type::I64],
                 Box::new(Type::I64),
                 crate::types::CallMultiplicity::Many,
-                crate::types::UseMultiplicity::Move,
+                crate::types::UseMultiplicity::Copy,
                 crate::types::CallMutation::Reading,
             ))
         );

@@ -132,7 +132,7 @@ fun safe_get_int(arr: i64[], i: i64) -> Option<i64> {
 fun table_get(table: Pair<String, i64>[], key: String) -> Option<i64> {
     let entry := find_first(
         table,
-        (p: &Pair<String, i64>) -> boolean { (*p).first == key },
+        [key.clone()] (p: &Pair<String, i64>) -> boolean { (*p).first == key },
         (p: &Pair<String, i64>) -> Pair<String, i64> {
             Pair {
                 first = (*p).first.substring(0, (*p).first.len()),
