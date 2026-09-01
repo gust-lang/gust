@@ -4,7 +4,7 @@
 // partially-moved environment drops only its still-owned captures.
 //
 // DRAFT FIXTURE -- written against the RFC text ahead of implementation
-// (metel-core#930). Also blocked on metel-core#292 (destructor invocation):
+// (metel-core#930). Also blocked on metel-core#261 (destructor invocation):
 // non-empty `drop` bodies are rejected until that lands, so the *order* claim
 // can't be asserted with an observable side effect yet -- this fixture only
 // checks the captures are held and the closure runs.
