@@ -72,8 +72,8 @@ fun apply_fns(fns: Array<&() -> ()>) {
 
 fun test_fn_ptr_from_tuple() {
     var counter := 0;
-    let ptr := &var counter;
-    let inc := () -> () { *ptr += 1; };
+    var ptr := &var counter;
+    var inc := [&var ptr] var () -> () { *ptr += 1; };
     let get := () -> () { };
 
     let ops := (inc, get);

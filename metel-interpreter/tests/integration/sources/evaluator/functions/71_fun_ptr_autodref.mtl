@@ -16,8 +16,8 @@ fun test_immutable_fun_ptr_call() {
 // &var () -> T is also auto-deref callable
 fun test_mutable_fun_ptr_call() {
     var x := 0;
-    let p := &var x;
-    var inc := () -> { *p += 7; };
+    var p := &var x;
+    var inc := [&var p] var () -> { *p += 7; };
     let mut_ptr := &var inc;
     mut_ptr();
     assert(x == 7);

@@ -6,8 +6,8 @@ fun main() {
     value := 9;
 
     var shared := 0;
-    let ptr := &var shared;
-    let bump := () -> i64 {
+    var ptr := &var shared;
+    var bump := [&var ptr] var () -> i64 {
         *ptr += 1;
         ptr
     };
