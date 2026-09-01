@@ -172,11 +172,11 @@ impl std::fmt::Display for Type {
             Type::SizedArray(t, n) => write!(f, "[{t}; {n}]"),
             Type::Reference(t) => write!(f, "&{t}"),
             Type::MutReference(t) => write!(f, "&var {t}"),
-            Type::Fun(params, ret, call_mult, _use_mult, call_mut) => {
+            Type::Fun(params, ret, call_mult, _use_mult, call_mutation) => {
                 if *call_mult == CallMultiplicity::Once {
                     write!(f, "once ")?;
                 }
-                if *call_mut == CallMutation::Mutating {
+                if *call_mutation == CallMutation::Mutating {
                     write!(f, "var ")?;
                 }
                 write!(f, "(")?;
