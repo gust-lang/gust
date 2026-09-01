@@ -1,0 +1,7 @@
+[options]
+skip = "metel-core#928 -- RFC-0152 multiplicity widening not implemented"
+# intended once live: spec = ["spec.functions.closures.legality-9"]
+
+[expect]
+status = "typecheck_error"
+contains = "once"

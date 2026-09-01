@@ -1,0 +1,8 @@
+[options]
+skip = "metel-core#929 -- RFC-0153 call_mutation axis not implemented"
+# intended once live: spec = ["spec.functions.closures.legality-25"]
+
+[expect]
+status = "typecheck_error"
+code = "T0023"
+contains = "mut"

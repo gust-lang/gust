@@ -1,0 +1,9 @@
+[options]
+move_check = true
+skip = "metel-core#930 -- RFC-0157 move-by-default capture not implemented"
+# intended once live: spec = ["spec.functions.closures.dynamics-5"]
+
+[expect]
+status = "typecheck_error"
+code = "T0019"
+contains = "moved"

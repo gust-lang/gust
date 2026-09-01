@@ -1,0 +1,9 @@
+[options]
+move_check = true
+skip = "metel-core#927 -- RFC-0134 once/many not implemented"
+# intended once live: spec = ["spec.functions.closures.dynamics-10"]
+
+[expect]
+status = "typecheck_error"
+code = "T0019"
+contains = "moved"

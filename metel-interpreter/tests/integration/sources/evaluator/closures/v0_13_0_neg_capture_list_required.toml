@@ -1,0 +1,8 @@
+[options]
+skip = "metel-core#926 -- RFC-0050 capture-list grammar not implemented"
+# intended once live: spec = ["spec.functions.closures.legality-6"]
+
+[expect]
+status = "typecheck_error"
+code = "T0021"
+contains = "capture"
