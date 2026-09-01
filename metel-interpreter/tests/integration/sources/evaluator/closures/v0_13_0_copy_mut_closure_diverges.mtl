@@ -10,8 +10,8 @@ fun make_counter() -> mut () -> i64 {
 }
 
 fun main() {
-    let c := make_counter();
-    let d := c; // `n: i64` is Copy => `c` is Copy; `d` gets an independent env
+    var c := make_counter();
+    var d := c; // `n: i64` is Copy => `c` is Copy; `d` gets an independent env
     assert(c() == 1);
     assert(c() == 2);
     assert(d() == 1); // `d`'s counter did not advance with `c`'s

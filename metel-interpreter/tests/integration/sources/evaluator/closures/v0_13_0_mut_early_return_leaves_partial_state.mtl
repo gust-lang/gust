@@ -9,7 +9,7 @@
 // Intended once live: spec = ["spec.functions.closures.dynamics-13"]
 fun main() {
     var log := 0;
-    let step := [&var log] mut (stop: boolean) -> i64 {
+    var step := [&var log] mut (stop: boolean) -> i64 {
         log += 1;
         if stop {
             return log; // early return, mid-mutation
