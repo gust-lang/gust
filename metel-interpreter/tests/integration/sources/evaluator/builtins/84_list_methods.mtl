@@ -5,31 +5,31 @@ fun main() {
     let xs := List::from([1, 2, 3, 4, 5]);
 
     // map (same and changed element type)
-    let doubled := (&xs).map((x: i64) -> i64 { x * 2 });
+    let doubled := (&xs).map(|x: i64| -> i64 { x * 2 });
     assert((&doubled).len() == 5);
     assert((&doubled).get(0).unwrap_or(0) == 2);
     assert((&doubled).get(4).unwrap_or(0) == 10);
-    let labels := (&xs).map((x: i64) -> String { "n" });
+    let labels := (&xs).map(|x: i64| -> String { "n" });
     assert((&labels).len() == 5);
     assert((&labels).get(0).unwrap_or("") == "n");
 
     // filter
-    let evens := (&xs).filter((x: i64) -> boolean { x % 2 == 0 });
+    let evens := (&xs).filter(|x: i64| -> boolean { x % 2 == 0 });
     assert((&evens).len() == 2);
     assert((&evens).get(0).unwrap_or(0) == 2);
     assert((&evens).get(1).unwrap_or(0) == 4);
-    let none_pass := (&xs).filter((x: i64) -> boolean { x > 99 });
+    let none_pass := (&xs).filter(|x: i64| -> boolean { x > 99 });
     assert((&none_pass).len() == 0);
 
     // fold (sum and a type-changing fold to String length count)
-    let sum := (&xs).fold(0i64, (acc: i64, x: i64) -> i64 { acc + x });
+    let sum := (&xs).fold(0i64, |acc: i64, x: i64| -> i64 { acc + x });
     assert(sum == 15);
-    let count := (&xs).fold(0i64, (acc: i64, x: i64) -> i64 { acc + 1 });
+    let count := (&xs).fold(0i64, |acc: i64, x: i64| -> i64 { acc + 1 });
     assert(count == 5);
 
     // find
-    assert((&xs).find((x: i64) -> boolean { x > 3 }).unwrap_or(0) == 4);
-    assert((&xs).find((x: i64) -> boolean { x > 99 }).is_none());
+    assert((&xs).find(|x: i64| -> boolean { x > 3 }).unwrap_or(0) == 4);
+    assert((&xs).find(|x: i64| -> boolean { x > 99 }).is_none());
 
     // concat
     let extra := List::from([6, 7]);
@@ -40,9 +40,9 @@ fun main() {
 
     // chaining transforms
     let result := xs
-        .filter((x: i64) -> boolean { x % 2 == 1 })
-        .map((x: i64) -> i64 { x * 10 })
-        .fold(0i64, (a: i64, x: i64) -> i64 { a + x });
+        .filter(|x: i64| -> boolean { x % 2 == 1 })
+        .map(|x: i64| -> i64 { x * 10 })
+        .fold(0i64, |a: i64, x: i64| -> i64 { a + x });
     assert(result == 90);
 
     println("ok");

@@ -4,7 +4,7 @@
 // `let`-bound closures now receive the same treatment.  Each call site gets a
 // fresh instantiation so the same binding can be used at multiple types.
 
-let identity := (x) -> { x };
+let identity := |x| { x };
 
 let a := identity(42);
 let b := identity(true);

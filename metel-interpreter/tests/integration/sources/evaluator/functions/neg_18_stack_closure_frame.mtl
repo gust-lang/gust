@@ -1,12 +1,12 @@
 // An anonymous closure passed as an argument and then called must appear in
 // the stack trace as "<closure>".
 
-fun apply(f: () -> i64) -> i64 {
+fun apply(f: || -> i64) -> i64 {
     f()
 }
 
 fun main() {
-    apply(() -> i64 { 1 / 0 });
+    apply(|| -> i64 { 1 / 0 });
 }
 
 // RUNTIME_ERROR[in <closure>]

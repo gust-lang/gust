@@ -6,7 +6,7 @@
 
 fun main() {
     fun identity<T>(x: T) -> T { return x; }
-    fun apply_i64(f: (i64) -> i64, x: i64) -> i64 { return f(x); }
+    fun apply_i64(f: |i64| -> i64, x: i64) -> i64 { return f(x); }
 
     let alias := identity;
     assert(alias(5) == 5);

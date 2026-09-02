@@ -3,7 +3,7 @@
 // a shared `&` reference (here a `&Cell` receiver) is a compile error.
 //
 struct Cell {
-    go: var () -> i64,
+    go: var || -> i64,
 }
 
 fun peek(c: &Cell) -> i64 {
@@ -12,6 +12,6 @@ fun peek(c: &Cell) -> i64 {
 
 fun main() {
     let n := 0;
-    let c := Cell { go = [n] var () -> i64 { n := n + 1; n } };
+    let c := Cell { go = [n] var || -> i64 { n := n + 1; n } };
     assert(peek(&c) == 1);
 }

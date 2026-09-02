@@ -1,7 +1,7 @@
 import left::left_val;         
 import right::right_val;         
-fun make_combiner() -> () -> i64 {         
-    return () -> i64 { return left_val() + right_val(); };         
+fun make_combiner() -> || -> i64 {         
+    return || -> i64 { return left_val() + right_val(); };         
 }         
 fun main() {         
     let f := make_combiner();         

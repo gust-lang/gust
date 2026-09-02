@@ -37,14 +37,14 @@ extend Perhaps<T> {
         }
     }
     // Transform the contained value, leaving `None` untouched.
-    public fun map<U>(self, f: (T) -> U) -> Perhaps<U> {
+    public fun map<U>(self, f: |T| -> U) -> Perhaps<U> {
         match (self) {
             Perhaps::Some { value } => Perhaps::Some { value = f(value) },
             _ => Perhaps::None,
         }
     }
     // Chain a computation that itself returns a `Perhaps`.
-    public fun and_then<U>(self, f: (T) -> Perhaps<U>) -> Perhaps<U> {
+    public fun and_then<U>(self, f: |T| -> Perhaps<U>) -> Perhaps<U> {
         match (self) {
             Perhaps::Some { value } => f(value),
             _ => Perhaps::None,
@@ -58,7 +58,7 @@ extend Perhaps<T> {
         }
     }
     // The contained value, or the result of `f()` when `None`.
-    public fun unwrap_or_else(self, f: () -> T) -> T {
+    public fun unwrap_or_else(self, f: || -> T) -> T {
         match (self) {
             Perhaps::Some { value } => value,
             _ => f(),
@@ -104,14 +104,14 @@ extend Result<T, E> {
         }
     }
     // Transform the success value, leaving `Err` untouched.
-    public fun map<U>(self, f: (T) -> U) -> Result<U, E> {
+    public fun map<U>(self, f: |T| -> U) -> Result<U, E> {
         match (self) {
             Result::Ok { value } => Result::Ok { value = f(value) },
             Result::Err { error } => Result::Err { error = error },
         }
     }
     // Chain a computation that itself returns a `Result`.
-    public fun and_then<U>(self, f: (T) -> Result<U, E>) -> Result<U, E> {
+    public fun and_then<U>(self, f: |T| -> Result<U, E>) -> Result<U, E> {
         match (self) {
             Result::Ok { value } => f(value),
             Result::Err { error } => Result::Err { error = error },
@@ -125,7 +125,7 @@ extend Result<T, E> {
         }
     }
     // The success value, or the result of `f()` when `Err`.
-    public fun unwrap_or_else(self, f: () -> T) -> T {
+    public fun unwrap_or_else(self, f: || -> T) -> T {
         match (self) {
             Result::Ok { value } => value,
             _ => f(),
@@ -142,7 +142,7 @@ extend Result<T, E> {
     }
     // Applies `f` to the `Err` value, leaving `Ok` unchanged. Useful for
     // converting between error types.
-    public fun map_err<F>(self, f: (E) -> F) -> Result<T, F> {
+    public fun map_err<F>(self, f: |E| -> F) -> Result<T, F> {
         match (self) {
             Result::Ok { value } => Result::Ok { value = value },
             Result::Err { error } => Result::Err { error = f(error) },
@@ -253,7 +253,7 @@ extend List<T> {
     // iterator architecture.
 
     // Apply `f` to each element, collecting the results into a new list.
-    public fun map<U>(&self, f: (T) -> U) -> List<U> {
+    public fun map<U>(&self, f: |T| -> U) -> List<U> {
         var out: List<U> := List::new();
         for (x in self.as_slice()) {
             out.push(f(x));
@@ -261,7 +261,7 @@ extend List<T> {
         out
     }
     // Keep only the elements for which `pred` holds.
-    public fun filter(&self, pred: (T) -> boolean) -> List<T> {
+    public fun filter(&self, pred: |T| -> boolean) -> List<T> {
         var out: List<T> := List::new();
         for (x in self.as_slice()) {
             if (pred(x)) {
@@ -271,7 +271,7 @@ extend List<T> {
         out
     }
     // Reduce the list to a single value, left to right.
-    public fun fold<A>(&self, init: A, f: (A, T) -> A) -> A {
+    public fun fold<A>(&self, init: A, f: |A, T| -> A) -> A {
         var acc := init;
         for (x in self.as_slice()) {
             acc := f(acc, x);
@@ -279,7 +279,7 @@ extend List<T> {
         acc
     }
     // The first element satisfying `pred`, or `None`.
-    public fun find(&self, pred: (T) -> boolean) -> Perhaps<T> {
+    public fun find(&self, pred: |T| -> boolean) -> Perhaps<T> {
         for (x in self.as_slice()) {
             if (pred(x)) {
                 return Perhaps::Some { value = x };

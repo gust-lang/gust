@@ -1,38 +1,38 @@
-fun takes(g: () -> i64) -> i64 {
+fun takes(g: || -> i64) -> i64 {
     g()
 }
 
-fun mk() -> () -> i64 {
-    () -> { 42 }
+fun mk() -> || -> i64 {
+    || { 42 }
 }
 
 fun main() {
-    let tail := () -> { 42 };
+    let tail := || { 42 };
     let tail_n := tail();
     assert(tail_n + 1 == 43);
 
-    let with_return := () -> { return 42; };
+    let with_return := || { return 42; };
     let return_n := with_return();
     assert(return_n + 1 == 43);
 
-    let from_array := [() -> { 42 }];
+    let from_array := [|| { 42 }];
     let array_n := from_array[0]();
     assert(array_n + 1 == 43);
 
-    let add1 := (a: i64) -> { a + 1 };
+    let add1 := |a: i64| { a + 1 };
     let param_n := add1(1);
     assert(param_n + 1 == 3);
 
-    let explicit_ret := () -> i64 { return 42; };
+    let explicit_ret := || -> i64 { return 42; };
     assert(explicit_ret() == 42);
 
-    let annotated_binding: () -> i64 := () -> { return 42; };
+    let annotated_binding: || -> i64 := || { return 42; };
     assert(annotated_binding() == 42);
 
     let annotated_call := tail();
     let annotated_site: i64 := annotated_call;
     assert(annotated_site == 42);
 
-    assert(takes(() -> { 42 }) == 42);
+    assert(takes(|| { 42 }) == 42);
     assert(mk()() == 42);
 }

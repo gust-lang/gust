@@ -1,5 +1,5 @@
 fun main() {
     let s := "hello";
-    let f := [s] once () -> String { return s; };
+    let f := [s] once || -> String { return s; };
     let again := s;
 }

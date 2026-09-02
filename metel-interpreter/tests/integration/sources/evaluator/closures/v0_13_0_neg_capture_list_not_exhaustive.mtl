@@ -5,6 +5,6 @@
 fun main() {
     let a := 1;
     let b := 2;
-    let f := [a] () -> i64 { a + b }; // `b` referenced but missing from the list
+    let f := [a] || -> i64 { a + b }; // `b` referenced but missing from the list
     f();
 }

@@ -36,7 +36,7 @@ fun in_mut_reference(xs: &var extends Printable[]) {}
 fun in_generic_arg(xs: List<extends Printable>) {}
 fun in_generic_arg_array(xs: List<extends Printable[]>) {}
 fun in_sized_array(xs: [extends Printable; 3]) {}
-fun in_fun_type(f: (extends Printable[]) -> extends Printable) {}
+fun in_fun_type(f: |extends Printable[]| -> extends Printable) {}
 
 // Several occurrences in one signature.
 fun several(a: extends Printable[], b: extends Printable, c: (extends Printable[], extends Printable)) {}

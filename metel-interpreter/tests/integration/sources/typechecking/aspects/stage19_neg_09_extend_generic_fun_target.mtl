@@ -6,7 +6,7 @@ aspect Area {
 // it typechecks and then has no effect in either the call or the bound position
 // (metel-core#239). Rejected rather than accepted-and-inert, on the same grounds
 // as the concrete form in metel-core#581.
-extend<A, B> (A) -> B: Area {
+extend<A, B> |A| -> B: Area {
     fun area(&self) -> i64 { return 1; }
 }
 

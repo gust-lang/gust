@@ -15,7 +15,7 @@ fun clamp(
 }
 
 // Trailing comma in closure parameter list.
-fun apply(f: (i64, i64) -> i64, a: i64, b: i64,) -> i64 {
+fun apply(f: |i64, i64| -> i64, a: i64, b: i64,) -> i64 {
     f(a, b)
 }
 
@@ -30,6 +30,6 @@ fun main() {
     assert(clamp(11, 0, 10,) == 10);
 
     // Trailing comma in closure definition and call argument list.
-    let result := apply((x: i64, y: i64,) -> i64 { x * y }, 3, 4,);
+    let result := apply(|x: i64, y: i64,| -> i64 { x * y }, 3, 4,);
     assert(result == 12);
 }

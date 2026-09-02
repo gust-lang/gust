@@ -6,8 +6,8 @@
 
 fun identity<T>(x: T) -> T { return x; }
 
-fun apply_i64(f: (i64) -> i64, x: i64) -> i64 { return f(x); }
-fun apply_str(f: (String) -> String, x: String) -> String { return f(x); }
+fun apply_i64(f: |i64| -> i64, x: i64) -> i64 { return f(x); }
+fun apply_str(f: |String| -> String, x: String) -> String { return f(x); }
 
 fun main() {
     assert(apply_i64(identity, 7) == 7);

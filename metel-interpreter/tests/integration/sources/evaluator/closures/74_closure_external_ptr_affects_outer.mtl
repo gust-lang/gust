@@ -7,7 +7,7 @@ fun main() {
     let p: &var i64 := &var x;
     let p_ref: &&var i64 := &p;
 
-    let f := () -> () {
+    let f := || -> () {
         **p_ref := 42;
     };
 

@@ -1,7 +1,7 @@
-fun make_adder(x: i64) -> (i64) -> i64 {
-    (y: i64) -> i64 { x + y }
+fun make_adder(x: i64) -> |i64| -> i64 {
+    |y: i64| -> i64 { x + y }
 }
-fun apply(f: (i64) -> i64, v: i64) -> i64 {
+fun apply(f: |i64| -> i64, v: i64) -> i64 {
     f(v)
 }
 fun main() {
@@ -15,7 +15,7 @@ fun main() {
     let r3 := apply(add10, 7);
     assert(r3 == 17);
     // Closure created inline.
-    let double := (n: i64) -> i64 { n * 2 };
+    let double := |n: i64| -> i64 { n * 2 };
     let r4 := double(6);
     assert(r4 == 12);
 }

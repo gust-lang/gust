@@ -8,7 +8,7 @@
 // while `==` accepted operands of any type; metel-core#279's guard exposed it. Declaring
 // the return type sidesteps #281 without weakening the guard.
 fun test_immutable_fun_ptr_call() {
-    let f := () -> i64 { return 42; };
+    let f := || -> i64 { return 42; };
     let ptr := &f;
     assert(ptr() == 42);
 }
@@ -17,24 +17,24 @@ fun test_immutable_fun_ptr_call() {
 fun test_mutable_fun_ptr_call() {
     var x := 0;
     var p := &var x;
-    var inc := [&var p] var () -> { *p += 7; };
+    var inc := [&var p] var || { *p += 7; };
     let mut_ptr := &var inc;
     mut_ptr();
     assert(x == 7);
 }
 
 // Function taking &() -> T and calling it directly
-fun call_via_ptr(f: &() -> i64) -> i64 {
+fun call_via_ptr(f: &|| -> i64) -> i64 {
     return f();
 }
 
 fun test_fun_ptr_param() {
-    let f := () -> { return 99; };
+    let f := || { return 99; };
     assert(call_via_ptr(&f) == 99);
 }
 
 // Array<&() -> ()> — iteration and call via auto-deref
-fun apply_ptrs(fns: Array<&() -> ()>) {
+fun apply_ptrs(fns: Array<&|| -> ()>) {
     for (f in fns) {
         f();
     }
@@ -45,8 +45,8 @@ fun test_array_of_fun_ptrs() {
     let ptr := &var total;
     let ptr1: &&var i64 := &ptr;
     let ptr2: &&var i64 := &ptr;
-    let add1 := () -> { **ptr1 += 1; };
-    let add10 := () -> { **ptr2 += 10; };
+    let add1 := || { **ptr1 += 1; };
+    let add10 := || { **ptr2 += 10; };
     apply_ptrs([&add1, &add10]);
     assert(total == 11);
 }
@@ -58,9 +58,9 @@ fun test_array_of_fun_ptrs() {
 fun test_closure_captures_fun_ptr() {
     var x := 0;
     var p: &var i64 := &var x;
-    var inc := [&var p] var () -> { *p += 1; };
-    var inc_ptr: &var var () -> () := &var inc;
-    var double_via_ptr := [&var inc_ptr] var () -> () {
+    var inc := [&var p] var || { *p += 1; };
+    var inc_ptr: &var var || -> () := &var inc;
+    var double_via_ptr := [&var inc_ptr] var || -> () {
         inc_ptr();                   // auto-deref: calls the captured reference
         inc_ptr();
     };
@@ -72,9 +72,9 @@ fun test_closure_captures_fun_ptr() {
 fun test_closure_captures_mut_fun_ptr() {
     var x := 0;
     var p: &var i64 := &var x;
-    var add5 := [&var p] var () -> { *p += 5; };
+    var add5 := [&var p] var || { *p += 5; };
     var ptr := &var add5;
-    var triple := [&var ptr] var () -> () {
+    var triple := [&var ptr] var || -> () {
         ptr();
         ptr();
         ptr();
@@ -89,7 +89,7 @@ fun test_closure_captures_mut_fun_ptr() {
 // Mutations inside the closure do not affect the outer binding.
 fun test_capture_by_value() {
     var x := 0;
-    let f := () -> { x += 1; };
+    let f := || { x += 1; };
     f();
     f();
     f();
@@ -101,7 +101,7 @@ fun test_capture_by_value() {
 fun test_capture_via_pointer_propagates() {
     var x := 0;
     var ptr: &var i64 := &var x;
-    var f := [&var ptr] var () -> { *ptr += 1; };
+    var f := [&var ptr] var || { *ptr += 1; };
     f();
     f();
     f();

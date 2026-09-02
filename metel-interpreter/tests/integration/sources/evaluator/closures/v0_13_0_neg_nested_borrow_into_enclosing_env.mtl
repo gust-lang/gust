@@ -5,8 +5,8 @@
 //
 fun main() {
     let s := "data";
-    let outer := [s] () -> boolean {
-        let inner := [&s] () -> boolean { s == "data" }; // `&` into the enclosing closure's env
+    let outer := [s] || -> boolean {
+        let inner := [&s] || -> boolean { s == "data" }; // `&` into the enclosing closure's env
         inner()
     };
     outer();

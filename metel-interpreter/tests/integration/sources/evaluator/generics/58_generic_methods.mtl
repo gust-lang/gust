@@ -15,7 +15,7 @@ extend Box<T> {
         self.value
     }
     // Method-level generic `U` recovered from the closure argument.
-    fun map<U>(self, f: (T) -> U) -> Box<U> {
+    fun map<U>(self, f: |T| -> U) -> Box<U> {
         Box { value = f(self.value) }
     }
     fun get(self) -> T {
@@ -42,7 +42,7 @@ extend Maybe<T> {
             _ => fallback,
         }
     }
-    fun map<U>(self, f: (T) -> U) -> Maybe<U> {
+    fun map<U>(self, f: |T| -> U) -> Maybe<U> {
         match (self) {
             Maybe::Just { value } => Maybe::Just { value = f(value) },
             _ => Maybe::Nothing,
@@ -59,11 +59,11 @@ fun main() {
     let b1 := Box { value = 21 };
     assert(b1.get_or(0) == 21);
     let b2 := Box { value = 21 };
-    let doubled := b2.map((x: i64) -> i64 { x * 2 });
+    let doubled := b2.map(|x: i64| -> i64 { x * 2 });
     assert(doubled.get() == 42);
     // Method-level generic changing the element type.
     let b3 := Box { value = 21 };
-    let labelled := b3.map((x: i64) -> String { "n" });
+    let labelled := b3.map(|x: i64| -> String { "n" });
     assert(labelled.get() == "n");
 
     // Generic enum methods, including match-on-self and chaining.
@@ -76,9 +76,9 @@ fun main() {
     let n2: Maybe<i64> := Maybe::Nothing;
     assert(n2.or_else(7) == 7);
     let j3 := Maybe::Just { value = 10 };
-    assert(j3.map((x: i64) -> i64 { x + 5 }).or_else(0) == 15);
+    assert(j3.map(|x: i64| -> i64 { x + 5 }).or_else(0) == 15);
     let n3: Maybe<i64> := Maybe::Nothing;
-    assert(n3.map((x: i64) -> i64 { x + 5 }).or_else(99) == 99);
+    assert(n3.map(|x: i64| -> i64 { x + 5 }).or_else(99) == 99);
 
     println("ok");
 }

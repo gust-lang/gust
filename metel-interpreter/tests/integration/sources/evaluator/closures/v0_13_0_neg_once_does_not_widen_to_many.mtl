@@ -2,12 +2,12 @@
 // -- a `once` function value may NOT be used where a `many` slot is
 // expected; the reverse of legality-9 is the ordinary type mismatch.
 //
-fun call_many(f: () -> String) -> String {
+fun call_many(f: || -> String) -> String {
     f() + f() // calls twice -- needs `many`
 }
 
 fun main() {
     let s := "hello";
-    let once_closure := [s] once () -> String { s }; // returns `s`, moving it out -- correctly `once`
+    let once_closure := [s] once || -> String { s }; // returns `s`, moving it out -- correctly `once`
     call_many(once_closure); // error: `once` does not widen to a `many` slot
 }

@@ -6,6 +6,6 @@
 // not one of the closure-specific always-on checks (ADR-0052 §1).
 fun main() {
     let s := "hello";
-    let greet := [s] once () -> String { s };
+    let greet := [s] once || -> String { s };
     println(s); // moved-value error -- `s` was moved into `greet`
 }

@@ -1,10 +1,10 @@
 // Closure returning a closure (currying).
-fun add_n(n: i64) -> (i64) -> i64 {
-    (x: i64) -> i64 { n + x }
+fun add_n(n: i64) -> |i64| -> i64 {
+    |x: i64| -> i64 { n + x }
 }
-fun scale_then_add(factor: i64) -> (i64) -> (i64) -> i64 {
-    (base: i64) -> (i64) -> i64 {
-        (x: i64) -> i64 { factor * base + x }
+fun scale_then_add(factor: i64) -> |i64| -> |i64| -> i64 {
+    |base: i64| -> |i64| -> i64 {
+        |x: i64| -> i64 { factor * base + x }
     }
 }
 

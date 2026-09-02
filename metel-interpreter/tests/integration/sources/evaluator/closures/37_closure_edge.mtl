@@ -1,11 +1,11 @@
 // Returns a closure that closes over a counter, incrementing on each call.
-fun make_counter(start: i64) -> () -> i64 {
+fun make_counter(start: i64) -> || -> i64 {
     var n := start;
-    () -> i64 { n += 1; n }
+    || -> i64 { n += 1; n }
 }
 // Closure that captures two variables from different outer scopes.
-fun make_between(lo: i64, hi: i64) -> (i64) -> boolean {
-    (x: i64) -> boolean { (x >= lo) && (x <= hi) }
+fun make_between(lo: i64, hi: i64) -> |i64| -> boolean {
+    |x: i64| -> boolean { (x >= lo) && (x <= hi) }
 }
 
 fun main() {
@@ -30,6 +30,6 @@ fun main() {
     assert(out == false);
     // Inline closure passed directly without binding.
     let results := [1, 2, 3];
-    let sum_fn := (a: i64, b: i64) -> i64 { a + b };
+    let sum_fn := |a: i64, b: i64| -> i64 { a + b };
     assert(sum_fn(results[0], results[2]) == 4);
 }

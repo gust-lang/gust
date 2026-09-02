@@ -6,10 +6,10 @@ fun main() {
     var x := 10;
     let p: &var i64 := &var x;
 
-    let inc := [p] var () -> () {
+    let inc := [p] var || -> () {
         *p += 1;
     };
-    let read := [p] () -> i64 {
+    let read := [p] || -> i64 {
         *p
     };
 
