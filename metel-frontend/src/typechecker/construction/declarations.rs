@@ -336,10 +336,10 @@ pub(super) fn construct_fun_decl(
 /// Reject a `Drop` impl that supplies a destructor body, while still allowing a
 /// type to *declare* itself `Drop`.
 ///
-/// RFC-0071 §9c gates #290 (the `Drop` aspect) on #292 (destructor invocation):
+/// RFC-0071 §9c gates #290 (the `Drop` aspect) on #261 (destructor invocation):
 /// between them, a `drop` body compiles and never runs — "a feature that looks
-/// functional and silently does nothing". #292 moved to v0.13.0, so the gate
-/// fired and that state must not ship (#345).
+/// functional and silently does nothing". This guard is tracked by #292; it
+/// must remain until #261 lands, so that state cannot ship (#345).
 ///
 /// The rejection is narrower than "reject `Drop` impls", deliberately. Declaring
 /// `Drop` has type-level effects that are implemented and correct *today*, and
@@ -382,7 +382,7 @@ pub(super) fn reject_inert_destructor(
         return Err(MetelError::type_error(
             TypeErrorCode::T0001,
             "a `drop` body cannot run yet: destructor invocation is not implemented \
-             (metel-core#292), so this cleanup would silently never happen. Leave the \
+             (metel-core#261), so this cleanup would silently never happen. Leave the \
              body empty to declare the type `Drop` for its type-level effects — \
              `Copy` exclusion, `!Drop` bounds, and the partial-move ban — or move the \
              cleanup into an ordinary method the caller invokes"
