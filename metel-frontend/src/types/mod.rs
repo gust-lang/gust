@@ -95,7 +95,7 @@ pub fn default_fun_type(params: Vec<Type>, ret: Type) -> Type {
         params,
         Box::new(ret),
         CallMultiplicity::Many,
-        UseMultiplicity::Move,
+        UseMultiplicity::Copy,
         CallMutation::Reading,
     )
 }
