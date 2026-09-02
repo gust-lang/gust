@@ -179,14 +179,14 @@ impl std::fmt::Display for Type {
                 if *call_mutation == CallMutation::Mutating {
                     write!(f, "var ")?;
                 }
-                write!(f, "(")?;
+                write!(f, "|")?;
                 for (i, t) in params.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
                     write!(f, "{t}")?;
                 }
-                write!(f, ") -> {ret}")
+                write!(f, "| -> {ret}")
             }
             Type::Named(name, args) => {
                 write!(f, "{name}")?;

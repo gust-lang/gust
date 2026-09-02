@@ -193,14 +193,14 @@ impl std::fmt::Display for InferType {
                 if *call_mutation == CallMutation::Mutating {
                     write!(f, "var ")?;
                 }
-                write!(f, "(")?;
+                write!(f, "|")?;
                 for (i, p) in params.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
                     write!(f, "{p}")?;
                 }
-                write!(f, ") -> {ret}")
+                write!(f, "| -> {ret}")
             }
             InferType::Tuple(ts) => {
                 write!(f, "(")?;
@@ -367,7 +367,7 @@ fn render_with_names(
             .cloned()
             .unwrap_or_else(|| ty.to_string()),
         InferType::Fun(params, ret, call_mult, _use_mult, call_mutation) => format!(
-            "{}{}({}) -> {}",
+            "{}{}|{}| -> {}",
             if *call_mult == CallMultiplicity::Once {
                 "once "
             } else {
