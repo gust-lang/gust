@@ -1,0 +1,22 @@
+// RFC-0160: a transparent type alias names an existing type. It is erased to its
+// right-hand side before typechecking, so an aliased name and its expansion are
+// interchangeable. Covers a plain alias, a parameterised alias, an alias of an
+// alias, and a function-type alias carrying its qualifiers.
+type Count := i64;
+type Predicate<T> := |T| -> boolean;
+type IntPred := Predicate<i64>;
+
+fun keep(p: IntPred, x: Count) -> boolean { p(x) }
+
+// The raw expansion is accepted wherever the alias is, and vice versa.
+fun keep_raw(p: |i64| -> boolean, x: i64) -> boolean { p(x) }
+
+fun main() {
+    let odd: IntPred := |n: i64| -> boolean { n % 2 == 1 };
+    assert(keep(odd, 7));
+    assert(!keep(odd, 8));
+    assert(keep_raw(odd, 3));
+    let also: Predicate<i64> := odd;
+    assert(also(5));
+    println("ok");
+}

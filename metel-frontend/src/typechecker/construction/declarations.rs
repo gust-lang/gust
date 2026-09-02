@@ -153,6 +153,9 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
             methods: td.methods.clone(),
             span: td.span.clone(),
         })),
+        Decl::TypeAlias(_) => {
+            unreachable!("RFC-0160 type aliases are expanded before typechecking")
+        }
         Decl::Stmt(stmt) => Ok(TypedDecl::Stmt(Box::new(construct_stmt(stmt, ctx)?))),
     }
 }

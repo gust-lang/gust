@@ -145,6 +145,9 @@ impl Cx<'_> {
                 self.impl_block(ib, generics, local_types)?;
             }
             Decl::Aspect(ad) => self.aspect(ad, generics, local_types)?,
+            Decl::TypeAlias(_) => {
+                unreachable!("RFC-0160 type aliases are expanded before projection checking")
+            }
             Decl::Stmt(stmt) => {
                 self.stmt(stmt, generics, self_allowed, self_target, local_types)?;
             }

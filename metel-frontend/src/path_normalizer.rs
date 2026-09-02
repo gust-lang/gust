@@ -92,6 +92,9 @@ fn normalize_decl(
         Decl::Impl(ib) => normalize_impl(ib, scope, module_names, symbols),
         Decl::Stmt(s) => normalize_stmt(s, scope, module_names, symbols),
         Decl::Struct(_) | Decl::Enum(_) | Decl::Aspect(_) => Ok(()),
+        Decl::TypeAlias(_) => {
+            unreachable!("RFC-0160 type aliases are expanded before path normalization")
+        }
     }
 }
 

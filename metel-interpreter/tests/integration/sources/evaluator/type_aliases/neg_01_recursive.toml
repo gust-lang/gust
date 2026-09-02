@@ -1,0 +1,7 @@
+[options]
+spec = ["spec.declarations.type-aliases.legality-2"]
+
+[expect]
+status = "typecheck_error"
+code = "T0003"
+contains = "recursive type alias"

@@ -112,7 +112,19 @@ pub enum Decl {
     Enum(EnumDecl),
     Impl(ImplBlock),
     Aspect(AspectDecl),
+    /// RFC-0160: `type Name<G> := T;` — a transparent alias, expanded away before
+    /// name resolution / typechecking (see `crate::type_alias`).
+    TypeAlias(TypeAliasDecl),
     Stmt(Box<Stmt>),
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeAliasDecl {
+    pub visibility: Visibility,
+    pub name: String,
+    pub generics: Vec<GenericParam>,
+    pub target: TypeExpr,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]

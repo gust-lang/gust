@@ -24,6 +24,7 @@ pub mod place;
 pub mod reference_resolver;
 pub mod stdlib;
 pub mod symbols;
+pub mod type_alias;
 pub mod typechecker;
 pub mod typed_ast;
 pub mod typeinference;

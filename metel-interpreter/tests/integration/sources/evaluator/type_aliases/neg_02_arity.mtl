@@ -1,0 +1,4 @@
+// RFC-0160 §3: an alias use must supply exactly the alias's declared number of
+// type arguments.
+type Pair<A, B> := (A, B);
+fun main() -> Pair<i64> { (1, 2) }

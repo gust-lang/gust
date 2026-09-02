@@ -150,11 +150,14 @@ pub fn load_root_with<P: SourceProvider>(
     // (METEL-181) rather than a virtual injection.
     loader.load_embedded_stdlib()?;
     loader.load_module(root.clone(), Vec::new())?;
-    Ok(ModuleGraph {
+    let mut graph = ModuleGraph {
         root,
         modules: loader.modules,
         path_aliases: loader.path_aliases,
-    })
+    };
+    // RFC-0160: erase transparent type aliases before anything downstream runs.
+    crate::type_alias::expand(&mut graph)?;
+    Ok(graph)
 }
 
 /// Parse a single `.mtl` file and return its `Program`.

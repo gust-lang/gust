@@ -221,6 +221,7 @@ fn parse_single_decl(
         Rule::struct_decl => Ok(Decl::Struct(parse_struct_decl(inner, filename)?)),
         Rule::enum_decl => Ok(Decl::Enum(parse_enum_decl(inner, filename)?)),
         Rule::aspect_decl => Ok(Decl::Aspect(parse_aspect_decl(inner, filename)?)),
+        Rule::type_alias => Ok(Decl::TypeAlias(parse_type_alias(inner, filename)?)),
         Rule::stmt => Ok(Decl::Stmt(Box::new(parse_stmt(inner, filename)?))),
         r => Err(MetelError::internal(format!("decl: unexpected rule {r:?}"))),
     }
@@ -1650,6 +1651,7 @@ fn shift_decl_span(decl: &mut Decl, base_start: usize, base_line: u32, base_col:
             shift_span(&mut ad.span, base_start, base_line, base_col);
         }
         Decl::Stmt(stmt) => shift_stmt_span(stmt, base_start, base_line, base_col),
+        Decl::TypeAlias(ta) => shift_span(&mut ta.span, base_start, base_line, base_col),
     }
 }
 
@@ -3304,6 +3306,41 @@ fn parse_assoc_type_decl(
         .transpose()?
         .unwrap_or_default();
     Ok(AssocTypeDecl { name, bounds, span })
+}
+
+fn parse_type_alias(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<crate::ast::TypeAliasDecl, MetelError> {
+    let span = Span::of(&pair, filename);
+    let mut inner = pair.into_inner().peekable();
+    let visibility = if inner.peek().map(pest::iterators::Pair::as_rule) == Some(Rule::pub_kw) {
+        inner.next();
+        Visibility::Public
+    } else {
+        Visibility::Private
+    };
+    let name = inner
+        .next()
+        .ok_or_else(|| MetelError::internal("type_alias: expected name"))?
+        .as_str()
+        .to_string();
+    let mut generics = vec![];
+    let mut target = None;
+    for p in inner {
+        match p.as_rule() {
+            Rule::generic_params => generics = parse_generic_params(p, filename)?,
+            Rule::type_expr => target = Some(parse_type_expr(p, filename)?),
+            _ => {}
+        }
+    }
+    Ok(crate::ast::TypeAliasDecl {
+        visibility,
+        name,
+        generics,
+        target: target.ok_or_else(|| MetelError::internal("type_alias: expected target type"))?,
+        span,
+    })
 }
 
 fn parse_assoc_type_def(
