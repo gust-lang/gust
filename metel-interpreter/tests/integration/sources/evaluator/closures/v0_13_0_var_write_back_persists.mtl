@@ -2,9 +2,9 @@
 // writes to its by-value captures persist across calls -- private mutable
 // state, with no per-call re-clone (RFC 0157 D5 is the base this relies on).
 //
-fun make_counter() -> var () -> i64 {
+fun make_counter() -> var || -> i64 {
     let n := 0;
-    [n] var () -> i64 { n := n + 1; n }
+    [n] var || -> i64 { n := n + 1; n }
 }
 
 fun main() {

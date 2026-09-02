@@ -4,7 +4,7 @@
 //
 fun main() {
     var count := 0;
-    let bump := [&count] () -> () {
+    let bump := [&count] || -> () {
         count += 1; // error: `count` is captured by shared reference, not `&var`
     };
     bump();

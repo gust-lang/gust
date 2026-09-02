@@ -21,11 +21,11 @@ fun main() {
     let ok: Result<i64, i64> := Result::Ok { value = 10 };
     let err: Result<i64, i64> := Result::Err { error = 2 };
 
-    match (ok.map_err((e: i64) -> String { e.to_string() })) {
+    match (ok.map_err(|e: i64| -> String { e.to_string() })) {
         Result::Ok { value } => assert(value == 10),
         Result::Err { error } => assert(false),
     }
-    match (err.map_err((e: i64) -> String { e.to_string() })) {
+    match (err.map_err(|e: i64| -> String { e.to_string() })) {
         Result::Ok { value } => assert(false),
         Result::Err { error } => assert(error == "2"),
     }

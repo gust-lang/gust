@@ -3,7 +3,7 @@
 // TYPECHECK_ERROR[immutable binding]
 fun main() {
     let x := 10;
-    let f := () -> {
+    let f := || {
         let p: &var i64 := &var x;
         p := 42;
     };

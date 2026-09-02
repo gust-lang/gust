@@ -8,7 +8,7 @@ fun favourite() -> Colour { Green }
 // A closure with a declared return type gives its body an expected type, so a bare
 // variant inside it resolves normally.
 fun annotated_closure() -> Colour {
-    let f := () -> Colour { Red };
+    let f := || -> Colour { Red };
     return f();
 }
 
@@ -26,7 +26,7 @@ fun main() {
 
     // An empty array literal is deferred too, and is *genuinely* polymorphic -- the
     // #285 check is scoped to bare variants precisely so this keeps working.
-    let mk := () -> { [] };
+    let mk := || { [] };
     let ints: i64[] := mk();
     let strs: String[] := mk();
     assert(ints.len() == 0);

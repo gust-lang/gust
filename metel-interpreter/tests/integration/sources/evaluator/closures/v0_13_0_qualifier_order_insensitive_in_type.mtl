@@ -3,7 +3,7 @@
 // `once var (T) -> U` denote the identical type. (The closure *literal* prefix
 // order stays fixed -- legality-23.)
 //
-fun apply_it(f: var once (String) -> String) -> String {
+fun apply_it(f: var once |String| -> String) -> String {
     f("x")
 }
 
@@ -12,7 +12,7 @@ fun main() {
     let s := "seed";
     // literal order is `once var` (legality-23); body mutates `log` (-> var) and
     // moves captured `s` out (-> once), so `once var` is genuinely correct.
-    let g := [&var log, s] once var (extra: String) -> String {
+    let g := [&var log, s] once var |extra: String| -> String {
         log += 1;
         s
     };

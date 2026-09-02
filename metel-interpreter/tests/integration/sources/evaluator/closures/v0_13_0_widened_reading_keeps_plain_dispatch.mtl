@@ -4,11 +4,11 @@
 // branches on the value's own mutation axis, not the slot type. So calling it
 // twice from inside a `var`-typed parameter is fine.
 //
-fun call_mut(f: var () -> i64) -> i64 {
+fun call_mut(f: var || -> i64) -> i64 {
     f() + f()
 }
 
 fun main() {
-    let pure := () -> i64 { 7 }; // `reading`, `many`
+    let pure := || -> i64 { 7 }; // `reading`, `many`
     assert(call_mut(pure) == 14); // widens into the `var` slot, still dispatched plainly
 }

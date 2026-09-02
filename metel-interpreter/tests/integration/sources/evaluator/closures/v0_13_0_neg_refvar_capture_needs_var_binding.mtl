@@ -4,6 +4,6 @@
 //
 fun main() {
     let count := 0; // `let`, not `var`
-    var bump := [&var count] var () -> () { count += 1; }; // error: `count` is not `var`
+    var bump := [&var count] var || -> () { count += 1; }; // error: `count` is not `var`
     bump();
 }

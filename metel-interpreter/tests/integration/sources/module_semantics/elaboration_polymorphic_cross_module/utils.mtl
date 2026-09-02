@@ -4,4 +4,4 @@ public fun identity<T>(x: T) -> T { x }
 
 public fun first<T>(a: T, b: T) -> T { a }
 
-public fun apply<T>(f: (T) -> T, x: T) -> T { f(x) }
+public fun apply<T>(f: |T| -> T, x: T) -> T { f(x) }

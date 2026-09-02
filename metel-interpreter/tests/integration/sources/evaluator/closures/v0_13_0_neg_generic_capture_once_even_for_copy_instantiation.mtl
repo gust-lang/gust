@@ -4,8 +4,8 @@
 // closure `once` for *every* instantiation, `T = i64` included.
 //
 // Needs move_check = true (general moved-value check, RFC 0071).
-fun make<T>(t: T) -> once () -> T {
-    [t] once () -> T { t }
+fun make<T>(t: T) -> once || -> T {
+    [t] once || -> T { t }
 }
 
 fun main() {

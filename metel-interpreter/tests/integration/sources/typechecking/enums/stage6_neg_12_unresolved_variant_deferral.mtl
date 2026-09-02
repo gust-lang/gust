@@ -5,5 +5,5 @@
 enum Colour { Red, Green }
 
 fun main() {
-    let f := () -> { Red }; // ERROR[T0002]
+    let f := || { Red }; // ERROR[T0002]
 }

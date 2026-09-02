@@ -1,7 +1,7 @@
 fun main() {
     var calls := 0;
     var calls_ref: &var i64 := &var calls;
-    var next := [&var calls_ref] var () -> i64 {
+    var next := [&var calls_ref] var || -> i64 {
         *calls_ref += 1;
         *calls_ref
     };

@@ -201,7 +201,7 @@ fun best_attacker_idx(party: Fighter[]) -> Perhaps<i64> {
 fun simulate_rounds(
     f1_init:   Fighter,
     f2_init:   Fighter,
-    action_fn: (&Fighter, &Fighter) -> Action,
+    action_fn: |&Fighter, &Fighter| -> Action,
     n:         i64
 ) -> (Fighter, Fighter) {
     var f1 := f1_init;
@@ -224,9 +224,9 @@ fun simulate_rounds(
 // Uses RFC-0019: `return Perhaps::Some { value: ... }` and `return None`.
 fun battle(
     f1_init:    Fighter,
-    s1:         (&Fighter, &Fighter) -> Action,
+    s1:         |&Fighter, &Fighter| -> Action,
     f2_init:    Fighter,
-    s2:         (&Fighter, &Fighter) -> Action,
+    s2:         |&Fighter, &Fighter| -> Action,
     max_rounds: i64
 ) -> Perhaps<String> {
     var f1 := f1_init;
@@ -352,7 +352,7 @@ fun main() {
     // After 1 round: Goblin hp = 30 - (25-2) = 7.  Knight unchanged.
     let sim_knight := Fighter { name = "Knight", hp = 100, max_hp = 100, attack = 25, defense = 5 };
     let sim_goblin := Fighter { name = "Goblin", hp = 30, max_hp = 30, attack = 8, defense = 2 };
-    let sim_attack := (actor: &Fighter, target: &Fighter) -> Action { Action::Attack };
+    let sim_attack := |actor: &Fighter, target: &Fighter| -> Action { Action::Attack };
     let sim1 := simulate_rounds(sim_knight, sim_goblin, sim_attack, 1);
     assert(sim1.0.hp == 100);
     assert(sim1.1.hp == 7);
@@ -366,8 +366,8 @@ fun main() {
     //   Round 2: Knight hits Goblin for 23 → hp=0.  Knight wins.
     let battle_knight := Fighter { name = "Knight", hp = 100, max_hp = 100, attack = 25, defense = 5 };
     let battle_goblin := Fighter { name = "Goblin", hp = 30, max_hp = 30, attack = 8, defense = 2 };
-    let attack_s1 := (actor: &Fighter, target: &Fighter) -> Action { Action::Attack };
-    let attack_s2 := (actor: &Fighter, target: &Fighter) -> Action { Action::Attack };
+    let attack_s1 := |actor: &Fighter, target: &Fighter| -> Action { Action::Attack };
+    let attack_s2 := |actor: &Fighter, target: &Fighter| -> Action { Action::Attack };
     let result1 := battle(battle_knight, attack_s1, battle_goblin, attack_s2, 10);
     match (result1) {
         Perhaps::Some { value } => assert(value.len() > 0),
@@ -377,8 +377,8 @@ fun main() {
     // 15. Battle: draw when max_rounds = 0 (no rounds fought).
     let draw_knight := Fighter { name = "Knight", hp = 100, max_hp = 100, attack = 25, defense = 5 };
     let draw_goblin := Fighter { name = "Goblin", hp = 30, max_hp = 30, attack = 8, defense = 2 };
-    let draw_s1 := (actor: &Fighter, target: &Fighter) -> Action { Action::Attack };
-    let draw_s2 := (actor: &Fighter, target: &Fighter) -> Action { Action::Attack };
+    let draw_s1 := |actor: &Fighter, target: &Fighter| -> Action { Action::Attack };
+    let draw_s2 := |actor: &Fighter, target: &Fighter| -> Action { Action::Attack };
     let draw := battle(draw_knight, draw_s1, draw_goblin, draw_s2, 0);
     match (draw) { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
 
@@ -388,7 +388,7 @@ fun main() {
     //   Healer falls behind eventually and Mage wins within 20 rounds.
     let result2 := battle(
         Fighter { name = "Mage", hp = 60, max_hp = 60, attack = 30, defense = 1 },
-        (a: &Fighter, t: &Fighter) -> Action { Action::Attack },
+        |a: &Fighter, t: &Fighter| -> Action { Action::Attack },
         Fighter { name = "Healer", hp = 50, max_hp = 50, attack = 5, defense = 3 },
         smart_healer,
         20
@@ -400,7 +400,7 @@ fun main() {
 
     // 17. Closure capturing an outer variable (hp threshold for heal decision).
     let hp_threshold := 25;
-    let threshold_healer := (actor: &Fighter, target: &Fighter) -> Action {
+    let threshold_healer := |actor: &Fighter, target: &Fighter| -> Action {
         if (actor.hp < hp_threshold) {
             Action::Heal { amount = 10 }
         } else {

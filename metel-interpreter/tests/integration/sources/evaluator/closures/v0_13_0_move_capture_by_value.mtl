@@ -4,6 +4,6 @@
 //
 fun main() {
     let s := "hello";
-    let greet := [s] once () -> String { s };
+    let greet := [s] once || -> String { s };
     assert(greet() == "hello");
 }

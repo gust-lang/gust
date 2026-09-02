@@ -1,6 +1,6 @@
 fun main() {
     let x := loop {
-        let f := () -> i64 {
+        let f := || -> i64 {
             break; // ERROR[T0021]
         };
         break 1;

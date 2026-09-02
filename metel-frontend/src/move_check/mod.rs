@@ -2991,7 +2991,7 @@ fun main() {
             r#"
 fun main() {
     let n := 5;
-    let f := () -> i64 { return n; };
+    let f := || -> i64 { return n; };
     assert(n == 5);
 }
 "#,
@@ -3297,7 +3297,7 @@ fun main() {
             r#"
 fun main() {
     let s := "hello";
-    let f := [s] once () -> String { s };
+    let f := [s] once || -> String { s };
     let again := s;
 }
 "#,
@@ -3519,7 +3519,7 @@ fun main() {
             r#"
 fun increment(value: i64) -> i64 { value + 1 }
 
-fun apply(f: (i64) -> i64) -> i64 { f(1) }
+fun apply(f: |i64| -> i64) -> i64 { f(1) }
 
 fun main() {
     let f := increment;

@@ -6,6 +6,6 @@
 //
 fun main() {
     let c := 1;
-    let f := [c] var once () -> i64 { c }; // wrong order -- must be `once var`
+    let f := [c] var once || -> i64 { c }; // wrong order -- must be `once var`
     f();
 }

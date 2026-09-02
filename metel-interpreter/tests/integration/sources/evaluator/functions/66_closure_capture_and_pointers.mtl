@@ -1,13 +1,13 @@
 fun main() {
     var value := 1;
-    let captured := () -> i64 {
+    let captured := || -> i64 {
         value
     };
     value := 9;
 
     var shared := 0;
     var ptr := &var shared;
-    var bump := [&var ptr] var () -> i64 {
+    var bump := [&var ptr] var || -> i64 {
         *ptr += 1;
         ptr
     };
