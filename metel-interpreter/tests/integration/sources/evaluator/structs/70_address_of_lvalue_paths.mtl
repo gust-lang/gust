@@ -64,7 +64,7 @@ fun test_nested_tuple_address_of() {
 
 // ── Function reference from tuple element ────────────────────────────────────
 
-fun apply_fns(fns: Array<&() -> ()>) {
+fun apply_fns(fns: Array<&var var () -> ()>) {
     for (f in fns) {
         f();
     }
@@ -74,11 +74,9 @@ fun test_fn_ptr_from_tuple() {
     var counter := 0;
     var ptr := &var counter;
     var inc := [&var ptr] var () -> () { *ptr += 1; };
-    let get := () -> () { };
-
-    let ops := (inc, get);
-    apply_fns([&ops.0, &ops.1]);
-    assert(counter == 1);
+    var ops := (inc, inc);
+    apply_fns([&var ops.0, &var ops.1]);
+    assert(counter == 2);
 }
 
 // ── &T passed to function ─────────────────────────────────────────────────────
