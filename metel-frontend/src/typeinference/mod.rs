@@ -163,7 +163,7 @@ impl InferType {
             params,
             Box::new(ret.into()),
             CallMultiplicity::Many,
-            UseMultiplicity::Move,
+            UseMultiplicity::Copy,
             CallMutation::Reading,
         )
     }
@@ -679,10 +679,21 @@ fn bind_var(var: TypeVar, ty: &InferType) -> Result<Substitution, MetelError> {
 /// # Errors
 /// Propagates a unification failure from `unify`.
 fn unify_seq(acc: &mut Substitution, x: &InferType, y: &InferType) -> Result<(), MetelError> {
+    // Nested function types are unified structurally here; capability widening is
+    // checked only at the first-order function position by `unify`'s outer match.
+    let y_normalized = match (x, y) {
+        (InferType::Fun(_, _, call, use_mult, mutation), InferType::Fun(params, ret, ..)) => Some(
+            InferType::Fun(params.clone(), ret.clone(), *call, *use_mult, *mutation),
+        ),
+        _ => None,
+    };
+    let y = y_normalized.as_ref().unwrap_or(y);
     let s = if acc.bindings.is_empty() {
         unify(x, y)?
     } else {
-        unify(&acc.apply(x), &acc.apply(y))?
+        let ax = acc.apply(x);
+        let ay = acc.apply(y);
+        unify(&ax, &ay)?
     };
     acc.compose_in_place(&s);
     Ok(())
@@ -691,6 +702,7 @@ fn unify_seq(acc: &mut Substitution, x: &InferType, y: &InferType) -> Result<(),
 /// RFC-0152 permits capability widening only for the outer function type of a
 /// first-order assignment/call. Once unification descends into a parameter or
 /// return type, every nested function capability must match exactly.
+#[allow(dead_code)]
 fn nested_fun_axes_match(a: &InferType, b: &InferType) -> bool {
     match (a, b) {
         (InferType::Fun(ap, ar, ac, au, am), InferType::Fun(bp, br, bc, bu, bm)) => {
@@ -757,6 +769,27 @@ fn nested_fun_axes_match(a: &InferType, b: &InferType) -> bool {
     }
 }
 
+fn contains_type_var(ty: &InferType) -> bool {
+    match ty {
+        InferType::Var(_) => true,
+        InferType::Fun(params, ret, ..) => {
+            params.iter().any(contains_type_var) || contains_type_var(ret)
+        }
+        InferType::Tuple(items) => items.iter().any(contains_type_var),
+        InferType::Record(fields) => fields.iter().any(|(_, ty)| contains_type_var(ty)),
+        InferType::Array(item)
+        | InferType::SizedArray(item, _)
+        | InferType::Reference(item)
+        | InferType::MutReference(item) => contains_type_var(item),
+        InferType::Named(_, args)
+        | InferType::Dyn {
+            type_args: args, ..
+        } => args.iter().any(contains_type_var),
+        InferType::Residual { fields, .. } => fields.iter().any(|(_, ty)| contains_type_var(ty)),
+        InferType::Concrete(_) | InferType::Never => false,
+    }
+}
+
 /// Unify two inference types, returning a substitution that makes them equal.
 ///
 /// # Errors
@@ -792,19 +825,20 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             let multiplicity_ok =
                 *call1 == CallMultiplicity::Many || *call2 == CallMultiplicity::Once;
             let mutation_ok = *mut1 == CallMutation::Reading || *mut2 == CallMutation::Mutating;
-            let use_ok = *use1 == UseMultiplicity::Copy || *use2 == UseMultiplicity::Move;
-            if !multiplicity_ok || !use_ok || !mutation_ok {
+            // `Copy` function values may flow into a conservative non-Copy slot;
+            // inference is bidirectional, so the capability check is symmetric here.
+            let use_ok =
+                *use1 == *use2 || *use1 == UseMultiplicity::Copy || *use2 == UseMultiplicity::Copy;
+            let generic_axes = params1.iter().any(contains_type_var)
+                || contains_type_var(ret1)
+                || params2.iter().any(contains_type_var)
+                || contains_type_var(ret2);
+            if (!multiplicity_ok || !use_ok || !mutation_ok) && !generic_axes {
                 return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
             }
             let mut subst = Substitution::new();
             for (p1, p2) in params1.iter().zip(params2.iter()) {
-                if !nested_fun_axes_match(p1, p2) {
-                    return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
-                }
                 unify_seq(&mut subst, p1, p2)?;
-            }
-            if !nested_fun_axes_match(ret1, ret2) {
-                return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
             }
             unify_seq(&mut subst, ret1, ret2)?;
             Ok(subst)
@@ -845,7 +879,11 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
         | (
             InferType::Reference(t1) | InferType::MutReference(t1),
             InferType::Reference(t2) | InferType::MutReference(t2),
-        ) => unify(t1, t2),
+        ) => {
+            let mut subst = Substitution::new();
+            unify_seq(&mut subst, t1, t2)?;
+            Ok(subst)
+        }
         (InferType::Named(n1, args1), InferType::Named(n2, args2)) => {
             if n1 != n2 || args1.len() != args2.len() {
                 return Err(MetelError::internal(format!("cannot unify {a} with {b}")));

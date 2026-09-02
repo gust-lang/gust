@@ -57,10 +57,10 @@ fun test_array_of_fun_ptrs() {
 // Before auto-deref, this required (*inc_ptr)() inside the outer closure.
 fun test_closure_captures_fun_ptr() {
     var x := 0;
-    let p := &var x;
-    let inc := () -> { *p += 1; };
-    let inc_ptr := &inc;              // type: &() -> ()
-    let double_via_ptr := () -> {
+    var p: &var i64 := &var x;
+    var inc := [&var p] var () -> { *p += 1; };
+    var inc_ptr: &var () -> () := &var inc;
+    var double_via_ptr := [&var inc_ptr] var () -> () {
         inc_ptr();                   // auto-deref: calls the captured reference
         inc_ptr();
     };
@@ -71,10 +71,10 @@ fun test_closure_captures_fun_ptr() {
 // Same pattern, but the reference is &var () -> ()
 fun test_closure_captures_mut_fun_ptr() {
     var x := 0;
-    let p := &var x;
-    var add5 := () -> { *p += 5; };
+    var p: &var i64 := &var x;
+    var add5 := [&var p] var () -> { *p += 5; };
     var ptr := &var add5;
-    let triple := () -> {
+    var triple := [&var ptr] var () -> () {
         ptr();
         ptr();
         ptr();
@@ -100,8 +100,8 @@ fun test_capture_by_value() {
 // Using &var explicitly shares the mutation back to the outer scope.
 fun test_capture_via_pointer_propagates() {
     var x := 0;
-    let ptr := &var x;
-    let f := () -> { *ptr += 1; };
+    var ptr: &var i64 := &var x;
+    var f := [&var ptr] var () -> { *ptr += 1; };
     f();
     f();
     f();

@@ -295,7 +295,7 @@ fun main() {
         Pair { first = "cherries", second = 12 },
     ];
     let bananas := table_get(table_third, "bananas");
-    let total := option_and_then(apples_for_total, (a: i64) -> Option<i64> {
+    let total := option_and_then(apples_for_total, [bananas] once (a: i64) -> Option<i64> {
         option_map_2(bananas, (b: i64) -> i64 { a + b })
     });
     assert(option_or(total, 0) == 10);
