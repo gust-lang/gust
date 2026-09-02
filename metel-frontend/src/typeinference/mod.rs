@@ -163,7 +163,7 @@ impl InferType {
             params,
             Box::new(ret.into()),
             CallMultiplicity::Many,
-            UseMultiplicity::Copy,
+            UseMultiplicity::Move,
             CallMutation::Reading,
         )
     }
