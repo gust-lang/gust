@@ -1,8 +1,9 @@
 // v0.13.0 closure cluster (RFC 0153 dynamics-13): if a plain `var` (not
 // `once`) closure's body exits early via `?` or `return`, the mutations that
-// already ran stay visible and the closure remains callable in a
-// valid-but-partial state. (A `panic` is uncatchable and ends the process --
-// out of scope here.)
+// already ran stay in the environment and the closure is left as an ordinary
+// value whose captured state has been mutated -- not resumable; a later call
+// runs the body from the top over that state. (A `panic` is uncatchable and
+// ends the process -- out of scope here.)
 //
 // DRAFT FIXTURE -- written against the RFC text ahead of implementation
 // (metel-core#929). Not runnable yet: see the `skip` reason in the sidecar.
@@ -19,6 +20,6 @@ fun main() {
     };
     assert(step(true) == 1);   // returned after the first mutation only
     assert(log == 1);          // partial mutation is visible
-    assert(step(false) == 12); // closure still callable; resumes from log == 1
+    assert(step(false) == 12); // closure still callable; fresh call from the top over `log` == 1
     assert(log == 12);
 }
