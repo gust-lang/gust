@@ -682,9 +682,16 @@ fn unify_seq(acc: &mut Substitution, x: &InferType, y: &InferType) -> Result<(),
     // Nested function types are unified structurally here; capability widening is
     // checked only at the first-order function position by `unify`'s outer match.
     let y_normalized = match (x, y) {
-        (InferType::Fun(_, _, call, use_mult, mutation), InferType::Fun(params, ret, ..)) => Some(
-            InferType::Fun(params.clone(), ret.clone(), *call, *use_mult, *mutation),
-        ),
+        (
+            InferType::Fun(_, _, call, UseMultiplicity::Move, mutation),
+            InferType::Fun(params, ret, _, UseMultiplicity::Copy, _),
+        ) => Some(InferType::Fun(
+            params.clone(),
+            ret.clone(),
+            *call,
+            UseMultiplicity::Move,
+            *mutation,
+        )),
         _ => None,
     };
     let y = y_normalized.as_ref().unwrap_or(y);
