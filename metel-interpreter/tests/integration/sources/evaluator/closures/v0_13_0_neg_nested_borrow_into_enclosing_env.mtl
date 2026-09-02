@@ -3,9 +3,6 @@
 // enclosing closure. Interim rejection -- lifted when the borrow checker
 // (RFC 0122) lands.
 //
-// DRAFT FIXTURE -- written against the RFC text ahead of implementation
-// (metel-core#926). Not runnable yet: see the `skip` reason in the sidecar.
-// Intended once live: spec = ["spec.functions.closures.legality-11"]
 fun main() {
     let s := "data";
     let outer := [s] () -> boolean {

@@ -2,9 +2,6 @@
 // assigns to a by-value capture must be written `var`; omitting it is a
 // compile error at the definition site.
 //
-// DRAFT FIXTURE -- written against the RFC text ahead of implementation
-// (metel-core#929). Not runnable yet: see the `skip` reason in the sidecar.
-// Intended once live: spec = ["spec.functions.closures.legality-25"]
 fun main() {
     let n := 0;
     let bump := [n] () -> i64 { n := n + 1; n }; // mutates `n`; missing `var`

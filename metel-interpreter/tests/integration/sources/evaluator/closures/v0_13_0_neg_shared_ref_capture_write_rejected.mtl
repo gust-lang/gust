@@ -2,9 +2,6 @@
 // read-only. A body that writes through it is a compile error at the
 // capture, not a silent upgrade to `mutating`.
 //
-// DRAFT FIXTURE -- written against the RFC text ahead of implementation
-// (metel-core#926). Not runnable yet: see the `skip` reason in the sidecar.
-// Intended once live: spec = ["spec.functions.closures.legality-21"]
 fun main() {
     var count := 0;
     let bump := [&count] () -> () {

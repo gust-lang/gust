@@ -4,9 +4,6 @@
 // valid-but-partial state. (A `panic` is uncatchable and ends the process --
 // out of scope here.)
 //
-// DRAFT FIXTURE -- written against the RFC text ahead of implementation
-// (metel-core#929). Not runnable yet: see the `skip` reason in the sidecar.
-// Intended once live: spec = ["spec.functions.closures.dynamics-13"]
 fun main() {
     var log := 0;
     var step := [&var log] var (stop: boolean) -> i64 {

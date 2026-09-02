@@ -3,9 +3,6 @@
 // widening order, and each arm widens to it. Here one arm is genuinely
 // `once`, so the whole `if` is `once` and the `many` arm widens in.
 //
-// DRAFT FIXTURE -- written against the RFC text ahead of implementation
-// (metel-core#928). Not runnable yet: see the `skip` reason in the sidecar.
-// Intended once live: spec = ["spec.functions.closures.legality-16"]
 fun make_once(s: String) -> once () -> String {
     [s] () -> String { s }
 }

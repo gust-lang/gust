@@ -3,13 +3,10 @@
 // capture-list order, as a struct's fields are. A once-consumed or
 // partially-moved environment drops only its still-owned captures.
 //
-// DRAFT FIXTURE -- written against the RFC text ahead of implementation
-// (metel-core#930). Also blocked on metel-core#261 (destructor invocation):
-// non-empty `drop` bodies are rejected until that lands, so the *order* claim
-// can't be asserted with an observable side effect yet -- this fixture only
-// checks the captures are held and the closure runs.
-// Not runnable yet: see the `skip` reason in the sidecar.
-// Intended once live: spec = ["spec.functions.closures.dynamics-11"]
+// This fixture remains skipped pending metel-core#261 (destructor invocation):
+// non-empty `drop` bodies are rejected until then, so the *order* claim cannot
+// yet be asserted with an observable side effect. It only checks that captures
+// are held and the closure runs.
 struct Owned {
     id: i64,
 }
