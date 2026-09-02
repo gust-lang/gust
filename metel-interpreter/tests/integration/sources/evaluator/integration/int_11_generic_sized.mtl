@@ -20,8 +20,6 @@ fun map_to_list<T: Copy, U>(src: T[], f: (T) -> U) -> List<U> {
     out
 }
 
-fun double_i32(x: i32) -> i32 { x * 2i32 }
-
 fun all_positive_i32(lst: &List<i32>) -> boolean {
     var i: i64 := 0;
     let len: i64 := lst.len();
@@ -78,7 +76,7 @@ fun main() {
     let src_i32: i32[] := [1, 2, 3, 4, 5];
 
     // i32[] → List<i32> doubling each element.
-    let doubled: List<i32> := List::from([2i32, 4i32, 6i32, 8i32, 10i32]);
+    let doubled := map_to_list::<i32, i32>(src_i32, (x: i32) -> i32 { x * 2i32 });
     assert((&doubled).len() == 5);
     match ((&doubled).get(0)) {
         Perhaps::Some { value } => assert(value == 2i32),

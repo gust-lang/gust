@@ -1992,8 +1992,10 @@ fn run_main(env: &mut Environment, runtime: &RuntimeRegistry) -> Result<(), Mete
         line: 0,
         col: 0,
     };
-    let main_body = match env.get("main") {
-        Some(Value::Callable(RuntimeCallable::Closure(rc))) => rc.body.clone(),
+    let (main_body, main_params, main_type_ctx) = match env.get("main") {
+        Some(Value::Callable(RuntimeCallable::Closure(rc))) => {
+            (rc.body.clone(), rc.params.clone(), rc.type_ctx.clone())
+        }
         Some(Value::Unit) => {
             return Err(MetelError::panic(
                 RuntimeErrorCode::R0002,
@@ -2019,14 +2021,34 @@ fn run_main(env: &mut Environment, runtime: &RuntimeRegistry) -> Result<(), Mete
     profiler_enter("main");
     let main_sig = match &main_body {
         ClosureBody::Typed(b) => eval_block(b, env, runtime),
-        ClosureBody::Untyped(_) => {
-            profiler_exit();
-            return Err(MetelError::panic(
+        // An unannotated, all-diverging `main` has a free return variable: `!`
+        // satisfies it without binding it during inference, so it is stored as a
+        // generic body despite having no source-level generic parameters. Construct
+        // that zero-argument body here just as ordinary generic calls do.
+        ClosureBody::Untyped(b) => match main_type_ctx {
+            Some(type_ctx) => match type_ctx.scheme_env.get("main") {
+                Some(scheme) => crate::typechecker::construct_generic_body(
+                    scheme,
+                    &main_params,
+                    &[],
+                    b,
+                    &dummy,
+                    &type_ctx,
+                    None,
+                )
+                .and_then(|typed| eval_block(&typed, env, runtime)),
+                None => Err(MetelError::panic(
+                    RuntimeErrorCode::R0002,
+                    "main() body could not be typed",
+                    &dummy,
+                )),
+            },
+            None => Err(MetelError::panic(
                 RuntimeErrorCode::R0002,
                 "main() body could not be typed",
                 &dummy,
-            ));
-        }
+            )),
+        },
     };
     profiler_exit();
     match main_sig? {

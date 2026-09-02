@@ -679,12 +679,15 @@ fn bind_var(var: TypeVar, ty: &InferType) -> Result<Substitution, MetelError> {
 /// # Errors
 /// Propagates a unification failure from `unify`.
 fn unify_seq(acc: &mut Substitution, x: &InferType, y: &InferType) -> Result<(), MetelError> {
-    // Nested function types are unified structurally here; capability widening is
-    // checked only at the first-order function position by `unify`'s outer match.
+    // Type syntax has no use-multiplicity qualifier. Its conservative `Move`
+    // placeholder is refined to the concrete Copy capability of a function
+    // value during construction, so only this synthetic Copy-to-Move mismatch
+    // is erased while instantiating a generic signature. Call multiplicity and
+    // mutation remain exact below the first function level (RFC-0152).
     let y_normalized = match (x, y) {
         (
-            InferType::Fun(_, _, call, UseMultiplicity::Move, mutation),
-            InferType::Fun(params, ret, _, UseMultiplicity::Copy, _),
+            InferType::Fun(_, _, _, UseMultiplicity::Move, _),
+            InferType::Fun(params, ret, call, UseMultiplicity::Copy, mutation),
         ) => Some(InferType::Fun(
             params.clone(),
             ret.clone(),
@@ -709,12 +712,15 @@ fn unify_seq(acc: &mut Substitution, x: &InferType, y: &InferType) -> Result<(),
 /// RFC-0152 permits capability widening only for the outer function type of a
 /// first-order assignment/call. Once unification descends into a parameter or
 /// return type, every nested function capability must match exactly.
-#[allow(dead_code)]
 fn nested_fun_axes_match(a: &InferType, b: &InferType) -> bool {
     match (a, b) {
         (InferType::Fun(ap, ar, ac, au, am), InferType::Fun(bp, br, bc, bu, bm)) => {
             ac == bc
-                && au == bu
+                // A surface function type cannot spell a use multiplicity.
+                // Its `Move` placeholder is refined from a concrete Copy
+                // callable during construction; this is not a nested widening
+                // rule. The call and mutation capabilities remain exact.
+                && (au == bu || matches!((au, bu), (UseMultiplicity::Move, UseMultiplicity::Copy)))
                 && am == bm
                 && ap.len() == bp.len()
                 && ap.iter().zip(bp).all(|(a, b)| nested_fun_axes_match(a, b))
@@ -832,8 +838,10 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             let multiplicity_ok =
                 *call1 == CallMultiplicity::Many || *call2 == CallMultiplicity::Once;
             let mutation_ok = *mut1 == CallMutation::Reading || *mut2 == CallMutation::Mutating;
-            // `Copy` function values may flow into a conservative non-Copy slot;
-            // inference is bidirectional, so the capability check is symmetric here.
+            // Construction can check a generic scheme in either direction while
+            // recovering its concrete instantiation. A Copy value is compatible
+            // with a conservative non-Copy slot in either orientation here; the
+            // first-order direction is enforced at the concrete call sites.
             let use_ok =
                 *use1 == *use2 || *use1 == UseMultiplicity::Copy || *use2 == UseMultiplicity::Copy;
             let generic_axes = params1.iter().any(contains_type_var)
@@ -845,7 +853,13 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             }
             let mut subst = Substitution::new();
             for (p1, p2) in params1.iter().zip(params2.iter()) {
+                if !nested_fun_axes_match(p1, p2) {
+                    return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
+                }
                 unify_seq(&mut subst, p1, p2)?;
+            }
+            if !nested_fun_axes_match(ret1, ret2) {
+                return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
             }
             unify_seq(&mut subst, ret1, ret2)?;
             Ok(subst)

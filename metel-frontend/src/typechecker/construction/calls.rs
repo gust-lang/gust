@@ -470,10 +470,9 @@ pub(super) fn construct_call(
     if explicit_tys.is_some() {
         if let Type::Fun(params, ..) = fun_ty_for_hints {
             if params.len() == typed_args.len()
-                && typed_args
-                    .iter()
-                    .zip(params.iter())
-                    .any(|(a, p)| a.ty() != p)
+                && typed_args.iter().zip(params.iter()).any(|(arg, param)| {
+                    unify(&type_to_infer(arg.ty()), &type_to_infer(param)).is_err()
+                })
             {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0001,

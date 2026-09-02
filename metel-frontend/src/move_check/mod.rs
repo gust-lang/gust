@@ -3297,7 +3297,7 @@ fun main() {
             r#"
 fun main() {
     let s := "hello";
-    let f := () -> String { s };
+    let f := [s] once () -> String { s };
     let again := s;
 }
 "#,
