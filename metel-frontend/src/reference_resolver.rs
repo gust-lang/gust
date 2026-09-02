@@ -210,6 +210,9 @@ impl Walker<'_, '_> {
                 }
             }
             Decl::Struct(_) | Decl::Enum(_) => {}
+            Decl::TypeAlias(_) => {
+                unreachable!("RFC-0160 type aliases are expanded before reference resolution")
+            }
             Decl::Stmt(s) => self.resolve_stmt(s),
         }
     }

@@ -1,0 +1,5 @@
+// RFC-0160 OQ4: a transparent alias may not be recursive — direct or through a
+// chain. There is no finite expansion.
+type Json := Wrap<Json>;
+type Wrap<T> := T;
+fun main() { }

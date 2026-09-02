@@ -1,0 +1,20 @@
+// RFC-0160: an alias works in every type position — struct fields, parameters,
+// return types — and an alias of a tuple/record composes.
+type Pair<A, B> := (A, B);
+type Row := Pair<i64, boolean>;
+
+struct Holder {
+    slot: Row,
+}
+
+fun swap_first(h: Holder, v: i64) -> Row {
+    (v, h.slot.1)
+}
+
+fun main() {
+    let h := Holder { slot = (1, true) };
+    let r: Row := swap_first(h, 9);
+    assert(r.0 == 9);
+    assert(r.1);
+    println("ok");
+}

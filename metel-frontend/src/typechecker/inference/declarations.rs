@@ -406,6 +406,7 @@ pub(super) fn infer_decl(
             }
             Ok(InferType::unit())
         }
+        Decl::TypeAlias(_) => unreachable!("RFC-0160 type aliases are expanded before inference"),
         Decl::Stmt(stmt) => infer_stmt(stmt, ctx, fun_generalizations),
     }
 }

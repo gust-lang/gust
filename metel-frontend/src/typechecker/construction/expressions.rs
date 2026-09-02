@@ -48,7 +48,8 @@ fn collect_closure_body_uses(
             crate::ast::Decl::Struct(_)
             | crate::ast::Decl::Enum(_)
             | crate::ast::Decl::Impl(_)
-            | crate::ast::Decl::Aspect(_) => {}
+            | crate::ast::Decl::Aspect(_)
+            | crate::ast::Decl::TypeAlias(_) => {}
         }
     }
     if let Some(tail) = &block.tail {

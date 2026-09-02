@@ -52,12 +52,18 @@ decl = {
     fun_decl
   | struct_decl
   | enum_decl
-  | impl_block
+  | type_alias     // RFC-0160: `type Name := T;` at module or block scope. `type … := …`
+  | impl_block     //   inside aspect/extend is `assoc_type_def` — a different position.
   | aspect_decl
   | stmt          // before let-bindings so that let_x=5 is an assignment
   | let_mut_decl
   | let_decl
 }
+
+// RFC-0160: a transparent type alias. `:=` per RFC-0136 (the alias name is a kept
+// binding), matching `assoc_type_def`. Reachable through `decl` at module scope and,
+// via `block_item`, inside a function / block body.
+type_alias = { pub_kw? ~ "type" ~ ident ~ generic_params? ~ ":=" ~ type_expr ~ ";" }
 
 // RFC-0136: the initializer separator is `:=` (a kept binding). Old `=` here is
 // a hard parse error, no alias. Type annotation stays `:`.
