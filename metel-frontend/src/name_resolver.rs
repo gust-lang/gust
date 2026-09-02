@@ -97,7 +97,10 @@ use crate::symbols::SymbolTable;
 /// Resolve a module path to its canonical form by dereferencing any alias. See ADR-0031.
 /// Handles prefix aliases: if `["a", "b"]` → `["x", "y"]`, then
 /// `["a", "b", "c"]` → `["x", "y", "c"]`.
-fn canonical_path(path: &[String], aliases: &HashMap<Vec<String>, Vec<String>>) -> Vec<String> {
+pub(crate) fn canonical_path(
+    path: &[String],
+    aliases: &HashMap<Vec<String>, Vec<String>>,
+) -> Vec<String> {
     for len in (1..=path.len()).rev() {
         if let Some(prefix_canon) = aliases.get(&path[..len]) {
             let mut result = prefix_canon.clone();

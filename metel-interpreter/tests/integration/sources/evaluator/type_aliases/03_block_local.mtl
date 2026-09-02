@@ -1,0 +1,34 @@
+// RFC-0160: a `type` alias may be declared inside a function or block body, not
+// only at module scope. A block-local alias is lexically scoped — it shadows an
+// outer alias of the same name for the rest of that block and no further — and
+// it is visible in every nested type position, including a closure parameter
+// annotation.
+type Unit := i64;
+
+// The block-local `Unit` shadows the module alias within this body only.
+fun shadow_body() -> Unit {
+    type Unit := boolean;
+    let flag: Unit := true;
+    if (flag) { 1 } else { 0 }
+}
+
+// The shadow did not leak: `Unit` is the module alias (i64) again here.
+fun no_leak() -> Unit {
+    let n: Unit := 5;
+    n
+}
+
+// A block-local alias used to name a closure type, in a parameter annotation.
+fun apply_twice() -> i64 {
+    type Op := |i64| -> i64;
+    let double: Op := |x: i64| -> i64 { x * 2 };
+    let apply := |f: Op, v: i64| -> i64 { f(v) };
+    apply(double, 21)
+}
+
+fun main() {
+    assert(shadow_body() == 1);
+    assert(no_leak() == 5);
+    assert(apply_twice() == 42);
+    println("ok");
+}

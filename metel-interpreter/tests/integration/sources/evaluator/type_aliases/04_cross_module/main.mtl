@@ -1,0 +1,18 @@
+// RFC-0160: a `public type` alias crosses module boundaries — imported by name,
+// under a local rename, and referenced with a qualified path. All three spell
+// the same erased type, interchangeable with its expansion.
+import geometry::{Vec2, Transform};
+import geometry::Vec2 as Point;
+
+fun apply(t: Transform, p: Vec2) -> Vec2 {
+    t(p)
+}
+
+fun main() {
+    let shift: Transform := |v: Vec2| -> Vec2 { (v.0 + 1.0, v.1 + 1.0) };
+    let origin: Point := (0.0, 0.0);
+    let moved: geometry::Vec2 := apply(shift, origin);
+    assert(moved.0 == 1.0);
+    assert(moved.1 == 1.0);
+    println("ok");
+}
