@@ -2,10 +2,7 @@
 // callee place at the call expression; a second call is the ordinary
 // moved-value error.
 //
-// DRAFT FIXTURE -- written against the RFC text ahead of implementation
-// (metel-core#927). Not runnable yet: see the `skip` reason in the sidecar.
 // Needs move_check = true (general moved-value check, RFC 0071).
-// Intended once live: spec = ["spec.functions.closures.dynamics-10"]
 fun main() {
     let s := "hello";
     let take := [s] once () -> String { s };

@@ -2,9 +2,6 @@
 // requires `ident` to be a `var` binding. (A closure literal also cannot
 // reference its own `let` binding -- not exercised here.)
 //
-// DRAFT FIXTURE -- written against the RFC text ahead of implementation
-// (metel-core#926). Not runnable yet: see the `skip` reason in the sidecar.
-// Intended once live: spec = ["spec.functions.closures.legality-13"]
 fun main() {
     let count := 0; // `let`, not `var`
     var bump := [&var count] var () -> () { count += 1; }; // error: `count` is not `var`

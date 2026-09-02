@@ -3,9 +3,6 @@
 // one-way precision loss. Later reads of the field yield a `var` value; there
 // is no automatic re-narrowing back to `reading`.
 //
-// DRAFT FIXTURE -- written against the RFC text ahead of implementation
-// (metel-core#928). Not runnable yet: see the `skip` reason in the sidecar.
-// Intended once live: spec = ["spec.functions.closures.dynamics-14"]
 struct Box {
     run: var () -> i64,
 }

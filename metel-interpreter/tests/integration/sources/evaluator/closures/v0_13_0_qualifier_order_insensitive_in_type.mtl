@@ -3,9 +3,6 @@
 // `once var (T) -> U` denote the identical type. (The closure *literal* prefix
 // order stays fixed -- legality-23.)
 //
-// DRAFT FIXTURE -- written against the RFC text ahead of implementation
-// (metel-core#929). Not runnable yet: see the `skip` reason in the sidecar.
-// Intended once live: spec = ["spec.functions.closures.legality-24"]
 fun apply_it(f: var once (String) -> String) -> String {
     f("x")
 }

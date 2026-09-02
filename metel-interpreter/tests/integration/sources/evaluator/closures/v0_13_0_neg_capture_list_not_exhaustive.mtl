@@ -2,9 +2,6 @@
 // present it must be exhaustive -- every free local the body references must
 // appear, even `Copy` ones. Module-level items are never capture items.
 //
-// DRAFT FIXTURE -- written against the RFC text ahead of implementation
-// (metel-core#926). Not runnable yet: see the `skip` reason in the sidecar.
-// Intended once live: spec = ["spec.functions.closures.legality-7"]
 fun main() {
     let a := 1;
     let b := 2;

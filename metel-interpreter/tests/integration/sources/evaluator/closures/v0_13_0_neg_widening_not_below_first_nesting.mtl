@@ -4,9 +4,6 @@
 // settled higher-order (contravariant) rule would accept. That rule is
 // RFC 0155's, not v0.13.0's.
 //
-// DRAFT FIXTURE -- written against the RFC text ahead of implementation
-// (metel-core#928). Not runnable yet: see the `skip` reason in the sidecar.
-// Intended once live: spec = ["spec.functions.closures.legality-15"]
 fun sink(cb: (var () -> i64) -> i64) -> i64 {
     0
 }

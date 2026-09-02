@@ -2,9 +2,6 @@
 // -- a `once` function value may NOT be used where a `many` slot is
 // expected; the reverse of legality-9 is the ordinary type mismatch.
 //
-// DRAFT FIXTURE -- written against the RFC text ahead of implementation
-// (metel-core#928). Not runnable yet: see the `skip` reason in the sidecar.
-// Intended once live: spec = ["spec.functions.closures.legality-9"]
 fun call_many(f: () -> String) -> String {
     f() + f() // calls twice -- needs `many`
 }

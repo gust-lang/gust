@@ -2,10 +2,7 @@
 // exactly when every capture is `Copy`. `[n]` over `n: i64` yields a `Copy`
 // closure -- it can be copied and the original stays usable.
 //
-// DRAFT FIXTURE -- written against the RFC text ahead of implementation
-// (metel-core#927). Not runnable yet: see the `skip` reason in the sidecar.
 // Needs move_check = true (so a non-Copy closure would fail the reuse below).
-// Intended once live: spec = ["spec.functions.closures.legality-20"]
 fun main() {
     let n := 7;
     let get := [n] () -> i64 { n }; // n: i64 is Copy => `get` is Copy

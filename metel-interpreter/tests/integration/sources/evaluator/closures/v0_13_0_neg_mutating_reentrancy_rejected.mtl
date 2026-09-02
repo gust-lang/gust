@@ -3,9 +3,6 @@
 // call on the same closure value reached from inside the first is rejected --
 // before the borrow checker lands, as a runtime error (R0007).
 //
-// DRAFT FIXTURE -- written against the RFC text ahead of implementation
-// (metel-core#929). Not runnable yet: see the `skip` reason in the sidecar.
-// Intended once live: spec = ["spec.functions.closures.dynamics-9"]
 struct Cell {
     go: var () -> i64,
 }
