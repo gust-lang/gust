@@ -1,0 +1,29 @@
+// RFC-0137 / RFC-0117 (metel-core#950): with `--move-check` on, a whole-value use
+// of a binding whose type has narrowed to a residual / narrower record is legal
+// -- narrowing removed exactly the moved fields, so the use touches none of them.
+// Before #950, `move_check` flagged every whole-value use of a partially-moved
+// binding regardless of its current type.
+
+struct Handle { fd: i64, name: String }
+fun take_fd(h: Handle.{ fd }) -> i64 { h.fd }
+fun right_of(r: { right: i64 }) -> i64 { r.right }
+
+fun main() {
+    // Struct: narrowed to Handle.{ fd }, then moved in by value once.
+    let h := Handle { fd = 3, name = "x" };
+    let hn := h.name;
+    assert(take_fd(h) == 3);
+
+    // Anonymous record: narrowed to { right: i64 }, then moved in by value once.
+    let r := { left = "a".to_string(), right = 9 };
+    let rl := r.left;
+    assert(right_of(r) == 9);
+
+    // A narrowed binding read (not moved) as a whole is fine too.
+    let g := Handle { fd = 4, name = "y" };
+    let gn := g.name;
+    let alias := g.{ fd };
+    assert(alias.fd == 4);
+
+    println("${hn} ${rl} ${gn}");
+}
