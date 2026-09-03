@@ -1,0 +1,3 @@
+// An intermediate module that re-exports the aliases wholesale without
+// redeclaring them.
+export shapes::*;
