@@ -11,6 +11,12 @@ For the release chain in the context of every other script and CI workflow acros
 four repos — including the per-PR checks and the manual docs-only path this document
 doesn't cover — see [`PROCESSES.md`](PROCESSES.md).
 
+**Before the tag:** the milestone passes two gates that this chain assumes are already
+green — `/milestone-integration-test <version>` (cross-feature testing, commits
+`docs/release-notes/integration/<version>.md`) and then `/cut-release <version>` (the
+repo-wide release gate, which checks for that report). This document picks up at the
+`git push origin vX.Y.Z` those produce.
+
 ## The chain
 
 ```

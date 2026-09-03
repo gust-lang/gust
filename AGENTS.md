@@ -111,6 +111,13 @@ Read the `test result:` and Clippy tails. If Tier 3 exposes a defect, fix it, re
 focused regression first, then rerun only the failed gate and finally one complete Tier
 3 pass. CI runs the same release-level gate.
 
+**Milestone gate — once per release, not per PR.** Tier 3 proves each diff in isolation.
+Before a milestone is declared finished, `/milestone-integration-test <version>` exercises
+its features *in combination* — the cross-feature cases no single PR's fixtures cover —
+and commits `docs/release-notes/integration/<version>.md`. `/cut-release` gates on that
+report (its Step 1b). Run order for a release: `/gap-analysis` → implement the issues →
+`/milestone-integration-test` → `/cut-release`.
+
 ### Clippy suppressions
 
 Fix the warning by default. A `#[allow(clippy::...)]` is acceptable only when the lint

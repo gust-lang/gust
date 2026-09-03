@@ -122,6 +122,7 @@ all.
 | `.claude/commands/ship-issue.md` | manual slash command | issue branch | PR to `develop`, fast-forward merge | — |
 | `.claude/commands/cut-release.md` | manual slash command | `develop` | tag on `main`, triggers `release.yml` | — |
 | `.claude/commands/gap-analysis.md` | manual slash command | milestone's open issues | edited/created issues | — |
+| `.claude/commands/milestone-integration-test.md` | manual slash command (once per milestone, after `/gap-analysis`, before `/cut-release`) | milestone's `4-implemented` RFCs + changelog in-progress section, fixture corpus | new cross-feature fixtures, `docs/release-notes/integration/<version>.md`, issues for findings | — |
 | `.claude/commands/review-typechecker.md` | manual slash command | a typechecker/inference diff | review report | — |
 | `.claude/commands/new-rfc.md` | manual slash command | `docs/rfcs/` | new draft RFC | — |
 | `RELEASING.md` | — (process doc) | — | — | — |
