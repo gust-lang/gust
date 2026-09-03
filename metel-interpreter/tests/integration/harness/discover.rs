@@ -41,9 +41,30 @@ struct DiscoveredFixture {
 }
 
 pub fn run_discovered_fixture(suite: &str, relative_path: &Path) {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative_path);
-    let config = resolve_fixture_config(suite, &path);
-    run_fixture(&path, &config);
+    // metel-core#960 / #965: the tree-walk evaluator recurses per AST node, and
+    // in the debug profile `eval_expr` — a `match` over every `TypedExpr`
+    // variant — has a ~60 KB frame (the compiler reserves every arm's locals at
+    // once). A fixture with even a ~10-deep recursive function (`count_down(10)`)
+    // then overflows libtest's ~2 MiB worker-thread stack and aborts the whole
+    // binary; `--release` packs the frame small enough to fit, which is why CI
+    // stays green. Splitting `eval_expr` into per-arm helpers shrinks the debug
+    // frame but measured a ~20% eval-throughput regression in release (#965), so
+    // the fix is simply to give the fixture worker the same 8 MiB the shipped
+    // `metel` binary's main thread gets — a modest cushion, no runtime cost.
+    let suite = suite.to_string();
+    let relative_path = relative_path.to_path_buf();
+    let worker = std::thread::Builder::new()
+        .name("fixture".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || {
+            let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(&relative_path);
+            let config = resolve_fixture_config(&suite, &path);
+            run_fixture(&path, &config);
+        })
+        .expect("spawn fixture worker thread");
+    if let Err(payload) = worker.join() {
+        std::panic::resume_unwind(payload);
+    }
 }
 
 /// Every fixture under every suite root, sorted by `(suite order, path)`.
