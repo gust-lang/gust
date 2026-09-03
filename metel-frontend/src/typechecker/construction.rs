@@ -1674,6 +1674,29 @@ fn maybe_dyn_coerce(
     })
 }
 
+/// RFC-0166: a written function type `|T| -> U` is move-only. When a `let` / `var`
+/// binding (or a `for`-init binding) is annotated with a function type, the
+/// binding takes that written type — not the value's own. A function value the
+/// compiler proved copyable (a named function, a capture-free closure) is
+/// accepted into the slot by moving; its `Copy`-ness is dropped at the boundary
+/// and not re-derived downstream. Re-stamping the RHS node's stated type here is
+/// what makes the move checker (which reads `let_decl.value.ty()`) see the
+/// binding as move-only.
+///
+/// Only the outer use-multiplicity axis can differ at this point — Pass 1's
+/// `unify` already accepted the first-order `Copy → Move` direction and rejected
+/// every genuine mismatch, so this never masks an error. `expected` not being a
+/// function type, or `actual` already carrying it, is the no-op path.
+fn maybe_fn_move_coerce(expected: &Type, actual: TypedExpr) -> TypedExpr {
+    if !matches!(expected, Type::Fun(..)) || actual.ty() == expected {
+        return actual;
+    }
+    if matches!(actual.ty(), Type::Fun(..)) {
+        return actual.with_ty(expected.clone());
+    }
+    actual
+}
+
 // ── Typed place construction ──────────────────────────────────────────────────
 
 fn assign_target_to_typed_place(

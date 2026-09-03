@@ -1656,6 +1656,17 @@ fn constrain_with_read_copy(
         ctx.add_constraint(actual, declared.clone(), span);
         return declared;
     }
+    // RFC-0166: a written function type `|T| -> U` is move-only. At a declared-type
+    // boundary (`let` / `mut` / ascription / return) bind to the *written* type,
+    // not the value's own — a function value the compiler proved copyable is
+    // accepted into the slot by moving, and its copyability is neither carried by
+    // the written type nor recovered downstream. The `add_constraint` still runs
+    // the ordinary `unify` check (first-order Copy→Move is legal there), so this
+    // only changes which of two constrained-equal types names the binding.
+    if matches!(declared, InferType::Fun(..)) {
+        ctx.add_constraint(actual, declared.clone(), span);
+        return declared;
+    }
     ctx.add_constraint(actual.clone(), declared, span);
     actual
 }

@@ -1,0 +1,32 @@
+// v0.13.0 (RFC-0166): a *written* function type `|T| -> U` is move-only. A
+// function value the compiler proved copyable -- a named function here -- is
+// accepted into such a slot by moving. The written type does not carry the
+// copyability forward: `pick` returns its argument through a written function
+// return type, so the result the caller gets back is a plain move-only value.
+//
+// A `many` `reading` call is a shared borrow, not a consume, so calling a
+// written-fn-typed parameter any number of times is fine -- only a repeated
+// *by-value* use is the use-after-move. The companion negatives
+// `typechecking/functions/v0_13_0_neg_written_fn_type_use_after_move.mtl` and
+// `..._neg_written_fn_param_use_after_move.mtl` cover that direction.
+
+fun add_one(x: i64) -> i64 { x + 1 }
+
+// first-order: a named (Copy) function into a written `|i64| -> i64` parameter,
+// called twice -- repeated calls do not move.
+fun apply_twice(f: |i64| -> i64, x: i64) -> i64 { f(x) + f(x + 1) }
+
+// written function *return* type -- the value handed back is move-only.
+fun pick(f: |i64| -> i64) -> |i64| -> i64 { f }
+
+fun main() {
+    assert(apply_twice(add_one, 10) == 23); // (10+1) + (11+1)
+
+    let chosen := pick(add_one);
+    assert(chosen(9) == 10);
+
+    // a capture-free closure literal is copyable too and is accepted the same way.
+    assert(apply_twice(|n: i64| { n * 2 }, 10) == 42); // 20 + 22
+
+    println("ok");
+}

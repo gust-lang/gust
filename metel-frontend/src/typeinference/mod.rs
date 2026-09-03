@@ -679,11 +679,12 @@ fn bind_var(var: TypeVar, ty: &InferType) -> Result<Substitution, MetelError> {
 /// # Errors
 /// Propagates a unification failure from `unify`.
 fn unify_seq(acc: &mut Substitution, x: &InferType, y: &InferType) -> Result<(), MetelError> {
-    // Type syntax has no use-multiplicity qualifier. Its conservative `Move`
-    // placeholder is refined to the concrete Copy capability of a function
-    // value during construction, so only this synthetic Copy-to-Move mismatch
-    // is erased while instantiating a generic signature. Call multiplicity and
-    // mutation remain exact below the first function level (RFC-0152).
+    // RFC-0166: a written function type is move-only (no use-multiplicity
+    // qualifier in the surface). A concrete `Copy` function value is accepted
+    // into a written (`Move`) slot at a first-order site by moving — that is the
+    // one Copy-to-Move step, and it stays first-order only. Call multiplicity
+    // and mutation remain exact below the first function level (RFC-0152), and
+    // as of RFC-0166 so does the use axis (see `nested_fun_axes_match`).
     let y_normalized = match (x, y) {
         (
             InferType::Fun(_, _, _, UseMultiplicity::Move, _),
@@ -709,43 +710,57 @@ fn unify_seq(acc: &mut Substitution, x: &InferType, y: &InferType) -> Result<(),
     Ok(())
 }
 
-/// RFC-0152 permits capability widening only for the outer function type of a
-/// first-order assignment/call. Once unification descends into a parameter or
-/// return type, every nested function capability must match exactly.
+/// Structural axis check for the parameter / return types of a first-order
+/// function-type unification.
+///
+/// `depth == 0` is a direct argument / return slot of that first-order match — a
+/// `Copy` function value handed to a `Move` (written) parameter is accepted by
+/// moving (RFC-0152 first-order; RFC-0166). `depth >= 1` is a genuinely nested
+/// callback — a callback *of* a callback — where every axis, the by-value use
+/// axis included, must match exactly, just as `once` / `var` do below the first
+/// function level (RFC-0166).
 fn nested_fun_axes_match(a: &InferType, b: &InferType) -> bool {
+    nested_fun_axes_match_at(a, b, 0)
+}
+
+fn nested_fun_axes_match_at(a: &InferType, b: &InferType, fun_depth: usize) -> bool {
+    // Structural recursion (tuple / record / array / named / reference) keeps the
+    // same function-nesting depth — a `Copy` function value inside a tuple that
+    // is a first-order argument is still a first-order coercion site. Only
+    // descending through the parameters / return of a `Fun` goes one function
+    // level deeper.
+    let same = |a: &InferType, b: &InferType| nested_fun_axes_match_at(a, b, fun_depth);
+    let deeper = |a: &InferType, b: &InferType| nested_fun_axes_match_at(a, b, fun_depth + 1);
     match (a, b) {
         (InferType::Fun(ap, ar, ac, au, am), InferType::Fun(bp, br, bc, bu, bm)) => {
+            let use_ok = au == bu
+                || (fun_depth == 0
+                    && matches!((au, bu), (UseMultiplicity::Move, UseMultiplicity::Copy)));
             ac == bc
-                // A surface function type cannot spell a use multiplicity.
-                // Its `Move` placeholder is refined from a concrete Copy
-                // callable during construction; this is not a nested widening
-                // rule. The call and mutation capabilities remain exact.
-                && (au == bu || matches!((au, bu), (UseMultiplicity::Move, UseMultiplicity::Copy)))
+                && use_ok
                 && am == bm
                 && ap.len() == bp.len()
-                && ap.iter().zip(bp).all(|(a, b)| nested_fun_axes_match(a, b))
-                && nested_fun_axes_match(ar, br)
+                && ap.iter().zip(bp).all(|(a, b)| deeper(a, b))
+                && deeper(ar, br)
         }
         (InferType::Tuple(as_), InferType::Tuple(bs)) => {
-            as_.len() == bs.len() && as_.iter().zip(bs).all(|(a, b)| nested_fun_axes_match(a, b))
+            as_.len() == bs.len() && as_.iter().zip(bs).all(|(a, b)| same(a, b))
         }
         (InferType::Record(as_), InferType::Record(bs)) => {
             as_.len() == bs.len()
                 && as_
                     .iter()
                     .zip(bs)
-                    .all(|((an, a), (bn, b))| an == bn && nested_fun_axes_match(a, b))
+                    .all(|((an, a), (bn, b))| an == bn && same(a, b))
         }
         (
             InferType::Array(a) | InferType::SizedArray(a, _),
             InferType::Array(b) | InferType::SizedArray(b, _),
         )
         | (InferType::Reference(a), InferType::Reference(b))
-        | (InferType::MutReference(a), InferType::MutReference(b)) => nested_fun_axes_match(a, b),
+        | (InferType::MutReference(a), InferType::MutReference(b)) => same(a, b),
         (InferType::Named(an, as_), InferType::Named(bn, bs)) => {
-            an == bn
-                && as_.len() == bs.len()
-                && as_.iter().zip(bs).all(|(a, b)| nested_fun_axes_match(a, b))
+            an == bn && as_.len() == bs.len() && as_.iter().zip(bs).all(|(a, b)| same(a, b))
         }
         (
             InferType::Residual {
@@ -762,7 +777,7 @@ fn nested_fun_axes_match(a: &InferType, b: &InferType) -> bool {
                 && af
                     .iter()
                     .zip(bf)
-                    .all(|((an, a), (bn, b))| an == bn && nested_fun_axes_match(a, b))
+                    .all(|((an, a), (bn, b))| an == bn && same(a, b))
         }
         (
             InferType::Dyn {
@@ -773,11 +788,7 @@ fn nested_fun_axes_match(a: &InferType, b: &InferType) -> bool {
                 aspect: ba,
                 type_args: bt,
             },
-        ) => {
-            aa == ba
-                && at.len() == bt.len()
-                && at.iter().zip(bt).all(|(a, b)| nested_fun_axes_match(a, b))
-        }
+        ) => aa == ba && at.len() == bt.len() && at.iter().zip(bt).all(|(a, b)| same(a, b)),
         _ => true,
     }
 }

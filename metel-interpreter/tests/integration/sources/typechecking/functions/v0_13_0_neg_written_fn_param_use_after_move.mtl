@@ -1,0 +1,19 @@
+// v0.13.0 (RFC-0166): a parameter whose written type is a function type is
+// move-only inside the callee, regardless of what the caller passed. `add_one`
+// is a copyable named function, but `consume` sees `f: |i64| -> i64` as
+// move-only -- moving it into `a` leaves nothing for the second `let`.
+//
+// This is the migration case RFC-0166 calls out: a body that used a
+// bare-typed callback by value more than once. Needs move_check = true.
+
+fun add_one(x: i64) -> i64 { x + 1 }
+
+fun consume(f: |i64| -> i64) -> i64 {
+    let a := f;   // moves `f`
+    let b := f;   // moved-value error
+    a(1) + b(2)
+}
+
+fun main() {
+    println(consume(add_one));
+}
