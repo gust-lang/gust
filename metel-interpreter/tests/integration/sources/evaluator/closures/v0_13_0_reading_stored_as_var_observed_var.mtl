@@ -8,7 +8,7 @@ struct Box {
 }
 
 fun main() {
-    let pure := || -> i64 { 3 }; // `reading`
+    let pure := || { 3 }; // `reading`
     let b := Box { run = pure };  // coerced into the `var`-typed field
     assert((b.run)() == 3);       // `b.run` is observed as `var () -> i64`
 }

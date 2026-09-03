@@ -21,8 +21,8 @@ fun no_leak() -> Unit {
 // A block-local alias used to name a closure type, in a parameter annotation.
 fun apply_twice() -> i64 {
     type Op := |i64| -> i64;
-    let double: Op := |x: i64| -> i64 { x * 2 };
-    let apply := |f: Op, v: i64| -> i64 { f(v) };
+    let double: Op := |x: i64| { x * 2 };
+    let apply := |f: Op, v: i64| { f(v) };
     apply(double, 21)
 }
 

@@ -3,7 +3,7 @@
 // closure value do not type-check.
 //
 fun main() {
-    let a := || -> i64 { 1 };
-    let b := || -> i64 { 1 };
+    let a := || { 1 };
+    let b := || { 1 };
     assert(a == b); // error: closures do not satisfy `Eq`
 }

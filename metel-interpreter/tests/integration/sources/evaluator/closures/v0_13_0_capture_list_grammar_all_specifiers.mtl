@@ -6,7 +6,7 @@ fun main() {
     let cfg := 10;
     let tag := 42;
     let name := "log";
-    var handler := [&var count, &cfg, tag, name.clone()] var |req: i64| -> i64 {
+    var handler := [&var count, &cfg, tag, name.clone()] var |req: i64| {
         count += 1;
         req + cfg + tag
     };

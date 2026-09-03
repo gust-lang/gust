@@ -9,7 +9,7 @@ fun apply(t: Transform, p: Vec2) -> Vec2 {
 }
 
 fun main() {
-    let shift: Transform := |v: Vec2| -> Vec2 { (v.0 + 1.0, v.1 + 1.0) };
+    let shift: Transform := |v: Vec2| { (v.0 + 1.0, v.1 + 1.0) };
     let origin: Point := (0.0, 0.0);
     let moved: geometry::Vec2 := apply(shift, origin);
     assert(moved.0 == 1.0);

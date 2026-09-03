@@ -5,7 +5,7 @@
 // Needs move_check = true (so a non-Copy closure would fail the reuse below).
 fun main() {
     let n := 7;
-    let get := [n] || -> i64 { n }; // n: i64 is Copy => `get` is Copy
+    let get := [n] || { n }; // n: i64 is Copy => `get` is Copy
     let also := get;                // copy, not move
     assert(get() == 7);             // original still usable after the copy
     assert(also() == 7);

@@ -3,6 +3,6 @@
 //
 fun main() {
     let name := "log";
-    let greet := || -> String { name }; // missing capture list for `name`
+    let greet := || { name }; // missing capture list for `name`
     assert(greet() == "log");
 }

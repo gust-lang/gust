@@ -8,6 +8,6 @@ fun call_many(f: || -> String) -> String {
 
 fun main() {
     let s := "hello";
-    let once_closure := [s] once || -> String { s }; // returns `s`, moving it out -- correctly `once`
+    let once_closure := [s] once || { s }; // returns `s`, moving it out -- correctly `once`
     call_many(once_closure); // error: `once` does not widen to a `many` slot
 }

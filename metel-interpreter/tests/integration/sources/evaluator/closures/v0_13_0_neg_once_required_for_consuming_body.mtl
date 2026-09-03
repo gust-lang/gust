@@ -4,6 +4,6 @@
 //
 fun main() {
     let s := "hello";
-    let take := [s] || -> String { s }; // moves `s` out; missing `once`
+    let take := [s] || { s }; // moves `s` out; missing `once`
     take();
 }
