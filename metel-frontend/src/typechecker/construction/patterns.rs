@@ -116,6 +116,13 @@ pub(super) fn construct_match(
         _ => None,
     };
     let mut typed_arms = vec![];
+    // metel-core#958: fork each arm's row-narrowing move state from the state
+    // before the `match` and join (union) afterward — Pass 2's counterpart of
+    // `infer_match`'s per-arm fork/join, so the residual type this pass stamps
+    // on later arms and on code after the `match` matches Pass 1.
+    let entry_flow = ctx.flow.clone();
+    let mut joined_flow = entry_flow.clone();
+    let mut any_arm = false;
     for arm in &m.arms {
         let pattern = if let Some((enum_name, variants)) = &scrutinee_variants {
             resolve_bare_variant(&arm.pattern, enum_name, variants)
@@ -124,6 +131,7 @@ pub(super) fn construct_match(
         } else {
             arm.pattern.clone()
         };
+        ctx.flow = entry_flow.clone();
         ctx.push_scope();
         construct_pattern_bindings(&pattern, &scrutinee_ty, ctx)?;
         let guard = match &arm.guard {
@@ -138,6 +146,11 @@ pub(super) fn construct_match(
             span: arm.span.clone(),
         });
         ctx.pop_scope();
+        joined_flow.union_from(&ctx.flow);
+        any_arm = true;
+    }
+    if any_arm {
+        ctx.flow = joined_flow;
     }
     check_match_exhaustiveness(
         &typed_arms,

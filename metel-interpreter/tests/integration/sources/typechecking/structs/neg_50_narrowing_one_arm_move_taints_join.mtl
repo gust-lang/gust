@@ -1,0 +1,14 @@
+// metel-core#958: the join is the *union* of the arms' moves. Only the `then`
+// arm moves `rec.gone`; after the `if`, `rec` is narrowed to `{ keep: i64 }` on
+// every path (the move is joined in even though the `else` path didn't run it),
+// so a whole-value use at the wider row is rejected.
+fun whole(r: { gone: String, keep: i64 }) -> i64 { r.keep }
+
+fun main() {
+    let cond := true;
+    let rec := { gone = "z".to_string(), keep = 1 };
+    if (cond) {
+        let a := rec.gone;
+    }
+    whole(rec)              // rec : { keep: i64 } here -- wider row required
+}

@@ -42,6 +42,13 @@ pub(super) fn infer_match(
     let scrutinee_struct_name: Option<String> =
         scrutinee_named_ty.filter(|name| ctx.get_struct_fields(name).is_some());
     let result_var = ctx.fresh_var();
+    // metel-core#958: each arm's row-narrowing move state forks from the state
+    // before the `match`, and the arms join afterward — so a later arm never
+    // sees an earlier arm's partial move, and a move in any arm still narrows
+    // the binding for the code after the `match` (the join is the union).
+    let entry_flow = ctx.flow_ref().clone();
+    let mut joined_flow = entry_flow.clone();
+    let mut any_arm = false;
     for arm in &m.arms {
         let pattern = if let Some((enum_name, variants)) = &scrutinee_variants {
             super::super::construction::resolve_bare_variant(&arm.pattern, enum_name, variants)
@@ -50,6 +57,7 @@ pub(super) fn infer_match(
         } else {
             arm.pattern.clone()
         };
+        *ctx.flow_mut() = entry_flow.clone();
         ctx.push_scope();
         infer_pattern(&pattern, &scrutinee_ty, ctx)?;
         if let Some(guard) = &arm.guard {
@@ -59,6 +67,11 @@ pub(super) fn infer_match(
         let arm_ty = infer_block(&arm.body, ctx, fun_generalizations)?;
         ctx.add_constraint(arm_ty, result_var.clone(), arm.span.clone());
         ctx.pop_scope();
+        joined_flow.union_from(ctx.flow_ref());
+        any_arm = true;
+    }
+    if any_arm {
+        *ctx.flow_mut() = joined_flow;
     }
     Ok(result_var)
 }

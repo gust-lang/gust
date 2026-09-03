@@ -492,9 +492,22 @@ pub(super) fn infer_expr(
         } => {
             let cond_ty = infer_expr(condition, ctx, fun_generalizations)?;
             ctx.add_constraint(cond_ty, InferType::bool(), span.clone());
+
+            // metel-core#958: row-narrowing move state is path-sensitive across
+            // the arms. Each arm forks from the pre-`if` state, and the arms
+            // join after — so the `else` arm never sees the `then` arm's partial
+            // moves, and a move on either arm still narrows the binding for the
+            // code after the `if` (the join is the union of the arms' moves).
+            let entry_flow = ctx.flow_ref().clone();
             let then_ty = infer_block(then_branch, ctx, fun_generalizations)?;
-            if let Some(else_block) = else_branch {
+            let then_flow = std::mem::replace(ctx.flow_mut(), entry_flow.clone());
+            let mut joined_flow = entry_flow.clone();
+            joined_flow.union_from(&then_flow);
+
+            let result = if let Some(else_block) = else_branch {
                 let else_ty = infer_block(else_block, ctx, fun_generalizations)?;
+                let else_flow = std::mem::replace(ctx.flow_mut(), entry_flow);
+                joined_flow.union_from(&else_flow);
                 // RFC-0152: a function-valued conditional joins at the least
                 // permissive capability. Both arms then widen to that joined type.
                 let joined = match (&then_ty, &else_ty) {
@@ -530,11 +543,13 @@ pub(super) fn infer_expr(
                 };
                 ctx.add_constraint(then_ty, joined.clone(), span.clone());
                 ctx.add_constraint(else_ty, joined.clone(), span.clone());
-                Ok(joined)
+                joined
             } else {
                 ctx.add_constraint(then_ty, InferType::unit(), span.clone());
-                Ok(InferType::unit())
-            }
+                InferType::unit()
+            };
+            *ctx.flow_mut() = joined_flow;
+            Ok(result)
         }
         Expr::Assign {
             target,

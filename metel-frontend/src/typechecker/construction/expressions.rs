@@ -963,10 +963,20 @@ pub(super) fn construct_expr(
             span,
         } => {
             let condition = construct_expr(condition, None, ctx)?;
+
+            // metel-core#958: fork each arm's row-narrowing move state from the
+            // pre-`if` state and join (union) afterward — Pass 2's counterpart of
+            // the `Expr::If` fork/join in `inference/expressions.rs`.
+            let entry_flow = ctx.flow.clone();
             let then_branch = construct_block(then_branch, expected_ty, ctx)?;
+            let then_flow = std::mem::replace(&mut ctx.flow, entry_flow.clone());
+            let mut joined_flow = entry_flow.clone();
+            joined_flow.union_from(&then_flow);
+
             let (else_branch, ty) = match else_branch {
                 Some(eb) => {
                     let typed_else = construct_block(eb, expected_ty, ctx)?;
+                    joined_flow.union_from(&ctx.flow);
                     // RFC-0078: prefer whichever branch's type isn't `!` — a
                     // diverging branch (e.g. a `return`-only `then`) must not mask
                     // the other branch's real type; only `!` if both diverge.
@@ -978,6 +988,7 @@ pub(super) fn construct_expr(
                 }
                 None => (None, Type::Unit),
             };
+            ctx.flow = joined_flow;
             Ok(TypedExpr::If {
                 condition: Box::new(condition),
                 then_branch,
