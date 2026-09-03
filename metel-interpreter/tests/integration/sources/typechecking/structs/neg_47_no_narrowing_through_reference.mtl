@@ -1,0 +1,19 @@
+// RFC-0137 slice 2 (metel-core#858): narrowing and widening apply only to an
+// owned binding. A non-`Copy` field cannot be moved out of a value reached
+// through a reference (RFC-0071 §7.1), so there is never a residual to narrow to
+// or widen from behind one — this rule is unchanged by RFC-0137.
+//
+// Needs move_check = true: the move-out-of-a-reference ban is a move-checker
+// rule, not one of the always-on typecheck rules.
+
+struct Handle { fd: i64, name: String }
+
+fun consume_name(h: &var Handle) -> String {
+    let n := h.name;   // rejected: moving `name` out through `&var Handle`
+    n
+}
+
+fun main() {
+    var h := Handle { fd = 1, name = "x" };
+    println(consume_name(&var h));
+}

@@ -1,5 +1,6 @@
 [options]
 move_check = true
+spec = ["spec.ownership.partial-moves.legality-4"]
 
 [expect]
 status = "typecheck_error"

@@ -1,2 +1,2 @@
 [options]
-spec = ["spec.ownership.narrowing.legality-1", "spec.ownership.narrowing.dynamics-1"]
+spec = ["spec.ownership.narrowing.legality-1", "spec.ownership.narrowing.legality-5", "spec.ownership.narrowing.dynamics-1"]
