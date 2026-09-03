@@ -1,3 +1,0 @@
-[options]
-skip = "metel-core#958 -- narrowing is not path-sensitive across if/match arms in the typechecker"
-# intended once live: spec = ["spec.ownership.narrowing.legality-1"]
