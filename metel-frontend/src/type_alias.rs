@@ -19,9 +19,9 @@
 //! - Every `TypeExpr` position: signatures, fields, generic / where bounds, and
 //!   type annotations nested inside expressions (a closure parameter annotation,
 //!   a cast, an ascription, a turbofish).
-//!
-//! Still out of scope (tracked on metel-core#921): using an alias name as a
-//! value path.
+//! - A **value / pattern path** that leads with an alias for a plain named type:
+//!   `P { … }`, `P.{ … }`, `P::Variant`, a `P { … }` match arm. A parameterised
+//!   alias, or one whose target is not a bare `Named`, is left untouched.
 
 use std::collections::{HashMap, HashSet};
 
@@ -517,6 +517,51 @@ impl Expander<'_> {
         Ok(())
     }
 
+    /// Rewrite the leading segment of a value / pattern path (`P { … }`, `P.{ … }`,
+    /// `P::Variant`, a `P { … }` match arm) when `P` is an alias for a plain named
+    /// type. A parameterised alias, or one whose target is a tuple / function /
+    /// reference type, is left untouched — it is meaningless in value position and
+    /// the later passes will say so.
+    fn rewrite_value_path(&self, segs: &mut Vec<String>) -> Result<(), MetelError> {
+        let Some(head) = segs.first() else {
+            return Ok(());
+        };
+        let Some(alias) = self.resolve_named(head)? else {
+            return Ok(());
+        };
+        if !alias.params.is_empty() {
+            return Ok(());
+        }
+        let TypeExpr::Named(real, real_args) = &alias.target else {
+            return Ok(());
+        };
+        if !real_args.is_empty() {
+            return Ok(());
+        }
+        let rest = segs.split_off(1);
+        *segs = real.split("::").map(str::to_string).collect();
+        segs.extend(rest);
+        Ok(())
+    }
+
+    fn walk_pattern(&self, pat: &mut crate::ast::Pattern) -> Result<(), MetelError> {
+        use crate::ast::Pattern;
+        match pat {
+            Pattern::EnumVariant { path, .. } => self.rewrite_value_path(path)?,
+            Pattern::Tuple(elems, _) | Pattern::Array { elems, .. } => {
+                for p in elems {
+                    self.walk_pattern(p)?;
+                }
+            }
+            Pattern::Wildcard(_)
+            | Pattern::Literal(..)
+            | Pattern::Binding(..)
+            | Pattern::Struct { .. }
+            | Pattern::Record { .. } => {}
+        }
+        Ok(())
+    }
+
     // -- declarations --
 
     fn walk_program(&mut self, program: &mut Program) -> Result<(), MetelError> {
@@ -813,18 +858,24 @@ impl Expander<'_> {
     #[allow(clippy::too_many_lines)]
     fn walk_expr(&mut self, expr: &mut Expr) -> Result<(), MetelError> {
         match expr {
-            Expr::Literal(..)
-            | Expr::Ident(..)
-            | Expr::Path(..)
-            | Expr::ResolvedPath { .. }
-            | Expr::RecordProjection { .. }
-            | Expr::Continue(_) => {}
+            Expr::Literal(..) | Expr::Ident(..) | Expr::ResolvedPath { .. } | Expr::Continue(_) => {
+            }
+            // A value path (`E::Variant`, `Alias::assoc()`) or a record
+            // projection (`P.{ f }`) may lead with a type-alias name.
+            Expr::Path(segs, _) => self.rewrite_value_path(segs)?,
+            Expr::RecordProjection { path, .. } => self.rewrite_value_path(path)?,
             Expr::Tuple(elems, _) | Expr::Array(elems, _) => {
                 for e in elems {
                     self.walk_expr(e)?;
                 }
             }
-            Expr::RecordLiteral { fields, .. } | Expr::StructLiteral { fields, .. } => {
+            Expr::RecordLiteral { fields, .. } => {
+                for (_, e) in fields {
+                    self.walk_expr(e)?;
+                }
+            }
+            Expr::StructLiteral { path, fields, .. } => {
+                self.rewrite_value_path(path)?;
                 for (_, e) in fields {
                     self.walk_expr(e)?;
                 }
@@ -908,6 +959,7 @@ impl Expander<'_> {
             Expr::Match(m) => {
                 self.walk_expr(&mut m.scrutinee)?;
                 for arm in &mut m.arms {
+                    self.walk_pattern(&mut arm.pattern)?;
                     if let Some(g) = &mut arm.guard {
                         self.walk_expr(g)?;
                     }
