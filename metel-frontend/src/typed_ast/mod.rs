@@ -511,6 +511,43 @@ impl TypedExpr {
         }
     }
 
+    /// Replace this node's stated type. Used only at a declared-type boundary
+    /// (RFC-0166: a value flowing into a written function-type slot takes that
+    /// slot's move-only type). `Return` / `Break` / `Continue` are always `!` and
+    /// cannot name a binding, so they are returned unchanged.
+    #[must_use]
+    pub fn with_ty(mut self, new_ty: Type) -> Self {
+        match &mut self {
+            TypedExpr::Literal(_, ty, _)
+            | TypedExpr::Ident(_, ty, _)
+            | TypedExpr::Path(_, ty, _)
+            | TypedExpr::Tuple(_, ty, _)
+            | TypedExpr::Array(_, ty, _)
+            | TypedExpr::RecordLiteral { ty, .. }
+            | TypedExpr::RepeatArray(_, _, ty, _)
+            | TypedExpr::BinOp(_, _, _, ty, _)
+            | TypedExpr::UnaryOp(_, _, ty, _)
+            | TypedExpr::RefTemp { ty, .. }
+            | TypedExpr::Assign { ty, .. }
+            | TypedExpr::Call { ty, .. }
+            | TypedExpr::MethodCall { ty, .. }
+            | TypedExpr::FieldAccess { ty, .. }
+            | TypedExpr::TupleAccess { ty, .. }
+            | TypedExpr::Index { ty, .. }
+            | TypedExpr::Cast { ty, .. }
+            | TypedExpr::If { ty, .. }
+            | TypedExpr::Loop { ty, .. }
+            | TypedExpr::Closure { ty, .. }
+            | TypedExpr::GenericClosure { ty, .. }
+            | TypedExpr::StructLiteral { ty, .. }
+            | TypedExpr::SingletonCoerce { ty, .. }
+            | TypedExpr::DynCoerce { ty, .. } => *ty = new_ty,
+            TypedExpr::Match(m) => m.expr_type = new_ty,
+            TypedExpr::Return(_) | TypedExpr::Break(_) | TypedExpr::Continue(_) => {}
+        }
+        self
+    }
+
     /// Convenience method to get the span of this expression.
     #[must_use]
     pub fn span(&self) -> &Span {

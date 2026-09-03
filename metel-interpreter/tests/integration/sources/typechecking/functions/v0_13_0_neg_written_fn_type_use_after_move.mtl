@@ -1,0 +1,16 @@
+// v0.13.0 (RFC-0166): a binding whose *written* type is a function type `|i64|
+// -> i64` is move-only, regardless of what was assigned to it. `add_one` is a
+// copyable named function, but the annotation erases that: `f` may be moved
+// once, and the second `let` is an ordinary use-after-move (RFC-0071 / T0019).
+//
+// Needs move_check = true -- this is the general affine-move check, not a
+// closure-specific always-on rule.
+
+fun add_one(x: i64) -> i64 { x + 1 }
+
+fun main() {
+    let f: |i64| -> i64 := add_one;
+    let a := f;          // moves `f`
+    let b := f;          // moved-value error -- `f` is move-only under RFC-0166
+    println(a(1) + b(2));
+}

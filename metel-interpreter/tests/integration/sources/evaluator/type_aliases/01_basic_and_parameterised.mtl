@@ -12,10 +12,13 @@ fun keep(p: IntPred, x: Count) -> boolean { p(x) }
 fun keep_raw(p: |i64| -> boolean, x: i64) -> boolean { p(x) }
 
 fun main() {
+    // A written function type (`IntPred` expands to one) is move-only (RFC-0166),
+    // so each closure value is used by value once: the alias and its expansion
+    // are still shown interchangeable across `keep` / `keep_raw` / the `let`s.
+    assert(keep(|n: i64| { n % 2 == 1 }, 7));
+    assert(!keep(|n: i64| { n % 2 == 1 }, 8));
+    assert(keep_raw(|n: i64| { n % 2 == 1 }, 3));
     let odd: IntPred := |n: i64| { n % 2 == 1 };
-    assert(keep(odd, 7));
-    assert(!keep(odd, 8));
-    assert(keep_raw(odd, 3));
     let also: Predicate<i64> := odd;
     assert(also(5));
     println("ok");

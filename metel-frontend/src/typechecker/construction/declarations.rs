@@ -1,10 +1,11 @@
 use super::{
     construct_block, construct_expr, construct_stmt, fun_body_diverges, infer_type_to_type,
-    maybe_dyn_coerce, maybe_read_copy, maybe_singleton_coerce, resolved_to_type,
-    type_expr_to_infer_with_assoc_ctx, AspectMethod, AssocResolveCtx, ConstructCtx, Decl, Expr,
-    FunBody, FunDecl, HashMap, ImplBlock, InferType, MetelError, Substitution, Type, TypeErrorCode,
-    TypeExpr, TypeScheme, TypeVar, TypedAspectDecl, TypedDecl, TypedEnumDecl, TypedExpr,
-    TypedFunDecl, TypedImplBlock, TypedLetDecl, TypedMutDecl, TypedStructDecl,
+    maybe_dyn_coerce, maybe_fn_move_coerce, maybe_read_copy, maybe_singleton_coerce,
+    resolved_to_type, type_expr_to_infer_with_assoc_ctx, AspectMethod, AssocResolveCtx,
+    ConstructCtx, Decl, Expr, FunBody, FunDecl, HashMap, ImplBlock, InferType, MetelError,
+    Substitution, Type, TypeErrorCode, TypeExpr, TypeScheme, TypeVar, TypedAspectDecl, TypedDecl,
+    TypedEnumDecl, TypedExpr, TypedFunDecl, TypedImplBlock, TypedLetDecl, TypedMutDecl,
+    TypedStructDecl,
 };
 
 #[allow(clippy::too_many_lines)]
@@ -93,7 +94,8 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                     let value =
                         maybe_read_copy(t, value, &ld.span, ctx.registry, ctx.current_module)?;
                     let value = maybe_singleton_coerce(t, value, &ld.span, ctx.registry)?;
-                    maybe_dyn_coerce(t, value, &ld.span, ctx)?
+                    let value = maybe_dyn_coerce(t, value, &ld.span, ctx)?;
+                    maybe_fn_move_coerce(t, value)
                 }
                 None => value,
             };
@@ -119,7 +121,8 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                     let value =
                         maybe_read_copy(t, value, &md.span, ctx.registry, ctx.current_module)?;
                     let value = maybe_singleton_coerce(t, value, &md.span, ctx.registry)?;
-                    maybe_dyn_coerce(t, value, &md.span, ctx)?
+                    let value = maybe_dyn_coerce(t, value, &md.span, ctx)?;
+                    maybe_fn_move_coerce(t, value)
                 }
                 None => value,
             };

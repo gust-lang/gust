@@ -6,14 +6,15 @@ use super::{
     construct_block, construct_call, construct_enum_literal_ty, construct_literal_type,
     construct_match, construct_method_args, construct_propagate_error, construct_unaryop,
     dispatch_for_resolved_method, find_loop_break_type, infer_type_to_type,
-    instantiate_scheme_for_call, maybe_dyn_coerce, maybe_read_copy, maybe_singleton_coerce,
-    merge_branch_types, peel_type_references, resolve_expected_enum, resolve_generic_method_call,
-    resolve_unqualified_variant_expr, resolved_to_type, type_chain_provides_mut_access,
-    type_expr_to_infer_with_generics, type_to_infer, typed_place_ty,
-    unqualified_variant_needs_annotation_error, AssignTarget, ConstructCtx, Expr, ForInit, HashMap,
-    InferType, Literal, MetelError, MethodDispatch, Param, Span, Stmt, Substitution, Type,
-    TypeErrorCode, TypeVar, TypedBreakExpr, TypedExpr, TypedForInStmt, TypedForInit, TypedForStmt,
-    TypedLetDecl, TypedMutDecl, TypedReturnExpr, TypedStmt, TypedWhileStmt, UnaryOp,
+    instantiate_scheme_for_call, maybe_dyn_coerce, maybe_fn_move_coerce, maybe_read_copy,
+    maybe_singleton_coerce, merge_branch_types, peel_type_references, resolve_expected_enum,
+    resolve_generic_method_call, resolve_unqualified_variant_expr, resolved_to_type,
+    type_chain_provides_mut_access, type_expr_to_infer_with_generics, type_to_infer,
+    typed_place_ty, unqualified_variant_needs_annotation_error, AssignTarget, ConstructCtx, Expr,
+    ForInit, HashMap, InferType, Literal, MetelError, MethodDispatch, Param, Span, Stmt,
+    Substitution, Type, TypeErrorCode, TypeVar, TypedBreakExpr, TypedExpr, TypedForInStmt,
+    TypedForInit, TypedForStmt, TypedLetDecl, TypedMutDecl, TypedReturnExpr, TypedStmt,
+    TypedWhileStmt, UnaryOp,
 };
 
 fn capture_name(capture: &crate::ast::CaptureSpec) -> &str {
@@ -468,7 +469,8 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
                                 ctx.current_module,
                             )?;
                             let value = maybe_singleton_coerce(t, value, &ld.span, ctx.registry)?;
-                            maybe_dyn_coerce(t, value, &ld.span, ctx)?
+                            let value = maybe_dyn_coerce(t, value, &ld.span, ctx)?;
+                            maybe_fn_move_coerce(t, value)
                         }
                         None => value,
                     };
@@ -502,7 +504,8 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
                                 ctx.current_module,
                             )?;
                             let value = maybe_singleton_coerce(t, value, &md.span, ctx.registry)?;
-                            maybe_dyn_coerce(t, value, &md.span, ctx)?
+                            let value = maybe_dyn_coerce(t, value, &md.span, ctx)?;
+                            maybe_fn_move_coerce(t, value)
                         }
                         None => value,
                     };
