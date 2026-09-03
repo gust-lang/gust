@@ -39,6 +39,10 @@ impl InferContext {
         if moved_labels.is_empty() {
             return None;
         }
+        // Only a *branded* struct value narrows to a residual. An anonymous
+        // `record` value stays on per-field move tracking with no narrower static
+        // type (spec.ownership.partial-moves.which-constructs-support-partial-moves.legality-2)
+        // -- a residual needs a brand, and an anonymous record has none.
         match declared {
             InferType::Named(brand, args) => {
                 let row = self.resolve_infer_struct_row(brand, args)?;
@@ -47,17 +51,6 @@ impl InferContext {
             InferType::Residual { brand, fields } => {
                 let full = self.resolve_infer_struct_row(brand, &[]).map(|r| r.len());
                 filter_row(brand.clone(), fields, &moved_labels, full)
-            }
-            InferType::Record(fields) => {
-                let remaining: Vec<(String, InferType)> = fields
-                    .iter()
-                    .filter(|(name, _)| !moved_labels.contains(name.as_str()))
-                    .cloned()
-                    .collect();
-                if remaining.len() == fields.len() || remaining.is_empty() {
-                    return None;
-                }
-                Some(InferType::Record(remaining))
             }
             _ => None,
         }
@@ -140,13 +133,7 @@ impl InferContext {
                     None => return,
                 }
             }
-            InferType::Record(fields) => {
-                let Some(l) = label.as_ref() else { return };
-                match fields.iter().find(|(name, _)| name == l) {
-                    Some((_, ty)) => ty.clone(),
-                    None => return,
-                }
-            }
+            // An anonymous `record` root does not narrow (see `narrow_infer_row`).
             _ => return,
         };
         // Only a *definitely* non-`Copy` leaf narrows. An unresolved type var —

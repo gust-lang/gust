@@ -4,4 +4,4 @@ code = "T0012"
 contains = "struct never satisfies a row bound"
 
 [options]
-spec = ["spec.types.generics.row-bounds.legality-4"]
+spec = ["spec.types.generics.row-bounds.legality-4", "spec.ownership.narrowing.legality-3"]

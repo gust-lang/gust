@@ -3,7 +3,7 @@
 # type error at inference time, no longer only a `--move-check` finding.
 [options]
 move_check = true
-spec = ["spec.ownership.partial-moves.legality-1", "spec.ownership.narrowing.legality-1"]
+spec = ["spec.ownership.partial-moves.legality-1", "spec.ownership.narrowing.legality-4"]
 
 [expect]
 status = "typecheck_error"

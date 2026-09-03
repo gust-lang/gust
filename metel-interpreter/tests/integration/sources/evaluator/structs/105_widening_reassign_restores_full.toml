@@ -1,2 +1,2 @@
 [options]
-spec = ["spec.ownership.widening.dynamics-1"]
+spec = ["spec.ownership.widening.legality-1", "spec.ownership.widening.dynamics-1"]
