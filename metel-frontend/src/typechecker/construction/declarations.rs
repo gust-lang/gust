@@ -99,6 +99,7 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                 }
                 None => value,
             };
+            ctx.note_consumed(&value);
             let ty = expected_ty.unwrap_or_else(|| value.ty().clone());
             ctx.bind(&ld.name, ty);
             Ok(TypedDecl::Let(TypedLetDecl {
@@ -126,6 +127,7 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                 }
                 None => value,
             };
+            ctx.note_consumed(&value);
             let ty = expected_ty.unwrap_or_else(|| value.ty().clone());
             ctx.bind_mut(&md.name, ty);
             Ok(TypedDecl::Mut(TypedMutDecl {
@@ -245,12 +247,14 @@ pub(super) fn construct_fun_decl(
             }
         };
         ctx.push_scope();
+        let saved_flow = ctx.flow_enter_body();
         for (param, ty) in fun.params.iter().zip(param_types.iter()) {
             ctx.bind(&param.name, ty.clone());
         }
         let saved_return = ctx.push_return_type(ret_ty.clone());
         let typed_block = construct_block(&fun.body, ret_ty.as_ref(), ctx)?;
         ctx.pop_return_type(saved_return);
+        ctx.flow_exit_body(saved_flow);
         ctx.pop_scope();
         // RFC-0078 §6: a function declared `-> !` must diverge on every path.
         if matches!(ret_ty, Some(Type::Never)) && !fun_body_diverges(&typed_block) {
@@ -304,12 +308,14 @@ pub(super) fn construct_fun_decl(
             }
         };
         ctx.push_scope();
+        let saved_flow = ctx.flow_enter_body();
         for (param, ty) in fun.params.iter().zip(param_types.iter()) {
             ctx.bind(&param.name, ty.clone());
         }
         let saved_return = ctx.push_return_type(ret_ty.clone());
         let typed_block = construct_block(&fun.body, ret_ty.as_ref(), ctx)?;
         ctx.pop_return_type(saved_return);
+        ctx.flow_exit_body(saved_flow);
         ctx.pop_scope();
         // RFC-0078 §6: a function declared `-> !` must diverge on every path.
         if matches!(ret_ty, Some(Type::Never)) && !fun_body_diverges(&typed_block) {
@@ -565,6 +571,7 @@ pub(super) fn construct_impl_method(
         .map(|ann| resolved_to_type(&te_to_infer(ann), ctx.subst, &method.span))
         .transpose()?;
     ctx.push_scope();
+    let saved_flow = ctx.flow_enter_body();
     for (p, ty) in method.params.iter().zip(param_types.iter()) {
         ctx.bind(&p.name, ty.clone());
     }
@@ -573,6 +580,7 @@ pub(super) fn construct_impl_method(
     let typed_block = construct_block(&method.body, ret_ty.as_ref(), ctx)?;
     ctx.pop_self_type_name(saved_self);
     ctx.pop_return_type(saved_return);
+    ctx.flow_exit_body(saved_flow);
     ctx.pop_scope();
     Ok(TypedFunDecl {
         name: method.name.clone(),

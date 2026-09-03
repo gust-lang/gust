@@ -6,6 +6,7 @@ use crate::ast::{
     MatchExpr, Param, Pattern, Program, Span, Stmt, TypeExpr, UnaryOp,
 };
 use crate::error::{MetelError, TypeErrorCode};
+use crate::flow_state::FlowState;
 use crate::symbols::SymbolId;
 use crate::typed_ast::{
     FunBody, MethodDispatch, TypedAspectDecl, TypedBlock, TypedBreakExpr, TypedDecl, TypedEnumDecl,
@@ -151,6 +152,13 @@ struct ConstructCtx<'a> {
     /// temporary RFC-0050 boundary: nested borrowing of one is rejected until
     /// RFC-0122 can model the environment borrow's lifetime.
     closure_owned_captures: Vec<HashSet<String>>,
+    /// RFC-0137 slice 2 (metel-core#858): flow-sensitive moved-field tracking for
+    /// the function/method body currently being constructed. A partial move of a
+    /// non-`Copy` struct/record field narrows the base binding's *type* to a
+    /// `Type::Residual` of the same brand; reassigning the field widens it back.
+    /// Reset per body in `construct_fun_decl` / `construct_impl_method`; see
+    /// `construction/narrowing.rs`.
+    flow: FlowState,
 }
 
 impl<'a> ConstructCtx<'a> {
@@ -189,6 +197,7 @@ impl<'a> ConstructCtx<'a> {
             current_self_type_name: None,
             fn_table: vec![HashMap::new()],
             closure_owned_captures: Vec::new(),
+            flow: FlowState::default(),
         };
         // Derive concrete types for all monomorphic entries in scheme_env.
         // Both builtins and user functions are populated here — no second registration site.
@@ -248,6 +257,9 @@ impl<'a> ConstructCtx<'a> {
 
     fn bind_with_mutability(&mut self, name: impl Into<String>, ty: Type, is_mutable: bool) {
         let name = name.into();
+        // RFC-0137 slice 2: register the binding for move-triggered narrowing
+        // before it lands in `env`, so a shadowing rebind resets its move state.
+        self.flow_bind(&name, &ty);
         self.env.last_mut().unwrap().insert(name.clone(), ty);
         self.mut_env.last_mut().unwrap().insert(name, is_mutable);
     }
@@ -832,6 +844,7 @@ pub(super) fn construct_generic_body(
     }
 
     ctx.push_scope();
+    let saved_flow = ctx.flow_enter_body();
     for (param, param_it) in params.iter().zip(param_infertypes.iter()) {
         let concrete_ty =
             infer_type_to_type(&subst.apply(param_it), span).unwrap_or(crate::types::Type::Unit);
@@ -840,6 +853,7 @@ pub(super) fn construct_generic_body(
     let saved_return = ctx.push_return_type(ret_ty.clone());
     let typed_block = construct_block(body, ret_ty.as_ref(), &mut ctx)?;
     ctx.pop_return_type(saved_return);
+    ctx.flow_exit_body(saved_flow);
     ctx.pop_scope();
 
     Ok(typed_block)
@@ -923,6 +937,8 @@ pub(super) fn construct_program(
     Ok(out)
 }
 
+mod narrowing;
+
 mod declarations;
 use declarations::construct_decl;
 
@@ -933,6 +949,7 @@ fn construct_block(
 ) -> Result<TypedBlock, MetelError> {
     ctx.push_scope();
     ctx.push_struct_scope();
+    ctx.flow.push_scope();
     // Hoist struct/enum declarations defined in this block so they are available
     // for any expression in the block regardless of declaration order.
     for decl in &block.stmts {
@@ -995,6 +1012,10 @@ fn construct_block(
     };
     ctx.pop_struct_scope();
     ctx.pop_scope();
+    // Bindings introduced in this block leave move tracking; a partial move of an
+    // *outer* binding made inside the block survives the pop (it is not in this
+    // scope's shadow list), which is what an `if` / `match` join then reads.
+    ctx.flow.pop_scope();
     Ok(TypedBlock {
         stmts,
         tail,

@@ -23,7 +23,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::ast::Span;
-use crate::place::Place;
+use crate::place::{Place, Projection};
 use crate::types::Type;
 
 #[derive(Debug, Clone)]
@@ -151,6 +151,22 @@ impl FlowState {
 
     pub(crate) fn binding_type(&self, name: &str) -> Option<&Type> {
         self.binding_types.get(name)
+    }
+
+    /// The depth-1 field / tuple projections currently moved directly out of
+    /// `root` (`root.name`, `root.0`). RFC-0137 row narrowing (metel-core#858)
+    /// reads these to compute a binding's residual type — a deeper move
+    /// (`root.a.b`) does not narrow `root`'s own row, since a record-typed field
+    /// moves as a unit.
+    pub(crate) fn moved_shallow_projections(&self, root: &str) -> Vec<Projection> {
+        let Some(records) = self.moved.get(root) else {
+            return Vec::new();
+        };
+        records
+            .iter()
+            .filter(|record| record.place.projections().len() == 1)
+            .map(|record| record.place.projections()[0].clone())
+            .collect()
     }
 
     pub(crate) fn record_move(

@@ -941,6 +941,23 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
                 fields: fields2,
             },
         ) => {
+            if brand1 == brand2 && fields1.len() != fields2.len() {
+                // RFC-0137 slice 2: two residuals of the same brand with different
+                // rows — one side moved a field the other still holds.
+                return Err(MetelError::internal(format!(
+                    "a partially-moved `{brand1}` here has row `{{ {} }}` but `{{ {} }}` is required",
+                    fields1
+                        .iter()
+                        .map(|(n, _)| n.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    fields2
+                        .iter()
+                        .map(|(n, _)| n.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                )));
+            }
             if brand1 != brand2 || fields1.len() != fields2.len() {
                 return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
             }
@@ -989,6 +1006,23 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
         // other structural position, so it isn't reported as a hard unify
         // failure before that real check gets a chance to run.
         (InferType::Dyn { .. }, _) | (_, InferType::Dyn { .. }) => Ok(Substitution::new()),
+        // RFC-0137 slice 2 (metel-core#858): a narrowed residual meeting the whole
+        // brand it came from, or a wider residual of it, is a partially-moved
+        // value used where more of it is required. Name that specifically rather
+        // than as a bare structural mismatch.
+        (InferType::Residual { brand: rb, fields }, InferType::Named(nb, _))
+        | (InferType::Named(nb, _), InferType::Residual { brand: rb, fields })
+            if rb == nb =>
+        {
+            let row = fields
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            Err(MetelError::internal(format!(
+                "a partially-moved `{rb}` (now `{rb}.{{ {row} }}`) cannot be used where the whole `{rb}` is required"
+            )))
+        }
         _ => Err(MetelError::internal(format!("cannot unify {a} with {b}"))),
     }
 }
@@ -1091,6 +1125,12 @@ fn operand_mismatch_error(
     rhs: &InferType,
     known_names: &HashMap<TypeVar, String>,
 ) -> MetelError {
+    // RFC-0137 slice 2 (metel-core#858): one side is a narrowed residual of the
+    // brand the other side names in full (or wider) — a partially-moved value
+    // used where more of it is required. Name that, not a bare shape mismatch.
+    if let Some(msg) = partial_move_mismatch_message(lhs, rhs) {
+        return MetelError::type_error(crate::error::TypeErrorCode::T0001, msg, &constraint.span);
+    }
     let mut rendered = render_types(&[lhs, rhs], known_names);
     let rhs = rendered.pop().unwrap_or_else(|| rhs.to_string());
     let lhs = rendered.pop().unwrap_or_else(|| lhs.to_string());
@@ -1105,6 +1145,37 @@ fn operand_mismatch_error(
             format!("cannot unify {lhs} with {rhs}"),
             &constraint.span,
         ),
+    }
+}
+
+/// A diagnostic for a residual meeting a wider row / whole brand of itself.
+fn partial_move_mismatch_message(a: &InferType, b: &InferType) -> Option<String> {
+    let row = |fields: &[(String, InferType)]| {
+        fields
+            .iter()
+            .map(|(n, _)| n.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    match (a, b) {
+        (InferType::Residual { brand: rb, fields }, InferType::Named(nb, _))
+        | (InferType::Named(nb, _), InferType::Residual { brand: rb, fields })
+            if rb == nb =>
+        {
+            Some(format!(
+                "a partially-moved `{rb}` (now `{rb}.{{ {} }}`) cannot be used where the whole `{rb}` is required",
+                row(fields)
+            ))
+        }
+        (
+            InferType::Residual { brand: b1, fields: f1 },
+            InferType::Residual { brand: b2, fields: f2 },
+        ) if b1 == b2 && f1.len() != f2.len() => Some(format!(
+            "a partially-moved `{b1}` here has row `{{ {} }}` but `{{ {} }}` is required",
+            row(f1),
+            row(f2)
+        )),
+        _ => None,
     }
 }
 
@@ -1182,6 +1253,13 @@ fn apply_constraint_with_coercion(
         let lhs_field = singleton_coerce_field_ty(registry, &lhs);
         let rhs_field = singleton_coerce_field_ty(registry, &rhs);
         let mk_err = || {
+            if let Some(msg) = partial_move_mismatch_message(&lhs, &rhs) {
+                return MetelError::type_error(
+                    crate::error::TypeErrorCode::T0001,
+                    msg,
+                    &constraint.span,
+                );
+            }
             let mut rendered = render_types(&[&lhs, &rhs], known_names);
             let rhs = rendered.pop().unwrap_or_else(|| rhs.to_string());
             let lhs = rendered.pop().unwrap_or_else(|| lhs.to_string());
@@ -3705,6 +3783,12 @@ pub struct InferContext {
     /// name resolves to nothing at all, which pass 2 will never see because it only ever
     /// runs where an expected type exists. See `unresolved_variant_deferrals`.
     variant_deferrals: Vec<(Span, String, TypeVar)>,
+    /// RFC-0137 slice 2 (metel-core#858): flow-sensitive moved-field tracking for
+    /// the function/method body currently being inferred. A partial move of a
+    /// non-`Copy` struct/`record` field narrows the base binding to an
+    /// `InferType::Residual`; reassigning the field widens it back. Reset per body
+    /// alongside the other body-local memos; see `typechecker/inference/narrowing.rs`.
+    flow: crate::flow_state::FlowState,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -3770,6 +3854,7 @@ impl InferContext {
             solve_stats: SolveStats::default(),
             overloads: OverloadTable::new(),
             variant_deferrals: Vec::new(),
+            flow: crate::flow_state::FlowState::default(),
         };
         for (name, scheme) in imported_schemes {
             ctx.bind_poly(name, scheme.clone());
@@ -4240,6 +4325,7 @@ impl InferContext {
     pub fn push_scope(&mut self) {
         self.mono_env.push(HashMap::new());
         self.poly_env.push(HashMap::new());
+        self.flow.push_scope();
     }
 
     /// Exit the current lexical scope, discarding all bindings introduced in it.
@@ -4251,6 +4337,10 @@ impl InferContext {
         self.mono_env.pop();
         assert!(self.poly_env.len() > 1, "pop_scope called at root scope");
         self.poly_env.pop();
+        // A partial move of an *outer* binding made in this scope survives the
+        // pop (it is not in the scope's shadow list); an `if` / `match` join
+        // reads it. Bindings introduced here leave move tracking.
+        self.flow.pop_scope();
     }
 
     /// Generate a fresh type variable.
@@ -4345,10 +4435,36 @@ impl InferContext {
     /// Panics if called with no scope pushed — cannot happen through normal use,
     /// since a fresh `InferContext` always starts with one scope.
     pub fn bind_mono(&mut self, name: impl Into<String>, ty: InferType, is_mutable: bool) {
+        let name = name.into();
+        // RFC-0137 slice 2: a fresh binding starts with clean move state; a
+        // rebind of the same name resets it (shadow-aware, via `FlowState`).
+        self.flow.bind(&name);
         self.mono_env
             .last_mut()
             .unwrap()
-            .insert(name.into(), (ty, is_mutable));
+            .insert(name, (ty, is_mutable));
+    }
+
+    /// RFC-0137 slice 2 (metel-core#858): the flow-sensitive moved-field tracker
+    /// for the body being inferred. Driven by `typechecker/inference/narrowing.rs`.
+    pub(crate) fn flow_mut(&mut self) -> &mut crate::flow_state::FlowState {
+        &mut self.flow
+    }
+
+    pub(crate) fn flow_ref(&self) -> &crate::flow_state::FlowState {
+        &self.flow
+    }
+
+    /// Swap in an empty move-tracking state for a fresh function/method body,
+    /// returning the caller's to be restored on exit.
+    pub(crate) fn flow_enter_body(&mut self) -> crate::flow_state::FlowState {
+        let saved = std::mem::take(&mut self.flow);
+        self.flow.push_scope();
+        saved
+    }
+
+    pub(crate) fn flow_exit_body(&mut self, saved: crate::flow_state::FlowState) {
+        self.flow = saved;
     }
 
     /// Install the module's free-function overload table (METEL-180).

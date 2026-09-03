@@ -1,0 +1,17 @@
+// RFC-0137 slice 2 (metel-core#858): assigning a value to a field missing from a
+// residual's row widens the residual's type back to the whole brand
+// (spec.ownership.widening.dynamics-1). Only for an owned binding; widening does
+// not re-check any constructor invariant.
+
+struct Handle { fd: i64, name: String }
+
+fun wants_full(h: Handle) -> i64 { h.fd }
+
+fun main() {
+    var h := Handle { fd = 5, name = "x" };
+    let taken := h.name;               // h : Handle.{ fd }
+    h.name := "y";                     // widens back: h : Handle
+    assert(wants_full(h) == 5);        // whole `Handle` accepted again
+    assert(h.name == "y");
+    println(taken);
+}

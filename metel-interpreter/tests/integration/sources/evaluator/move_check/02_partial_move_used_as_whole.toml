@@ -1,8 +1,11 @@
+# RFC-0137 slice 2 (metel-core#858): a partial move now narrows `pair`'s type to
+# `Pair.{ right }`, so `take(pair)` — which wants the whole `Pair` — is a plain
+# type error at inference time, no longer only a `--move-check` finding.
 [options]
 move_check = true
-spec = ["spec.ownership.partial-moves.legality-1"]
+spec = ["spec.ownership.partial-moves.legality-1", "spec.ownership.narrowing.legality-1"]
 
 [expect]
 status = "typecheck_error"
-code = "T0019"
-contains = "use of partially moved value `pair`"
+code = "T0001"
+contains = "partially-moved `Pair`"

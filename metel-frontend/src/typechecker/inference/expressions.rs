@@ -184,6 +184,11 @@ pub(super) fn infer_expr(
             if let Some(err) = ctx.check_glob_conflict(name, span) {
                 return Err(err);
             }
+            // RFC-0137 slice 2 (metel-core#858): a binding with a field moved out
+            // reads at its narrowed residual type from that point on.
+            if let Some(narrowed) = ctx.narrowed_infertype(name) {
+                return Ok(narrowed);
+            }
             if let Some(ty) = ctx.lookup(name) {
                 return Ok(ty);
             }
@@ -414,6 +419,11 @@ pub(super) fn infer_expr(
                 .iter()
                 .map(|a| infer_expr(a, ctx, fun_generalizations))
                 .collect::<Result<_, _>>()?;
+            // RFC-0137 slice 2: a by-value argument that partially moves a struct
+            // field narrows the base binding for the rest of the block.
+            for arg in args {
+                ctx.note_consumed_infer(arg);
+            }
             if let InferType::Fun(params, ret, ..) = &callee_ty {
                 if params.len() != arg_tys.len() {
                     return Err(MetelError::type_error(
@@ -593,9 +603,14 @@ pub(super) fn infer_expr(
                 }
             };
             let value_ty = infer_expr(value, ctx, fun_generalizations)?;
+            // RFC-0137 slice 2: the RHS may itself partially move a struct field;
+            // then a plain `a.f := …` widens `a`'s type back by reinitializing
+            // that place.
+            ctx.note_consumed_infer(value);
             match op {
                 AssignOp::Assign => {
                     ctx.add_constraint(target_ty, value_ty, span.clone());
+                    ctx.note_reassigned_infer(target);
                 }
                 AssignOp::AddAssign
                 | AssignOp::SubAssign
@@ -1149,13 +1164,37 @@ pub(super) fn infer_expr(
             let base_expr = record_projection_base_expr(path, span);
             let base_ty = infer_expr(&base_expr, ctx, fun_generalizations)?;
             let base_ty = ctx.solve()?.apply(&base_ty);
-            let struct_name = named_type_name(&base_ty).ok_or_else(|| {
-                MetelError::type_error(
-                    TypeErrorCode::T0002,
-                    "record projection requires a nominal struct value",
-                    span,
-                )
-            })?;
+            // RFC-0137 slice 2: re-projecting a narrowed residual is fine, as long
+            // as every named field is still in its current row.
+            if let InferType::Residual {
+                brand,
+                fields: res_fields,
+            } = &base_ty
+            {
+                for field in fields {
+                    if !res_fields.iter().any(|(n, _)| n == field) {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0003,
+                            format!(
+                                "field `{field}` was moved out of this `{brand}` and cannot be projected"
+                            ),
+                            span,
+                        ));
+                    }
+                }
+            }
+            let struct_name = named_type_name(&base_ty)
+                .or_else(|| match &base_ty {
+                    InferType::Residual { brand, .. } => Some(brand.clone()),
+                    _ => None,
+                })
+                .ok_or_else(|| {
+                    MetelError::type_error(
+                        TypeErrorCode::T0002,
+                        "record projection requires a nominal struct value",
+                        span,
+                    )
+                })?;
             let type_args = match &base_ty {
                 InferType::Named(_, args) => args.clone(),
                 InferType::Reference(inner) | InferType::MutReference(inner) => {

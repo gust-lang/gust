@@ -31,6 +31,9 @@ pub(super) fn infer_decl(
             } else {
                 infer_expr(&ld.value, ctx, fun_generalizations)?
             };
+            // RFC-0137 slice 2: a `let n := h.name;` initializer partially moves a
+            // struct field, narrowing `h` for the rest of the block.
+            ctx.note_consumed_infer(&ld.value);
             let bound_ty = if let Some(ann) = &ld.type_ann {
                 let declared = ann_to_infer(ann, ctx);
                 // RFC-0053 §4 (metel-core#757): `[T; N]` coerces to `T[]`,
@@ -116,6 +119,7 @@ pub(super) fn infer_decl(
             } else {
                 infer_expr(&md.value, ctx, fun_generalizations)?
             };
+            ctx.note_consumed_infer(&md.value);
             let bound_ty = if let Some(ann) = &md.type_ann {
                 let declared = ann_to_infer(ann, ctx);
                 // RFC-0053 §4 (metel-core#757): see the matching check in
@@ -694,6 +698,7 @@ pub(super) fn infer_fun_decl(
     let env_fvs = ctx.env_free_vars();
 
     ctx.push_scope();
+    let saved_flow = ctx.flow_enter_body();
     for (param, pt) in fun.params.iter().zip(param_types.iter()) {
         ctx.bind_mono(&param.name, pt.clone(), false);
     }
@@ -716,6 +721,7 @@ pub(super) fn infer_fun_decl(
     // Capture the projection log recorded during this function's body BEFORE restoring.
     let body_assoc_log = ctx.take_recorded_assoc_projections();
     ctx.restore_assoc_projections(saved_assoc_memo, saved_assoc_log);
+    ctx.flow_exit_body(saved_flow);
     ctx.pop_scope();
 
     let fun_ty = InferType::fun(param_types, ret_ty);
@@ -1203,6 +1209,7 @@ pub(super) fn infer_impl_method(
     // method scheme below so call sites resolve.
     if method.native.is_none() {
         ctx.push_scope();
+        let saved_flow = ctx.flow_enter_body();
         for (p, pt) in method.params.iter().zip(param_types.iter()) {
             let is_mutable =
                 p.mutable || matches!(p.receiver, Some(crate::ast::ReceiverKind::RefMut));
@@ -1218,6 +1225,7 @@ pub(super) fn infer_impl_method(
         ctx.restore_row_field_vars(saved_row_field_vars);
         ctx.swap_type_param_bounds(saved_tp_bounds);
         ctx.swap_type_params(saved_type_params);
+        ctx.flow_exit_body(saved_flow);
         ctx.pop_scope();
     }
     let body_assoc_log = ctx.take_recorded_assoc_projections();
@@ -1521,6 +1529,7 @@ pub(super) fn infer_default_aspect_method(
         .ok_or_else(|| MetelError::internal("missing aspect default body"))?;
 
     ctx.push_scope();
+    let saved_flow = ctx.flow_enter_body();
     for (p, pt) in method.params.iter().zip(param_types.iter()) {
         let is_mutable = p.mutable || matches!(p.receiver, Some(crate::ast::ReceiverKind::RefMut));
         ctx.bind_mono(&p.name, pt.clone(), is_mutable);
@@ -1531,6 +1540,7 @@ pub(super) fn infer_default_aspect_method(
     constrain_with_read_copy(ctx, body_ty, ret_ty.clone(), body.span.clone());
     ctx.pop_return_type(saved_ret);
     ctx.swap_type_params(saved_type_params);
+    ctx.flow_exit_body(saved_flow);
     ctx.pop_scope();
 
     let solved = ctx.solve()?;

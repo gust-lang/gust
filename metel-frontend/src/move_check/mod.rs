@@ -47,7 +47,7 @@ pub enum MoveViolationKind {
 /// A coarse bucket for `ty`, enough to separate the sequence types from
 /// everything else without exploding into one label per user struct.
 #[must_use]
-fn type_bucket(ty: &Type) -> String {
+pub(crate) fn type_bucket(ty: &Type) -> String {
     match ty {
         Type::Array(_) => "T[]".to_string(),
         Type::SizedArray(_, _) => "[T; N]".to_string(),
@@ -2779,6 +2779,33 @@ mod tests {
         violations
     }
 
+    /// RFC-0137 slice 2: some shapes that `move_check` used to be the only thing
+    /// to reject are now caught earlier, by move-triggered row narrowing, as a
+    /// plain typecheck error. Assert the frontend rejects `source` with a message
+    /// containing `needle`.
+    fn assert_typecheck_error_contains(source: &str, needle: &str) {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path =
+            std::env::temp_dir().join(format!("metel_narrow_err_{}_{n}.mtl", std::process::id()));
+        std::fs::write(&path, source).expect("write temp fixture");
+        let result = (|| {
+            let graph = module_loader::load_root(&path)?;
+            let names = name_resolver::resolve(&graph)?;
+            let normalized = path_normalizer::normalize(graph, &names)?;
+            coherence::check(&normalized, &names)?;
+            typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())
+                .map(|_| ())
+        })();
+        let _ = std::fs::remove_file(&path);
+        let err = result.expect_err("expected a typecheck error, got a clean typecheck");
+        let msg = err.to_string();
+        assert!(
+            msg.contains(needle),
+            "expected typecheck error to contain {needle:?}, got: {msg}"
+        );
+    }
+
     fn assert_has_violation(source: &str, binding: &str) -> Vec<MoveViolation> {
         let violations = move_violations_for_source(source);
         assert!(
@@ -2999,8 +3026,11 @@ fun main() {
     }
 
     #[test]
-    fn using_moved_field_again_is_reported() {
-        let violations = move_violations_for_source(
+    fn using_moved_field_again_is_a_typecheck_error() {
+        // RFC-0137 slice 2 (metel-core#858): the first `pair.left` narrows `pair`
+        // to `Pair.{ right }`, so the second projection of `left` is rejected at
+        // typecheck, before `--move-check` ever runs.
+        assert_typecheck_error_contains(
             r#"
 struct Pair {
     left: String,
@@ -3013,10 +3043,8 @@ fun main() {
     let again: String := pair.left;
 }
 "#,
+            "left",
         );
-
-        assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].binding, "pair");
     }
 
     #[test]
@@ -3038,8 +3066,11 @@ fun main() {
     }
 
     #[test]
-    fn whole_value_use_after_partial_move_is_reported() {
-        let violations = assert_has_violation(
+    fn whole_value_use_after_partial_move_is_a_typecheck_error() {
+        // RFC-0137 slice 2 (metel-core#858): `pair` narrows to `Pair.{ right }`
+        // after `pair.left` moves, so passing it where the whole `Pair` is
+        // required is a plain typecheck error, not only a `--move-check` finding.
+        assert_typecheck_error_contains(
             r#"
 struct Pair {
     left: String,
@@ -3056,9 +3087,8 @@ fun main() {
     let value: i64 := take(pair);
 }
 "#,
-            "pair",
+            "partially-moved `Pair`",
         );
-        assert_eq!(violations.len(), 1);
     }
 
     #[test]

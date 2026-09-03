@@ -627,6 +627,9 @@ pub(super) fn construct_expr(
         }
         Expr::Ident(name, span) => {
             if let Some(ty) = ctx.lookup(name).cloned() {
+                // RFC-0137 slice 2 (metel-core#858): a binding with a field moved
+                // out reads at its narrowed residual type from that point on.
+                let ty = ctx.narrowed_type(name).unwrap_or(ty);
                 return Ok(TypedExpr::Ident(name.clone(), ty, span.clone()));
             }
             if let Some(fields) = ctx.get_struct_fields(name) {
@@ -896,7 +899,17 @@ pub(super) fn construct_expr(
             type_args,
             args,
             span,
-        } => construct_call(callee, type_args, args, span, expected_ty, ctx),
+        } => {
+            let call = construct_call(callee, type_args, args, span, expected_ty, ctx)?;
+            // RFC-0137 slice 2: a by-value argument that is a partial move of a
+            // struct field narrows the base binding from here on.
+            if let TypedExpr::Call { args, .. } = &call {
+                for arg in args {
+                    ctx.note_consumed(arg);
+                }
+            }
+            Ok(call)
+        }
         Expr::Index {
             object,
             index,
@@ -1002,6 +1015,11 @@ pub(super) fn construct_expr(
             };
             let typed_place = assign_target_to_typed_place(target, ctx)?;
             let _ = typed_place_ty(&typed_place, ctx, span)?;
+            // RFC-0137 slice 2: the RHS may itself partially move a struct field
+            // (`a.f := b.f`); then assigning `a.f` widens `a`'s type back by
+            // reinitializing that place.
+            ctx.note_consumed(&typed_value);
+            ctx.note_reassigned(&typed_place);
             Ok(TypedExpr::Assign {
                 target: typed_place,
                 op: op.clone(),
@@ -1557,6 +1575,25 @@ pub(super) fn construct_expr(
             let typed_base = construct_expr(&base_expr, None, ctx)?;
             let (struct_name, type_args) = match peel_type_references(typed_base.ty()) {
                 Type::Named(name, args) => (name.clone(), args.clone()),
+                // RFC-0137 slice 2: re-projecting a narrowed residual, as long as
+                // every named field is still in its current row.
+                Type::Residual {
+                    brand,
+                    fields: res_fields,
+                } => {
+                    for field in fields {
+                        if !res_fields.iter().any(|(n, _)| n == field) {
+                            return Err(MetelError::type_error(
+                                TypeErrorCode::T0003,
+                                format!(
+                                    "field `{field}` was moved out of this `{brand}` and cannot be projected"
+                                ),
+                                span,
+                            ));
+                        }
+                    }
+                    (brand.clone(), Vec::new())
+                }
                 other => {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0002,
