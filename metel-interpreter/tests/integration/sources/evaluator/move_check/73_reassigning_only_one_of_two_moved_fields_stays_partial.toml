@@ -1,8 +1,13 @@
+# RFC-0137 slice 2 (metel-core#858): after both fields move and only `left` is
+# reassigned, `t` narrows to `Two.{ left }` (right still moved). `take(t)` wants
+# the whole `Two`, so this is a plain type error at inference time now, not only a
+# `--move-check` finding. Reassigning one of two moved fields does not restore
+# whole-value status — the residual keeps the still-missing field out of its row.
 [options]
 move_check = true
-spec = ["spec.ownership.partial-moves.legality-3"]
+spec = ["spec.ownership.partial-moves.legality-3", "spec.ownership.narrowing.legality-1"]
 
 [expect]
 status = "typecheck_error"
-code = "T0019"
-contains = "use of partially moved value"
+code = "T0001"
+contains = "partially-moved `Two`"

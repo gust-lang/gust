@@ -1261,6 +1261,8 @@ fn canonical_generic_bound(bound: &Bound, env: &SignatureEnv) -> String {
 mod declarations;
 use declarations::{infer_decl, rewrite_impl_aspect_returns, type_expr_contains_impl_aspect};
 
+mod narrowing;
+
 fn infer_block(
     block: &Block,
     ctx: &mut InferContext,
@@ -1958,6 +1960,24 @@ fn infer_field_assign_type(
         if let Some(result) = resolve_row_bound_field(ctx, *tv, field, target_span) {
             return result;
         }
+    }
+    // RFC-0137 slice 2 (metel-core#858): assigning a field to a narrowed residual
+    // is a *widening* write — the field may be one currently absent from the
+    // residual's row, so it is resolved against the brand's full declared row.
+    // `Expr::Assign` calls `note_reassigned_infer` right after this to widen the
+    // binding's type back.
+    if let InferType::Residual { brand, .. } = &peeled {
+        if let Some(entry) = ctx
+            .get_struct_fields(brand)
+            .and_then(|fields| fields.iter().find(|e| e.name == field).cloned())
+        {
+            return Ok(entry.ty);
+        }
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0003,
+            format!("no field `{field}` on `{brand}`"),
+            target_span,
+        ));
     }
     let struct_name = named_type_name(&obj_ty).ok_or_else(|| {
         MetelError::type_error(

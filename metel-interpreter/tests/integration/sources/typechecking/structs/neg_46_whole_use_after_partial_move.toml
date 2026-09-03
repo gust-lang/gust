@@ -1,0 +1,7 @@
+[expect]
+status = "typecheck_error"
+code = "T0001"
+contains = "partially-moved `Handle`"
+
+[options]
+spec = ["spec.ownership.narrowing.legality-1"]

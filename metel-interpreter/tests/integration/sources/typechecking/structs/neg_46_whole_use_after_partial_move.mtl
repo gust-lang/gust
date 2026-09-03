@@ -1,0 +1,15 @@
+// RFC-0137 slice 2 (metel-core#858): once a field is moved out, the value's type
+// is the residual -- `Handle.{ fd }` -- not the whole `Handle`. Passing it where
+// the whole struct is required is a plain type error at inference time, no longer
+// only a `--move-check` finding.
+
+struct Handle { fd: i64, name: String }
+
+fun wants_full(h: Handle) -> i64 { h.fd }
+
+fun main() {
+    let h := Handle { fd = 3, name = "x" };
+    let taken := h.name;
+    let _ := wants_full(h);   // rejected: `h` is `Handle.{ fd }`
+    println(taken);
+}
