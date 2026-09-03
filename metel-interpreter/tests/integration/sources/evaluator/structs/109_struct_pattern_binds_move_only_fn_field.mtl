@@ -1,0 +1,15 @@
+// v0.13.0 cross-feature (integration session, metel-core#956): struct pattern
+// matching binds a field whose declared type is a written function type
+// (RFC-0154 pipe notation), and that binding is move-only (RFC-0166). Calling
+// the bound closure once is fine; the negative half -- using it twice by value
+// -- is covered by typechecking/structs/neg_49.
+struct Pair { op: |i64| -> i64, n: i64 }
+
+fun main() {
+    let p := Pair { op = |x: i64| { x * 2 }, n = 5 };
+    let r := match (p) {
+        Pair { op, n } => op(n),
+    };
+    assert(r == 10);
+    println("ok");
+}

@@ -1,0 +1,19 @@
+// v0.13.0 cross-feature (integration session, metel-core#956): the closure
+// mutation axis (RFC-0153), pipe notation (RFC-0154), and written function
+// types lowering to move-only (RFC-0166) together. A `[&var acc] var` closure
+// is moved -- once, move-only -- into a `var |i64| -> i64` parameter and called
+// twice inside the callee; call lowering dispatches on the value's own mutation
+// axis, and the `&var` capture writes through to the caller's `acc`.
+fun run_twice(f: var |i64| -> i64, x: i64) -> i64 {
+    let a := f(x);
+    f(a)
+}
+
+fun main() {
+    var acc := 0;
+    let step := [&var acc] var |d: i64| -> i64 { acc := acc + d; acc };
+    let r := run_twice(step, 3);            // f(3): acc 0->3 ret 3 ; f(3): acc 3->6 ret 6
+    assert(r == 6);
+    assert(acc == 6);
+    println("ok");
+}
