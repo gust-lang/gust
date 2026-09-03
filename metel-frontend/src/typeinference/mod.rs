@@ -1175,6 +1175,11 @@ fn partial_move_mismatch_message(a: &InferType, b: &InferType) -> Option<String>
             row(f1),
             row(f2)
         )),
+        // No record-specific message: a narrowed anonymous record is just a
+        // `Record` with fewer fields, structurally identical to any other
+        // narrower record, so there is no unambiguous "was partially moved"
+        // signal here the way `Type::Residual` gives one for a struct. The
+        // generic "cannot unify `{ x }` with `{ x, y }`" stands (still a T0001).
         _ => None,
     }
 }
@@ -4465,6 +4470,21 @@ impl InferContext {
 
     pub(crate) fn flow_exit_body(&mut self, saved: crate::flow_state::FlowState) {
         self.flow = saved;
+    }
+
+    /// Resolve `ty` against the substitution solved so far (`cached_subst`),
+    /// without advancing the incremental solver. Used by row narrowing to test a
+    /// record field's `Copy`-ness once enough constraints have been processed —
+    /// an anonymous record's field types are inference variables until then.
+    pub(crate) fn apply_cached_subst(&self, ty: &InferType) -> InferType {
+        self.cached_subst.apply(ty)
+    }
+
+    /// Whether `tv` is an unsuffixed integer / float literal's type variable —
+    /// one that will default to a `Copy` numeric primitive. Row narrowing treats
+    /// such a field as `Copy` even before the default is applied.
+    pub(crate) fn is_numeric_literal_var(&self, tv: TypeVar) -> bool {
+        self.integer_literal_vars.contains(&tv) || self.float_literal_vars.contains(&tv)
     }
 
     /// Install the module's free-function overload table (METEL-180).

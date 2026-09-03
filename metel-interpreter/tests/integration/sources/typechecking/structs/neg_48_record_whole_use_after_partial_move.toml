@@ -1,0 +1,7 @@
+[expect]
+status = "typecheck_error"
+code = "T0001"
+contains = "cannot unify"
+
+[options]
+spec = ["spec.ownership.narrowing.legality-1", "spec.ownership.narrowing.legality-4"]

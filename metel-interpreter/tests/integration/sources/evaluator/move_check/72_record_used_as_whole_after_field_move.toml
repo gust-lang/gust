@@ -1,8 +1,13 @@
+# RFC-0117 (metel-core#789): a partial move now narrows the anonymous record's
+# type to `{ right: i64 }`, so `take(r)` — which wants `{ left, right }` — is a
+# plain type error at inference time, no longer only a `--move-check` finding.
+# (A narrowed record has no distinct type marker, so the message is the generic
+# record-shape mismatch, not a residual-specific one.)
 [options]
 move_check = true
-spec = ["spec.ownership.partial-moves.which-constructs-support-partial-moves.legality-2"]
+spec = ["spec.ownership.narrowing.legality-1"]
 
 [expect]
 status = "typecheck_error"
-code = "T0019"
-contains = "use of partially moved value"
+code = "T0001"
+contains = "cannot unify"

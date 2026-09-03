@@ -39,11 +39,8 @@ impl InferContext {
         if moved_labels.is_empty() {
             return None;
         }
-        // Only a *branded* struct value narrows to a residual. An anonymous
-        // `record` value stays on per-field move tracking with no narrower static
-        // type (spec.ownership.partial-moves.which-constructs-support-partial-moves.legality-2)
-        // -- a residual needs a brand, and an anonymous record has none.
         match declared {
+            // A branded struct value narrows to a same-brand residual (RFC-0137).
             InferType::Named(brand, args) => {
                 let row = self.resolve_infer_struct_row(brand, args)?;
                 filter_row(brand.clone(), &row, &moved_labels, Some(row.len()))
@@ -52,8 +49,46 @@ impl InferContext {
                 let full = self.resolve_infer_struct_row(brand, &[]).map(|r| r.len());
                 filter_row(brand.clone(), fields, &moved_labels, full)
             }
+            // An anonymous `record` value narrows to the record type with the
+            // moved labels removed (RFC-0117). A label is only dropped when its
+            // field type resolves to something not `Copy` — a `Copy` field read
+            // by value is a copy, not a move, and does not narrow.
+            InferType::Record(fields) => {
+                let mut remaining: Vec<(String, InferType)> = fields
+                    .iter()
+                    .filter(|(name, ty)| {
+                        !moved_labels.contains(name.as_str()) || self.field_is_copy(ty)
+                    })
+                    .cloned()
+                    .collect();
+                if remaining.len() == fields.len() || remaining.is_empty() {
+                    return None;
+                }
+                remaining.sort_by(|(a, _), (b, _)| a.cmp(b));
+                Some(InferType::Record(remaining))
+            }
             _ => None,
         }
+    }
+
+    /// Whether `ty`, resolved against the substitution solved so far, is
+    /// *definitely* `Copy`. An unresolved variable is not — narrowing holds a
+    /// field until its type is known.
+    fn field_is_copy(&self, ty: &InferType) -> bool {
+        let resolved = self.apply_cached_subst(ty);
+        // An unsuffixed numeric literal's var will default to a `Copy` primitive.
+        if let InferType::Var(tv) = &resolved {
+            return self.is_numeric_literal_var(*tv);
+        }
+        if infer_type_has_var(&resolved) {
+            return false;
+        }
+        self.registry().infer_type_satisfies_aspect(
+            self.current_module_path(),
+            &resolved,
+            "Copy",
+            &AspectAssumptions::new(),
+        )
     }
 
     /// The concrete-as-possible `(label, InferType)` row of a struct brand at the
@@ -133,23 +168,26 @@ impl InferContext {
                     None => return,
                 }
             }
-            // An anonymous `record` root does not narrow (see `narrow_infer_row`).
+            InferType::Record(fields) => {
+                let Some(l) = label.as_ref() else { return };
+                match fields.iter().find(|(name, _)| name == l) {
+                    Some((_, ty)) => ty.clone(),
+                    None => return,
+                }
+            }
             _ => return,
         };
-        // Only a *definitely* non-`Copy` leaf narrows. An unresolved type var —
-        // a generic field, or an unsuffixed literal awaiting default — may still
-        // turn out `Copy` (e.g. `first = 1` defaulting to `i64`); narrowing it
-        // here would wrongly drop the field before the solve. Be conservative.
-        if infer_type_has_var(&leaf_ty) {
+        // Record the move unless the moved leaf is *definitely* `Copy`. A `Named`
+        // struct's field type is concrete or a generic parameter (a var there
+        // means generic -- hold off, resolve at each call site). A `Record`'s
+        // field type is often still a variable at this point (`"a".to_string()`
+        // is unresolved until later); record optimistically and re-test each
+        // moved label's `Copy`-ness at read time (`narrow_infer_row`).
+        let is_record_root = matches!(&root_ty, InferType::Record(_));
+        if !is_record_root && infer_type_has_var(&leaf_ty) {
             return;
         }
-        let assumptions = AspectAssumptions::new();
-        if self.registry().infer_type_satisfies_aspect(
-            self.current_module_path(),
-            &leaf_ty,
-            "Copy",
-            &assumptions,
-        ) {
+        if self.field_is_copy(&leaf_ty) {
             return;
         }
         let place = Place::new(root).with_projection(projection);
