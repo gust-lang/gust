@@ -11,7 +11,9 @@ AGENTS.md wins.
 A release is cut when a **version milestone completes**, not on a calendar. This is the
 periodic half of the two gates: it sweeps repository-wide state that no single pull
 request owns. It does **not** re-run the per-PR gate — those checks already passed on
-every branch that landed.
+every branch that landed — and it assumes `/milestone-integration-test` has already
+exercised the milestone's features in combination (Step 1b); this command gates on that
+session's report, it does not perform it.
 
 ---
 
@@ -40,6 +42,20 @@ gh issue list --milestone  --state open
 Every remaining open issue is either genuinely done and needs closing, or is deferred and
 must be **re-milestoned to a later version** — not left silently attached to this one.
 Confirm closed issues had their acceptance criteria satisfied; a closed box is not proof.
+
+## Step 1b — Integration session
+
+```bash
+ls docs/release-notes/integration/$ARGUMENTS.md
+```
+
+`/milestone-integration-test $ARGUMENTS` has been run, and its report exists, is dated
+**on or after the Step 0 freeze**, and its `**Result:**` line reads `PASS`. Every finding
+it lists is a closed fix or a deferred issue re-milestoned off `$ARGUMENTS` (the Step 1
+rule, applied to the session's findings). A stale report — `<short-sha>` older than
+`develop`'s tip — does not count; re-run the session on the frozen tree.
+
+If the report is missing, stop and run `/milestone-integration-test $ARGUMENTS` first.
 
 ## Step 2 — Release gate
 
@@ -151,7 +167,7 @@ Lift the freeze on `develop` once both are confirmed green.
 ## $ARGUMENTS — released
 
 **Range:** <prev-tag>..$ARGUMENTS (<N> commits)
-**Gate:** all 9 items passed.
+**Gate:** integration session PASS + all 9 release-gate items passed.
 
 ### Shipped
 - #N: <title>
