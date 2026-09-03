@@ -1,0 +1,15 @@
+// v0.13.0 cross-feature (integration session, metel-core#956): closure capture
+// (RFC-0157 D5) meets move-triggered struct row narrowing (RFC-0137 slice 2).
+// A non-`Copy` field is moved out first, narrowing `h` to `Handle.{ fd }`; the
+// closure then captures the *narrowed* value by value. The capture list names
+// `h`, the residual moves into the environment once, and `--move-check` is
+// clean -- narrowing already removed the field that left.
+struct Handle { fd: i64, name: String }
+
+fun main() {
+    let h := Handle { fd = 7, name = "n" };
+    let taken := h.name;                 // h : Handle.{ fd }
+    let get := [h] once || { h.fd };     // captures the residual by value
+    assert(get() == 7);
+    println(taken);
+}

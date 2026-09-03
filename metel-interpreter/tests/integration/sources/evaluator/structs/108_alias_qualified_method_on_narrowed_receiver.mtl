@@ -1,0 +1,20 @@
+// v0.13.0 cross-feature (integration session, metel-core#956): a transparent
+// type alias (RFC-0160) qualifying a call, an `extend` method whose receiver is
+// a branded residual `&Self.{ fd }` (RFC-0137 slice 1), and a receiver narrowed
+// by a partial move (RFC-0137 slice 2). The alias erases to `Handle`, so
+// `H::describe` is `Handle::describe`; the narrowed `h` and an explicit
+// re-projection `h.{ fd }` both fit the residual parameter.
+struct Handle { fd: i64, name: String }
+type H := Handle;
+
+extend Handle {
+    fun describe(h: &Self.{ fd }) -> i64 { h.fd }
+}
+
+fun main() {
+    let h: H := Handle { fd = 7, name = "n" };
+    let taken := h.name;                     // h : Handle.{ fd }
+    assert(H::describe(&h) == 7);            // alias-qualified call, narrowed receiver
+    assert(H::describe(&h.{ fd }) == 7);     // re-projecting the residual: same type
+    println(taken);
+}

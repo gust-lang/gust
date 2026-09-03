@@ -1,0 +1,16 @@
+// v0.13.0 cross-feature (integration session, metel-core#956): a struct-pattern
+// binding of a written-function-type field (RFC-0154) is move-only (RFC-0166).
+// Using it by value twice inside the arm is a use-after-move under --move-check.
+struct Pair { op: |i64| -> i64, n: i64 }
+
+fun main() {
+    let p := Pair { op = |x: i64| { x * 2 }, n = 5 };
+    let r := match (p) {
+        Pair { op, n } => {
+            let a := op;
+            let b := op;                 // use after move
+            a(n) + b(n)
+        },
+    };
+    println("unreachable");
+}
