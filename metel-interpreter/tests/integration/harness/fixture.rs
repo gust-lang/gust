@@ -77,6 +77,13 @@ pub struct FixtureOptions {
     /// skipped fixture does not count toward `rfc.py`'s spec-block fixture
     /// coverage.
     pub skip: Option<String>,
+    /// Optional human-readable label for this fixture, shown instead of the
+    /// `.mtl` filename by the rendered spec's inline fixture viewer
+    /// (metel-core#944 / #974). Purely presentational: the harness parses and
+    /// stores it but does not act on it, and it has no effect on `spec =`
+    /// coverage. `rfc.py` reads it when regenerating the Formal-rules blocks.
+    /// An empty / whitespace-only value is treated as unset.
+    pub spec_title: Option<String>,
 }
 
 #[derive(Default)]
@@ -87,6 +94,7 @@ struct PartialConfig {
     rfc: Option<Vec<String>>,
     spec: Option<Vec<String>>,
     skip: Option<String>,
+    spec_title: Option<String>,
     status: Option<ExpectStatus>,
     code: Option<String>,
     contains: Option<String>,
@@ -200,6 +208,7 @@ fn merge_config(defaults: FixtureConfig, partial: PartialConfig) -> FixtureConfi
             rfc: partial.rfc.unwrap_or(defaults.options.rfc),
             spec: partial.spec.unwrap_or(defaults.options.spec),
             skip: partial.skip.or(defaults.options.skip),
+            spec_title: partial.spec_title.or(defaults.options.spec_title),
         },
         expect: Expectation {
             status: partial.status.unwrap_or(defaults.expect.status),
@@ -269,6 +278,10 @@ fn parse_sidecar(path: &Path) -> PartialConfig {
                 "rfc" => partial.rfc = Some(parse_rfc_list(&value, path)),
                 "spec" => partial.spec = Some(parse_spec_list(&value, path)),
                 "skip" => partial.skip = Some(value),
+                "spec_title" => {
+                    let trimmed = value.trim();
+                    partial.spec_title = (!trimmed.is_empty()).then(|| trimmed.to_string());
+                }
                 other => panic!(
                     "unknown options sidecar key `{other}` in {}",
                     path.display()
@@ -567,4 +580,36 @@ fn parse_list(raw: &str) -> Vec<String> {
         .split(',')
         .map(|item| parse_scalar(item.trim()))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sources() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/integration/sources")
+    }
+
+    #[test]
+    fn spec_title_sidecar_key_is_accepted_and_parsed() {
+        // metel-core#974: an `[options] spec_title` key must parse (the sidecar
+        // parser panics on unknown keys) and land in `FixtureOptions`.
+        let cfg = resolve_fixture_config(
+            "evaluator",
+            &sources().join("evaluator/closures/v0_13_0_move_capture_by_value.mtl"),
+        );
+        assert_eq!(
+            cfg.options.spec_title.as_deref(),
+            Some("a non-`Copy` capture is moved into the closure at creation"),
+        );
+    }
+
+    #[test]
+    fn spec_title_absent_is_none() {
+        let cfg = resolve_fixture_config(
+            "evaluator",
+            &sources().join("evaluator/closures/33_closure.mtl"),
+        );
+        assert_eq!(cfg.options.spec_title, None);
+    }
 }
