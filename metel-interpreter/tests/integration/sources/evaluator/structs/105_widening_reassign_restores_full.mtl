@@ -1,7 +1,9 @@
 // RFC-0137 slice 2 (metel-core#858): assigning a value to a field missing from a
 // residual's row widens the residual's type back to the whole brand
 // (spec.ownership.widening.dynamics-1). Only for an owned binding; widening does
-// not re-check any constructor invariant.
+// not re-check any constructor invariant. With `--move-check` on, the widened
+// binding is whole again -- a by-value use is a clean move, not a partial-move
+// violation.
 
 struct Handle { fd: i64, name: String }
 
@@ -11,7 +13,7 @@ fun main() {
     var h := Handle { fd = 5, name = "x" };
     let taken := h.name;               // h : Handle.{ fd }
     h.name := "y";                     // widens back: h : Handle
-    assert(wants_full(h) == 5);        // whole `Handle` accepted again
-    assert(h.name == "y");
+    assert(h.name == "y");             // sibling readable at the widened type
+    assert(wants_full(h) == 5);        // whole `Handle` moved in, once
     println(taken);
 }

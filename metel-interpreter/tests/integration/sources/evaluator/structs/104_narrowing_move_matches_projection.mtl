@@ -2,28 +2,29 @@
 // narrows the value's *type* to a residual of the same brand -- `Handle` becomes
 // `Handle.{ fd }` -- and that residual is exactly the one an explicit projection
 // `h.{ fd }` produces, so the two are interchangeable at a `Self.{ fd }`
-// parameter (spec.ownership.narrowing.dynamics-1). The residual keeps every
-// still-present field usable.
+// parameter (spec.ownership.narrowing.dynamics-1). With `--move-check` on, a
+// whole-value use of the narrowed value is *not* flagged as a partial-move
+// violation (metel-core#950) -- narrowing removed exactly the moved field.
 
 struct Handle { fd: i64, name: String }
 
 extend Handle {
-    fun describe(h: Self.{ fd }) -> i64 { h.fd }
+    fun describe(h: &Self.{ fd }) -> i64 { h.fd }
 }
 
 fun main() {
-    // Route A: a partial move narrows `h` in place.
+    // Route A: a partial move narrows `h` in place; a borrowed whole-value use
+    // of the narrowed value is accepted, projection and move producing the same
+    // residual type.
     let h := Handle { fd = 7, name = "a" };
-    let taken := h.name;                 // h : Handle.{ fd } from here on
-    assert(h.fd == 7);                   // the sibling field stays readable
-    assert(Handle::describe(h) == 7);    // the narrowed value fits `Self.{ fd }`
+    let taken := h.name;                    // h : Handle.{ fd } from here on
+    assert(h.fd == 7);                      // the sibling field stays readable
+    assert(Handle::describe(&h) == 7);      // narrowed value fits `&Self.{ fd }`
+    assert(Handle::describe(&h.{ fd }) == 7); // re-projecting the residual: same type
 
-    // Route B: an explicit projection produces the same residual type.
+    // Route B: an explicit projection off a fresh value produces the same type.
     let h2 := Handle { fd = 7, name = "b" };
-    assert(Handle::describe(h2.{ fd }) == 7);
-
-    // Re-projecting an already-narrowed residual is fine for a field it still has.
-    assert(Handle::describe(h.{ fd }) == 7);
+    assert(Handle::describe(&h2.{ fd }) == 7);
 
     println(taken);
 }

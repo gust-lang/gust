@@ -44,6 +44,31 @@ pub enum MoveViolationKind {
     MoveOutOfReference,
 }
 
+/// Whether a whole-value use of `root`, at a *narrowed* type `ty` (a
+/// `Type::Residual` or a narrower `Type::Record`), touches no moved field — in
+/// which case it is legal despite `root` being partially moved. Narrowing
+/// (RFC-0137 / RFC-0117) removes exactly the moved labels, so this holds by
+/// construction; the check is a guard against a stale or wrong type stamp.
+///
+/// `Named` (the full struct) and every non-row type return `false` here — those
+/// are not narrowed, so the ordinary partial-move rule applies.
+#[must_use]
+fn whole_use_of_narrowed_value_is_intact(state: &FlowState, root: &str, ty: &Type) -> bool {
+    let present: Vec<&str> = match ty {
+        Type::Residual { fields, .. } | Type::Record(fields) => {
+            fields.iter().map(|(name, _)| name.as_str()).collect()
+        }
+        _ => return false,
+    };
+    let moved: Vec<Projection> = state.moved_shallow_projections(root);
+    // Every field the narrowed type still names must be un-moved.
+    present.iter().all(|label| {
+        !moved
+            .iter()
+            .any(|p| matches!(p, Projection::Field(f) if f == label))
+    })
+}
+
 /// A coarse bucket for `ty`, enough to separate the sequence types from
 /// everything else without exploding into one label per user struct.
 #[must_use]
@@ -710,7 +735,8 @@ impl<'a> Checker<'a> {
     #[allow(clippy::too_many_lines)]
     fn observe_expr(&mut self, expr: &TypedExpr, current_module: &[String], state: &mut FlowState) {
         if let Some(place) = place_from_expr(expr) {
-            self.record_whole_use_if_moved(&place, expr.span(), state);
+            let narrowed = place.projections().is_empty().then(|| expr.ty());
+            self.record_whole_use_if_moved(&place, expr.span(), state, narrowed);
         }
         match expr {
             TypedExpr::Literal(..) | TypedExpr::Ident(..) | TypedExpr::Path(..) => {}
@@ -1056,7 +1082,17 @@ impl<'a> Checker<'a> {
                     self.observe_projection_base_expr(object, current_module, state);
                 }
                 _ => {
-                    self.consume_place(&place, &root_ty, expr.span(), current_module, state, cause);
+                    // A bare whole-value use: prefer `expr.ty()`, the (possibly
+                    // narrowed) type construction stamped on the use site, over
+                    // the binding-time type in `state` — so `consume_place` sees
+                    // a `Residual` / narrower `Record` and does not flag a legal
+                    // use of a narrowed binding (metel-core#950).
+                    let use_ty = if place.projections().is_empty() {
+                        expr.ty().clone()
+                    } else {
+                        root_ty.clone()
+                    };
+                    self.consume_place(&place, &use_ty, expr.span(), current_module, state, cause);
                 }
             }
             return;
@@ -1473,12 +1509,23 @@ impl<'a> Checker<'a> {
             self.report_illegal_move(place, use_span.clone(), type_bucket(&place_ty), kind);
             return;
         }
-        self.check_place_use_before_move(place, use_span, state);
+        // For a bare whole-value use, `place_ty` here is the type construction
+        // stamped on the use expression — a `Type::Residual` / narrower `Record`
+        // when the binding narrowed. Pass it so a legal use of a narrowed value
+        // is not flagged as a partial-move violation (metel-core#950).
+        let narrowed = place.projections().is_empty().then_some(&place_ty);
+        self.check_place_use_before_move(place, use_span, state, narrowed);
         self.record_move_if_needed(place, &place_ty, use_span, current_module, state, cause);
     }
 
-    fn check_place_use_before_move(&mut self, place: &Place, use_span: &Span, state: &FlowState) {
-        self.record_whole_use_if_moved(place, use_span, state);
+    fn check_place_use_before_move(
+        &mut self,
+        place: &Place,
+        use_span: &Span,
+        state: &FlowState,
+        narrowed_whole_ty: Option<&Type>,
+    ) {
+        self.record_whole_use_if_moved(place, use_span, state, narrowed_whole_ty);
     }
 
     fn record_move_if_needed(
@@ -1519,7 +1566,23 @@ impl<'a> Checker<'a> {
         false
     }
 
-    fn record_whole_use_if_moved(&mut self, place: &Place, use_span: &Span, state: &FlowState) {
+    fn record_whole_use_if_moved(
+        &mut self,
+        place: &Place,
+        use_span: &Span,
+        state: &FlowState,
+        narrowed_whole_ty: Option<&Type>,
+    ) {
+        // RFC-0137 / RFC-0117 (metel-core#950): a whole-value use of a binding
+        // whose *type* has narrowed to a residual / narrower record is legal —
+        // narrowing removed exactly the moved fields, so no still-live use
+        // touches a moved one. Construction stamps that narrowed type on the use
+        // expression; trust it when every field it still names is un-moved.
+        if let Some(ty) = narrowed_whole_ty {
+            if whole_use_of_narrowed_value_is_intact(state, place.root(), ty) {
+                return;
+            }
+        }
         if let Some(record) = state.moved_record_for_whole_use(place) {
             self.report.violations.push(MoveViolation {
                 binding: place.root().to_string(),
@@ -3905,18 +3968,24 @@ fun main() {
 
     #[test]
     fn assigning_one_field_leaves_a_sibling_field_moved() {
-        assert_has_violation(
+        // RFC-0137 (metel-core#858/#950): reassigning `left` does not clear the
+        // `right` move, so `p` stays narrowed to `Pair.{ left }`. Binding it at
+        // its narrowed type (`let whole := p;`) is fine; using it where the whole
+        // `Pair` is required is the error — caught at type-check time now.
+        assert_typecheck_error_contains(
             r#"
 struct Pair { left: String, right: String }
+
+fun take_whole(p: Pair) -> i64 { 0 }
 
 fun main() {
     var p := Pair { left = "a", right = "b" };
     let taken := p.right;
     p.left := "c";
-    let whole := p;
+    let n := take_whole(p);
 }
 "#,
-            "p",
+            "partially-moved `Pair`",
         );
     }
 
