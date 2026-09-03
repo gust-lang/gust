@@ -1,0 +1,15 @@
+// RFC-0117 (metel-core#789): once a field is moved out of an anonymous record,
+// the record's type is the narrower row -- `{ right: i64 }`, not `{ left, right }`.
+// Passing it where the whole record is required is a plain type error at
+// inference time, no longer only a `--move-check` finding. A narrowed record has
+// no distinct type marker, so the diagnostic is the ordinary record-shape
+// mismatch.
+
+fun wants_full(r: { left: String, right: i64 }) -> i64 { r.right }
+
+fun main() {
+    let r := { left = "a".to_string(), right = 1 };
+    let taken := r.left;
+    let _ := wants_full(r);
+    println(taken);
+}

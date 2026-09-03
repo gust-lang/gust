@@ -56,9 +56,9 @@ impl ConstructCtx<'_> {
         self.narrow_row(&declared, &moved)
     }
 
-    /// Only a *branded* struct value narrows to a residual. An anonymous `record`
-    /// value keeps its whole static type and stays on per-field move tracking
-    /// (spec.ownership.partial-moves.which-constructs-support-partial-moves.legality-2).
+    /// A branded struct value narrows to a same-brand residual (RFC-0137); an
+    /// anonymous `record` value narrows to the record type with the moved labels
+    /// removed (RFC-0117).
     fn narrow_row(&self, declared: &Type, moved: &[Projection]) -> Option<Type> {
         match declared {
             Type::Named(brand, args) => {
@@ -70,6 +70,7 @@ impl ConstructCtx<'_> {
                 let full = self.resolve_struct_row(brand, &args);
                 narrow_residual(brand, fields, full.as_deref(), moved)
             }
+            Type::Record(fields) => narrow_record(fields, moved),
             _ => None,
         }
     }
@@ -162,14 +163,16 @@ fn record_move_of_place(ctx: &mut ConstructCtx, place: &Place, leaf: &TypedExpr)
     if is_copy(ctx, leaf.ty()) {
         return;
     }
-    // The root must be a plain owned binding of a *branded* struct type. A
+    // The root must be a plain owned binding of a struct or anonymous record. A
     // reference root never narrows (RFC-0071 §7.1 already rejects moving a
-    // non-`Copy` field out through one); an anonymous `record` root does not
-    // narrow either (`narrow_row`).
+    // non-`Copy` field out through one).
     let Some(root_ty) = ctx.flow.binding_type(place.root()) else {
         return;
     };
-    if !matches!(root_ty, Type::Named(..) | Type::Residual { .. }) {
+    if !matches!(
+        root_ty,
+        Type::Named(..) | Type::Residual { .. } | Type::Record(_)
+    ) {
         return;
     }
     ctx.flow.record_move(
@@ -245,6 +248,25 @@ fn narrow_residual(
         brand: brand.to_string(),
         fields: remaining,
     })
+}
+
+/// RFC-0117: an anonymous record's row minus the moved labels. Construction runs
+/// post-solve, so field types here are concrete and no `Copy` re-test is needed —
+/// `record_move_of_place` already screened the leaf with `is_copy`.
+fn narrow_record(fields: &[(String, Type)], moved: &[Projection]) -> Option<Type> {
+    let moved_labels = field_labels(moved);
+    if moved_labels.is_empty() {
+        return None;
+    }
+    let remaining: Vec<(String, Type)> = fields
+        .iter()
+        .filter(|(name, _)| !moved_labels.contains(name.as_str()))
+        .cloned()
+        .collect();
+    if remaining.len() == fields.len() || remaining.is_empty() {
+        return None;
+    }
+    Some(Type::Record(remaining))
 }
 
 fn field_labels(moved: &[Projection]) -> std::collections::HashSet<&str> {

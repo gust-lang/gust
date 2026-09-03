@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.ownership.narrowing.legality-1", "spec.ownership.partial-moves.which-constructs-support-partial-moves.legality-2"]
