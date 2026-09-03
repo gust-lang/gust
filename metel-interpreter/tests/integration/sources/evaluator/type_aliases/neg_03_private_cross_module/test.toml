@@ -2,7 +2,7 @@ runner = "full_pipeline"
 prelude = "default"
 
 [options]
-spec = ["spec.declarations.type-aliases.legality-1"]
+spec = ["spec.declarations.type-aliases.legality-3"]
 
 [expect]
 status = "typecheck_error"
