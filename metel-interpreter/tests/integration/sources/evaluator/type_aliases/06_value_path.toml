@@ -1,2 +1,2 @@
 [options]
-spec = ["spec.declarations.type-aliases.legality-1"]
+spec = ["spec.declarations.type-aliases.legality-4"]
