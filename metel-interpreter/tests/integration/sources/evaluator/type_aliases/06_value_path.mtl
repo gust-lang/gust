@@ -1,0 +1,36 @@
+// RFC-0160 (metel-core#941): an alias for a plain named type stands in wherever
+// the real type name would in value / pattern position — a struct literal, a
+// record projection, an enum-variant path, and a match pattern.
+struct Point { x: i64, y: i64 }
+enum Dir { North, South }
+
+type P := Point;
+type D := Dir;
+
+fun origin() -> P {
+    P { x = 0, y = 0 }
+}
+
+fun main() {
+    let p := P { x = 3, y = 4 };
+    assert(p.x == 3);
+
+    let just_x := p.{ x };
+    assert(just_x.x == 3);
+
+    let d := D::South;
+    let code := match (d) {
+        D::North => 1,
+        D::South => 2,
+    };
+    assert(code == 2);
+
+    match (p) {
+        P { x, .. } => {
+            assert(x == 3);
+        }
+    }
+
+    assert(origin().y == 0);
+    println("ok");
+}
