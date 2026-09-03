@@ -9,6 +9,6 @@ fun call_mut(f: var || -> i64) -> i64 {
 }
 
 fun main() {
-    let pure := || -> i64 { 7 }; // `reading`, `many`
+    let pure := || { 7 }; // `reading`, `many`
     assert(call_mut(pure) == 14); // widens into the `var` slot, still dispatched plainly
 }

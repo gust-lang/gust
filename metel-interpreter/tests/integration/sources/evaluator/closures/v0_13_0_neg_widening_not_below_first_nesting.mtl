@@ -11,6 +11,6 @@ fun sink(cb: |var || -> i64| -> i64) -> i64 {
 fun main() {
     // `f`'s parameter is `reading () -> i64`; `sink` wants a nested `var () -> i64`.
     // Nested position => exact match => rejected, even though `f` only reads it.
-    let f := |inner: || -> i64| -> i64 { inner() };
+    let f := |inner: || -> i64| { inner() };
     sink(f);
 }

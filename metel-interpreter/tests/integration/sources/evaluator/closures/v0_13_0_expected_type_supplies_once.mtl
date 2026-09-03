@@ -3,7 +3,7 @@
 // type rather than defaulting to `many` / `reading` and then failing.
 //
 fun make(s: String) -> once || -> String {
-    [s] || -> String { s } // no `once` written; the return type supplies it
+    [s] || { s } // no `once` written; the return type supplies it
 }
 
 fun main() {

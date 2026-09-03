@@ -5,7 +5,7 @@
 // Needs move_check = true (general moved-value check, RFC 0071).
 fun main() {
     let s := "hello";
-    let take := [s] once || -> String { s };
+    let take := [s] once || { s };
     let first := take();
     let second := take(); // moved-value error -- `take` was already consumed
 }

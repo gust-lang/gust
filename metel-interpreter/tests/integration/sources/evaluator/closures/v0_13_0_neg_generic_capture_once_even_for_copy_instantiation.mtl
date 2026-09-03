@@ -5,7 +5,7 @@
 //
 // Needs move_check = true (general moved-value check, RFC 0071).
 fun make<T>(t: T) -> once || -> T {
-    [t] once || -> T { t }
+    [t] once || { t }
 }
 
 fun main() {

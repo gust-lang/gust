@@ -12,7 +12,7 @@ fun keep(p: IntPred, x: Count) -> boolean { p(x) }
 fun keep_raw(p: |i64| -> boolean, x: i64) -> boolean { p(x) }
 
 fun main() {
-    let odd: IntPred := |n: i64| -> boolean { n % 2 == 1 };
+    let odd: IntPred := |n: i64| { n % 2 == 1 };
     assert(keep(odd, 7));
     assert(!keep(odd, 8));
     assert(keep_raw(odd, 3));

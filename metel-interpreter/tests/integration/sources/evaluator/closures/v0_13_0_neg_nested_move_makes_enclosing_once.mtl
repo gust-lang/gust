@@ -7,8 +7,8 @@
 // Needs move_check = true (general moved-value check, RFC 0071).
 fun main() {
     let s := "data";
-    let outer := [s] once || -> once || -> String {
-        let inner := [s] once || -> String { s }; // moves enclosing-held `s`; `outer` is declared `once`
+    let outer := [s] once || {
+        let inner := [s] once || { s }; // moves enclosing-held `s`; `outer` is declared `once`
         inner
     };
     let a := outer();

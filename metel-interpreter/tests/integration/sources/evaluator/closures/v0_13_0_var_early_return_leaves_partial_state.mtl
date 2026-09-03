@@ -6,7 +6,7 @@
 //
 fun main() {
     var log := 0;
-    var step := [&var log] var |stop: boolean| -> i64 {
+    var step := [&var log] var |stop: boolean| {
         log += 1;
         if (stop) {
             return log; // early return, mid-mutation

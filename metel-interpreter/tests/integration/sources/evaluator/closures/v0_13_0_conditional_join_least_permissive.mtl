@@ -4,7 +4,7 @@
 // `once`, so the whole `if` is `once` and the `many` arm widens in.
 //
 fun make_once(s: String) -> once || -> String {
-    [s] || -> String { s }
+    [s] || { s }
 }
 
 fun call_once(f: once || -> String) -> String {
@@ -16,7 +16,7 @@ fun main() {
     let picked := if (cond) {
         make_once("a")
     } else {
-        || -> String { "b" } // `many` by default; widens `many -> once` into the join
+        || { "b" } // `many` by default; widens `many -> once` into the join
     };
     assert(call_once(picked) == "a");
 }
