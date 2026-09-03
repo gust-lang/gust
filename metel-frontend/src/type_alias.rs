@@ -13,14 +13,15 @@
 //!   shadowing of an outer alias of the same name.
 //! - **Cross-module aliases** — a `pub type` imported by name (`import m::{A};`),
 //!   under a local rename (`import m::A as B;`), through a glob (`import m::*;`),
-//!   or referenced qualified in type position (`m::A`). Referencing another
+//!   re-exported by an intermediate module (`export m::{A};`, one hop), or
+//!   referenced qualified in type position (`m::A`). Referencing another
 //!   module's non-`public` alias is `T0009`.
 //! - Every `TypeExpr` position: signatures, fields, generic / where bounds, and
 //!   type annotations nested inside expressions (a closure parameter annotation,
 //!   a cast, an ascription, a turbofish).
 //!
-//! Still out of scope (tracked on metel-core#921): an alias re-exported through
-//! `export` (a re-export chain), and using an alias name as a value path.
+//! Still out of scope (tracked on metel-core#921): using an alias name as a
+//! value path.
 
 use std::collections::{HashMap, HashSet};
 
@@ -59,6 +60,9 @@ struct ImportScope {
     items: HashMap<String, AliasKey>,
     /// modules brought in wholesale by `import m::*;`
     globs: Vec<ModKey>,
+    /// alias names this module re-exposes with `export other::{A};` → the true
+    /// declaring `(module, name)`. One level only, matching `name_resolver`.
+    re_exports: HashMap<String, AliasKey>,
 }
 
 /// Expand every type alias in the graph, in place.
@@ -90,7 +94,7 @@ pub fn expand(graph: &mut ModuleGraph) -> Result<(), MetelError> {
     for m in &graph.modules {
         import_scopes.insert(
             m.module_path.clone(),
-            module_import_scope(m, &known_modules, &graph.path_aliases),
+            module_import_scope(m, &known_modules, &graph.path_aliases, &raw),
         );
     }
 
@@ -107,56 +111,74 @@ pub fn expand(graph: &mut ModuleGraph) -> Result<(), MetelError> {
     }
 
     // 4. Rewrite every type expression in every module, drop the alias decls,
-    //    and drop the now-dangling `import`s that named an erased alias.
+    //    and drop the now-dangling `import` / `export` leaves that named an
+    //    erased alias.
     let path_aliases = graph.path_aliases.clone();
     for m in &mut graph.modules {
         let mut ex = Expander {
             current: m.module_path.clone(),
             scopes: Vec::new(),
             raw: &raw,
-            import_scope: import_scopes.get(&m.module_path),
+            import_scopes: &import_scopes,
             resolved: &resolved,
         };
         ex.walk_program(&mut m.program)?;
-        prune_alias_imports(&mut m.program, &m.module_path, &raw, &path_aliases);
+        prune_erased_alias_paths(
+            &mut m.program,
+            &m.module_path,
+            &raw,
+            &import_scopes,
+            &path_aliases,
+        );
     }
     Ok(())
 }
 
-/// Remove import-tree leaves that named a type alias — the alias declaration is
-/// gone, so the import would otherwise fail downstream as an unknown item. The
-/// local binding was already recorded in the module's [`ImportScope`] during
+/// Remove `import` / `export` tree leaves that named a type alias — the alias
+/// declaration is gone, so the path would otherwise fail downstream as an
+/// unknown item (or, for an `export`, a `T0009` re-export of a vanished name).
+/// The local binding was already recorded in the module's [`ImportScope`] during
 /// step 2, so alias expansion still works; this only tidies the AST.
-fn prune_alias_imports(
+fn prune_erased_alias_paths(
     program: &mut Program,
     module_path: &ModKey,
     raw: &HashMap<ModKey, HashMap<String, RawAlias>>,
+    import_scopes: &HashMap<ModKey, ImportScope>,
     path_aliases: &HashMap<ModKey, ModKey>,
 ) {
     program.imports.retain_mut(|imp: &mut ImportDecl| {
         let base = resolve_path_root(&imp.path.root, module_path);
-        !prune_import_tree(&mut imp.path.tree, &base, raw, path_aliases)
+        !prune_alias_tree(&mut imp.path.tree, &base, raw, import_scopes, path_aliases)
+    });
+    program.exports.retain_mut(|exp| {
+        let base = resolve_path_root(&exp.path.root, module_path);
+        !prune_alias_tree(&mut exp.path.tree, &base, raw, import_scopes, path_aliases)
     });
 }
 
-/// Returns `true` if the whole subtree was alias-only and should be removed.
-fn prune_import_tree(
+/// Returns `true` if the whole subtree resolved only to erased aliases and
+/// should be removed. A leaf counts as erased when it names a **public** alias
+/// directly or through one `export` hop; a private-alias leaf is left in place
+/// so `name_resolver` still raises its own `T0009`.
+fn prune_alias_tree(
     tree: &mut ImportTree,
     base: &[String],
     raw: &HashMap<ModKey, HashMap<String, RawAlias>>,
+    import_scopes: &HashMap<ModKey, ImportScope>,
     path_aliases: &HashMap<ModKey, ModKey>,
 ) -> bool {
     let canon = canonical_path(base, path_aliases);
     match tree {
         ImportTree::Glob => false,
-        ImportTree::Name { name, .. } => raw.get(&canon).is_some_and(|per| per.contains_key(name)),
+        ImportTree::Name { name, .. } => resolve_in_module(&canon, name, raw, import_scopes)
+            .is_some_and(|key| pub_alias(raw, &key)),
         ImportTree::Path { name, tree } => {
             let mut nested = canon.clone();
             nested.push(name.clone());
-            prune_import_tree(tree, &nested, raw, path_aliases)
+            prune_alias_tree(tree, &nested, raw, import_scopes, path_aliases)
         }
         ImportTree::Group(items) => {
-            items.retain_mut(|t| !prune_import_tree(t, &canon, raw, path_aliases));
+            items.retain_mut(|t| !prune_alias_tree(t, &canon, raw, import_scopes, path_aliases));
             items.is_empty()
         }
     }
@@ -194,10 +216,12 @@ fn module_import_scope(
     loaded: &LoadedModule,
     known_modules: &HashSet<ModKey>,
     path_aliases: &HashMap<ModKey, ModKey>,
+    raw: &HashMap<ModKey, HashMap<String, RawAlias>>,
 ) -> ImportScope {
     let mut scope = ImportScope {
         items: HashMap::new(),
         globs: Vec::new(),
+        re_exports: HashMap::new(),
     };
     for import in &loaded.program.imports {
         let base = resolve_path_root(&import.path.root, &loaded.module_path);
@@ -209,7 +233,56 @@ fn module_import_scope(
             &mut scope,
         );
     }
+    for export in &loaded.program.exports {
+        let base = resolve_path_root(&export.path.root, &loaded.module_path);
+        collect_export_tree(&base, &export.path.tree, path_aliases, raw, &mut scope);
+    }
     scope
+}
+
+/// Record each alias name an `export` re-exposes, mapped to its true declaring
+/// `(module, name)`. Only `public` aliases are recorded — re-exporting a private
+/// one is `name_resolver`'s `T0009` to raise.
+fn collect_export_tree(
+    base: &[String],
+    tree: &ImportTree,
+    path_aliases: &HashMap<ModKey, ModKey>,
+    raw: &HashMap<ModKey, HashMap<String, RawAlias>>,
+    scope: &mut ImportScope,
+) {
+    let canon = canonical_path(base, path_aliases);
+    match tree {
+        ImportTree::Glob => {
+            if let Some(per) = raw.get(&canon) {
+                for (name, a) in per {
+                    if a.is_pub {
+                        scope
+                            .re_exports
+                            .insert(name.clone(), (canon.clone(), name.clone()));
+                    }
+                }
+            }
+        }
+        ImportTree::Name { name, alias } => {
+            let is_pub = raw
+                .get(&canon)
+                .is_some_and(|per| per.get(name).is_some_and(|a| a.is_pub));
+            if is_pub {
+                let local = alias.clone().unwrap_or_else(|| name.clone());
+                scope.re_exports.insert(local, (canon, name.clone()));
+            }
+        }
+        ImportTree::Path { name, tree } => {
+            let mut nested = canon.clone();
+            nested.push(name.clone());
+            collect_export_tree(&nested, tree, path_aliases, raw, scope);
+        }
+        ImportTree::Group(trees) => {
+            for t in trees {
+                collect_export_tree(&canon, t, path_aliases, raw, scope);
+            }
+        }
+    }
 }
 
 fn collect_import_tree(
@@ -252,36 +325,57 @@ fn resolve_alias_name(
     name: &str,
     home: &ModKey,
     raw: &HashMap<ModKey, HashMap<String, RawAlias>>,
-    import_scope: Option<&ImportScope>,
+    import_scopes: &HashMap<ModKey, ImportScope>,
 ) -> Option<AliasKey> {
     if name.contains("::") {
         let (module, item) = split_qualified(name, home)?;
-        return raw
-            .get(&module)
-            .filter(|per| per.contains_key(&item))
-            .map(|_| (module, item));
+        return resolve_in_module(&module, &item, raw, import_scopes);
     }
     if raw.get(home).is_some_and(|per| per.contains_key(name)) {
         return Some((home.clone(), name.to_string()));
     }
-    let scope = import_scope?;
+    let scope = import_scopes.get(home)?;
     if let Some((src_mod, src_name)) = scope.items.get(name) {
-        if raw
-            .get(src_mod)
-            .is_some_and(|per| per.contains_key(src_name))
-        {
-            return Some((src_mod.clone(), src_name.clone()));
+        if let Some(key) = resolve_in_module(src_mod, src_name, raw, import_scopes) {
+            return Some(key);
         }
     }
     for g in &scope.globs {
+        // A glob only brings in the target module's *public* names.
         if raw
             .get(g)
             .is_some_and(|per| per.get(name).is_some_and(|a| a.is_pub))
         {
             return Some((g.clone(), name.to_string()));
         }
+        if let Some(real) = import_scopes.get(g).and_then(|s| s.re_exports.get(name)) {
+            if pub_alias(raw, real) {
+                return Some(real.clone());
+            }
+        }
     }
     None
+}
+
+/// `(module, item)` as an alias key when `module` declares that alias directly,
+/// or re-exports it (one `export` hop). Visibility of a *directly* declared alias
+/// is the caller's to check; a re-exported one is only followed if `public`.
+fn resolve_in_module(
+    module: &ModKey,
+    item: &str,
+    raw: &HashMap<ModKey, HashMap<String, RawAlias>>,
+    import_scopes: &HashMap<ModKey, ImportScope>,
+) -> Option<AliasKey> {
+    if raw.get(module).is_some_and(|per| per.contains_key(item)) {
+        return Some((module.clone(), item.to_string()));
+    }
+    let real = import_scopes.get(module)?.re_exports.get(item)?;
+    pub_alias(raw, real).then(|| real.clone())
+}
+
+fn pub_alias(raw: &HashMap<ModKey, HashMap<String, RawAlias>>, key: &AliasKey) -> bool {
+    raw.get(&key.0)
+        .is_some_and(|per| per.get(&key.1).is_some_and(|a| a.is_pub))
 }
 
 /// Split a `::`-qualified type name into the module it names and the final
@@ -360,7 +454,7 @@ fn expand_refs(
     if local.contains(name.as_str()) {
         return Ok(());
     }
-    let Some(key) = resolve_alias_name(name, home, raw, import_scopes.get(home)) else {
+    let Some(key) = resolve_alias_name(name, home, raw, import_scopes) else {
         return Ok(());
     };
     if &key.0 != home && !raw[&key.0][&key.1].is_pub {
@@ -380,7 +474,7 @@ struct Expander<'a> {
     /// block-local alias frames, innermost last; targets already fully expanded
     scopes: Vec<HashMap<String, Alias>>,
     raw: &'a HashMap<ModKey, HashMap<String, RawAlias>>,
-    import_scope: Option<&'a ImportScope>,
+    import_scopes: &'a HashMap<ModKey, ImportScope>,
     resolved: &'a HashMap<AliasKey, Alias>,
 }
 
@@ -396,7 +490,8 @@ impl Expander<'_> {
         if let Some(a) = self.local_lookup(name) {
             return Ok(Some(a));
         }
-        let Some(key) = resolve_alias_name(name, &self.current, self.raw, self.import_scope) else {
+        let Some(key) = resolve_alias_name(name, &self.current, self.raw, self.import_scopes)
+        else {
             return Ok(None);
         };
         if key.0 != self.current && !self.raw[&key.0][&key.1].is_pub {

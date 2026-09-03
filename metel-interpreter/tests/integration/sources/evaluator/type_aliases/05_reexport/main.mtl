@@ -1,0 +1,18 @@
+// RFC-0160 (metel-core#940): an alias that reaches this module through an
+// `export` re-export (one hop) resolves the same as a direct import — by name,
+// under a rename, and everywhere the erased type is written.
+import prelude::{Vec2, Transform};
+import prelude::Vec2 as Point;
+
+fun apply(t: Transform, p: Vec2) -> Vec2 {
+    t(p)
+}
+
+fun main() {
+    let shift: Transform := |v: Vec2| -> Vec2 { (v.0 + 1.0, v.1 + 1.0) };
+    let origin: Point := (0.0, 0.0);
+    let moved: Vec2 := apply(shift, origin);
+    assert(moved.0 == 1.0);
+    assert(moved.1 == 1.0);
+    println("ok");
+}
