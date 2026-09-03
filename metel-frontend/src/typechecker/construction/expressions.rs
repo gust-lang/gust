@@ -397,7 +397,7 @@ fn verify_capture_specs(
             if call_mutation != crate::types::CallMutation::Mutating {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0028,
-                    "a `&var` capture makes this closure `var`; write `[...] var (...)`",
+                    "a `&var` capture makes this closure `var`; write the `var` qualifier: `[...] var |...| { ... }`",
                     span,
                 ));
             }

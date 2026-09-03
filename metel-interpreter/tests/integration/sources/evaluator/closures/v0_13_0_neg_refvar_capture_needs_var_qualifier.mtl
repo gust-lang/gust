@@ -1,0 +1,9 @@
+// v0.13.0 closure cluster (RFC 0153 legality-25 / metel-core#959): a `[&var x]`
+// capture over a `var` binding still requires the `var` qualifier on the closure
+// literal itself. The diagnostic names the pipe spelling introduced by RFC-0154
+// -- `[...] var |...| { ... }` -- not the parenthesized form that RFC removed.
+fun main() {
+    var count := 0;
+    let bump := [&var count] || { count := count + 1; }; // missing `var` qualifier
+    bump();
+}
