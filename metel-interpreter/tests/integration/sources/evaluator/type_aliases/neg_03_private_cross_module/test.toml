@@ -2,6 +2,7 @@ runner = "full_pipeline"
 prelude = "default"
 
 [options]
+error = ["T0009"]
 spec = ["spec.declarations.type-aliases.legality-3"]
 
 [expect]

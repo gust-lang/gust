@@ -4,6 +4,7 @@
 # `--move-check` finding. Reassigning one of two moved fields does not restore
 # whole-value status — the residual keeps the still-missing field out of its row.
 [options]
+error = ["T0001"]
 move_check = true
 spec = ["spec.ownership.partial-moves.legality-3", "spec.ownership.narrowing.legality-1"]
 

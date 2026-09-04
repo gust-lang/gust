@@ -1,4 +1,5 @@
 [options]
+error = ["T0001"]
 spec = ["spec.lexical.literals.legality-3"]
 
 [expect]

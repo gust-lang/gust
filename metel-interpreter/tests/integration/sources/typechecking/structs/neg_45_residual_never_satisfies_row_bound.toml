@@ -4,4 +4,5 @@ code = "T0012"
 contains = "is not a record"
 
 [options]
+error = ["T0012"]
 spec = ["spec.ownership.narrowing.legality-2"]

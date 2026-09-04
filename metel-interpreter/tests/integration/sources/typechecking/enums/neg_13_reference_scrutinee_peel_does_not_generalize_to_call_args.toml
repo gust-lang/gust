@@ -1,4 +1,5 @@
 [options]
+error = ["T0001"]
 spec = ["spec.expressions.pattern-matching.matching-through-a-reference.legality-5"]
 
 [expect]

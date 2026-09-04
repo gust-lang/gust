@@ -4,6 +4,7 @@
 # (A narrowed record has no distinct type marker, so the message is the generic
 # record-shape mismatch, not a residual-specific one.)
 [options]
+error = ["T0001"]
 move_check = true
 spec = ["spec.ownership.narrowing.legality-1"]
 

@@ -4,4 +4,5 @@ code = "T0003"
 contains = "unknown aspect"
 
 [options]
+error = ["T0003"]
 spec = ["spec.declarations.aspects.dyn-aspect.legality-1"]

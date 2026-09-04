@@ -1,4 +1,5 @@
 [options]
+error = ["T0012"]
 spec = ["spec.declarations.aspects.implementing-an-aspect.legality-12"]
 
 [expect]

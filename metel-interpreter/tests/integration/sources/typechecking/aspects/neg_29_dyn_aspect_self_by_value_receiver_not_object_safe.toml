@@ -4,4 +4,5 @@ code = "T0025"
 contains = "Consumer::consume takes self by value"
 
 [options]
+error = ["T0025"]
 spec = ["spec.declarations.aspects.dyn-aspect.legality-2"]

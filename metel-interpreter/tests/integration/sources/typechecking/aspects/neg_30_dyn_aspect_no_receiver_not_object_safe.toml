@@ -4,4 +4,5 @@ code = "T0025"
 contains = "Factory::create has no `self` receiver"
 
 [options]
+error = ["T0025"]
 spec = ["spec.declarations.aspects.dyn-aspect.legality-2"]

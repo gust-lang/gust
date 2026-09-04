@@ -1,4 +1,5 @@
 [options]
+error = ["T0019"]
 move_check = true
 spec = ["spec.ownership.drop.legality-1", "spec.ownership.partial-moves.legality-2"]
 

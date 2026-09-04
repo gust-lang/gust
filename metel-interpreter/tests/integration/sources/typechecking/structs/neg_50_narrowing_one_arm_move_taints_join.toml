@@ -1,4 +1,5 @@
 [options]
+error = ["T0001"]
 spec = ["spec.ownership.narrowing.legality-1", "spec.ownership.narrowing.legality-4"]
 
 [expect]

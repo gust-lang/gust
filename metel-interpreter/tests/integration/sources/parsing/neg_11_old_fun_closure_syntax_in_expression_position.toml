@@ -1,4 +1,5 @@
 [options]
+error = ["P0001"]
 spec = ["spec.functions.closures.legality-4"]
 
 [expect]
