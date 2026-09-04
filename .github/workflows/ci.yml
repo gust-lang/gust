@@ -70,6 +70,28 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 docs/rfcs/tools/rfc.py check
 
+  grammar-doc-check:
+    name: grammar.md up to date
+    runs-on: ubuntu-latest
+    steps:
+      # metel-core#720: docs/reference/spec/grammar.md is generated from
+      # metel-frontend/src/grammar.pest + grammar-doc.toml, not hand-written
+      # -- gen_grammar --check fails if the checked-in file doesn't match a
+      # fresh generation (drift), or if grammar.pest and grammar-doc.toml
+      # disagree about which rules exist (a new pest rule with no sidecar
+      # entry, or a stale entry naming a rule that's gone).
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: gen_grammar --check
+        run: cargo run --release --bin gen_grammar -- --check
+        working-directory: metel-frontend
+
   doc-examples:
     name: doc examples
     runs-on: ubuntu-latest
