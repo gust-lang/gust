@@ -142,6 +142,13 @@ pub(super) fn eval_typed_place_value(
         } => {
             let parent = eval_typed_place_value(object, env, runtime)?;
             match parent {
+                // R0005: believed genuinely unreachable via well-typed source --
+                // `index` is a source-literal tuple index the typechecker already
+                // validates against the tuple type's known arity before this ever
+                // runs (metel-core#987, #986's own audit). Kept as a defensive
+                // fallback rather than `unreachable!()`/an outright panic: a
+                // clean diagnostic here is strictly better than UB or a Rust
+                // panic if some untried construct ever proves this wrong.
                 Value::Tuple(elems) => elems.get(*index).cloned().ok_or_else(|| {
                     MetelError::panic(
                         RuntimeErrorCode::R0005,
