@@ -83,6 +83,13 @@ Reports clean. Any RFC this release implements end-to-end moves to `4-implemente
 (`rfc.py transition <id> --to implemented`) rather than being left at `3-integrated` with
 stale "Not yet implemented" spec callouts.
 
+Also bump the spec's fixture-viewer ref to the tag being cut (metel-core#944): in the
+`metel-docs` working tree, set `SPEC_FIXTURE_REF` in `rfcs/tools/rfc.py` to `$ARGUMENTS`,
+run `python3 docs/rfcs/tools/rfc.py index --write-spec-origins`, and commit both on
+`metel-docs main` — so every Formal-rules block's fixture `href` and inlined source
+snapshot point at this release's tag, not `main`. This is the once-per-release move that
+keeps `--check-drift` quiet between releases.
+
 **4. Docs submodule in lockstep** — bump the `docs` pointer to `metel-docs main`'s tip as
 part of the release commit. This is the only time `main`'s pointer moves. Since
 `metel-docs` is trunk-based, its `main` should already hold everything the changelog and
