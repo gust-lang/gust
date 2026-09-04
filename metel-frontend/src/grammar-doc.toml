@@ -1,0 +1,795 @@
+# metel-core#720: the hand-maintained half of grammar.md's generation.
+#
+# Every rule in grammar.pest needs exactly one entry here -- gen_grammar
+# fails the build otherwise, in both directions (a new pest rule with no
+# entry; a stale entry naming a rule that no longer exists). This file
+# decides display names and doc-section grouping, which is the only thing a
+# rule's actual grammar.pest body can never tell you -- it does NOT decide
+# whether a rule's *productions* are correct; those are always generated
+# from grammar.pest directly and can't drift from it.
+#
+# mode = "named"    -- a real documented production: `name`, grouped under
+#                       `section`. Section order in the generated doc is the
+#                       order sections first appear below; rule order within
+#                       a section is the order those rules appear below.
+# mode = "terminal" -- an opaque named token (IDENTIFIER, INT, ...): has a
+#                       `name` used at reference sites, but never its own
+#                       line -- spelling out a lexical scan character by
+#                       character isn't useful to a grammar reader.
+# mode = "inline"   -- pure indirection or a trivial one-line wrapper: gets
+#                       substituted by its own real pest body wherever
+#                       referenced, recursively. No `name`/`section`.
+# mode = "literal"  -- like inline, but the substituted text is `values`
+#                       (joined as `"a" | "b"`) instead of the rule's real
+#                       body -- for the keyword atoms whose actual body is
+#                       `"kw" ~ !(ASCII_ALPHANUMERIC | "_")`: that trailing
+#                       word-boundary lookahead is lexing plumbing, not
+#                       grammar information, and there's no way to derive
+#                       "strip exactly this shape" mechanically without
+#                       risking silently mishandling a rule that isn't
+#                       actually shaped that way. An explicit override says
+#                       exactly what renders, still checked at the same
+#                       completeness gate as every other mode.
+# mode = "omit"     -- pest-internal plumbing (whitespace/comment handling,
+#                       an interpolation sub-scanner): must never actually be
+#                       reached while rendering a documented rule's body --
+#                       gen_grammar fails the build if one is, rather than
+#                       silently rendering it.
+
+# ── Whitespace and comments -- pure pest plumbing, never documented ──────────
+
+[[rule]]
+pest = "WHITESPACE"
+mode = "omit"
+[[rule]]
+pest = "COMMENT"
+mode = "omit"
+[[rule]]
+pest = "line_comment"
+mode = "omit"
+[[rule]]
+pest = "block_comment"
+mode = "omit"
+
+# ── Program ────────────────────────────────────────────────────────────────
+
+[[rule]]
+pest = "program"
+mode = "named"
+name = "Program"
+section = "Program"
+
+# ── Module header ─────────────────────────────────────────────────────────
+
+[[rule]]
+pest = "import_decl"
+mode = "named"
+name = "ImportDecl"
+section = "Module Header"
+[[rule]]
+pest = "export_decl"
+mode = "named"
+name = "ExportDecl"
+section = "Module Header"
+[[rule]]
+pest = "import_path"
+mode = "named"
+name = "ImportPath"
+section = "Module Header"
+[[rule]]
+pest = "path_root"
+mode = "named"
+name = "PathRoot"
+section = "Module Header"
+[[rule]]
+pest = "import_tree"
+mode = "named"
+name = "ImportTree"
+section = "Module Header"
+[[rule]]
+pest = "import_item"
+mode = "named"
+name = "ImportItem"
+section = "Module Header"
+
+# ── Declarations ───────────────────────────────────────────────────────────
+
+[[rule]]
+pest = "decl"
+mode = "named"
+name = "Declaration"
+section = "Declarations"
+[[rule]]
+pest = "type_alias"
+mode = "named"
+name = "TypeAliasDeclaration"
+section = "Declarations"
+[[rule]]
+pest = "let_decl"
+mode = "named"
+name = "LetDeclaration"
+section = "Declarations"
+[[rule]]
+pest = "let_mut_decl"
+mode = "named"
+name = "VarDeclaration"
+section = "Declarations"
+[[rule]]
+pest = "fun_decl"
+mode = "named"
+name = "FunDeclaration"
+section = "Declarations"
+[[rule]]
+pest = "native_attr"
+mode = "named"
+name = "NativeBinding"
+section = "Declarations"
+[[rule]]
+pest = "native_path"
+mode = "terminal"
+name = "NATIVE_PATH"
+[[rule]]
+pest = "native_seg"
+mode = "omit"
+[[rule]]
+pest = "struct_decl"
+mode = "named"
+name = "StructDeclaration"
+section = "Declarations"
+[[rule]]
+pest = "struct_fields"
+mode = "named"
+name = "StructFields"
+section = "Declarations"
+[[rule]]
+pest = "struct_field"
+mode = "named"
+name = "StructField"
+section = "Declarations"
+[[rule]]
+pest = "enum_decl"
+mode = "named"
+name = "EnumDeclaration"
+section = "Declarations"
+[[rule]]
+pest = "enum_variants"
+mode = "named"
+name = "EnumVariants"
+section = "Declarations"
+[[rule]]
+pest = "enum_variant"
+mode = "named"
+name = "EnumVariant"
+section = "Declarations"
+[[rule]]
+pest = "impl_block"
+mode = "inline"
+[[rule]]
+pest = "extend_impl_block"
+mode = "named"
+name = "ExtendBlock"
+section = "Declarations"
+[[rule]]
+pest = "extend_impl_bodyless"
+mode = "inline"
+[[rule]]
+pest = "extend_impl_braced"
+mode = "inline"
+[[rule]]
+pest = "extend_aspect_list"
+mode = "inline"
+[[rule]]
+pest = "extend_aspect"
+mode = "named"
+name = "ExtendAspect"
+section = "Declarations"
+[[rule]]
+pest = "assoc_type_def"
+mode = "named"
+name = "AssocTypeDef"
+section = "Declarations"
+[[rule]]
+pest = "aspect_decl"
+mode = "named"
+name = "AspectDeclaration"
+section = "Declarations"
+[[rule]]
+pest = "aspect_method"
+mode = "named"
+name = "AspectMethod"
+section = "Declarations"
+[[rule]]
+pest = "assoc_type_decl"
+mode = "named"
+name = "AssocTypeDecl"
+section = "Declarations"
+
+# ── Parameters ─────────────────────────────────────────────────────────────
+
+[[rule]]
+pest = "param_list"
+mode = "named"
+name = "Params"
+section = "Parameters"
+[[rule]]
+pest = "param"
+mode = "named"
+name = "Param"
+section = "Parameters"
+[[rule]]
+pest = "generic_params"
+mode = "named"
+name = "GenericParams"
+section = "Parameters"
+[[rule]]
+pest = "generic_param"
+mode = "named"
+name = "GenericParam"
+section = "Parameters"
+[[rule]]
+pest = "bound_list"
+mode = "named"
+name = "BoundList"
+section = "Parameters"
+[[rule]]
+pest = "bound"
+mode = "named"
+name = "Bound"
+section = "Parameters"
+[[rule]]
+pest = "bang"
+mode = "inline"
+[[rule]]
+pest = "bound_head"
+mode = "named"
+name = "BoundHead"
+section = "Parameters"
+[[rule]]
+pest = "row_bound"
+mode = "named"
+name = "RowBound"
+section = "Parameters"
+[[rule]]
+pest = "row_field"
+mode = "named"
+name = "RowField"
+section = "Parameters"
+[[rule]]
+pest = "bound_arg"
+mode = "named"
+name = "BoundArg"
+section = "Parameters"
+[[rule]]
+pest = "assoc_binding"
+mode = "named"
+name = "AssocBinding"
+section = "Parameters"
+[[rule]]
+pest = "where_clause"
+mode = "named"
+name = "WhereClause"
+section = "Parameters"
+[[rule]]
+pest = "where_constraint"
+mode = "named"
+name = "WhereConstraint"
+section = "Parameters"
+
+# ── Statements ─────────────────────────────────────────────────────────────
+
+[[rule]]
+pest = "stmt"
+mode = "named"
+name = "Statement"
+section = "Statements"
+[[rule]]
+pest = "block"
+mode = "named"
+name = "Block"
+section = "Statements"
+[[rule]]
+pest = "block_item"
+mode = "named"
+name = "BlockItem"
+section = "Statements"
+[[rule]]
+pest = "block_expr_stmt"
+mode = "named"
+name = "BlockExprStmt"
+section = "Statements"
+[[rule]]
+pest = "expr_stmt"
+mode = "named"
+name = "ExpressionStatement"
+section = "Statements"
+[[rule]]
+pest = "while_stmt"
+mode = "named"
+name = "WhileStatement"
+section = "Statements"
+[[rule]]
+pest = "for_stmt"
+mode = "named"
+name = "ForStatement"
+section = "Statements"
+[[rule]]
+pest = "for_init"
+mode = "named"
+name = "ForInit"
+section = "Statements"
+[[rule]]
+pest = "for_in_stmt"
+mode = "named"
+name = "ForInStatement"
+section = "Statements"
+
+# ── Expressions ────────────────────────────────────────────────────────────
+
+[[rule]]
+pest = "expr"
+mode = "named"
+name = "Expression"
+section = "Expressions"
+[[rule]]
+pest = "interp_expr_entry"
+mode = "omit"
+[[rule]]
+pest = "assign_expr"
+mode = "named"
+name = "AssignmentExpression"
+section = "Expressions"
+[[rule]]
+pest = "assign_op"
+mode = "named"
+name = "AssignOp"
+section = "Expressions"
+[[rule]]
+pest = "or_expr"
+mode = "named"
+name = "LogicalOrExpression"
+section = "Expressions"
+[[rule]]
+pest = "or_op"
+mode = "inline"
+[[rule]]
+pest = "and_expr"
+mode = "named"
+name = "LogicalAndExpression"
+section = "Expressions"
+[[rule]]
+pest = "and_op"
+mode = "inline"
+[[rule]]
+pest = "cmp_expr"
+mode = "named"
+name = "ComparisonExpression"
+section = "Expressions"
+[[rule]]
+pest = "cmp_op"
+mode = "inline"
+[[rule]]
+pest = "range_expr"
+mode = "named"
+name = "RangeExpression"
+section = "Expressions"
+[[rule]]
+pest = "range_op"
+mode = "inline"
+[[rule]]
+pest = "add_expr"
+mode = "named"
+name = "TermExpression"
+section = "Expressions"
+[[rule]]
+pest = "add_op"
+mode = "inline"
+[[rule]]
+pest = "mul_expr"
+mode = "named"
+name = "FactorExpression"
+section = "Expressions"
+[[rule]]
+pest = "mul_op"
+mode = "inline"
+[[rule]]
+pest = "cast_expr"
+mode = "named"
+name = "CastExpression"
+section = "Expressions"
+[[rule]]
+pest = "cast_op"
+mode = "inline"
+[[rule]]
+pest = "asc_expr"
+mode = "named"
+name = "AscribeExpression"
+section = "Expressions"
+[[rule]]
+pest = "unary_expr"
+mode = "named"
+name = "UnaryExpression"
+section = "Expressions"
+[[rule]]
+pest = "postfix_expr"
+mode = "named"
+name = "PostfixExpression"
+section = "Expressions"
+[[rule]]
+pest = "postfix"
+mode = "inline"
+[[rule]]
+pest = "arg_list"
+mode = "named"
+name = "Arguments"
+section = "Expressions"
+[[rule]]
+pest = "primary_expr"
+mode = "named"
+name = "PrimaryExpression"
+section = "Expressions"
+[[rule]]
+pest = "return_expr"
+mode = "named"
+name = "ReturnExpression"
+section = "Expressions"
+[[rule]]
+pest = "break_expr"
+mode = "named"
+name = "BreakExpression"
+section = "Expressions"
+[[rule]]
+pest = "continue_expr"
+mode = "named"
+name = "ContinueExpression"
+section = "Expressions"
+[[rule]]
+pest = "return_kw"
+mode = "literal"
+values = ["return"]
+[[rule]]
+pest = "break_kw"
+mode = "literal"
+values = ["break"]
+[[rule]]
+pest = "continue_kw"
+mode = "literal"
+values = ["continue"]
+[[rule]]
+pest = "tuple_or_paren"
+mode = "named"
+name = "TupleOrParen"
+section = "Expressions"
+[[rule]]
+pest = "repeat_array"
+mode = "named"
+name = "RepeatArray"
+section = "Expressions"
+[[rule]]
+pest = "array_lit"
+mode = "named"
+name = "ArrayLiteral"
+section = "Expressions"
+[[rule]]
+pest = "match_scrutinee"
+mode = "inline"
+[[rule]]
+pest = "match_expr"
+mode = "named"
+name = "MatchExpression"
+section = "Expressions"
+[[rule]]
+pest = "match_arm"
+mode = "named"
+name = "MatchArm"
+section = "Expressions"
+[[rule]]
+pest = "if_expr"
+mode = "named"
+name = "IfExpression"
+section = "Expressions"
+[[rule]]
+pest = "loop_expr"
+mode = "named"
+name = "LoopExpression"
+section = "Expressions"
+[[rule]]
+pest = "closure_expr"
+mode = "named"
+name = "ClosureExpression"
+section = "Expressions"
+[[rule]]
+pest = "capture_list"
+mode = "named"
+name = "CaptureList"
+section = "Expressions"
+[[rule]]
+pest = "capture_item"
+mode = "named"
+name = "CaptureItem"
+section = "Expressions"
+[[rule]]
+pest = "struct_literal"
+mode = "named"
+name = "StructLiteral"
+section = "Expressions"
+[[rule]]
+pest = "record_lit"
+mode = "named"
+name = "RecordLiteral"
+section = "Expressions"
+[[rule]]
+pest = "record_projection_expr"
+mode = "named"
+name = "RecordProjectionExpr"
+section = "Expressions"
+[[rule]]
+pest = "field_init"
+mode = "named"
+name = "FieldInit"
+section = "Expressions"
+[[rule]]
+pest = "path_expr"
+mode = "named"
+name = "PathExpr"
+section = "Expressions"
+[[rule]]
+pest = "type_path"
+mode = "named"
+name = "TypePath"
+section = "Expressions"
+
+# ── Patterns ───────────────────────────────────────────────────────────────
+
+[[rule]]
+pest = "pattern"
+mode = "named"
+name = "Pattern"
+section = "Patterns"
+[[rule]]
+pest = "tuple_pattern"
+mode = "named"
+name = "TuplePattern"
+section = "Patterns"
+[[rule]]
+pest = "array_pattern"
+mode = "named"
+name = "ArrayPattern"
+section = "Patterns"
+[[rule]]
+pest = "array_pat_body"
+mode = "named"
+name = "ArrayPatternBody"
+section = "Patterns"
+[[rule]]
+pest = "rest_pat"
+mode = "named"
+name = "RestPattern"
+section = "Patterns"
+[[rule]]
+pest = "record_rest"
+mode = "named"
+name = "RecordRest"
+section = "Patterns"
+[[rule]]
+pest = "field_pat_list"
+mode = "named"
+name = "FieldPatternList"
+section = "Patterns"
+[[rule]]
+pest = "record_pattern"
+mode = "named"
+name = "RecordPattern"
+section = "Patterns"
+[[rule]]
+pest = "enum_pattern"
+mode = "named"
+name = "EnumPattern"
+section = "Patterns"
+[[rule]]
+pest = "literal_pattern"
+mode = "named"
+name = "LiteralPattern"
+section = "Patterns"
+[[rule]]
+pest = "bind_pattern"
+mode = "inline"
+
+# ── Type expressions ───────────────────────────────────────────────────────
+
+[[rule]]
+pest = "type_expr"
+mode = "named"
+name = "Type"
+section = "Types"
+[[rule]]
+pest = "never_type"
+mode = "inline"
+[[rule]]
+pest = "extends_type"
+mode = "named"
+name = "ExtendsType"
+section = "Types"
+[[rule]]
+pest = "dyn_type"
+mode = "named"
+name = "DynType"
+section = "Types"
+[[rule]]
+pest = "unit_type"
+mode = "inline"
+[[rule]]
+pest = "tuple_type"
+mode = "named"
+name = "TupleType"
+section = "Types"
+[[rule]]
+pest = "record_type"
+mode = "named"
+name = "RecordType"
+section = "Types"
+[[rule]]
+pest = "record_type_field"
+mode = "named"
+name = "RecordTypeField"
+section = "Types"
+[[rule]]
+pest = "record_projection_type"
+mode = "named"
+name = "RecordProjectionType"
+section = "Types"
+[[rule]]
+pest = "fun_type"
+mode = "named"
+name = "FunType"
+section = "Types"
+[[rule]]
+pest = "fun_type_qualifier"
+mode = "named"
+name = "FunTypeQualifier"
+section = "Types"
+[[rule]]
+pest = "reference_type"
+mode = "named"
+name = "ReferenceType"
+section = "Types"
+[[rule]]
+pest = "mut_reference_type"
+mode = "named"
+name = "MutReferenceType"
+section = "Types"
+[[rule]]
+pest = "sized_array_type"
+mode = "named"
+name = "SizedArrayType"
+section = "Types"
+[[rule]]
+pest = "array_type"
+mode = "named"
+name = "ArrayType"
+section = "Types"
+[[rule]]
+pest = "array_atom"
+mode = "inline"
+[[rule]]
+pest = "named_type"
+mode = "named"
+name = "NamedType"
+section = "Types"
+[[rule]]
+pest = "type_args"
+mode = "named"
+name = "TypeArgs"
+section = "Types"
+[[rule]]
+pest = "type_list"
+mode = "named"
+name = "TypeList"
+section = "Types"
+
+# ── Terminals -- opaque tokens, never their own line ─────────────────────────
+
+[[rule]]
+pest = "int_lit_suffix"
+mode = "omit"
+[[rule]]
+pest = "float_lit_suffix"
+mode = "omit"
+[[rule]]
+pest = "int_lit_suffixed"
+mode = "terminal"
+name = "SUFFIXED_INT"
+[[rule]]
+pest = "float_lit_suffixed"
+mode = "terminal"
+name = "SUFFIXED_FLOAT"
+[[rule]]
+pest = "int_lit"
+mode = "terminal"
+name = "INT"
+[[rule]]
+pest = "float_lit"
+mode = "terminal"
+name = "FLOAT"
+[[rule]]
+pest = "decimal_int"
+mode = "terminal"
+name = "INT"
+[[rule]]
+pest = "string_lit"
+mode = "terminal"
+name = "STRING"
+[[rule]]
+pest = "string_char"
+mode = "omit"
+[[rule]]
+pest = "interpolation"
+mode = "omit"
+[[rule]]
+pest = "interp_char"
+mode = "omit"
+[[rule]]
+pest = "nested_string"
+mode = "omit"
+[[rule]]
+pest = "escape_seq"
+mode = "omit"
+[[rule]]
+pest = "char_lit"
+mode = "terminal"
+name = "CHAR"
+[[rule]]
+pest = "char_char"
+mode = "omit"
+[[rule]]
+pest = "char_escape_seq"
+mode = "omit"
+[[rule]]
+pest = "bool_lit"
+mode = "literal"
+values = ["true", "false"]
+[[rule]]
+pest = "unit_lit"
+mode = "inline"
+[[rule]]
+pest = "pub_kw"
+mode = "literal"
+values = ["public"]
+[[rule]]
+pest = "mut_kw"
+mode = "literal"
+values = ["var"]
+[[rule]]
+pest = "once_kw"
+mode = "literal"
+values = ["once"]
+[[rule]]
+pest = "clone_kw"
+mode = "literal"
+values = ["clone"]
+[[rule]]
+pest = "root_kw"
+mode = "literal"
+values = ["root"]
+[[rule]]
+pest = "std_kw"
+mode = "literal"
+values = ["std"]
+[[rule]]
+pest = "self_kw"
+mode = "literal"
+values = ["self"]
+[[rule]]
+pest = "super_kw"
+mode = "literal"
+values = ["super"]
+[[rule]]
+pest = "record_kw"
+mode = "literal"
+values = ["record"]
+[[rule]]
+pest = "ident"
+mode = "terminal"
+name = "IDENTIFIER"
+[[rule]]
+pest = "keyword"
+mode = "omit"
