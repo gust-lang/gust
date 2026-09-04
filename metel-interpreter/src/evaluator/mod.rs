@@ -3240,6 +3240,8 @@ pub fn eval_expr(
             };
             let v = deref_value(&v, span)?.unwrap_or(v);
             match v {
+                // R0005: same defensive-fallback reasoning as lvalue.rs's own
+                // TypedPlace::Tuple site -- metel-core#987, #986.
                 Value::Tuple(elems) => {
                     elems
                         .into_iter()
