@@ -1,3 +1,6 @@
+[options]
+error = ["T0006"]
+
 [expect]
 status = "typecheck_error"
 code = "T0006"

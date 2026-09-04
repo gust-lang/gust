@@ -4,4 +4,5 @@ code = "T0001"
 contains = "partially-moved `Handle`"
 
 [options]
+error = ["T0001"]
 spec = ["spec.ownership.narrowing.legality-4"]

@@ -1,4 +1,5 @@
 [options]
+error = ["P0001"]
 spec = ["spec.declarations.variables.mutable-bindings.legality-1"]
 
 [expect]

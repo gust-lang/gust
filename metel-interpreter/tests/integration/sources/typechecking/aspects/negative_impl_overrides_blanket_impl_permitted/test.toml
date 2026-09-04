@@ -1,3 +1,2 @@
 [options]
-spec = ["spec.declarations.aspects.implementing-an-aspect.legality-1"]
-spec = ["spec.declarations.aspects.negative-impls.legality-2"]
+spec = ["spec.declarations.aspects.implementing-an-aspect.legality-1", "spec.declarations.aspects.negative-impls.legality-2"]

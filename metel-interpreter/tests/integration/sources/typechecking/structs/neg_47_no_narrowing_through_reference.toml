@@ -1,4 +1,5 @@
 [options]
+error = ["T0019"]
 move_check = true
 spec = ["spec.ownership.widening.legality-1", "spec.ownership.references-and-moves.legality-1"]
 

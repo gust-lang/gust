@@ -1,4 +1,5 @@
 [options]
+error = ["T0001"]
 spec = ["spec.ownership.copy-and-drop-are-mutually-exclusive.legality-1"]
 
 [expect]

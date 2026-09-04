@@ -1,4 +1,5 @@
 [options]
+error = ["T0001"]
 spec = ["spec.types.anonymous-records.legality-3"]
 
 [expect]

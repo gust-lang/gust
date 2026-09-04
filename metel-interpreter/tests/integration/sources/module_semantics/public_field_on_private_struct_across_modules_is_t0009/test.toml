@@ -1,6 +1,7 @@
 runner = "full_pipeline"
 prelude = "empty"
 [options]
+error = ["T0009"]
 spec = ["spec.modules.visibility.legality-1", "spec.modules.visibility.legality-5"]
 [expect]
 status = "typecheck_error"

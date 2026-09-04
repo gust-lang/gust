@@ -1,6 +1,7 @@
 runner = "full_pipeline"
 
 [options]
+error = ["T0019"]
 move_check = true
 
 [expect]

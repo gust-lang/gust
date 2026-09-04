@@ -1,4 +1,5 @@
 [options]
+error = ["T0003"]
 spec = ["spec.functions.native-functions-standard-library-only.legality-1"]
 
 [expect]

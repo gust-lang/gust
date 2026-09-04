@@ -1,4 +1,5 @@
 [options]
+error = ["T0001"]
 spec = ["spec.expressions.struct-patterns.legality-1"]
 
 [expect]

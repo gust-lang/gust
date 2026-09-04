@@ -1,4 +1,5 @@
 [options]
+error = ["T0012"]
 spec = ["spec.declarations.aspects.aspect-bounds-on-struct-and-enum-type-parameters.legality-2"]
 
 [expect]

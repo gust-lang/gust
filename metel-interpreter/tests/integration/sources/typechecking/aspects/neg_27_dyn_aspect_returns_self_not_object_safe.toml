@@ -4,4 +4,5 @@ code = "T0025"
 contains = "Clone::clone returns Self"
 
 [options]
+error = ["T0025"]
 spec = ["spec.declarations.aspects.dyn-aspect.legality-2"]

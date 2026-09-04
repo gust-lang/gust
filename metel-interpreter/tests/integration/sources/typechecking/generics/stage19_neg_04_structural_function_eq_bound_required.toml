@@ -1,4 +1,5 @@
 [options]
+error = ["T0012"]
 spec = ["spec.declarations.structural-aspect-bounds.legality-10"]
 
 [expect]
