@@ -1,0 +1,7 @@
+[options]
+error = ["T0017"]
+
+[expect]
+status = "typecheck_error"
+code = "T0017"
+contains = "associated type"

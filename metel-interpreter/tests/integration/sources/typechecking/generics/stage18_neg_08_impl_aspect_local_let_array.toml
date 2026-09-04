@@ -1,4 +1,5 @@
 [options]
+error = ["T0022"]
 spec = ["spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-6"]
 
 [expect]

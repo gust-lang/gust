@@ -1,0 +1,7 @@
+[options]
+error = ["T0023"]
+
+[expect]
+status = "typecheck_error"
+code = "T0023"
+contains = "array views are immutable"

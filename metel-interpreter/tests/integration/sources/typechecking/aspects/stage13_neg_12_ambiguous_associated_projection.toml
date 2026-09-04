@@ -1,4 +1,5 @@
 [options]
+error = ["T0013"]
 spec = ["spec.declarations.aspects.associated-types.legality-6"]
 
 [expect]

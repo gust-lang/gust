@@ -1,5 +1,6 @@
 [options]
 spec = ["spec.declarations.variables.scoping-and-shadowing.legality-2"]
+error = ["T0003"]
 
 [expect]
 status = "typecheck_error"

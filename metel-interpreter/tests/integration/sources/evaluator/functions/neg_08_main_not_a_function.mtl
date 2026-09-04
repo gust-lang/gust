@@ -1,0 +1,3 @@
+// `main` exists but is a binding, not a function -- R0002's other documented
+// trigger (the sibling case is a generic main, see error-codes.md).
+let main := 5;

@@ -1,4 +1,5 @@
 [options]
+error = ["R0016"]
 spec = ["spec.functions.closures.dynamics-9"]
 
 [expect]

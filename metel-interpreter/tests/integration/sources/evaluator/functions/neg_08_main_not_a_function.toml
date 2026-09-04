@@ -1,0 +1,7 @@
+[options]
+error = ["R0002"]
+
+[expect]
+status = "runtime_error"
+code = "R0002"
+contains = "not a function"

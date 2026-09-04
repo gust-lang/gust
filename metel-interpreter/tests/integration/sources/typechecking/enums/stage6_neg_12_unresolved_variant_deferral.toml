@@ -1,4 +1,5 @@
 [options]
+error = ["T0002"]
 spec = ["spec.expressions.unqualified-variant-constructors.legality-4"]
 
 [expect]

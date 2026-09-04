@@ -1,3 +1,6 @@
+[options]
+error = ["P0002"]
+
 [expect]
 status = "parse_error"
 code = "P0002"

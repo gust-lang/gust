@@ -1,4 +1,5 @@
 [options]
+error = ["T0027"]
 spec = ["spec.functions.closures.legality-8"]
 
 [expect]

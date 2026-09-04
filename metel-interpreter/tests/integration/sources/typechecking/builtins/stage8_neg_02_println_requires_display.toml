@@ -1,4 +1,5 @@
 [options]
+error = ["T0012"]
 spec = ["spec.runtime.built-in-functions.legality-1"]
 
 [expect]

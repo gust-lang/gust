@@ -1,0 +1,14 @@
+// RFC-0082 §2: every implementation of an aspect with associated types must
+// define all of them -- `IntBox`'s extend block omits `type Item`.
+aspect Container {
+    type Item;
+    fun get(&self) -> Item;
+}
+
+struct IntBox { v: i64 }
+
+extend IntBox: Container {
+    fun get(&self) -> i64 { self.v }
+}
+
+fun main() {}

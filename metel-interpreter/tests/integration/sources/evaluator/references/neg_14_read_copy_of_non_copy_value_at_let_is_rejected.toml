@@ -1,6 +1,7 @@
 [options]
+error = ["T0024"]
 spec = ["spec.types.references.reading-a-value-out-of-a-reference.legality-1"]
 
 [expect]
 status = "typecheck_error"
-contains = "T0024"
+code = "T0024"
