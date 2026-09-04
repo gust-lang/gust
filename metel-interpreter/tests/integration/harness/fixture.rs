@@ -84,6 +84,16 @@ pub struct FixtureOptions {
     /// coverage. `rfc.py` reads it when regenerating the Formal-rules blocks.
     /// An empty / whitespace-only value is treated as unset.
     pub spec_title: Option<String>,
+    /// Error-code citations this fixture demonstrates, e.g. `error =
+    /// ["T0003"]` -- a fixture whose own `expect.code` produces that code.
+    /// Deliberately a separate key from `spec =`, not a widened form of it:
+    /// "evidence for a language rule" and "evidence for a diagnostic" are
+    /// different axes even when the same fixture serves both (metel-core#981).
+    /// Purely informational to the harness today, same "parsed and
+    /// validated, not yet read by anything else" status `rfc =` and `spec =`
+    /// had before `rfc.py` read them -- `rfc.py` reads this one to render
+    /// `error-codes.md`'s own inline fixture viewers.
+    pub error: Vec<String>,
 }
 
 #[derive(Default)]
@@ -95,6 +105,7 @@ struct PartialConfig {
     spec: Option<Vec<String>>,
     skip: Option<String>,
     spec_title: Option<String>,
+    error: Option<Vec<String>>,
     status: Option<ExpectStatus>,
     code: Option<String>,
     contains: Option<String>,
@@ -209,6 +220,7 @@ fn merge_config(defaults: FixtureConfig, partial: PartialConfig) -> FixtureConfi
             spec: partial.spec.unwrap_or(defaults.options.spec),
             skip: partial.skip.or(defaults.options.skip),
             spec_title: partial.spec_title.or(defaults.options.spec_title),
+            error: partial.error.unwrap_or(defaults.options.error),
         },
         expect: Expectation {
             status: partial.status.unwrap_or(defaults.expect.status),
@@ -282,6 +294,7 @@ fn parse_sidecar(path: &Path) -> PartialConfig {
                     let trimmed = value.trim();
                     partial.spec_title = (!trimmed.is_empty()).then(|| trimmed.to_string());
                 }
+                "error" => partial.error = Some(parse_error_code_list(&value, path)),
                 other => panic!(
                     "unknown options sidecar key `{other}` in {}",
                     path.display()
@@ -565,6 +578,29 @@ fn parse_spec_list(raw: &str, path: &Path) -> Vec<String> {
         }
     }
     citations
+}
+
+/// `error = […]` -- a bare error-code shape (`T0003`, `R0016`, `I0002`, ...),
+/// deliberately not the `spec.<file>.<section>.<kind>-<n>` grammar `spec =`
+/// citations use (metel-core#981: different axis, different grammar, kept
+/// visually and structurally distinct). One uppercase letter, exactly four
+/// digits, nothing else.
+fn parse_error_code_list(raw: &str, path: &Path) -> Vec<String> {
+    let codes = parse_list(raw);
+    for code in &codes {
+        let bytes = code.as_bytes();
+        let valid = bytes.len() == 5
+            && bytes[0].is_ascii_uppercase()
+            && bytes[1..].iter().all(u8::is_ascii_digit);
+        if !valid {
+            panic!(
+                "invalid `error` citation `{code}` in {} -- expected one uppercase letter \
+                 followed by exactly four digits (e.g. `T0003`)",
+                path.display()
+            );
+        }
+    }
+    codes
 }
 
 fn parse_list(raw: &str) -> Vec<String> {

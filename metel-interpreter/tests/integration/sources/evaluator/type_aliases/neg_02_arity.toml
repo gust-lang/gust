@@ -1,4 +1,5 @@
 [options]
+error = ["T0004"]
 spec = ["spec.declarations.type-aliases.legality-1"]
 
 [expect]

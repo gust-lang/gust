@@ -1,0 +1,7 @@
+[options]
+error = ["R0004"]
+
+[expect]
+status = "runtime_error"
+code = "R0004"
+contains = "out of bounds"

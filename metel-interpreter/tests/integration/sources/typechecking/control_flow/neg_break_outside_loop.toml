@@ -1,0 +1,7 @@
+[options]
+error = ["T0021"]
+
+[expect]
+status = "typecheck_error"
+code = "T0021"
+contains = "no enclosing loop"

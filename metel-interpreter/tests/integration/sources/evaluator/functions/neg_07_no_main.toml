@@ -1,0 +1,7 @@
+[options]
+error = ["R0001"]
+
+[expect]
+status = "runtime_error"
+code = "R0001"
+contains = "no main"

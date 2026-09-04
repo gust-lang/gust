@@ -1,4 +1,5 @@
 [options]
+error = ["T0007"]
 spec = ["spec.functions.the-operator.legality-2"]
 
 [expect]
