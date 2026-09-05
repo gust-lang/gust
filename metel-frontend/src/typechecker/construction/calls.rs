@@ -728,7 +728,9 @@ pub(super) fn resolve_generic_method_call(
 /// resolve -- callers fall back to `MethodDispatch::Dynamic` in that case,
 /// same as before this existed.
 pub(super) fn resolve_aspect_id(ctx: &ConstructCtx, aspect_name: &str) -> Option<SymbolId> {
-    let declaring_module = ctx.registry.aspect_declaring_module(aspect_name)?;
+    let declaring_module = ctx
+        .registry
+        .aspect_declaring_module_in(ctx.current_module, aspect_name)?;
     ctx.symbols?
         .get(&(declaring_module.clone(), aspect_name.to_string()))
         .copied()

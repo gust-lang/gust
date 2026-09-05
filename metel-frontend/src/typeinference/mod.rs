@@ -2042,6 +2042,24 @@ pub fn type_to_infer(ty: &Type) -> InferType {
 /// meant for a parameter called `T` and inherit its assumed aspects.
 pub type AspectAssumptions = HashMap<TypeVar, std::collections::HashSet<String>>;
 
+/// One aspect declaration, indexed in `TypeDefinitionRegistry::aspects` under its bare
+/// short name (metel-core#989). Everything the registry knows about an aspect lives here
+/// together so the per-declaring-module facts can never drift out of alignment the way
+/// five parallel name-keyed maps could.
+#[derive(Debug, Clone)]
+pub(crate) struct AspectEntry {
+    /// Module path that declared this aspect.
+    pub declaring_module: Vec<String>,
+    /// Ordered method names — used to verify impl blocks are complete.
+    pub method_names: Vec<String>,
+    /// Ordered generic parameter names declared by the aspect.
+    pub generics: Vec<String>,
+    /// Full declared methods, including default bodies.
+    pub method_defs: Vec<AspectMethod>,
+    /// Declared associated-type members (name + optional bound), RFC-0082 §1.
+    pub assoc_type_decls: Vec<AssocTypeDecl>,
+}
+
 #[derive(Debug, Clone)]
 pub struct TypeDefinitionRegistry {
     /// struct name → fields with declaration spans.
@@ -2115,15 +2133,15 @@ pub struct TypeDefinitionRegistry {
     variant_declaring_enums: HashMap<String, Vec<String>>,
     /// enum name → declaring module path.
     enum_decl_modules: HashMap<String, Vec<String>>,
-    /// aspect name → ordered list of method names the aspect declares.
-    /// Used to verify impl blocks are complete.
-    aspect_env: HashMap<String, Vec<String>>,
-    /// aspect name → declaring module path.
-    aspect_decl_modules: HashMap<String, Vec<String>>,
-    /// aspect name → ordered generic parameter names declared by the aspect.
-    aspect_generics: HashMap<String, Vec<String>>,
-    /// aspect name → full declared methods, including default bodies.
-    aspect_method_defs: HashMap<String, Vec<AspectMethod>>,
+    /// aspect short name → one entry per declaring module (metel-core#989).
+    ///
+    /// Keyed by the bare, unqualified name, but a `Vec` because two modules may each
+    /// declare an aspect with the same short name and both be compiled into one program.
+    /// The bare accessors (`aspect_method_defs`, `aspect_generics`, …) return their field
+    /// only when exactly one entry exists; a caller that has a module in hand disambiguates
+    /// through the `_in` variants, which prefer a local declaration and otherwise resolve
+    /// the name in that module's import scope.
+    aspects: HashMap<String, Vec<AspectEntry>>,
     /// Move-check reconstruction only: symbolic nominal placeholders and the
     /// aspect bounds already proved for their source generic parameters.
     symbolic_named_aspects: HashMap<String, HashSet<String>>,
@@ -2183,8 +2201,6 @@ pub struct TypeDefinitionRegistry {
     symbols: Rc<HashMap<(Vec<String>, String), SymbolId>>,
     /// Every module's resolved import scope. See `impl_aspect_env`'s doc.
     scopes: Rc<HashMap<Vec<String>, ModuleScope>>,
-    /// Aspect name → its declared associated-type members (name + optional bound), RFC-0082 §1.
-    aspect_assoc_type_decls: HashMap<String, Vec<AssocTypeDecl>>,
     /// (`target_type_id`, `aspect_name`) → assoc-type-name → concrete Type, RFC-0082 §2.
     /// Populated only for concrete (non-generic) impls.
     impl_assoc_types: HashMap<(SymbolId, String), HashMap<String, Type>>,
@@ -2354,10 +2370,7 @@ impl TypeDefinitionRegistry {
             enum_env: HashMap::new(),
             variant_declaring_enums: HashMap::new(),
             enum_decl_modules: HashMap::new(),
-            aspect_env: HashMap::new(),
-            aspect_decl_modules: HashMap::new(),
-            aspect_generics: HashMap::new(),
-            aspect_method_defs: HashMap::new(),
+            aspects: HashMap::new(),
             symbolic_named_aspects: HashMap::new(),
             impl_aspect_env: HashMap::new(),
             conditional_impl_bounds: HashMap::new(),
@@ -2369,7 +2382,6 @@ impl TypeDefinitionRegistry {
             neg_impl_env: HashMap::new(),
             symbols: Rc::new(HashMap::new()),
             scopes: Rc::new(HashMap::new()),
-            aspect_assoc_type_decls: HashMap::new(),
             impl_assoc_types: HashMap::new(),
         }
     }
@@ -3292,34 +3304,114 @@ impl TypeDefinitionRegistry {
         self.enum_decl_modules.get(name)
     }
 
-    pub fn register_aspect(&mut self, name: String, methods: Vec<String>) {
-        self.aspect_env.insert(name, methods);
+    /// Record everything the registry knows about one aspect declaration
+    /// (metel-core#989). Re-registering the same `(name, declaring_module)` pair
+    /// replaces the earlier entry; a different declaring module adds a sibling entry
+    /// under the same short name rather than clobbering it.
+    pub(crate) fn register_aspect_decl(
+        &mut self,
+        name: String,
+        declaring_module: Vec<String>,
+        method_names: Vec<String>,
+        generics: Vec<String>,
+        method_defs: Vec<AspectMethod>,
+        assoc_type_decls: Vec<AssocTypeDecl>,
+    ) {
+        let entry = AspectEntry {
+            declaring_module,
+            method_names,
+            generics,
+            method_defs,
+            assoc_type_decls,
+        };
+        let entries = self.aspects.entry(name).or_default();
+        if let Some(slot) = entries
+            .iter_mut()
+            .find(|e| e.declaring_module == entry.declaring_module)
+        {
+            *slot = entry;
+        } else {
+            entries.push(entry);
+        }
     }
 
-    pub fn register_aspect_generics(&mut self, name: String, generics: Vec<String>) {
-        self.aspect_generics.insert(name, generics);
+    /// The one aspect entry for `name` — but only when it is unambiguous (exactly one
+    /// module declares an aspect with this short name). A caller that has a module in
+    /// hand should use `aspect_entry_in` instead; this returns `None` rather than guess.
+    fn aspect_entry(&self, name: &str) -> Option<&AspectEntry> {
+        match self.aspects.get(name)?.as_slice() {
+            [single] => Some(single),
+            _ => None,
+        }
+    }
+
+    /// The aspect entry for `name` as seen from `current_module`:
+    ///
+    /// 1. a declaration in `current_module` itself wins — a local `aspect` shadows any
+    ///    import, exactly as it does for every other name;
+    /// 2. otherwise the bare name is resolved through that module's import scope to a
+    ///    `SymbolId` and matched against each candidate entry's declaring module;
+    /// 3. failing both, the sole entry when the short name is unambiguous, so builtin
+    ///    aspects and the single-module pipeline keep working with no symbol table.
+    pub(crate) fn aspect_entry_in(
+        &self,
+        current_module: &[String],
+        name: &str,
+    ) -> Option<&AspectEntry> {
+        let entries = self.aspects.get(name)?;
+        if let Some(local) = entries
+            .iter()
+            .find(|e| e.declaring_module.as_slice() == current_module)
+        {
+            return Some(local);
+        }
+        if let [single] = entries.as_slice() {
+            return Some(single);
+        }
+        let id = self.resolve_type_position_id(current_module, name)?;
+        entries.iter().find(|e| {
+            self.symbols
+                .get(&(e.declaring_module.clone(), name.to_string()))
+                .copied()
+                == Some(id)
+        })
     }
 
     #[must_use]
     pub fn aspect_generics(&self, name: &str) -> Option<&Vec<String>> {
-        self.aspect_generics.get(name)
+        self.aspect_entry(name).map(|e| &e.generics)
     }
 
-    /// Record that aspect `name` was declared in `module`. Called once per `AspectDecl`
-    /// during registry construction and once per builtin aspect in
-    /// `typechecker::registry::register_primitive_type_bindings`.
-    pub fn register_aspect_declaring_module(&mut self, name: String, module: Vec<String>) {
-        self.aspect_decl_modules.insert(name, module);
+    /// `aspect_generics` scoped to `current_module` (metel-core#989).
+    #[must_use]
+    pub(crate) fn aspect_generics_in(
+        &self,
+        current_module: &[String],
+        name: &str,
+    ) -> Option<&Vec<String>> {
+        self.aspect_entry_in(current_module, name)
+            .map(|e| &e.generics)
     }
 
-    /// Return the module path that declared aspect `name`.
+    /// Return the module path that declared aspect `name`, when unambiguous.
     ///
     /// Used by the **elaboration pass** to look up the aspect's `SymbolId` in the
     /// name-resolver symbol table — the only link between the string-keyed registry and the
     /// stable `SymbolId` world.
     #[must_use]
     pub fn aspect_declaring_module(&self, name: &str) -> Option<&Vec<String>> {
-        self.aspect_decl_modules.get(name)
+        self.aspect_entry(name).map(|e| &e.declaring_module)
+    }
+
+    /// `aspect_declaring_module` scoped to `current_module` (metel-core#989).
+    #[must_use]
+    pub(crate) fn aspect_declaring_module_in(
+        &self,
+        current_module: &[String],
+        name: &str,
+    ) -> Option<&Vec<String>> {
+        self.aspect_entry_in(current_module, name)
+            .map(|e| &e.declaring_module)
     }
 
     /// Whether an aspect name is visible from `current_module`.
@@ -3330,30 +3422,50 @@ impl TypeDefinitionRegistry {
     /// eager annotation validation from drifting away from later bound resolution.
     #[must_use]
     pub(crate) fn is_visible_aspect(&self, current_module: &[String], name: &str) -> bool {
-        self.visible_decl_name(current_module, name, &self.aspect_env)
+        self.visible_decl_name(current_module, name, &self.aspects)
             .is_some()
-    }
-
-    pub fn register_aspect_method_defs(&mut self, name: String, methods: Vec<AspectMethod>) {
-        self.aspect_method_defs.insert(name, methods);
     }
 
     #[must_use]
     pub fn aspect_method_defs(&self, name: &str) -> Option<&Vec<AspectMethod>> {
-        self.aspect_method_defs.get(name)
+        self.aspect_entry(name).map(|e| &e.method_defs)
     }
 
-    /// Register the associated-type declarations of an aspect (RFC-0082 §1).
-    pub fn register_aspect_assoc_types(&mut self, name: String, decls: Vec<AssocTypeDecl>) {
-        if !decls.is_empty() {
-            self.aspect_assoc_type_decls.insert(name, decls);
-        }
+    /// `aspect_method_defs` scoped to `current_module` (metel-core#989).
+    #[must_use]
+    pub(crate) fn aspect_method_defs_in(
+        &self,
+        current_module: &[String],
+        name: &str,
+    ) -> Option<&Vec<AspectMethod>> {
+        self.aspect_entry_in(current_module, name)
+            .map(|e| &e.method_defs)
     }
 
-    /// Return the associated-type declarations for `aspect_name`, if any.
+    /// Ordered method names the aspect declares — used to verify impl blocks are complete.
+    #[must_use]
+    pub fn aspect_method_names(&self, name: &str) -> Option<&Vec<String>> {
+        self.aspect_entry(name).map(|e| &e.method_names)
+    }
+
+    /// Return the associated-type declarations for `aspect_name`, if any (unambiguous).
     #[must_use]
     pub fn aspect_assoc_type_decls(&self, aspect_name: &str) -> Option<&Vec<AssocTypeDecl>> {
-        self.aspect_assoc_type_decls.get(aspect_name)
+        self.aspect_entry(aspect_name)
+            .map(|e| &e.assoc_type_decls)
+            .filter(|d| !d.is_empty())
+    }
+
+    /// `aspect_assoc_type_decls` scoped to `current_module` (metel-core#989).
+    #[must_use]
+    pub(crate) fn aspect_assoc_type_decls_in(
+        &self,
+        current_module: &[String],
+        aspect_name: &str,
+    ) -> Option<&Vec<AssocTypeDecl>> {
+        self.aspect_entry_in(current_module, aspect_name)
+            .map(|e| &e.assoc_type_decls)
+            .filter(|d| !d.is_empty())
     }
 
     /// Register the concrete associated-type bindings for `impl Aspect for Target`
@@ -3618,25 +3730,16 @@ impl TypeDefinitionRegistry {
                 .entry(k.clone())
                 .or_insert_with(|| v.clone());
         }
-        for (k, v) in &other.aspect_env {
-            self.aspect_env
-                .entry(k.clone())
-                .or_insert_with(|| v.clone());
-        }
-        for (k, v) in &other.aspect_decl_modules {
-            self.aspect_decl_modules
-                .entry(k.clone())
-                .or_insert_with(|| v.clone());
-        }
-        for (k, v) in &other.aspect_generics {
-            self.aspect_generics
-                .entry(k.clone())
-                .or_insert_with(|| v.clone());
-        }
-        for (k, v) in &other.aspect_method_defs {
-            self.aspect_method_defs
-                .entry(k.clone())
-                .or_insert_with(|| v.clone());
+        for (k, entries) in &other.aspects {
+            let slot = self.aspects.entry(k.clone()).or_default();
+            for entry in entries {
+                if !slot
+                    .iter()
+                    .any(|e| e.declaring_module == entry.declaring_module)
+                {
+                    slot.push(entry.clone());
+                }
+            }
         }
         for (name, aspects) in &other.symbolic_named_aspects {
             self.symbolic_named_aspects
@@ -3691,11 +3794,6 @@ impl TypeDefinitionRegistry {
                 .entry(k.clone())
                 .or_default()
                 .extend(v.iter().cloned());
-        }
-        for (k, v) in &other.aspect_assoc_type_decls {
-            self.aspect_assoc_type_decls
-                .entry(k.clone())
-                .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.impl_assoc_types {
             self.impl_assoc_types
@@ -3967,7 +4065,29 @@ impl InferContext {
 
     #[must_use]
     pub fn aspect_method_defs(&self, name: &str) -> Option<&Vec<AspectMethod>> {
-        self.registry.aspect_method_defs(name)
+        self.registry
+            .aspect_method_defs_in(&self.current_module_path, name)
+    }
+
+    /// `aspect_generics` scoped to the module being inferred (metel-core#989).
+    #[must_use]
+    pub fn aspect_generics(&self, name: &str) -> Option<&Vec<String>> {
+        self.registry
+            .aspect_generics_in(&self.current_module_path, name)
+    }
+
+    /// `aspect_declaring_module` scoped to the module being inferred (metel-core#989).
+    #[must_use]
+    pub fn aspect_declaring_module(&self, name: &str) -> Option<&Vec<String>> {
+        self.registry
+            .aspect_declaring_module_in(&self.current_module_path, name)
+    }
+
+    /// `aspect_assoc_type_decls` scoped to the module being inferred (metel-core#989).
+    #[must_use]
+    pub fn aspect_assoc_type_decls(&self, name: &str) -> Option<&Vec<AssocTypeDecl>> {
+        self.registry
+            .aspect_assoc_type_decls_in(&self.current_module_path, name)
     }
 
     #[must_use]
@@ -4140,7 +4260,7 @@ impl InferContext {
 
         let declared_bounds: Vec<String> = self
             .registry
-            .aspect_assoc_type_decls(aspect_name)
+            .aspect_assoc_type_decls_in(&self.current_module_path, aspect_name)
             .into_iter()
             .flatten()
             .filter(|decl| decl.name == assoc_name)
@@ -4188,10 +4308,12 @@ impl InferContext {
         placeholder
     }
 
-    /// Returns the aspect method defs from the registry.
+    /// Returns the aspect method defs from the registry, scoped to the module being
+    /// inferred so two same-named aspects don't collide (metel-core#989).
     #[must_use]
     pub fn get_aspect_method_defs(&self, aspect: &str) -> Option<&Vec<crate::ast::AspectMethod>> {
-        self.registry.aspect_method_defs(aspect)
+        self.registry
+            .aspect_method_defs_in(&self.current_module_path, aspect)
     }
 
     pub fn register_fun_bounds(

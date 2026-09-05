@@ -377,7 +377,7 @@ pub(super) fn reject_inert_destructor(
     }
     let is_std_core_drop = ctx
         .registry
-        .aspect_declaring_module(aspect_name)
+        .aspect_declaring_module_in(ctx.current_module, aspect_name)
         .is_some_and(|module| module.as_slice() == ["std".to_string(), "core".to_string()]);
     if !is_std_core_drop {
         return Ok(());
@@ -448,7 +448,9 @@ pub(super) fn construct_impl_decl(
 
     // Resolve aspect_id from the symbol table when available.
     let aspect_id = ib.aspect_name.as_deref().and_then(|aspect_name| {
-        let declaring_module = ctx.registry.aspect_declaring_module(aspect_name)?;
+        let declaring_module = ctx
+            .registry
+            .aspect_declaring_module_in(ctx.current_module, aspect_name)?;
         ctx.symbols?
             .get(&(declaring_module.clone(), aspect_name.to_string()))
             .copied()
@@ -605,7 +607,11 @@ pub(super) fn construct_default_aspect_methods(
     let Some(aspect_name) = &ib.aspect_name else {
         return Ok(vec![]);
     };
-    let Some(methods) = ctx.registry.aspect_method_defs(aspect_name).cloned() else {
+    let Some(methods) = ctx
+        .registry
+        .aspect_method_defs_in(ctx.current_module, aspect_name)
+        .cloned()
+    else {
         return Ok(vec![]);
     };
     let provided: std::collections::HashSet<&str> =

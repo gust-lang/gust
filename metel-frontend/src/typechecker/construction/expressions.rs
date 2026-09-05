@@ -1249,7 +1249,7 @@ pub(super) fn construct_expr(
                 let type_args = type_args.clone();
                 let method_def = ctx
                     .registry
-                    .aspect_method_defs(&aspect)
+                    .aspect_method_defs_in(ctx.current_module, &aspect)
                     .and_then(|methods| methods.iter().find(|m| m.name == *method).cloned())
                     .ok_or_else(|| {
                         MetelError::type_error(
@@ -1261,7 +1261,7 @@ pub(super) fn construct_expr(
 
                 let aspect_generics = ctx
                     .registry
-                    .aspect_generics(&aspect)
+                    .aspect_generics_in(ctx.current_module, &aspect)
                     .cloned()
                     .unwrap_or_default();
                 let mut local_subst = Substitution::new();

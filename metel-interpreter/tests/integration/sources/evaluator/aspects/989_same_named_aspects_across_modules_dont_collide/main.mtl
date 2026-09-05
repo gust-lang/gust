@@ -1,0 +1,16 @@
+// metel-core#989: two modules each declare an aspect with the short name
+// `Shape`. `main` imports only `helper::Shape` and uses it as `dyn Shape`; the
+// `decoy` import is unrelated. The `dyn Shape` method lookup, aspect-id
+// dispatch, and impl resolution must all resolve `Shape` in *this* module's
+// import scope, not against whichever same-named aspect was registered last.
+import helper::Shape;
+import helper::Circle;
+import decoy::marker;
+
+fun main() {
+    let _unused := marker();
+    let c: dyn Shape := Circle { radius = 1.0 };
+    let a := c.area();
+    assert(a > 3.0 && a < 3.2);
+    println("ok");
+}

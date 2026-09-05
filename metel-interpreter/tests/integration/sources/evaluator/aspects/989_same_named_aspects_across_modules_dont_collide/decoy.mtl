@@ -1,0 +1,11 @@
+// metel-core#989: an unrelated module that happens to declare an aspect with
+// the same short name (`Shape`) and a different method. `main` never names this
+// `Shape` — it only calls `marker()` for an unrelated reason, which is enough to
+// pull `decoy` into the compiled module graph. Before the registry was keyed per
+// declaring module, this entry clobbered `helper::Shape`'s and `c.area()` below
+// failed to typecheck ("no method `area` on `dyn Shape`").
+public aspect Shape {
+    fun perimeter(&self) -> f64;
+}
+
+public fun marker() -> i64 { 0 }

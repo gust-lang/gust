@@ -723,11 +723,14 @@ fn register_aspect_decl(
     registry: &mut TypeDefinitionRegistry,
 ) {
     let method_names = ad.methods.iter().map(|m| m.name.clone()).collect();
-    registry.register_aspect(ad.name.clone(), method_names);
-    registry.register_aspect_generics(ad.name.clone(), ad.generics.clone());
-    registry.register_aspect_method_defs(ad.name.clone(), ad.methods.clone());
-    registry.register_aspect_declaring_module(ad.name.clone(), declaring_module.to_vec());
-    registry.register_aspect_assoc_types(ad.name.clone(), ad.assoc_types.clone());
+    registry.register_aspect_decl(
+        ad.name.clone(),
+        declaring_module.to_vec(),
+        method_names,
+        ad.generics.clone(),
+        ad.methods.clone(),
+        ad.assoc_types.clone(),
+    );
 }
 
 /// Register the annotated signatures of NATIVE methods in an impl block on a
@@ -1115,7 +1118,10 @@ fn register_default_aspect_methods(
     let Some(aspect_name) = &ib.aspect_name else {
         return;
     };
-    let Some(methods) = registry.aspect_method_defs(aspect_name).cloned() else {
+    let Some(methods) = registry
+        .aspect_method_defs_in(current_module_path, aspect_name)
+        .cloned()
+    else {
         return;
     };
     let provided: std::collections::HashSet<&str> =
