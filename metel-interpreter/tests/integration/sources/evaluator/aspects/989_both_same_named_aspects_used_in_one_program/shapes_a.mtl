@@ -1,0 +1,3 @@
+public aspect Kind { fun tag(&self) -> String; }
+public struct A { }
+extend A: Kind { fun tag(&self) -> String { "A" } }

@@ -1,0 +1,22 @@
+// metel-core#989: a module that both imports `helper::Shape` and declares its
+// own `aspect Shape` must resolve a bare `dyn Shape` (and `extend _: Shape`) to
+// the *local* declaration — a local aspect shadows an import like any other name.
+import helper::marker;
+import helper::Shape;
+
+aspect Shape {
+    fun describe(&self) -> String;
+}
+
+struct Widget { name: String }
+
+extend Widget: Shape {
+    fun describe(&self) -> String { "widget:" + self.name }
+}
+
+fun main() {
+    let _unused := marker();
+    let w: dyn Shape := Widget { name = "a" };
+    assert(w.describe() == "widget:a");
+    println("ok");
+}

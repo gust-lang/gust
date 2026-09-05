@@ -1,0 +1,12 @@
+// metel-core#989: the fix must resolve `dyn Shape` to *helper's* Shape, not
+// merely make same-named-aspect programs compile. `perimeter` belongs to
+// decoy::Shape, which is not what `Shape` names here, so this stays a T0003.
+import helper::Shape;
+import helper::Circle;
+import decoy::marker;
+
+fun main() {
+    let _unused := marker();
+    let c: dyn Shape := Circle { radius = 1.0 };
+    let p := c.perimeter(); // ERROR[T0003]
+}

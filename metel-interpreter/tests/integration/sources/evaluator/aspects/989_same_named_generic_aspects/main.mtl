@@ -1,0 +1,12 @@
+// metel-core#989: generic aspects collide by short name too. `dyn Box<i64>`
+// here must be helper::Box (method `get`), not decoy::Box (method `put`).
+import helper::Box;
+import helper::IntBox;
+import decoy::marker;
+
+fun main() {
+    let _unused := marker();
+    let b: dyn Box<i64> := IntBox { n = 42 };
+    assert(b.get() == 42);
+    println("ok");
+}

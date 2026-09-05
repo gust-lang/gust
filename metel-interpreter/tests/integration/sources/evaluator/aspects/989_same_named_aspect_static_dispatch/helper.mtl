@@ -1,0 +1,3 @@
+public aspect Shape { fun area(&self) -> f64; }
+public struct Circle { public radius: f64 }
+extend Circle: Shape { fun area(&self) -> f64 { 3.0 * self.radius } }

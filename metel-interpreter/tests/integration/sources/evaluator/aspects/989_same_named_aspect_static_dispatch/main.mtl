@@ -1,0 +1,16 @@
+// metel-core#989: a *non-dyn* aspect-method call (`c.area()` on a concrete
+// `Circle`) resolves through the same registry maps as `dyn` dispatch. With a
+// same-named `decoy::Shape` (whose `area` returns String) in the graph, this
+// must still dispatch to helper::Shape's f64 `area`.
+import helper::Shape;
+import helper::Circle;
+import decoy::marker;
+
+fun main() {
+    let _unused := marker();
+    let c := Circle { radius = 2.0 };
+    let a := c.area();
+    assert(a == 6.0);
+    assert(a + 1.0 == 7.0);
+    println("ok");
+}
