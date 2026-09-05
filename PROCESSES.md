@@ -55,7 +55,7 @@ flowchart TD
     subgraph MC["metel-core"]
         direction TB
         MC_branch["issue branch"]
-        MC_ci["ci.yml\n(test/clippy/fmt, rfc-check,\ngrammar-doc-check, doc-examples,\ninventory, clippy-allow-ratchet,\npublish-develop-binary)"]
+        MC_ci["ci.yml\n(test/clippy/fmt, rfc-check,\ngrammar-doc-check, stdlib-doc-check,\ndoc-examples, inventory,\nclippy-allow-ratchet, publish-develop-binary)"]
         MC_develop["develop"]
         MC_tag["tag vX.Y.Z on main"]
         MC_rel["release.yml\nvalidate-release -> release-chain\n+ github-release"]
@@ -108,6 +108,7 @@ all.
 | `.github/workflows/ci.yml` — `ci` job | push/PR to `develop`/`main` | this repo | — | — |
 | `.github/workflows/ci.yml` — `rfc-check` job | push/PR to `develop`/`main` | `docs` submodule (metel-docs, public), incl. `rfcs/COVERAGE-BASELINE.json`, this repo's `metel-interpreter/tests` | — | — |
 | `.github/workflows/ci.yml` — `grammar-doc-check` job | push/PR to `develop`/`main` | `metel-frontend/src/grammar.pest`, `metel-frontend/src/grammar-doc.toml`, `docs` submodule's `reference/spec/grammar.md` | — | — |
+| `.github/workflows/ci.yml` — `stdlib-doc-check` job | push/PR to `develop`/`main` | `metel-frontend/stdlib/*.mtl`, `docs` submodule's `reference/spec/runtime.md` | — | — |
 | `.github/workflows/ci.yml` — `doc-examples` job | push/PR to `develop`/`main` | `README.md`, `docs` submodule | — | — |
 | `.github/workflows/ci.yml` — `publish-develop-binary` job | push to `develop` only (not PRs) | this repo, at the pushed commit | this repo's GitHub Releases — rolling pre-release `develop-latest`, deleted and recreated each run (metel-core#696) | built-in `GITHUB_TOKEN` (`contents: write`, this repo only) |
 | `.github/workflows/ci.yml` — `inventory` job | push/PR to `develop`/`main` | this repo's own workflows/tools/commands | — | — |
@@ -120,6 +121,7 @@ all.
 | `tools/check_inventory.sh` | invoked by `ci.yml`'s `inventory` job | this file, this repo's own workflows/tools/commands | stdout only | — |
 | `tools/clippy_allow_ratchet.py` | invoked by `ci.yml`'s `clippy-allow-ratchet` job (`--check`); manual `--list` / `--write-baseline` | `metel-frontend/src`, `metel-interpreter/src` (scans `#[allow(clippy::...)]`), `tools/clippy-allow-baseline.json` | `tools/clippy-allow-baseline.json` (`--write-baseline` only); stdout otherwise | — |
 | `metel-frontend/src/bin/gen_grammar.rs` (metel-core#720) | invoked by `ci.yml`'s `grammar-doc-check` job (`--check`); manual `cargo run --bin gen_grammar` to regenerate | `metel-frontend/src/grammar.pest` (via `pest_meta`, the same crate `pest_derive` uses to parse `.pest` files -- no hand-written grammar parser), `metel-frontend/src/grammar-doc.toml` (display name + doc section per rule) | `docs` submodule's `reference/spec/grammar.md` (not `--check`) | — |
+| `metel-frontend/src/bin/check_stdlib_docs.rs` (metel-core#718) | invoked by `ci.yml`'s `stdlib-doc-check` job; always read-only, nothing to regenerate | `metel-frontend/stdlib/{core,env,fs,process}.mtl` (via `metel_frontend::parser`, the interpreter's own frontend -- no separate Metel parser), `docs` submodule's `reference/spec/runtime.md` | stdout only | — |
 | `.claude/commands/start-issue.md` | manual slash command | issue body, `develop` | new issue branch | — |
 | `.claude/commands/ship-issue.md` | manual slash command | issue branch | PR to `develop`, fast-forward merge | — |
 | `.claude/commands/cut-release.md` | manual slash command | `develop` | tag on `main`, triggers `release.yml` | — |

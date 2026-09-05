@@ -92,6 +92,29 @@ jobs:
         run: cargo run --release --bin gen_grammar -- --check
         working-directory: metel-frontend
 
+  stdlib-doc-check:
+    name: runtime.md matches stdlib declarations
+    runs-on: ubuntu-latest
+    steps:
+      # metel-core#718: checks docs/reference/spec/runtime.md's builtin and
+      # method tables against stdlib/*.mtl's real declarations, in both
+      # directions -- a documented row with no matching declaration, a real
+      # public declaration missing from its table, or a row whose signature
+      # doesn't match (#714/#717's actual historical bugs: a documented
+      # calling form -- method vs. free function -- that never existed, and
+      # a phantom function with no declaration at all).
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: check_stdlib_docs
+        run: cargo run --release --bin check_stdlib_docs
+        working-directory: metel-frontend
+
   doc-examples:
     name: doc examples
     runs-on: ubuntu-latest
