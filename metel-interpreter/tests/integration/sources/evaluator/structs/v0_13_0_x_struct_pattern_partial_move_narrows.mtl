@@ -1,0 +1,25 @@
+// Cross-feature (v0.13.0): a `match (h)` (RFC-0156 parenthesized scrutinee) binds
+// a non-`Copy` field out of a struct value through a struct pattern
+// (metel-core#753). That partial move narrows `h` (RFC-0137 slice 2): the moved
+// field is gone, every other field stays readable, and reassigning the moved
+// field widens `h` back to the whole struct.
+
+struct Handle { id: i64, name: String }
+
+fun main() {
+    var h := Handle { id = 7, name = "fd".to_string() };
+
+    // bind and consume `name` via a struct pattern; `h` is now `Handle.{ id }`
+    let taken := match (h) { Handle { name, .. } => name };
+    assert(taken == "fd");
+
+    // a still-present field is readable on the narrowed value
+    assert(h.id == 7);
+
+    // reassigning the moved field widens `h` back to the whole `Handle`
+    h.name := "fd2".to_string();
+    assert(h.name == "fd2");
+    assert(h.id == 7);
+
+    println("ok");
+}
