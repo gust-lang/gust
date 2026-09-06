@@ -108,9 +108,13 @@ Each binding is stored as an `Rc<RefCell<Value>>`. This has two consequences:
 
 1. **Mutation is visible through the scope chain.** `env.set(name, val)` finds the binding's `Rc` in any enclosing scope and mutates through it. This correctly implements `mut` re-assignment without requiring the caller to traverse scopes differently for reads vs writes.
 
-2. **Closures share mutable state with their definition scope.** `env.clone()` clones the `HashMap`s, but each `Rc<RefCell<Value>>` clone is a shared pointer — not a deep copy. A closure that captures a binding and the enclosing scope that owns that binding share the same `RefCell`. This gives reference semantics for captured mutable variables.
-
-   This is an unintentional consequence of the PoC design. RFC-0006 (closure capture semantics) will establish the intended semantics. For now, any program that relies on closures sharing mutable state with their enclosing scope may produce surprising results, and any program that expects clone-at-definition isolation may also be surprised. The test suite avoids this ambiguity.
+2. **Mutation through the scope chain does not apply to closure captures.** Since
+   v0.13.0 a closure does **not** snapshot the enclosing `Environment` — it builds a
+   capture aggregate from its explicit capture list (see Closure Capture). `[x]` moves or
+   copies the value in; `[&x]` / `[&var x]` capture a reference deliberately. A closure
+   and its definition scope no longer implicitly share a `RefCell` for a bare capture —
+   sharing is opt-in via `&`/`&var` in the list. The intended semantics RFC-0006 called
+   for are now settled and implemented (RFC-0050 / RFC-0153 / RFC-0157; ADR-0052).
 
 Lexical `Environment` storage is intentionally separate from runtime metadata. Module-owned runtime values, type-owned methods, and aspect impl methods live in a shared `RuntimeRegistry`, not as synthetic bindings inside the lexical scope stack. Type-owned method entries now also carry receiver and lightweight signature metadata so static-style callables and receiver methods are structurally distinct at runtime. Closures capture only lexical environment state; they do not capture runtime dispatch tables.
 
@@ -144,26 +148,36 @@ Top-level `let`/`mut` bindings and statements are evaluated in order. `Fun` and 
 
 ## Closure Capture
 
-At closure definition (`TypedExpr::Closure`), the evaluator clones the entire current environment:
+> *Rewritten in v0.13.0 for the closure cluster (RFC-0050 / RFC-0134 / RFC-0152 /
+> RFC-0153 / RFC-0157). Implementation shape is ADR-0052; this section is the runtime
+> summary.*
 
-```rust
-let captured = env.clone();
-```
+A closure literal carries an explicit **capture list** — `[x, &y, &var z, w.clone()]`
+before the pipes — required the moment a non-`Copy` binding is captured by value or any
+binding is captured by reference (RFC-0050). At definition (`TypedExpr::Closure`) the
+evaluator builds a **capture aggregate**: one field per list entry, its kind fixed by the
+specifier — `[x]` moved (or copied, if `Copy`), `[x.clone()]` an independent copy, `[&x]`
+a shared reference, `[&var x]` an exclusive reference. This is the same field-storage
+machinery as a struct value, not a separate environment type, and the surrounding
+`Environment` is **not** snapshotted.
 
-As noted in the Environment section, this clone shares `Rc`s rather than deep-copying values. The captured environment is stored in `ClosureValue.captured`.
+There is **no per-call environment clone**. A call pushes only a fresh parameter scope;
+the aggregate is read in place. A closure that declares `var` (a *mutating* closure)
+mutates the aggregate in place and the writes **persist on the closure value across
+calls** (RFC-0153 §1a write-back). A `mutating` call takes a `&var self`-shaped exclusive
+borrow of the callee place; re-entering the *same* closure value while a call on it is in
+progress is a runtime error, `R0015`, guarded by an in-call flag on the value (the
+interim mechanism until RFC-0122 borrow checking; the aliased-`[&var x]` case is deferred
+there).
 
-At call time (`call_function`), `captured` is cloned again and a new scope is pushed for the parameters:
+A `Copy` closure (all captures `Copy`, no list) is bit-copied aggregate-and-all when the
+value is copied — `let var d := c;` gives `d` an independent aggregate; the copies
+diverge. A non-`Copy` closure has exactly one owner.
 
-```rust
-let mut call_env = closure.captured.clone();
-call_env.push_scope();
-```
-
-This means:
-- Each call to the same closure gets a fresh parameter scope.
-- The captured variable `Rc`s are shared across all calls — mutations to captured variables persist between calls to the same closure.
-
-**This is not the intended permanent semantics.** See RFC-0006.
+The closure-cluster checks (capture-list requirement, `var` requirement for a mutating
+body, `once` requirement for a consuming body, the `var`-closure-through-shared-`&`
+rejection, the in-call flag) are **always on** in v0.13.0, independent of `--move-check`
+(ADR-0052 §1).
 
 ---
 
@@ -301,7 +315,11 @@ Use this profiler to decide which Metel-level call paths dominate a program, the
 `call_function(func, args, span)` handles three cases:
 
 - `Value::Callable(RuntimeCallable::Intrinsic { fun, .. })` — calls the intrinsic function pointer directly.
-- `Value::Callable(RuntimeCallable::Closure(rc))` — clones the captured environment, pushes a parameter scope, evaluates the body, and converts `Signal::Return` to `Signal::Value` at the boundary. `Signal::PropagateErr` is also converted: it wraps the error value in `Value::Enum { name: "Result", variant: "Err", fields: { "error": e } }` and returns `Signal::Value` — so the `?` error appears as a `Result::Err` value to the caller.
+- `Value::Callable(RuntimeCallable::Closure(rc))` — pushes a parameter scope over the
+  closure's own capture aggregate (no environment clone since v0.13.0 — see Closure
+  Capture), evaluates the body, and converts `Signal::Return` to `Signal::Value` at the
+  boundary. For a `mutating` closure the aggregate's writes are kept on the value.
+  `Signal::PropagateErr` is also converted: it wraps the error value in `Value::Enum { name: "Result", variant: "Err", fields: { "error": e } }` and returns `Signal::Value` — so the `?` error appears as a `Result::Err` value to the caller.
 - `Value::Callable(RuntimeCallable::Closure(rc))` where `rc.body` is `ClosureBody::Untyped(block)` — a polymorphic generic function or let-bound closure. The evaluator re-runs the construction pass on the untyped block at the concrete argument types, producing a `TypedBlock` that is evaluated immediately. This is the monomorphization path.
 
   **Argument types for this re-construction come from `type_of::value_to_type`
@@ -320,6 +338,25 @@ Use this profiler to decide which Metel-level call paths dominate a program, the
   never consumed by a generic (`ClosureBody::Untyped`) path.
 
 Method dispatch no longer looks up synthetic environment keys. `eval_expr` resolves methods through the owning type's runtime entry, checking receiver methods first and then explicit aspect impl entries. Static paths such as `Type::new(...)` resolve through type-owned associated values. `impl From<S> for T` coercions resolve through the target type's `From<S>` aspect impl rather than by environment strings, and receiver binding now follows the runtime method metadata instead of closure parameter inspection.
+
+### Aspect object dispatch — `dyn Aspect` (v0.13.0, RFC-0008)
+
+> *Runtime shape recorded in ADR-0053.*
+
+A `dyn Aspect` value is `Value::DynAspect { data: Rc<RefCell<Value>>, type_id, aspect_id,
+aspect_name, type_args }` — a tagged wrapper, **not** a fat pointer, and there is **no
+generated vtable**. `type_id` is the wrapped value's concrete type, resolved once by
+`resolve_value_type_id` at coercion time. A method call on a `dyn Aspect` goes through the
+exact same path as any method call: `resolve_value_type_id` returns `type_id` directly, and
+`get_regular_method(type_id, name)` finds the concrete type's method — the type-keyed
+registry *is* the dispatch table. `aspect_id` is not consulted at call time (it is for
+`value_to_type` and object-safety diagnostics). `&var dyn` mutable-receiver dispatch works
+because `data` is a shared `RefCell`.
+
+Coercion is an explicit `TypedExpr::DynCoerce` node the checker plants at every
+expected-`dyn` position (argument, `let`, array / `List` element, `return`, `break`);
+object safety (RFC-0008 §3) is enforced entirely in the frontend, so a value only reaches
+`DynCoerce` if its aspect already passed.
 
 ---
 
@@ -341,9 +378,17 @@ Generic functions and let-polymorphic closures re-run the construction pass at e
 
 The `?` operator is desugared in the `path_normalizer` pre-pass and then, during construction, checked for error-type compatibility. If the inner `Result<_, E1>` and the enclosing function's return type `Result<_, E2>` have different error types, the typechecker looks up `impl From<E1> for E2`. If a matching impl is found, the desugared Err arm calls `From::from`; if not, the program is rejected with T0007 (invalid cast). The only built-in From impls are `From<Float> for Int` and `From<Int> for Float`. User types must register a `From` impl explicitly. Full coercion for arbitrary type pairs is tracked in #13.
 
-### Closure/scope mutation semantics unspecified
+### Closure capture semantics (settled in v0.13.0)
 
-The PoC's `Rc<RefCell<Value>>` environment gives closures reference semantics for captured variables, which is not the intended permanent behaviour (see RFC-0006). Do not write tests that rely on cross-closure mutation sharing unless they explicitly document the dependency.
+> *Resolved. Was: "the PoC's `Rc<RefCell<Value>>` environment gives closures reference
+> semantics for captured variables, not the intended permanent behaviour (RFC-0006)."*
+
+Closure capture is now an explicit capture list with move-by-default, `&` / `&var` for
+deliberate sharing, and in-place mutation with write-back for `var` closures — RFC-0050 /
+RFC-0134 / RFC-0152 / RFC-0153 / RFC-0157, implementation shape ADR-0052, runtime summary
+in the Closure Capture section above. A test may rely on a `[&var x]` closure mutating
+`x`; a test must **not** rely on a bare `[x]` capture aliasing the enclosing binding —
+that no longer happens.
 
 ---
 
@@ -357,6 +402,10 @@ The PoC's `Rc<RefCell<Value>>` environment gives closures reference semantics fo
 
 The evaluator is designed to be thrown away. The correct rewrite path is:
 1. Decide the permanent value representation (likely a tagged pointer or NaN-boxing scheme).
-2. Implement RFC-0006 capture semantics (explicit pointer types for aliasing).
+2. Carry the v0.13.0 closure capture model forward (RFC-0050 capture lists, RFC-0153
+   mutation axis) — the aggregate/write-back shape is settled (ADR-0052); a compiled
+   backend replaces the in-call flag with RFC-0122 borrow checking and gives `dyn Aspect`
+   the real fat-pointer/vtable representation RFC-0008 §2 specifies (ADR-0053 is the
+   tree-walk stand-in).
 
 Per-module scope isolation is **already implemented** (v0.6.0). `evaluate_graph` runs each `TypedModule` in its own isolated `Environment`, seeding imported names from already-evaluated dependency environments. See the Pipeline Position section above.
