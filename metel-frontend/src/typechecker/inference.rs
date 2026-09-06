@@ -89,7 +89,7 @@ fn ann_to_infer(te: &TypeExpr, ctx: &mut InferContext) -> InferType {
                 let mut matching_aspect = None;
                 if let Some(bounds) = ctx.bounds_for_type_var(base_tv) {
                     for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
-                        if let Some(decls) = ctx.registry().aspect_assoc_type_decls(aspect) {
+                        if let Some(decls) = ctx.aspect_assoc_type_decls(aspect) {
                             if decls.iter().any(|d| d.name == *assoc_name) {
                                 matching_aspect = Some(aspect.to_string());
                                 break;
@@ -685,9 +685,7 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                                     for aspect in
                                         bounds.iter().filter_map(GenericBound::aspect_name)
                                     {
-                                        if let Some(decls) =
-                                            ctx.registry().aspect_assoc_type_decls(aspect)
-                                        {
+                                        if let Some(decls) = ctx.aspect_assoc_type_decls(aspect) {
                                             if decls.iter().any(|d| d.name == *assoc_name) {
                                                 return InferType::Var(
                                                     ctx.fresh_assoc_projection_var(
@@ -1059,7 +1057,7 @@ fn aspect_impl_method_signature_matches(
         return false;
     }
 
-    let Some(aspect_generics) = ctx.registry().aspect_generics(aspect_name).cloned() else {
+    let Some(aspect_generics) = ctx.aspect_generics(aspect_name).cloned() else {
         return false;
     };
     if aspect_generics.len() != ib.aspect_type_args.len() {

@@ -1844,6 +1844,12 @@ impl<'a> Checker<'a> {
         }
     }
 
+    // metel-core#989: the symbolic-aspect helpers below still look aspects up by bare
+    // short name. `--move-check` is opt-in, and these reconstruct a generic parameter's
+    // proven aspect bounds — a narrow path. On the rare same-short-name-across-modules
+    // collision the registry's bare accessor now returns `None` (a missed symbolic
+    // resolution) rather than the wrong aspect's methods; threading `current_module`
+    // through here is deferred.
     fn symbolic_aspect_method(
         &self,
         receiver_ty: &Type,

@@ -298,9 +298,7 @@ pub(super) fn infer_decl(
                     // the concrete binding must satisfy it.
                     // TODO(#241): generic impls are skipped above; assoc-type
                     // completeness for blanket impls is #241's job.
-                    if let Some(assoc_decls) =
-                        ctx.registry().aspect_assoc_type_decls(aspect_name).cloned()
-                    {
+                    if let Some(assoc_decls) = ctx.aspect_assoc_type_decls(aspect_name).cloned() {
                         let provided_assoc: std::collections::HashMap<&str, &TypeExpr> = ib
                             .assoc_type_defs
                             .iter()
@@ -613,7 +611,7 @@ pub(super) fn infer_fun_decl(
                     let mut matching_aspects: Vec<String> = Vec::new();
                     if let Some(bounds) = type_var_bounds.get(&base_tv) {
                         for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
-                            if let Some(decls) = ctx.registry().aspect_assoc_type_decls(aspect) {
+                            if let Some(decls) = ctx.aspect_assoc_type_decls(aspect) {
                                 if decls.iter().any(|d| d.name == *assoc_name) {
                                     matching_aspects.push(aspect.to_string());
                                 }
@@ -1125,7 +1123,7 @@ pub(super) fn infer_impl_method(
                     let mut matching_aspects: Vec<String> = Vec::new();
                     if let Some(bounds) = struct_bounds.get(&base_tv) {
                         for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
-                            if let Some(decls) = ctx.registry().aspect_assoc_type_decls(aspect) {
+                            if let Some(decls) = ctx.aspect_assoc_type_decls(aspect) {
                                 if decls.iter().any(|d| d.name == *assoc_name) {
                                     matching_aspects.push(aspect.to_string());
                                 }

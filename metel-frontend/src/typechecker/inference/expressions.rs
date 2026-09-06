@@ -933,11 +933,7 @@ pub(super) fn infer_expr(
                         )
                     })?;
 
-                let aspect_generics = ctx
-                    .registry()
-                    .aspect_generics(aspect)
-                    .cloned()
-                    .unwrap_or_default();
+                let aspect_generics = ctx.aspect_generics(aspect).cloned().unwrap_or_default();
                 let alias_types: HashMap<String, InferType> = aspect_generics
                     .iter()
                     .cloned()
@@ -1037,7 +1033,6 @@ pub(super) fn infer_expr(
                                         TypeExpr::Named(n, args)
                                             if args.is_empty()
                                                 && ctx
-                                                    .registry()
                                                     .aspect_assoc_type_decls(aspect_name)
                                                     .is_some_and(|decls| {
                                                         decls.iter().any(|d| d.name == *n)

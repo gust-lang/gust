@@ -1,0 +1,2 @@
+public aspect Shape { fun area(&self) -> String; }
+public fun marker() -> i64 { 0 }

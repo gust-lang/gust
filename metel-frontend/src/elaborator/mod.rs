@@ -47,28 +47,42 @@ pub fn elaborate(
 ) -> Result<ElaboratedModuleGraph, MetelError> {
     let methods = build_aspect_method_map(&graph, names)?;
     let aspect_ids = build_aspect_id_map(&graph, names);
+
+    // Disjoint field borrows: `type_registry` is read-only for the whole walk while
+    // `modules` is mutated. Splitting the struct into locals lets the borrow checker
+    // see they don't overlap.
+    let TypedModuleGraph {
+        modules,
+        type_registry,
+        ..
+    } = &mut graph;
     let dispatch_map = DispatchMap {
         methods,
         aspect_ids,
+        registry: type_registry,
     };
-
-    for module in &mut graph.modules {
+    for module in modules.iter_mut() {
+        let current_module = module.module_path.clone();
+        let cx = ElabCtx {
+            map: &dispatch_map,
+            current_module: &current_module,
+        };
         for decl in &mut module.decls {
-            elaborate_decl(decl, &dispatch_map);
+            elaborate_decl(decl, &cx);
         }
     }
 
     Ok(ElaboratedModuleGraph(graph))
 }
 
-/// Maps every declared aspect's name to its own `SymbolId` — used by `dyn Aspect`
-/// method-call dispatch (RFC-0008 slice 2), which is aspect-based by construction
-/// (the aspect name is already known statically from `Type::Dyn { aspect, .. }`)
-/// rather than resolved through `build_aspect_method_map`'s per-concrete-type table.
+/// Maps `(declaring_module, aspect_name) → SymbolId` — used by `dyn Aspect`
+/// method-call dispatch (RFC-0008 slice 2). Keyed by the *declaring* module, not the
+/// bare name, so two same-named aspects from different modules don't collide
+/// (metel-core#989); the dyn arm resolves the bare name to its declaring module first.
 fn build_aspect_id_map(
     graph: &TypedModuleGraph,
     names: &ResolvedNames,
-) -> HashMap<String, SymbolId> {
+) -> HashMap<(Vec<String>, String), SymbolId> {
     let mut map = HashMap::new();
     for module in &graph.modules {
         for decl in &module.decls {
@@ -77,7 +91,7 @@ fn build_aspect_id_map(
                     .symbols
                     .get(&(module.module_path.clone(), a.name.clone()))
                 {
-                    map.insert(a.name.clone(), id);
+                    map.insert((module.module_path.clone(), a.name.clone()), id);
                 }
             }
         }
@@ -109,8 +123,12 @@ fn build_aspect_method_map(
                 let Some(type_name) = type_expr_outer_name(&block.target_type) else {
                     continue;
                 };
-                // Resolve the aspect's SymbolId via its declaring module.
-                let Some(declaring_module) = registry.aspect_declaring_module(aspect_name) else {
+                // Resolve the aspect's SymbolId via its declaring module, scoped to the
+                // module this impl block lives in so two same-named aspects from
+                // different modules don't collide (metel-core#989).
+                let Some(declaring_module) =
+                    registry.aspect_declaring_module_in(&module.module_path, aspect_name)
+                else {
                     continue;
                 };
                 let Some(&id) = names
@@ -119,7 +137,9 @@ fn build_aspect_method_map(
                 else {
                     continue;
                 };
-                let Some(declared_methods) = registry.aspect_method_defs(aspect_name) else {
+                let Some(declared_methods) =
+                    registry.aspect_method_defs_in(&module.module_path, aspect_name)
+                else {
                     continue;
                 };
                 let is_generic = !block.generics.is_empty();
@@ -230,94 +250,106 @@ struct AspectDispatchOwner {
     is_generic: bool,
 }
 
-struct DispatchMap {
+struct DispatchMap<'a> {
     /// `(concrete_type_name, method_name) → owning aspect`, for ordinary
     /// per-concrete-type dispatch.
     methods: HashMap<(String, String), AspectDispatchOwner>,
-    /// `aspect_name → SymbolId`, for `dyn Aspect` dispatch (RFC-0008 slice 2) —
-    /// aspect-based by construction, so it never consults `methods`.
-    aspect_ids: HashMap<String, SymbolId>,
+    /// `(declaring_module, aspect_name) → SymbolId`, for `dyn Aspect` dispatch
+    /// (RFC-0008 slice 2) — aspect-based by construction, so it never consults
+    /// `methods`. Keyed by declaring module so same-named aspects don't collide
+    /// (metel-core#989).
+    aspect_ids: HashMap<(Vec<String>, String), SymbolId>,
+    /// Read-only, for resolving a `dyn Aspect`'s bare name to its declaring module
+    /// in the scope of the module the call appears in.
+    registry: &'a crate::typeinference::TypeDefinitionRegistry,
 }
 
-fn elaborate_decl(decl: &mut TypedDecl, map: &DispatchMap) {
+/// The walk's per-module context: the shared dispatch map plus which module's scope a
+/// bare `dyn Aspect` name should resolve in.
+struct ElabCtx<'a> {
+    map: &'a DispatchMap<'a>,
+    current_module: &'a [String],
+}
+
+fn elaborate_decl(decl: &mut TypedDecl, cx: &ElabCtx<'_>) {
     match decl {
-        TypedDecl::Fun(f) => elaborate_fun_body(&mut f.body, map),
-        TypedDecl::Let(l) => elaborate_expr(&mut l.value, map),
-        TypedDecl::Mut(m) => elaborate_expr(&mut m.value, map),
-        TypedDecl::Impl(block) => elaborate_impl_block(block, map),
+        TypedDecl::Fun(f) => elaborate_fun_body(&mut f.body, cx),
+        TypedDecl::Let(l) => elaborate_expr(&mut l.value, cx),
+        TypedDecl::Mut(m) => elaborate_expr(&mut m.value, cx),
+        TypedDecl::Impl(block) => elaborate_impl_block(block, cx),
         // Struct / Enum / Aspect carry no executable bodies.
         TypedDecl::Struct(_) | TypedDecl::Enum(_) | TypedDecl::Aspect(_) => {}
-        TypedDecl::Stmt(stmt) => elaborate_stmt(stmt, map),
+        TypedDecl::Stmt(stmt) => elaborate_stmt(stmt, cx),
     }
 }
 
-fn elaborate_fun_body(body: &mut FunBody, map: &DispatchMap) {
+fn elaborate_fun_body(body: &mut FunBody, cx: &ElabCtx<'_>) {
     if let FunBody::Typed(block) = body {
-        elaborate_block(block, map);
+        elaborate_block(block, cx);
     }
     // FunBody::Generic bodies are re-evaluated at call sites; skip here.
 }
 
-fn elaborate_impl_block(block: &mut TypedImplBlock, map: &DispatchMap) {
+fn elaborate_impl_block(block: &mut TypedImplBlock, cx: &ElabCtx<'_>) {
     for method in &mut block.methods {
-        elaborate_fun_body(&mut method.body, map);
+        elaborate_fun_body(&mut method.body, cx);
     }
 }
 
-fn elaborate_block(block: &mut TypedBlock, map: &DispatchMap) {
+fn elaborate_block(block: &mut TypedBlock, cx: &ElabCtx<'_>) {
     for decl in &mut block.stmts {
-        elaborate_decl(decl, map);
+        elaborate_decl(decl, cx);
     }
     if let Some(tail) = &mut block.tail {
-        elaborate_expr(tail, map);
+        elaborate_expr(tail, cx);
     }
 }
 
-fn elaborate_stmt(stmt: &mut TypedStmt, map: &DispatchMap) {
+fn elaborate_stmt(stmt: &mut TypedStmt, cx: &ElabCtx<'_>) {
     match stmt {
-        TypedStmt::Expr(e) => elaborate_expr(e, map),
+        TypedStmt::Expr(e) => elaborate_expr(e, cx),
         TypedStmt::While(w) => {
-            elaborate_expr(&mut w.condition, map);
-            elaborate_block(&mut w.body, map);
+            elaborate_expr(&mut w.condition, cx);
+            elaborate_block(&mut w.body, cx);
         }
         TypedStmt::For(f) => {
             if let Some(init) = &mut f.init {
                 match init {
-                    TypedForInit::Let(l) => elaborate_expr(&mut l.value, map),
-                    TypedForInit::Mut(m) => elaborate_expr(&mut m.value, map),
-                    TypedForInit::Expr(e) => elaborate_expr(e, map),
+                    TypedForInit::Let(l) => elaborate_expr(&mut l.value, cx),
+                    TypedForInit::Mut(m) => elaborate_expr(&mut m.value, cx),
+                    TypedForInit::Expr(e) => elaborate_expr(e, cx),
                 }
             }
             if let Some(cond) = &mut f.condition {
-                elaborate_expr(cond, map);
+                elaborate_expr(cond, cx);
             }
             if let Some(step) = &mut f.step {
-                elaborate_expr(step, map);
+                elaborate_expr(step, cx);
             }
-            elaborate_block(&mut f.body, map);
+            elaborate_block(&mut f.body, cx);
         }
         TypedStmt::ForIn(fi) => {
-            elaborate_expr(&mut fi.iterable, map);
-            elaborate_block(&mut fi.body, map);
+            elaborate_expr(&mut fi.iterable, cx);
+            elaborate_block(&mut fi.body, cx);
         }
     }
 }
 
-fn elaborate_place(place: &mut TypedPlace, map: &DispatchMap) {
+fn elaborate_place(place: &mut TypedPlace, cx: &ElabCtx<'_>) {
     match place {
         TypedPlace::Ident(..) => {}
-        TypedPlace::Deref { object, .. } => elaborate_expr(object, map),
+        TypedPlace::Deref { object, .. } => elaborate_expr(object, cx),
         TypedPlace::Field { object, .. } | TypedPlace::Tuple { object, .. } => {
-            elaborate_place(object, map);
+            elaborate_place(object, cx);
         }
         TypedPlace::Index { object, index, .. } => {
-            elaborate_place(object, map);
-            elaborate_expr(index, map);
+            elaborate_place(object, cx);
+            elaborate_expr(index, cx);
         }
     }
 }
 
-fn elaborate_expr(expr: &mut TypedExpr, map: &DispatchMap) {
+fn elaborate_expr(expr: &mut TypedExpr, cx: &ElabCtx<'_>) {
     match expr {
         TypedExpr::MethodCall {
             method,
@@ -336,56 +368,51 @@ fn elaborate_expr(expr: &mut TypedExpr, map: &DispatchMap) {
                     // the fat pointer isn't known until the receiver value
                     // exists at runtime, so there's nothing here to look up by
                     // type name).
-                    Type::Dyn { aspect, .. } => map
-                        .aspect_ids
-                        .get(aspect)
-                        .map_or(MethodDispatch::Inherent, |&aspect_id| {
-                            MethodDispatch::Aspect { aspect_id }
-                        }),
+                    Type::Dyn { aspect, .. } => resolve_dyn_dispatch(cx, aspect),
                     ty => {
                         let recv_type = receiver_type_name(ty);
-                        resolve_dispatch(recv_type.as_deref(), method, &map.methods)
+                        resolve_dispatch(recv_type.as_deref(), method, &cx.map.methods)
                     }
                 };
             }
-            elaborate_expr(receiver, map);
+            elaborate_expr(receiver, cx);
             for arg in args.iter_mut() {
-                elaborate_expr(arg, map);
+                elaborate_expr(arg, cx);
             }
         }
         TypedExpr::Call { callee, args, .. } => {
-            elaborate_expr(callee, map);
+            elaborate_expr(callee, cx);
             for arg in args.iter_mut() {
-                elaborate_expr(arg, map);
+                elaborate_expr(arg, cx);
             }
         }
         TypedExpr::BinOp(lhs, _, rhs, ..) => {
-            elaborate_expr(lhs, map);
-            elaborate_expr(rhs, map);
+            elaborate_expr(lhs, cx);
+            elaborate_expr(rhs, cx);
         }
-        TypedExpr::UnaryOp(_, operand, ..) => elaborate_expr(operand, map),
-        TypedExpr::RefTemp { init, .. } => elaborate_expr(init, map),
+        TypedExpr::UnaryOp(_, operand, ..) => elaborate_expr(operand, cx),
+        TypedExpr::RefTemp { init, .. } => elaborate_expr(init, cx),
         TypedExpr::Tuple(elems, ..) | TypedExpr::Array(elems, ..) => {
             for e in elems.iter_mut() {
-                elaborate_expr(e, map);
+                elaborate_expr(e, cx);
             }
         }
-        TypedExpr::RepeatArray(elem, ..) => elaborate_expr(elem, map),
+        TypedExpr::RepeatArray(elem, ..) => elaborate_expr(elem, cx),
         TypedExpr::Assign { target, value, .. } => {
-            elaborate_place(target, map);
-            elaborate_expr(value, map);
+            elaborate_place(target, cx);
+            elaborate_expr(value, cx);
         }
         TypedExpr::FieldAccess { object, .. } | TypedExpr::TupleAccess { object, .. } => {
-            elaborate_expr(object, map);
+            elaborate_expr(object, cx);
         }
         TypedExpr::Index { object, index, .. } => {
-            elaborate_expr(object, map);
-            elaborate_expr(index, map);
+            elaborate_expr(object, cx);
+            elaborate_expr(index, cx);
         }
         TypedExpr::Cast { expr: inner, .. }
         | TypedExpr::SingletonCoerce { inner, .. }
         | TypedExpr::DynCoerce { inner, .. } => {
-            elaborate_expr(inner, map);
+            elaborate_expr(inner, cx);
         }
         TypedExpr::If {
             condition,
@@ -393,29 +420,29 @@ fn elaborate_expr(expr: &mut TypedExpr, map: &DispatchMap) {
             else_branch,
             ..
         } => {
-            elaborate_expr(condition, map);
-            elaborate_block(then_branch, map);
+            elaborate_expr(condition, cx);
+            elaborate_block(then_branch, cx);
             if let Some(b) = else_branch {
-                elaborate_block(b, map);
+                elaborate_block(b, cx);
             }
         }
         TypedExpr::Loop { body, .. } | TypedExpr::Closure { body, .. } => {
-            elaborate_block(body, map);
+            elaborate_block(body, cx);
         }
-        TypedExpr::Match(m) => elaborate_match(m, map),
+        TypedExpr::Match(m) => elaborate_match(m, cx),
         TypedExpr::StructLiteral { fields, .. } | TypedExpr::RecordLiteral { fields, .. } => {
             for (_, e) in fields.iter_mut() {
-                elaborate_expr(e, map);
+                elaborate_expr(e, cx);
             }
         }
         TypedExpr::Return(r) => {
             if let Some(v) = &mut r.value {
-                elaborate_expr(v, map);
+                elaborate_expr(v, cx);
             }
         }
         TypedExpr::Break(b) => {
             if let Some(v) = &mut b.value {
-                elaborate_expr(v, map);
+                elaborate_expr(v, cx);
             }
         }
         TypedExpr::GenericClosure { .. }
@@ -426,18 +453,36 @@ fn elaborate_expr(expr: &mut TypedExpr, map: &DispatchMap) {
     }
 }
 
-fn elaborate_match(m: &mut TypedMatchExpr, map: &DispatchMap) {
-    elaborate_expr(&mut m.scrutinee, map);
+fn elaborate_match(m: &mut TypedMatchExpr, cx: &ElabCtx<'_>) {
+    elaborate_expr(&mut m.scrutinee, cx);
     for arm in &mut m.arms {
-        elaborate_match_arm(arm, map);
+        elaborate_match_arm(arm, cx);
     }
 }
 
-fn elaborate_match_arm(arm: &mut TypedMatchArm, map: &DispatchMap) {
+fn elaborate_match_arm(arm: &mut TypedMatchArm, cx: &ElabCtx<'_>) {
     if let Some(guard) = &mut arm.guard {
-        elaborate_expr(guard, map);
+        elaborate_expr(guard, cx);
     }
-    elaborate_block(&mut arm.body, map);
+    elaborate_block(&mut arm.body, cx);
+}
+
+/// Resolve a `dyn Aspect` method call's dispatch (metel-core#989): the bare aspect name
+/// on `Type::Dyn` is resolved to its declaring module in the scope of the module the call
+/// appears in, then to that aspect's `SymbolId`. `Inherent` when it doesn't resolve —
+/// same fallback as before this was module-aware.
+fn resolve_dyn_dispatch(cx: &ElabCtx<'_>, aspect: &str) -> MethodDispatch {
+    cx.map
+        .registry
+        .aspect_declaring_module_in(cx.current_module, aspect)
+        .and_then(|declaring_module| {
+            cx.map
+                .aspect_ids
+                .get(&(declaring_module.clone(), aspect.to_string()))
+        })
+        .map_or(MethodDispatch::Inherent, |&aspect_id| {
+            MethodDispatch::Aspect { aspect_id }
+        })
 }
 
 /// Resolve dispatch for a single call site.

@@ -1,0 +1,11 @@
+// metel-core#989: two modules each declare `aspect Kind`; `use_a` resolves
+// `dyn Kind` to shapes_a's, `use_b` to shapes_b's, and both are correct in the
+// same compiled program.
+import use_a::run_a;
+import use_b::run_b;
+
+fun main() {
+    assert(run_a() == "A");
+    assert(run_b() == 7);
+    println("ok");
+}

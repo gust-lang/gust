@@ -504,11 +504,11 @@ impl Cx<'_> {
                 };
                 let methods = self
                     .registry
-                    .aspect_method_defs(aspect_name)
+                    .aspect_method_defs_in(self.current_module, aspect_name)
                     .map_or(&[][..], Vec::as_slice);
                 let assoc_type_names: HashSet<&str> = self
                     .registry
-                    .aspect_assoc_type_decls(aspect_name)
+                    .aspect_assoc_type_decls_in(self.current_module, aspect_name)
                     .map(|decls| decls.iter().map(|d| d.name.as_str()).collect())
                     .unwrap_or_default();
                 if let Err(violation) = check_object_safe(methods, &assoc_type_names) {

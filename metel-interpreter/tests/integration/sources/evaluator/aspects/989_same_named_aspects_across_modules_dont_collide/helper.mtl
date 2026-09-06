@@ -1,0 +1,11 @@
+// metel-core#989: `helper` declares an aspect `Shape` with `area`, and `main`
+// only ever uses *this* `Shape` as `dyn Shape`.
+public aspect Shape {
+    fun area(&self) -> f64;
+}
+
+public struct Circle { public radius: f64 }
+
+extend Circle: Shape {
+    fun area(&self) -> f64 { 3.14159 * self.radius * self.radius }
+}
