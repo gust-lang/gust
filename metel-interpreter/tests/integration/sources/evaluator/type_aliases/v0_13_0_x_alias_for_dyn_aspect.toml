@@ -1,0 +1,5 @@
+[options]
+spec = ["spec.declarations.type-aliases.legality-1", "spec.declarations.aspects.dyn-aspect.dynamics-1"]
+
+[expect]
+status = "success"
