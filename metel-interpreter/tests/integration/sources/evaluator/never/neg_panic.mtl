@@ -1,5 +1,5 @@
 // RUNTIME_ERROR[boom]
-// RFC-0078: panic(msg) always panics (R0015) with the given message.
+// RFC-0078: panic(msg) always panics (R0014) with the given message.
 fun main() {
     panic("boom");
 }

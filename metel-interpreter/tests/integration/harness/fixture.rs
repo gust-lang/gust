@@ -580,7 +580,7 @@ fn parse_spec_list(raw: &str, path: &Path) -> Vec<String> {
     citations
 }
 
-/// `error = […]` -- a bare error-code shape (`T0003`, `R0016`, `I0002`, ...),
+/// `error = […]` -- a bare error-code shape (`T0003`, `R0015`, `I0002`, ...),
 /// deliberately not the `spec.<file>.<section>.<kind>-<n>` grammar `spec =`
 /// citations use (metel-core#981: different axis, different grammar, kept
 /// visually and structurally distinct). One uppercase letter, exactly four

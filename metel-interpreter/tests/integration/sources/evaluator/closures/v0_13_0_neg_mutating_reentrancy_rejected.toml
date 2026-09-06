@@ -1,8 +1,8 @@
 [options]
-error = ["R0016"]
+error = ["R0015"]
 spec = ["spec.functions.closures.dynamics-9"]
 
 [expect]
 status = "runtime_error"
-code = "R0016"
+code = "R0015"
 contains = "re-entrant"

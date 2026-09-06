@@ -1,8 +1,8 @@
 [options]
-error = ["R0015"]
+error = ["R0014"]
 spec = ["spec.types.never-type.dynamics-1", "spec.runtime.panics.dynamics-1"]
 
 [expect]
 status = "runtime_error"
-code = "R0015"
+code = "R0014"
 contains = "boom"
