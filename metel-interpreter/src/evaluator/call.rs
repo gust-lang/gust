@@ -48,7 +48,7 @@ fn call_runtime_callable(
             let is_mutating = rc.call_mutation == crate::types::CallMutation::Mutating;
             if is_mutating && rc.in_call.replace(true) {
                 return Err(attach_stack(MetelError::panic(
-                    RuntimeErrorCode::R0016,
+                    RuntimeErrorCode::R0015,
                     "re-entrant call to a mutating closure",
                     span,
                 )));

@@ -1,5 +1,5 @@
-// RUNTIME_ERROR[R0014]
-// issue #232: .yolo() on None panics with R0014.
+// RUNTIME_ERROR[R0013]
+// issue #232: .yolo() on None panics with R0013.
 fun main() {
     let none: Perhaps<i64> := Perhaps::None;
     let _ := none.yolo();

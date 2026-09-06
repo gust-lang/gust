@@ -1,5 +1,5 @@
 // RUNTIME_ERROR[not found ok]
-// issue #232: .yolo() on Err panics with R0014, and the message includes the
+// issue #232: .yolo() on Err panics with R0013, and the message includes the
 // Err value's debug representation (verified via a distinctive error string).
 fun main() {
     let err: Result<i64, String> := Result::Err { error = "not found ok" };

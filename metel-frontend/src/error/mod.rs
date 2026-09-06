@@ -65,10 +65,10 @@ pub enum RuntimeErrorCode {
     R0009, // Method not found
     R0010, // Call on non-callable value
     R0011, // Invalid for-in iterator
-    R0013, // Assertion failed
-    R0014, // Unwrap on `None`/`Err` (`.yolo()`)
-    R0015, // Explicit panic (`panic()`)
-    R0016, // Re-entrant call to a mutating closure (RFC-0153)
+    R0012, // Assertion failed
+    R0013, // Unwrap on `None`/`Err` (`.yolo()`)
+    R0014, // Explicit panic (`panic()`)
+    R0015, // Re-entrant call to a mutating closure (RFC-0153)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

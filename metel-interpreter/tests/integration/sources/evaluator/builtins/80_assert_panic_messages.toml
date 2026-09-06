@@ -1,8 +1,8 @@
 [options]
-error = ["R0013"]
+error = ["R0012"]
 spec = ["spec.runtime.built-in-functions.dynamics-2"]
 
 [expect]
 status = "runtime_error"
-code = "R0013"
+code = "R0012"
 contains = "custom assertion failure"

@@ -1,7 +1,7 @@
 // v0.13.0 closure cluster (RFC 0153 dynamics-9): for the extent of a
 // `mutating` call the callee is exclusively borrowed. A second `mutating`
 // call on the same closure value reached from inside the first is rejected --
-// before the borrow checker lands, as a runtime error (R0007).
+// before the borrow checker lands, as a runtime error (R0015).
 //
 struct Cell {
     go: var || -> i64,
@@ -12,5 +12,5 @@ fun main() {
     c.go := [&var c] var || {
         (c.go)() + 1 // re-enters the same `var` closure while its first call is live
     };
-    (c.go)(); // runtime error R0007 -- re-entrant call to a mutating closure
+    (c.go)(); // runtime error R0015 -- re-entrant call to a mutating closure
 }

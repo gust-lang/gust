@@ -97,7 +97,7 @@ fn native_assert(args: &[Value], span: &crate::ast::Span) -> Result<Value, Metel
     match args.first() {
         Some(Value::Boolean(true)) => Ok(Value::Unit),
         Some(Value::Boolean(false)) => Err(MetelError::panic(
-            RuntimeErrorCode::R0013,
+            RuntimeErrorCode::R0012,
             "assertion failed",
             span,
         )),
@@ -109,12 +109,12 @@ fn native_assert_msg(args: &[Value], span: &crate::ast::Span) -> Result<Value, M
     match (args.first(), args.get(1)) {
         (Some(Value::Boolean(true)), _) => Ok(Value::Unit),
         (Some(Value::Boolean(false)), Some(Value::Str(msg))) => Err(MetelError::panic(
-            RuntimeErrorCode::R0013,
+            RuntimeErrorCode::R0012,
             msg.clone(),
             span,
         )),
         (Some(Value::Boolean(false)), _) => Err(MetelError::panic(
-            RuntimeErrorCode::R0013,
+            RuntimeErrorCode::R0012,
             "assertion failed",
             span,
         )),
@@ -132,7 +132,7 @@ fn native_assert_msg(args: &[Value], span: &crate::ast::Span) -> Result<Value, M
 /// instantiation leaves a free type variable).
 fn native_yolo_none(_args: &[Value], span: &crate::ast::Span) -> Result<Value, MetelError> {
     Err(MetelError::panic(
-        RuntimeErrorCode::R0014,
+        RuntimeErrorCode::R0013,
         "called `.yolo()` on a `None` value",
         span,
     ))
@@ -145,7 +145,7 @@ fn native_yolo_none(_args: &[Value], span: &crate::ast::Span) -> Result<Value, M
 fn native_yolo_err(args: &[Value], span: &crate::ast::Span) -> Result<Value, MetelError> {
     match args.first() {
         Some(error) => Err(MetelError::panic(
-            RuntimeErrorCode::R0014,
+            RuntimeErrorCode::R0013,
             format!(
                 "called `.yolo()` on an `Err` value: {}",
                 format_value(error)
@@ -160,7 +160,7 @@ fn native_yolo_err(args: &[Value], span: &crate::ast::Span) -> Result<Value, Met
 fn native_panic(args: &[Value], span: &crate::ast::Span) -> Result<Value, MetelError> {
     match args.first() {
         Some(Value::Str(msg)) => Err(MetelError::panic(
-            RuntimeErrorCode::R0015,
+            RuntimeErrorCode::R0014,
             msg.clone(),
             span,
         )),

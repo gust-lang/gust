@@ -1,7 +1,7 @@
 [options]
-error = ["R0014"]
+error = ["R0013"]
 
 [expect]
 status = "runtime_error"
-code = "R0014"
+code = "R0013"
 contains = "yolo"
