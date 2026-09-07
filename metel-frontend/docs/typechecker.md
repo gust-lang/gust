@@ -193,7 +193,7 @@ InferContext {
 }
 ```
 
-**`current_type_params` invariant:** set to the enclosing generic function's `name → TypeVar` map for the duration of `infer_fun_decl` / `infer_impl_method` body inference, and restored to the caller's map afterward via `swap_type_params`. Empty at top level and inside non-generic functions. All type annotations inside a function body (`let`, `mut`, `for`-init, closure params) must resolve through `ann_to_infer(ann, ctx)` rather than the bare `type_expr_to_infer(ann)` so that param names resolve to their TypeVars instead of `Type::Named`.
+**`current_type_params` invariant:** set to the enclosing generic function's `name → TypeVar` map for the duration of `infer_fun_decl` / `infer_impl_method` body inference, and restored to the caller's map afterward via `swap_type_params`. Empty at top level and inside non-generic functions. All type annotations inside a function body (`let`, `var`, `for`-init, closure params) must resolve through `ann_to_infer(ann, ctx)` rather than the bare `type_expr_to_infer(ann)` so that param names resolve to their TypeVars instead of `Type::Named`.
 
 `poly_env` takes precedence over `mono_env` in `ctx.lookup()`. Poly entries are automatically instantiated with fresh type variables on each lookup (let-polymorphism).
 
@@ -245,10 +245,10 @@ Binding mutability is tracked as a boolean flag in `mono_env`: `HashMap<String, 
 Three write sites call `lookup_for_write` during Pass 1:
 
 1. **Direct assignment** (`Expr::Assign { target: Ident(x), .. }`) — checked directly.
-2. **`&mut x`** (`UnaryOp::RefMut` where the operand is `Ident`) — checked before returning `MutPointer(T)`.
+2. **`&var x`** (`UnaryOp::RefMut` where the operand is `Ident`) — checked before returning `MutPointer(T)`.
 3. **Field assignment** (`Expr::FieldAssign`) — the object is inferred first to resolve its type. If the object type is `MutPointer(T)` (auto-deref field assign), the binding check is skipped entirely. Otherwise, `root_binding_for_write` walks the object chain (`FieldAccess → Index → Ident`) to find the root binding and calls `lookup_for_write` on it. Chains ending in `UnaryOp::Deref` also return `None` from `root_binding_for_write` and are exempt.
 
-Method `self` parameters: `self` in an `&mut self` method is bound with `is_mutable = true` regardless of the `Param::mutable` flag (which the parser always sets to `false` for receivers). This is handled at `infer_impl_method` and `infer_default_aspect_method` with `p.mutable || matches!(p.receiver, Some(ReceiverKind::RefMut))`.
+Method `self` parameters: `self` in an `&var self` method is bound with `is_mutable = true` regardless of the `Param::mutable` flag (which the parser always sets to `false` for receivers). This is handled at `infer_impl_method` and `infer_default_aspect_method` with `p.mutable || matches!(p.receiver, Some(ReceiverKind::RefMut))`.
 
 ### Type Ascription (`:` Operator)
 
