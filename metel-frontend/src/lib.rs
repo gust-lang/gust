@@ -22,6 +22,7 @@ pub mod native_keys;
 pub mod parser;
 pub mod path_normalizer;
 pub mod place;
+pub mod query;
 pub mod reference_resolver;
 pub mod stdlib;
 pub mod symbols;
